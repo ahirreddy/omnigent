@@ -16,6 +16,14 @@ extension MacLiveUITestSupport {
     element("composer-input", in: app)
   }
 
+  /// Clicks the composer once it takes input. While its session loads it is locked, and a
+  /// click and the keys typed after it would go nowhere.
+  func focusComposer(in app: XCUIApplication) {
+    let composer = composer(in: app)
+    _ = waitUntil(timeout: 5) { composer.exists && composer.isEnabled }
+    click(composer, "the composer")
+  }
+
   /// The composer's current text.
   func composerText(in app: XCUIApplication) -> String {
     composer(in: app).value as? String ?? ""
@@ -55,7 +63,7 @@ extension MacLiveUITestSupport {
     file: StaticString = #filePath, line: UInt = #line
   ) {
     XCTAssertTrue(
-      target.waitForExistence(timeout: 30), "\(target) is missing", file: file, line: line)
+      target.appears(within: 30), "\(target) is missing", file: file, line: line)
     target.rightClick()
     clickMenuItem(title, in: app, file: file, line: line)
   }
@@ -76,7 +84,7 @@ extension MacLiveUITestSupport {
   /// Waits for the sample sessions to load, on the New Tab page's first launch.
   func waitForDemoSessions(in app: XCUIApplication) {
     XCTAssertTrue(
-      row("demo-question", in: app).waitForExistence(timeout: 30), "the demo sessions did not load")
+      row("demo-question", in: app).appears(within: 30), "the demo sessions did not load")
   }
 
   /// Opens the New Session page with Command-N.
@@ -85,10 +93,10 @@ extension MacLiveUITestSupport {
     let page = element("new-session-page", in: app)
     for _ in 0..<3 where !page.exists {
       app.typeKey("n", modifierFlags: .command)
-      _ = page.waitForExistence(timeout: 10)
+      _ = page.appears(within: 10)
     }
     XCTAssertTrue(page.exists, "Command-N did not open the New Session page")
-    XCTAssertTrue(composer(in: app).waitForExistence(timeout: 10), "the page has no composer")
+    XCTAssertTrue(composer(in: app).appears(within: 10), "the page has no composer")
   }
 
   /// Starts a demo session with `message`, from Command-N to its transcript. A message with "in
@@ -97,21 +105,21 @@ extension MacLiveUITestSupport {
     openNewSession(in: app)
     send(message, in: app)
     XCTAssertTrue(
-      anyTranscript(in: app).waitForExistence(timeout: 15), "the session did not start")
+      anyTranscript(in: app).appears(within: 15), "the session did not start")
   }
 
   /// Starts a demo session and stops its reply, leaving it idle and ready for the next message.
   func startIdleDemoSession(in app: XCUIApplication) {
     startDemoSession("Start \(UUID().uuidString.prefix(6)) in detail", in: app)
     let stop = element("composer-stop", in: app)
-    XCTAssertTrue(stop.waitForExistence(timeout: 15), "no reply started")
+    XCTAssertTrue(stop.appears(within: 15), "no reply started")
     click(stop, "Stop")
-    XCTAssertTrue(stop.waitForNonExistence(timeout: 15), "the reply did not stop")
+    XCTAssertTrue(stop.disappears(within: 15), "the reply did not stop")
   }
 
   /// Types `message` into the composer and sends it with Command-Return.
   func send(_ message: String, in app: XCUIApplication) {
-    click(composer(in: app), "the composer")
+    focusComposer(in: app)
     app.typeText(message)
     app.typeKey(.return, modifierFlags: .command)
   }
@@ -125,7 +133,7 @@ extension MacLiveUITestSupport {
       waitUntil(timeout: timeout) { !composerText(in: app).contains(text) },
       "the composer kept \(text)", file: file, line: line)
     XCTAssertTrue(
-      self.text(containing: text, in: app).waitForExistence(timeout: timeout),
+      self.text(containing: text, in: app).appears(within: timeout),
       "\(text) never showed", file: file, line: line)
   }
 
@@ -160,7 +168,7 @@ extension MacLiveUITestSupport {
   func showInspector(in app: XCUIApplication) {
     let tabs = inspectorTabs(in: app)
     if !tabs.exists { app.typeKey("i", modifierFlags: [.command, .option]) }
-    XCTAssertTrue(tabs.waitForExistence(timeout: 10), "the right panel did not open")
+    XCTAssertTrue(tabs.appears(within: 10), "the right panel did not open")
   }
 
   /// Empties a search field, again if the keys were lost: a list that is still updating can
@@ -183,9 +191,13 @@ extension MacLiveUITestSupport {
   func openShellTab(
     in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line
   ) -> XCUIElement {
+    // The command is off until the session's tabs are ready to take it; a key typed before
+    // then is dropped.
+    let command = app.menuBars.menuItems["New Shell"]
+    _ = waitUntil(timeout: 5) { command.exists && command.isEnabled }
     app.typeKey("t", modifierFlags: [.command, .option])
     XCTAssertTrue(
-      tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab",
+      tabs("terminal", in: app).firstMatch.appears(within: 30), "no terminal tab",
       file: file, line: line)
     let surface = element("terminal-tab", in: app)
     waitForAttachedShell(surface, in: app, file: file, line: line)
@@ -198,7 +210,7 @@ extension MacLiveUITestSupport {
     line: UInt = #line
   ) {
     XCTAssertTrue(
-      surface.waitForExistence(timeout: 30), "no terminal is shown", file: file, line: line)
+      surface.appears(within: 30), "no terminal is shown", file: file, line: line)
     XCTAssertTrue(
       waitUntil(timeout: 30) {
         !text(containing: "Attaching", in: app).exists

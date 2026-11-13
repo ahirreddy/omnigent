@@ -24,7 +24,7 @@ final class MacSessionFlowUITests: XCTestCase {
 
     live.clickTitle(of: live.row("demo-question", in: app), "the demo-question row")
     XCTAssertTrue(
-      live.element("transcript-demo-question", in: app).waitForExistence(timeout: 10),
+      live.element("transcript-demo-question", in: app).appears(within: 10),
       "one click did not open the session")
     XCTAssertFalse(live.element("session-row-rename-field", in: app).exists, "it began a rename")
     XCTAssertFalse(live.element("transcript-demo-notes", in: app).exists, "the old session stayed")
@@ -39,12 +39,12 @@ final class MacSessionFlowUITests: XCTestCase {
 
     live.openDemo("demo-notes", in: app)
     let notice = live.element("composer-unavailable", in: app)
-    XCTAssertTrue(notice.waitForExistence(timeout: 10), "no read-only notice")
+    XCTAssertTrue(notice.appears(within: 10), "no read-only notice")
     XCTAssertTrue(
       (notice.value as? String ?? notice.label).contains("read this session but not send"),
       "the notice says \(notice.value ?? notice.label)")
     // Typing proves it: the editor reports itself disabled to accessibility even when it is not.
-    live.click(live.composer(in: app), "the composer")
+    live.focusComposer(in: app)
     app.typeText("locked")
     let tookText = live.waitUntil(timeout: 2) { live.composerText(in: app).contains("locked") }
     live.shot(app, "read-only-composer-after-typing")
@@ -61,7 +61,7 @@ final class MacSessionFlowUITests: XCTestCase {
 
     live.contextMenu(live.row("demo-question", in: app), choose: "Rename\u{2026}", in: app)
     let prompt = app.sheets.firstMatch
-    XCTAssertTrue(prompt.waitForExistence(timeout: 10), "no rename prompt")
+    XCTAssertTrue(prompt.appears(within: 10), "no rename prompt")
     XCTAssertFalse(
       prompt.checkBoxes.firstMatch.exists, "the rename prompt offers another prompt's checkbox")
     // With keyboard navigation on, the prompt opens with Cancel focused, not the title.
@@ -84,11 +84,11 @@ final class MacSessionFlowUITests: XCTestCase {
 
     row.doubleClick()
     let field = live.element("session-row-rename-field", in: app)
-    XCTAssertTrue(field.waitForExistence(timeout: 10), "a double-click began no rename")
+    XCTAssertTrue(field.appears(within: 10), "a double-click began no rename")
     field.click()
     app.typeKey("a", modifierFlags: .command)
     app.typeText(title + "\r")
-    XCTAssertTrue(field.waitForNonExistence(timeout: 10), "Return left the field open")
+    XCTAssertTrue(field.disappears(within: 10), "Return left the field open")
     live.assertRow("demo-question", in: app, contains: title)
   }
 
@@ -103,11 +103,11 @@ final class MacSessionFlowUITests: XCTestCase {
 
     row.doubleClick()
     let field = live.element("session-row-rename-field", in: app)
-    XCTAssertTrue(field.waitForExistence(timeout: 10), "a double-click began no rename")
+    XCTAssertTrue(field.appears(within: 10), "a double-click began no rename")
     field.click()
     app.typeText("Abandoned")
     app.typeKey(.escape, modifierFlags: [])
-    XCTAssertTrue(field.waitForNonExistence(timeout: 10), "Escape left the field open")
+    XCTAssertTrue(field.disappears(within: 10), "Escape left the field open")
     live.assertRow("demo-question", in: app, contains: "Abandoned", false)
     live.assertRow("demo-question", in: app, contains: "Choose the first release")
   }
@@ -137,11 +137,11 @@ final class MacSessionFlowUITests: XCTestCase {
     let row = live.row("demo-question", in: app)
 
     live.contextMenu(row, choose: "Archive", in: app)
-    XCTAssertTrue(row.waitForNonExistence(timeout: 10), "the archived row stayed")
+    XCTAssertTrue(row.disappears(within: 10), "the archived row stayed")
     live.click(live.element("undo-action", in: app), "Undo")
-    XCTAssertTrue(row.waitForExistence(timeout: 10), "Undo did not restore the session")
+    XCTAssertTrue(row.appears(within: 10), "Undo did not restore the session")
     XCTAssertTrue(
-      live.element("undo-banner", in: app).waitForNonExistence(timeout: 10), "the banner stayed")
+      live.element("undo-banner", in: app).disappears(within: 10), "the banner stayed")
   }
 
   /// An archived session waits in the archived list, and Unarchive returns it to the main list.
@@ -153,17 +153,17 @@ final class MacSessionFlowUITests: XCTestCase {
     let row = live.row("demo-question", in: app)
 
     live.contextMenu(row, choose: "Archive", in: app)
-    XCTAssertTrue(row.waitForNonExistence(timeout: 10), "the archived row stayed")
+    XCTAssertTrue(row.disappears(within: 10), "the archived row stayed")
     live.click(live.element("undo-view-archived", in: app), "View archived")
-    XCTAssertTrue(row.waitForExistence(timeout: 10), "the archived list does not show it")
+    XCTAssertTrue(row.appears(within: 10), "the archived list does not show it")
     XCTAssertTrue(
-      live.row("demo-design", in: app).waitForNonExistence(timeout: 10),
+      live.row("demo-design", in: app).disappears(within: 10),
       "the archived list shows a live session")
 
     live.contextMenu(row, choose: "Unarchive", in: app)
-    XCTAssertTrue(row.waitForNonExistence(timeout: 10), "it stayed in the archived list")
+    XCTAssertTrue(row.disappears(within: 10), "it stayed in the archived list")
     live.showDisplayScope("All sessions", in: app)
-    XCTAssertTrue(row.waitForExistence(timeout: 10), "it did not return to the main list")
+    XCTAssertTrue(row.appears(within: 10), "it did not return to the main list")
   }
 
   /// Delete asks first: Cancel keeps the session and Delete removes it.
@@ -176,12 +176,12 @@ final class MacSessionFlowUITests: XCTestCase {
 
     live.contextMenu(row, choose: "Delete\u{2026}", in: app)
     live.clickDialogButton("Cancel", in: app)
-    XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 10), "the dialog stayed")
+    XCTAssertTrue(app.sheets.firstMatch.disappears(within: 10), "the dialog stayed")
     XCTAssertTrue(row.exists, "Cancel deleted the session")
 
     live.contextMenu(row, choose: "Delete\u{2026}", in: app)
     live.clickDialogButton("Delete", in: app)
-    XCTAssertTrue(row.waitForNonExistence(timeout: 15), "Delete left the session")
+    XCTAssertTrue(row.disappears(within: 15), "Delete left the session")
   }
 
   /// Deleting the open session leaves its page rather than showing a dead transcript.
@@ -195,7 +195,7 @@ final class MacSessionFlowUITests: XCTestCase {
     live.contextMenu(live.row("demo-question", in: app), choose: "Delete\u{2026}", in: app)
     live.clickDialogButton("Delete", in: app)
     XCTAssertTrue(
-      live.element("transcript-demo-question", in: app).waitForNonExistence(timeout: 15),
+      live.element("transcript-demo-question", in: app).disappears(within: 15),
       "the deleted session stayed on screen")
     live.assertRunning(app, "after deleting the open session")
   }

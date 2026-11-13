@@ -25,11 +25,11 @@ final class MacSidebarFilterFlowUITests: XCTestCase {
     let search = app.windows.firstMatch.searchFields.firstMatch
     live.click(search, "the sidebar's search field")
     search.typeText("first release")
-    XCTAssertTrue(notes.waitForNonExistence(timeout: 10), "search left a session that differs")
+    XCTAssertTrue(notes.disappears(within: 10), "search left a session that differs")
     XCTAssertTrue(live.row("demo-question", in: app).exists, "search hid the match")
 
     live.clear(search)
-    XCTAssertTrue(notes.waitForExistence(timeout: 10), "clearing did not restore the list")
+    XCTAssertTrue(notes.appears(within: 10), "clearing did not restore the list")
   }
 
   /// A search with no match says so.
@@ -44,7 +44,7 @@ final class MacSidebarFilterFlowUITests: XCTestCase {
     live.click(search, "the sidebar's search field")
     search.typeText("zz-no-such-session")
     XCTAssertTrue(
-      live.text(containing: "No Results", in: app).waitForExistence(timeout: 10),
+      live.text(containing: "No Results", in: app).appears(within: 10),
       "no empty state for a search without matches")
     XCTAssertFalse(live.row("demo-question", in: app).exists, "a session still shows")
   }
@@ -59,7 +59,7 @@ final class MacSidebarFilterFlowUITests: XCTestCase {
 
     live.click(live.element("quick-filter-running", in: app), "the Running filter")
     XCTAssertTrue(
-      live.text(containing: "Nothing is running", in: app).waitForExistence(timeout: 10),
+      live.text(containing: "Nothing is running", in: app).appears(within: 10),
       "no empty state for Running")
     XCTAssertFalse(live.row("demo-question", in: app).exists, "an idle session still shows")
 
@@ -76,11 +76,11 @@ final class MacSidebarFilterFlowUITests: XCTestCase {
     defer { app.terminate() }
     live.startDemoSession("Summarize this in detail", in: app)
     XCTAssertTrue(
-      live.element("composer-stop", in: app).waitForExistence(timeout: 15), "no reply started")
+      live.element("composer-stop", in: app).appears(within: 15), "no reply started")
 
     live.click(live.element("quick-filter-running", in: app), "the Running filter")
     XCTAssertTrue(
-      live.row("demo-notes", in: app).waitForNonExistence(timeout: 10), "an idle session stayed")
+      live.row("demo-notes", in: app).disappears(within: 10), "an idle session stayed")
     XCTAssertTrue(
       live.elements(prefix: "session-row-demo-session-", in: app).firstMatch.exists,
       "the running session is not listed")
@@ -96,7 +96,7 @@ final class MacSidebarFilterFlowUITests: XCTestCase {
 
     live.click(live.element("quick-filter-needsResponse", in: app), "the Needs you filter")
     XCTAssertTrue(
-      live.row("demo-notes", in: app).waitForNonExistence(timeout: 10), "an idle session stayed")
+      live.row("demo-notes", in: app).disappears(within: 10), "an idle session stayed")
     XCTAssertTrue(live.row("demo-design", in: app).exists, "the approval is not listed")
     XCTAssertTrue(live.row("demo-question", in: app).exists, "the question is not listed")
   }
@@ -116,7 +116,7 @@ final class MacSidebarFilterFlowUITests: XCTestCase {
 
     live.click(live.element("quick-filter-needsResponse", in: app), "the Needs you filter")
     XCTAssertTrue(
-      live.text(containing: "Nothing needs you", in: app).waitForExistence(timeout: 10),
+      live.text(containing: "Nothing needs you", in: app).appears(within: 10),
       "no empty state for Needs you")
     live.click(live.element("sidebar-clear-filter", in: app), "Show All Sessions")
     live.waitForDemoSessions(in: app)
@@ -132,7 +132,7 @@ final class MacSidebarFilterFlowUITests: XCTestCase {
 
     live.showDisplayScope("Archived sessions", in: app)
     XCTAssertTrue(
-      live.text(containing: "No archived sessions", in: app).waitForExistence(timeout: 10),
+      live.text(containing: "No archived sessions", in: app).appears(within: 10),
       "no empty state for the archived scope")
     XCTAssertFalse(live.row("demo-question", in: app).exists, "a live session still shows")
 

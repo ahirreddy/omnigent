@@ -31,13 +31,13 @@ final class MacWorkflowUITests: XCTestCase {
 
       app.typeKey("b", modifierFlags: [.command, .option])
       XCTAssertTrue(
-        live.tabs("browser", in: app).firstMatch.waitForExistence(timeout: 20), "no browser tab")
+        live.tabs("browser", in: app).firstMatch.appears(within: 20), "no browser tab")
       let omnibox = live.element("browser.omnibox", in: app)
       live.click(omnibox, "the address field", timeout: 20)
       app.typeKey("a", modifierFlags: .command)
       app.typeText(page.url.absoluteString + "\r")
       XCTAssertTrue(
-        live.text(containing: page.title, in: app).waitForExistence(timeout: 30),
+        live.text(containing: page.title, in: app).appears(within: 30),
         "the page's title never showed\n\(app.debugDescription)")
       live.assertRunning(app, "after loading the page")
       live.shot(app, "browser-page")
@@ -84,7 +84,7 @@ final class MacWorkflowUITests: XCTestCase {
     // Terminal view (the Omnigent REPL, once its runner hosts one), else its first shell, which
     // an earlier flow may have left running.
     app.typeKey("`", modifierFlags: .control)
-    XCTAssertTrue(live.element("transcript-\(session)", in: app).waitForExistence(timeout: 10))
+    XCTAssertTrue(live.element("transcript-\(session)", in: app).appears(within: 10))
     app.typeKey("`", modifierFlags: .control)
     let ownTerminal = live.element("session-terminal", in: app)
     XCTAssertTrue(
@@ -116,7 +116,7 @@ final class MacWorkflowUITests: XCTestCase {
     // The scroll view itself, the widest one: the transcript's identifier is also on the buttons
     // over it and on the turn rail, a narrow scroll view at its leading edge.
     let scrollViews = app.scrollViews.matching(identifier: "transcript-\(session)")
-    XCTAssertTrue(scrollViews.firstMatch.waitForExistence(timeout: 10), "no transcript to scroll")
+    XCTAssertTrue(scrollViews.firstMatch.appears(within: 10), "no transcript to scroll")
     let transcript = try XCTUnwrap(
       scrollViews.allElementsBoundByIndex.max { $0.frame.width < $1.frame.width })
     // The seed's first user message: its turns count from 1.
@@ -126,7 +126,7 @@ final class MacWorkflowUITests: XCTestCase {
     // The button shows once the transcript has left its end.
     transcript.scroll(byDeltaX: 0, deltaY: 500)
     live.click(app.buttons["Jump to the first message"].firstMatch, "Jump to the first message")
-    XCTAssertTrue(first.waitForExistence(timeout: 60), "the jump did not reach the first message")
+    XCTAssertTrue(first.appears(within: 60), "the jump did not reach the first message")
     live.assertRunning(app, "after the jump")
     live.shot(app, "transcript-top")
   }
@@ -145,7 +145,7 @@ final class MacWorkflowUITests: XCTestCase {
     #if OMNIGENT_CHROMIUM
       app.typeKey("b", modifierFlags: [.command, .option])
       XCTAssertTrue(
-        live.tabs("browser", in: app).firstMatch.waitForExistence(timeout: 20), "no browser tab")
+        live.tabs("browser", in: app).firstMatch.appears(within: 20), "no browser tab")
     #endif
     let ownTabs = otherTabCount(live, app)
     try XCTSkipIf(ownTabs == 0, "This edition and host can open neither a browser nor a terminal.")
@@ -182,7 +182,7 @@ final class MacWorkflowUITests: XCTestCase {
     #if OMNIGENT_CHROMIUM
       app.typeKey("b", modifierFlags: [.command, .option])
       XCTAssertTrue(
-        live.tabs("browser", in: app).firstMatch.waitForExistence(timeout: 20), "no browser tab")
+        live.tabs("browser", in: app).firstMatch.appears(within: 20), "no browser tab")
       resizeThroughWidths(window, live, app, "browser")
     #endif
   }

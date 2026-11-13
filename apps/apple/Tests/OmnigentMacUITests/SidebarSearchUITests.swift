@@ -16,16 +16,16 @@ final class SidebarSearchUITests: XCTestCase {
     let window = app.windows.firstMatch
     let pinned = window.descendants(matching: .any)["session-row-demo-design"]
     let other = window.descendants(matching: .any)["session-row-demo-notes"]
-    XCTAssertTrue(other.waitForExistence(timeout: 30), "the demo sessions did not load")
+    XCTAssertTrue(other.appears(within: 30), "the demo sessions did not load")
     XCTAssertFalse(pinned.exists, "the collapsed Pinned section shows its row")
 
     let search = window.searchFields.firstMatch
     XCTAssertTrue(search.exists, "no sidebar search field")
     search.click()
     search.typeText("mobile")
-    XCTAssertTrue(pinned.waitForExistence(timeout: 10), "searching left Pinned collapsed")
+    XCTAssertTrue(pinned.appears(within: 10), "searching left Pinned collapsed")
 
     MacLiveUITestSupport(self).clear(search)
-    XCTAssertTrue(pinned.waitForNonExistence(timeout: 10), "clearing the search left Pinned open")
+    XCTAssertTrue(pinned.disappears(within: 10), "clearing the search left Pinned open")
   }
 }

@@ -44,7 +44,7 @@ final class MacComposerFlowUITests: XCTestCase {
     live.startIdleDemoSession(in: app)
 
     let message = "Sent with Return \(UUID().uuidString.prefix(6))"
-    live.click(live.composer(in: app), "the composer")
+    live.focusComposer(in: app)
     app.typeText(message + "\r")
     live.assertShows(message, in: app)
   }
@@ -59,9 +59,9 @@ final class MacComposerFlowUITests: XCTestCase {
 
     let stop = live.element("composer-stop", in: app)
     live.click(stop, "Stop", timeout: 15)
-    XCTAssertTrue(stop.waitForNonExistence(timeout: 15), "Stop did not end the turn")
+    XCTAssertTrue(stop.disappears(within: 15), "Stop did not end the turn")
     XCTAssertTrue(
-      live.text(containing: "Reply stopped.", in: app).waitForExistence(timeout: 15),
+      live.text(containing: "Reply stopped.", in: app).appears(within: 15),
       "the transcript does not say the reply stopped")
   }
 
@@ -73,10 +73,10 @@ final class MacComposerFlowUITests: XCTestCase {
     defer { app.terminate() }
     live.startDemoSession("Summarize the open questions in detail", in: app)
     let stop = live.element("composer-stop", in: app)
-    XCTAssertTrue(stop.waitForExistence(timeout: 15), "no turn ran")
+    XCTAssertTrue(stop.appears(within: 15), "no turn ran")
 
     let message = "Queued \(UUID().uuidString.prefix(6))"
-    live.click(live.composer(in: app), "the composer")
+    live.focusComposer(in: app)
     app.typeText(message)
     let send = live.element("composer-send", in: app)
     if send.label == "Queue after this turn" {
@@ -86,12 +86,12 @@ final class MacComposerFlowUITests: XCTestCase {
       app.typeKey(.return, modifierFlags: [.command, .option])
     }
     let queued = live.elements(prefix: "queued-", in: app).firstMatch
-    XCTAssertTrue(queued.waitForExistence(timeout: 10), "the message did not join the queue")
+    XCTAssertTrue(queued.appears(within: 10), "the message did not join the queue")
     XCTAssertFalse(live.composerText(in: app).contains(message), "it stayed in the composer")
 
-    XCTAssertTrue(queued.waitForNonExistence(timeout: turnTimeout), "the queue never sent it")
+    XCTAssertTrue(queued.disappears(within: turnTimeout), "the queue never sent it")
     XCTAssertTrue(
-      live.text(containing: message, in: app).waitForExistence(timeout: 15),
+      live.text(containing: message, in: app).appears(within: 15),
       "the queued message is not in the transcript")
   }
 
@@ -107,16 +107,16 @@ final class MacComposerFlowUITests: XCTestCase {
 
     NSPasteboard.general.clearContents()
     XCTAssertTrue(NSPasteboard.general.setData(image, forType: .png), "the pasteboard refused it")
-    live.click(live.composer(in: app), "the composer")
+    live.focusComposer(in: app)
     app.typeKey("v", modifierFlags: .command)
     let chip = live.elements(prefix: "draft-attachment-", in: app).firstMatch
-    XCTAssertTrue(chip.waitForExistence(timeout: 15), "the pasted image is not attached")
+    XCTAssertTrue(chip.appears(within: 15), "the pasted image is not attached")
 
     app.typeText("With the pasted image")
     app.typeKey(.return, modifierFlags: .command)
-    XCTAssertTrue(chip.waitForNonExistence(timeout: 15), "the chip stayed after sending")
+    XCTAssertTrue(chip.disappears(within: 15), "the chip stayed after sending")
     XCTAssertTrue(
-      live.elements(prefix: "attachment-", in: app).firstMatch.waitForExistence(timeout: 15),
+      live.elements(prefix: "attachment-", in: app).firstMatch.appears(within: 15),
       "the sent message has no attachment")
   }
 
@@ -146,17 +146,17 @@ final class MacComposerFlowUITests: XCTestCase {
     live.clickMenuItem("Files and images", in: app)
     // The open panel: Go to Folder, the file's path, then Open.
     XCTAssertTrue(
-      app.sheets.firstMatch.waitForExistence(timeout: 15) || app.dialogs.firstMatch.exists,
+      app.sheets.firstMatch.appears(within: 15) || app.dialogs.firstMatch.exists,
       "no open panel")
     app.typeKey("g", modifierFlags: [.command, .shift])
     app.typeText(file.path + "\r")
     live.clickDialogButton("Open", in: app)
 
     let chip = live.elements(prefix: "draft-attachment-", in: app).firstMatch
-    XCTAssertTrue(chip.waitForExistence(timeout: 15), "the chosen file is not attached")
+    XCTAssertTrue(chip.appears(within: 15), "the chosen file is not attached")
     let remove = live.elements(prefix: "draft-attachment-remove-", in: app).firstMatch
     remove.click()
-    XCTAssertTrue(chip.waitForNonExistence(timeout: 10), "the chip stayed after Remove")
+    XCTAssertTrue(chip.disappears(within: 10), "the chip stayed after Remove")
   }
 
   /// The model chip switches the session's model.
@@ -208,7 +208,7 @@ final class MacComposerFlowUITests: XCTestCase {
       "the chip still says \(chip.label)")
     let before = chip.label
 
-    live.click(live.composer(in: app), "the composer")
+    live.focusComposer(in: app)
     app.typeKey(.tab, modifierFlags: .shift)
     XCTAssertTrue(
       live.waitUntil(timeout: 15) { chip.label != before }, "Shift-Tab left the mode at \(before)")

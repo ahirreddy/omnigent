@@ -26,7 +26,7 @@ final class MacWorkspaceFlowUITests: XCTestCase {
 
     live.click(live.element("workspace.tree.row.README.md", in: app), "README.md", timeout: 30)
     XCTAssertTrue(
-      live.element("workspace.viewer", in: app).waitForExistence(timeout: 20),
+      live.element("workspace.viewer", in: app).appears(within: 20),
       "one click did not open the file")
   }
 
@@ -42,7 +42,7 @@ final class MacWorkspaceFlowUITests: XCTestCase {
 
     live.click(live.element("inspector-tab-changes", in: app), "the Changes tab")
     XCTAssertTrue(
-      live.element("workspace.changes", in: app).waitForExistence(timeout: 20), "no changes list")
+      live.element("workspace.changes", in: app).appears(within: 20), "no changes list")
   }
 
   /// Every section the right panel offers shows its own content.
@@ -62,7 +62,7 @@ final class MacWorkspaceFlowUITests: XCTestCase {
     ]
     for (section, content) in sections {
       live.click(live.element("inspector-tab-\(section)", in: app), "the \(section) tab")
-      XCTAssertTrue(content.waitForExistence(timeout: 20), "the \(section) section shows nothing")
+      XCTAssertTrue(content.appears(within: 20), "the \(section) section shows nothing")
     }
     for section in ["pullRequests", "agents"] {
       let tab = live.element("inspector-tab-\(section)", in: app)
@@ -82,13 +82,14 @@ final class MacWorkspaceFlowUITests: XCTestCase {
     live.showInspector(in: app)
     live.click(live.element("inspector-tab-files", in: app), "the Files tab")
     let notes = live.element("workspace.tree.row.notes.md", in: app)
-    XCTAssertTrue(notes.waitForExistence(timeout: 30), "the tree did not load")
+    XCTAssertTrue(notes.appears(within: 30), "the tree did not load")
 
     let filter = live.element("workspace.tree.filter", in: app)
     live.click(filter, "the filter")
     filter.typeText("README")
-    XCTAssertTrue(notes.waitForNonExistence(timeout: 15), "the filter left a file that differs")
-    XCTAssertTrue(live.element("workspace.tree.row.README.md", in: app).exists, "it hid the match")
+    XCTAssertTrue(notes.disappears(within: 15), "the filter left a file that differs")
+    XCTAssertTrue(
+      live.element("workspace.tree.row.README.md", in: app).appears(within: 5), "it hid the match")
   }
 
   /// Typing @ offers the workspace's files, and attaching a folder puts it in the composer.
@@ -100,17 +101,31 @@ final class MacWorkspaceFlowUITests: XCTestCase {
     defer { app.terminate() }
     live.open(session, in: app)
 
-    live.click(live.composer(in: app), "the composer")
+    // A flow that stopped halfway leaves its draft, and "@" after other text offers nothing.
+    clearDraft(live, in: app)
     app.typeText("@")
     XCTAssertTrue(
-      live.element("composer-completions", in: app).waitForExistence(timeout: 20), "no completions")
+      live.element("composer-completions", in: app).appears(within: 20), "no completions")
     live.click(live.element("composer-completion-@src/", in: app), "the src folder", timeout: 20)
     live.click(
       live.element("composer-completion-attach-@src/model/", in: app), "Attach model", timeout: 20)
     XCTAssertTrue(
-      live.element("composer-mention-src/model/", in: app).waitForExistence(timeout: 10),
+      live.element("composer-mention-src/model/", in: app).appears(within: 10),
       "the folder is not in the composer")
     // Leave the fixture's draft as it was for the next flow.
+    clearDraft(live, in: app)
+    XCTAssertTrue(
+      live.element("composer-mention-src/model/", in: app).disappears(within: 10),
+      "the folder stayed in the draft")
+    XCTAssertEqual(live.composerText(in: app), "")
+  }
+
+  /// Empties the fixture session's draft: its text and the folder this flow attaches.
+  @MainActor
+  private func clearDraft(_ live: MacLiveUITestSupport, in app: XCUIApplication) {
+    let remove = app.buttons["Remove src/model/"]
+    if remove.exists { remove.click() }
+    live.focusComposer(in: app)
     app.typeKey("a", modifierFlags: .command)
     app.typeKey(.delete, modifierFlags: [])
   }
@@ -129,17 +144,17 @@ final class MacWorkspaceFlowUITests: XCTestCase {
     live.click(live.element("fork-clone", in: app), "Clone", timeout: 15)
 
     let original = live.element("transcript-\(session)", in: app)
-    XCTAssertTrue(original.waitForNonExistence(timeout: 30), "the fork did not open")
+    XCTAssertTrue(original.disappears(within: 30), "the fork did not open")
     let fork = live.anyTranscript(in: app)
-    XCTAssertTrue(fork.waitForExistence(timeout: 30), "no transcript for the fork")
+    XCTAssertTrue(fork.appears(within: 30), "no transcript for the fork")
     XCTAssertTrue(
       live.text(containing: "List the workspace and summarize it.", in: app)
-        .waitForExistence(timeout: 30),
+        .appears(within: 30),
       "the fork does not have the conversation")
 
     let forkID = fork.identifier.replacing("transcript-", with: "")
     live.contextMenu(live.row(forkID, in: app), choose: "Delete\u{2026}", in: app)
     live.clickDialogButton("Delete", in: app)
-    XCTAssertTrue(live.row(forkID, in: app).waitForNonExistence(timeout: 15), "the fork stayed")
+    XCTAssertTrue(live.row(forkID, in: app).disappears(within: 15), "the fork stayed")
   }
 }

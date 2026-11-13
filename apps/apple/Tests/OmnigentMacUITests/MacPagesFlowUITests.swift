@@ -24,8 +24,8 @@ final class MacPagesFlowUITests: XCTestCase {
     live.click(live.element("sidebar-automations", in: app), "Automations", timeout: 30)
     // By its label: the intro sheet's identifier replaces its buttons' own.
     let intro = app.sheets.buttons["Maybe later"].firstMatch
-    if intro.waitForExistence(timeout: 5) { intro.click() }
-    XCTAssertTrue(intro.waitForNonExistence(timeout: 10), "the intro stayed")
+    if intro.appears(within: 5) { intro.click() }
+    XCTAssertTrue(intro.disappears(within: 10), "the intro stayed")
     live.click(live.element("automations-new", in: app), "New automation", timeout: 20)
     live.clickMenuItem("Create manually", in: app)
 
@@ -42,7 +42,7 @@ final class MacPagesFlowUITests: XCTestCase {
     }
     host.click()
     let folder = live.element("automation-workspace", in: app)
-    if folder.waitForExistence(timeout: 5) {
+    if folder.appears(within: 5) {
       // The form is taller than a small screen: bring its last fields above the buttons.
       app.sheets.firstMatch.scrollViews.firstMatch.scroll(byDeltaX: 0, deltaY: -600)
       live.click(folder, "the folder field")
@@ -53,10 +53,10 @@ final class MacPagesFlowUITests: XCTestCase {
     save.click()
 
     let listed = live.text(containing: name, in: app)
-    XCTAssertTrue(listed.waitForExistence(timeout: 20), "the new automation is not listed")
+    XCTAssertTrue(listed.appears(within: 20), "the new automation is not listed")
     live.contextMenu(listed, choose: "Delete", in: app)
     live.clickDialogButton("Delete", in: app)
-    XCTAssertTrue(listed.waitForNonExistence(timeout: 15), "the automation stayed")
+    XCTAssertTrue(listed.disappears(within: 15), "the automation stayed")
   }
 
   /// Approving a request from the Inbox clears it from the Inbox and from the session's row. A
@@ -75,7 +75,7 @@ final class MacPagesFlowUITests: XCTestCase {
       NSPredicate(format: "identifier CONTAINS %@", "approval-approve-")
     ).firstMatch
     live.click(approve, "Approve", timeout: 15)
-    XCTAssertTrue(approve.waitForNonExistence(timeout: 15), "the request stayed")
+    XCTAssertTrue(approve.disappears(within: 15), "the request stayed")
     live.assertRow("demo-design", in: app, contains: "Needs you", false)
   }
 
@@ -105,7 +105,7 @@ final class MacPagesFlowUITests: XCTestCase {
     expandItem(live, app, showing: open)
     open.click()
     XCTAssertTrue(
-      live.anyTranscript(in: app).waitForExistence(timeout: 15), "the session did not open")
+      live.anyTranscript(in: app).appears(within: 15), "the session did not open")
     XCTAssertFalse(live.element("inbox", in: app).exists, "the Inbox stayed")
   }
 
@@ -113,7 +113,7 @@ final class MacPagesFlowUITests: XCTestCase {
   private func openInbox(_ live: MacLiveUITestSupport, _ app: XCUIApplication) {
     live.waitForDemoSessions(in: app)
     live.click(live.element("sidebar-inbox", in: app), "Inbox")
-    XCTAssertTrue(live.element("inbox", in: app).waitForExistence(timeout: 15), "no Inbox")
+    XCTAssertTrue(live.element("inbox", in: app).appears(within: 15), "no Inbox")
   }
 
   /// Expands inbox items in turn until `target` shows.
@@ -126,8 +126,8 @@ final class MacPagesFlowUITests: XCTestCase {
       // On its first line: the middle of a long request is its text, not the toggle.
       toggles.element(boundBy: index).coordinate(withNormalizedOffset: .zero)
         .withOffset(CGVector(dx: 160, dy: 12)).click()
-      _ = target.waitForExistence(timeout: 3)
+      _ = target.appears(within: 3)
     }
-    XCTAssertTrue(target.waitForExistence(timeout: 10), "\(target) never showed")
+    XCTAssertTrue(target.appears(within: 10), "\(target) never showed")
   }
 }

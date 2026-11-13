@@ -82,7 +82,7 @@ struct MacLiveUITestSupport {
       ["-desktop.defaultServerURL", server, "-OmnigentTabsDirectory", Self.scratchDirectory().path]
       + Self.freshStateArguments
     app.launch()
-    XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 30), "no window")
+    XCTAssertTrue(app.windows.firstMatch.appears(within: 30), "no window")
     MacNotificationPrompts.decline(waiting: 3)
     parkPointer(in: app)
     return app
@@ -99,7 +99,7 @@ struct MacLiveUITestSupport {
         "-OmnigentTabsDirectory", tabs.path,
       ] + Self.freshStateArguments
     app.launch()
-    XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 30), "no window")
+    XCTAssertTrue(app.windows.firstMatch.appears(within: 30), "no window")
     MacNotificationPrompts.decline(waiting: 3)
     parkPointer(in: app)
     return app
@@ -140,7 +140,7 @@ struct MacLiveUITestSupport {
     // Right after launch the window can still be settling on its server; a click can be lost.
     for _ in 0..<3 where !transcript.exists {
       clickTitle(of: row, "the \(sessionID) row", timeout: 30)
-      _ = transcript.waitForExistence(timeout: 10)
+      _ = transcript.appears(within: 10)
     }
     XCTAssertTrue(transcript.exists, "\(sessionID) did not open\n\(app.debugDescription)")
     assertRunning(app, "after opening \(sessionID)")
@@ -153,7 +153,7 @@ struct MacLiveUITestSupport {
     for _ in 0..<3 where !transcript.exists {
       // Right after launch the window can still be connecting; a link then may be dropped.
       if let link { deliver(link) }
-      _ = transcript.waitForExistence(timeout: 20)
+      _ = transcript.appears(within: 20)
     }
     XCTAssertTrue(transcript.exists, "session \(sessionID) did not open\n\(app.debugDescription)")
     // The app asks to send notifications once it has connected to a server.
@@ -223,14 +223,14 @@ struct MacLiveUITestSupport {
 
   /// Waits for `element` and clicks it, failing with `name` when it never shows.
   func click(_ element: XCUIElement, _ name: String, timeout: TimeInterval = 10) {
-    XCTAssertTrue(element.waitForExistence(timeout: timeout), "\(name) is missing")
+    XCTAssertTrue(element.appears(within: timeout), "\(name) is missing")
     element.click()
   }
 
   /// Clicks a sidebar row on its title. Under the pointer a row shows Pin and More at its
   /// trailing edge, and the row's own click point then lands on More, which opens a menu.
   func clickTitle(of row: XCUIElement, _ name: String, timeout: TimeInterval = 10) {
-    XCTAssertTrue(row.waitForExistence(timeout: timeout), "\(name) is missing")
+    XCTAssertTrue(row.appears(within: timeout), "\(name) is missing")
     row.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
   }
 
@@ -258,5 +258,34 @@ struct MacLiveUITestSupport {
     attachment.name = name
     attachment.lifetime = .keepAlways
     test.add(attachment)
+  }
+}
+
+extension XCUIElement {
+  /// How often ``appears(within:)`` and ``disappears(within:)`` look again.
+  private static let pollInterval: TimeInterval = 0.1
+
+  /// Whether the element exists within `timeout`: looked for at once, then every 0.1 s.
+  /// `waitForExistence(timeout:)` first looks a second after it is called, so it costs a second
+  /// even for an element that is already there.
+  @MainActor
+  func appears(within timeout: TimeInterval) -> Bool {
+    poll(until: timeout) { exists }
+  }
+
+  /// Whether the element is gone within `timeout`: looked for at once, then every 0.1 s.
+  @MainActor
+  func disappears(within timeout: TimeInterval) -> Bool {
+    poll(until: timeout) { !exists }
+  }
+
+  @MainActor
+  private func poll(until timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while true {
+      if condition() { return true }
+      guard Date() < deadline else { return false }
+      RunLoop.current.run(until: Date().addingTimeInterval(Self.pollInterval))
+    }
   }
 }

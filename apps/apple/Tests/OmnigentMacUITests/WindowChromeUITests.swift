@@ -36,18 +36,18 @@ final class WindowChromeUITests: XCTestCase {
     // lost (the window still settling on its server), so it is retried.
     let row = window.descendants(matching: .any)["session-row-demo-notes"]
     XCTAssertTrue(
-      row.waitForExistence(timeout: 30), "no demo session in\n\(app.debugDescription)")
+      row.appears(within: 30), "no demo session in\n\(app.debugDescription)")
     let input = app.textViews["composer-input"]
     for _ in 0..<3 where !input.exists && row.exists {
       row.click()
-      _ = input.waitForExistence(timeout: 10)
+      _ = input.appears(within: 10)
     }
     XCTAssertTrue(input.exists, "the conversation did not open")
 
     // The tab strip shares the titlebar row with the trailing toolbar items.
     let strip = window.descendants(matching: .any)["tab-strip"]
     let newTab = window.descendants(matching: .any)["tab-new"]
-    XCTAssertTrue(strip.waitForExistence(timeout: 10) && newTab.exists)
+    XCTAssertTrue(strip.appears(within: 10) && newTab.exists)
     XCTAssertLessThan(
       abs(strip.frame.midY - newTab.frame.midY), 8,
       "strip \(strip.frame) and toolbar \(newTab.frame) are on different rows")
@@ -58,7 +58,7 @@ final class WindowChromeUITests: XCTestCase {
 
     // A second tab (Option-Command-B opens a browser tab) to reorder against.
     app.typeKey("b", modifierFlags: [.command, .option])
-    XCTAssertTrue(tab("browser", in: window).waitForExistence(timeout: 20), "no browser tab")
+    XCTAssertTrue(tab("browser", in: window).appears(within: 20), "no browser tab")
     checkTabDragReorders(window: window, chat: tab("chat", in: window))
   }
 

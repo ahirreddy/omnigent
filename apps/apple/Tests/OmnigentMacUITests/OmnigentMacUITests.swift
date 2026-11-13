@@ -29,8 +29,8 @@ final class OmnigentMacUITests: XCTestCase {
     app.launch()
     defer { app.terminate() }
 
-    XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
-    XCTAssertTrue(app.buttons["auth.connect"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.windows.firstMatch.appears(within: 10))
+    XCTAssertTrue(app.buttons["auth.connect"].appears(within: 10))
     XCTAssertTrue(app.textFields["auth.server-url"].exists)
   }
 }

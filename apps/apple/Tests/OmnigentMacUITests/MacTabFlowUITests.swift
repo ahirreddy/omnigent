@@ -23,7 +23,7 @@ final class MacTabFlowUITests: XCTestCase {
 
     app.typeKey("t", modifierFlags: .command)
     XCTAssertTrue(
-      live.element("newtab-page", in: app).waitForExistence(timeout: 10), "no New Tab page")
+      live.element("newtab-page", in: app).appears(within: 10), "no New Tab page")
     XCTAssertTrue(live.element("newtab-terminal", in: app).exists, "no Terminal launcher")
   }
 
@@ -51,14 +51,14 @@ final class MacTabFlowUITests: XCTestCase {
     live.openDemo("demo-notes", in: app)
     app.typeKey("t", modifierFlags: .command)
     let page = live.element("newtab-page", in: app)
-    XCTAssertTrue(page.waitForExistence(timeout: 10), "no New Tab page")
+    XCTAssertTrue(page.appears(within: 10), "no New Tab page")
 
     app.typeKey("[", modifierFlags: [.command, .shift])
     XCTAssertTrue(
-      live.element("transcript-demo-notes", in: app).waitForExistence(timeout: 10),
+      live.element("transcript-demo-notes", in: app).appears(within: 10),
       "Shift-Command-[ did not show the chat")
     app.typeKey("]", modifierFlags: [.command, .shift])
-    XCTAssertTrue(page.waitForExistence(timeout: 10), "Shift-Command-] did not show the page")
+    XCTAssertTrue(page.appears(within: 10), "Shift-Command-] did not show the page")
   }
 
   /// A tab's close button removes that tab and leaves the chat.
@@ -70,13 +70,13 @@ final class MacTabFlowUITests: XCTestCase {
     live.openDemo("demo-notes", in: app)
     app.typeKey("t", modifierFlags: .command)
     let tab = live.tabs("newTab", in: app).firstMatch
-    XCTAssertTrue(tab.waitForExistence(timeout: 10), "Command-T opened no tab")
+    XCTAssertTrue(tab.appears(within: 10), "Command-T opened no tab")
 
     tab.hover()
     live.click(live.elements(prefix: "tab-close-", in: app).firstMatch, "the close button")
-    XCTAssertTrue(tab.waitForNonExistence(timeout: 10), "the tab stayed")
+    XCTAssertTrue(tab.disappears(within: 10), "the tab stayed")
     XCTAssertTrue(
-      live.element("transcript-demo-notes", in: app).waitForExistence(timeout: 10),
+      live.element("transcript-demo-notes", in: app).appears(within: 10),
       "closing the tab did not return to the chat")
   }
 
@@ -109,17 +109,17 @@ final class MacTabFlowUITests: XCTestCase {
       live.openDemo("demo-question", in: app)
       app.typeKey("b", modifierFlags: [.command, .option])
       let tab = live.tabs("browser", in: app).firstMatch
-      XCTAssertTrue(tab.waitForExistence(timeout: 20), "Option-Command-B opened no browser tab")
+      XCTAssertTrue(tab.appears(within: 20), "Option-Command-B opened no browser tab")
       // The browser's helpers ask to send notifications the first time they run on a machine,
       // and their banners cover the strip's trailing tabs.
       MacNotificationPrompts.decline(waiting: 2)
 
       tab.hover()
       live.click(live.elements(prefix: "tab-close-", in: app).firstMatch, "the close button")
-      XCTAssertTrue(tab.waitForNonExistence(timeout: 10), "the tab stayed")
+      XCTAssertTrue(tab.disappears(within: 10), "the tab stayed")
       app.typeKey("t", modifierFlags: [.command, .shift])
       XCTAssertTrue(
-        live.tabs("browser", in: app).firstMatch.waitForExistence(timeout: 20),
+        live.tabs("browser", in: app).firstMatch.appears(within: 20),
         "Shift-Command-T did not reopen the browser tab")
     }
   #endif

@@ -16,7 +16,7 @@ enum MacNotificationPrompts {
       NSPredicate(format: "label CONTAINS %@", "Notifications may include"))
     let wait = quietLaunches >= 2 ? 0 : seconds
     var declined = 0
-    while declined < 6, prompts.firstMatch.waitForExistence(timeout: declined == 0 ? wait : 2) {
+    while declined < 6, prompts.firstMatch.appears(within: declined == 0 ? wait : 2) {
       guard decline(prompts.firstMatch, in: center) else { return }
       declined += 1
     }
@@ -31,20 +31,20 @@ enum MacNotificationPrompts {
     let options = center.descendants(matching: .any).matching(
       NSPredicate(format: "title == %@ OR label == %@", "Options", "Options")
     ).firstMatch
-    guard options.waitForExistence(timeout: 5) else {
+    guard options.appears(within: 5) else {
       XCTFail("no Options on the banner \(label)\n\(center.debugDescription)")
       return false
     }
     middle(of: options).click()
     let dontAllow = center.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "Don"))
       .firstMatch
-    guard dontAllow.waitForExistence(timeout: 5) else {
+    guard dontAllow.appears(within: 5) else {
       XCTFail("no Don't Allow for the banner \(label)\n\(center.debugDescription)")
       return false
     }
     middle(of: dontAllow).click()
     let gone = center.groups.matching(NSPredicate(format: "label == %@", label)).firstMatch
-    XCTAssertTrue(gone.waitForNonExistence(timeout: 5), "the banner \(label) stayed")
+    XCTAssertTrue(gone.disappears(within: 5), "the banner \(label) stayed")
     return !gone.exists
   }
 

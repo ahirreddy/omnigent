@@ -28,11 +28,11 @@ final class MacDemoWorkflowUITests: XCTestCase {
 
     let palette = live.element("command-palette", in: app)
     app.typeKey("k", modifierFlags: .command)
-    XCTAssertTrue(palette.waitForExistence(timeout: 10), "no palette")
+    XCTAssertTrue(palette.appears(within: 10), "no palette")
     app.typeText("design")
     live.assertRunning(app, "searching the palette")
     app.typeKey(.escape, modifierFlags: [])
-    XCTAssertTrue(palette.waitForNonExistence(timeout: 10), "Escape left the palette open")
+    XCTAssertTrue(palette.disappears(within: 10), "Escape left the palette open")
     live.assertRunning(app, "after closing the palette")
   }
 
@@ -48,9 +48,9 @@ final class MacDemoWorkflowUITests: XCTestCase {
     let message = "UI check \(UUID().uuidString.prefix(6)) in detail"
     live.startDemoSession(message, in: app)
     let stop = live.element("composer-stop", in: app)
-    XCTAssertTrue(stop.waitForExistence(timeout: 15), "the demo agent never started replying")
+    XCTAssertTrue(stop.appears(within: 15), "the demo agent never started replying")
     app.typeKey(".", modifierFlags: .command)
-    XCTAssertTrue(stop.waitForNonExistence(timeout: 15), "Command-Period did not stop the reply")
+    XCTAssertTrue(stop.disappears(within: 15), "Command-Period did not stop the reply")
     live.assertRunning(app, "after stopping the reply")
   }
 
@@ -76,7 +76,7 @@ final class MacDemoWorkflowUITests: XCTestCase {
     for _ in 0..<4 { app.typeKey(.tab, modifierFlags: [.control, .shift]) }
     app.typeKey("1", modifierFlags: .command)
     XCTAssertTrue(
-      live.element("transcript-demo-notes", in: app).waitForExistence(timeout: 10),
+      live.element("transcript-demo-notes", in: app).appears(within: 10),
       "Command-1 did not select the chat tab")
     live.assertRunning(app, "after cycling tabs")
   }
@@ -93,10 +93,10 @@ final class MacDemoWorkflowUITests: XCTestCase {
     app.typeKey("\\", modifierFlags: [.command, .shift])
     // The sheet is found by its Done button: a sheet's own identifier does not show on a Mac.
     let sheet = live.element("tab-overview-done", in: app)
-    XCTAssertTrue(sheet.waitForExistence(timeout: 10), "no tab overview")
+    XCTAssertTrue(sheet.appears(within: 10), "no tab overview")
     XCTAssertGreaterThanOrEqual(live.elements(prefix: "tab-overview-row-", in: app).count, 2)
     live.click(sheet, "Done")
-    XCTAssertTrue(sheet.waitForNonExistence(timeout: 10), "Done left the overview open")
+    XCTAssertTrue(sheet.disappears(within: 10), "Done left the overview open")
     live.assertRunning(app, "after the tab overview")
   }
 
@@ -112,12 +112,12 @@ final class MacDemoWorkflowUITests: XCTestCase {
 
     let divider = live.element("tab-split-divider", in: app)
     app.typeKey("\\", modifierFlags: .command)
-    XCTAssertTrue(divider.waitForExistence(timeout: 10), "Command-Backslash did not split")
+    XCTAssertTrue(divider.appears(within: 10), "Command-Backslash did not split")
     app.typeKey(.leftArrow, modifierFlags: [.command, .option])
     app.typeKey(.rightArrow, modifierFlags: [.command, .option])
     live.assertRunning(app, "moving between panes")
     app.typeKey("\\", modifierFlags: .command)
-    XCTAssertTrue(divider.waitForNonExistence(timeout: 10), "the split did not close")
+    XCTAssertTrue(divider.disappears(within: 10), "the split did not close")
     live.assertRunning(app, "after the split")
   }
 
@@ -130,11 +130,11 @@ final class MacDemoWorkflowUITests: XCTestCase {
     live.openDemo("demo-notes", in: app)
 
     let sidebar = live.element("sidebar", in: app)
-    XCTAssertTrue(sidebar.waitForExistence(timeout: 10))
+    XCTAssertTrue(sidebar.appears(within: 10))
     app.typeKey("s", modifierFlags: [.command, .control])
-    XCTAssertTrue(sidebar.waitForNonExistence(timeout: 10), "the sidebar did not hide")
+    XCTAssertTrue(sidebar.disappears(within: 10), "the sidebar did not hide")
     app.typeKey("s", modifierFlags: [.command, .control])
-    XCTAssertTrue(sidebar.waitForExistence(timeout: 10), "the sidebar did not come back")
+    XCTAssertTrue(sidebar.appears(within: 10), "the sidebar did not come back")
 
     let inspector = live.inspectorTabs(in: app)
     let shown = inspector.exists
@@ -157,9 +157,9 @@ final class MacDemoWorkflowUITests: XCTestCase {
     // The sheet is found by its Done button: a sheet's own identifier does not show on a Mac.
     let sheet = live.element("shortcuts-done", in: app)
     app.typeKey("/", modifierFlags: .command)
-    XCTAssertTrue(sheet.waitForExistence(timeout: 10), "no shortcuts list")
+    XCTAssertTrue(sheet.appears(within: 10), "no shortcuts list")
     app.typeKey(.escape, modifierFlags: [])
-    XCTAssertTrue(sheet.waitForNonExistence(timeout: 10), "Escape left the shortcuts list open")
+    XCTAssertTrue(sheet.disappears(within: 10), "Escape left the shortcuts list open")
     live.assertRunning(app, "after the shortcuts list")
   }
 

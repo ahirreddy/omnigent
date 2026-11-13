@@ -75,7 +75,7 @@ final class MacWindowFlowUITests: XCTestCase {
 
     app = live.launchDemo(tabs: tabs)
     XCTAssertTrue(
-      live.element("transcript-demo-question", in: app).waitForExistence(timeout: 30),
+      live.element("transcript-demo-question", in: app).appears(within: 30),
       "the relaunch did not restore the session")
   }
 
@@ -89,12 +89,12 @@ final class MacWindowFlowUITests: XCTestCase {
     live.openDemo("demo-question", in: app)
     app.typeKey("t", modifierFlags: .command)
     XCTAssertTrue(
-      live.tabs("newTab", in: app).firstMatch.waitForExistence(timeout: 10), "no new tab")
+      live.tabs("newTab", in: app).firstMatch.appears(within: 10), "no new tab")
     live.quit(app)
 
     app = live.launchDemo(tabs: tabs)
     XCTAssertTrue(
-      live.tabs("newTab", in: app).firstMatch.waitForExistence(timeout: 30),
+      live.tabs("newTab", in: app).firstMatch.appears(within: 30),
       "the relaunch lost the tab")
   }
 
@@ -112,7 +112,7 @@ final class MacWindowFlowUITests: XCTestCase {
       live.waitUntil(timeout: 20) { app.windows.count == windows + 1 },
       "no new window: \(app.windows.count) of \(windows) before")
     XCTAssertTrue(
-      live.element("transcript-demo-question", in: app).waitForExistence(timeout: 20),
+      live.element("transcript-demo-question", in: app).appears(within: 20),
       "the window does not show the session")
   }
 
@@ -126,16 +126,16 @@ final class MacWindowFlowUITests: XCTestCase {
     live.openDemo("demo-notes", in: app)
     app.typeKey("t", modifierFlags: .command)
     let tab = live.tabs("newTab", in: app).firstMatch
-    XCTAssertTrue(tab.waitForExistence(timeout: 10), "Command-T opened no tab")
+    XCTAssertTrue(tab.appears(within: 10), "Command-T opened no tab")
 
     live.contextMenu(tab, choose: "Open in Split View", in: app)
     XCTAssertTrue(
-      live.element("tab-split-divider", in: app).waitForExistence(timeout: 15), "no split")
+      live.element("tab-split-divider", in: app).appears(within: 15), "no split")
     XCTAssertTrue(
-      live.element("newtab-page", in: app).waitForExistence(timeout: 15),
+      live.element("newtab-page", in: app).appears(within: 15),
       "the new pane does not show the tab")
     XCTAssertTrue(
-      live.element("transcript-demo-notes", in: app).waitForExistence(timeout: 15),
+      live.element("transcript-demo-notes", in: app).appears(within: 15),
       "the first pane does not show the chat")
   }
 
@@ -149,15 +149,15 @@ final class MacWindowFlowUITests: XCTestCase {
 
     app.typeKey("k", modifierFlags: .command)
     let palette = live.element("command-palette", in: app)
-    XCTAssertTrue(palette.waitForExistence(timeout: 10), "no palette")
+    XCTAssertTrue(palette.appears(within: 10), "no palette")
     app.typeText("Choose the first release")
     XCTAssertTrue(
-      live.elements(prefix: "palette-result-", in: app).firstMatch.waitForExistence(timeout: 10),
+      live.elements(prefix: "palette-result-", in: app).firstMatch.appears(within: 10),
       "no result")
     app.typeKey(.return, modifierFlags: [])
-    XCTAssertTrue(palette.waitForNonExistence(timeout: 10), "the palette stayed")
+    XCTAssertTrue(palette.disappears(within: 10), "the palette stayed")
     XCTAssertTrue(
-      live.element("transcript-demo-question", in: app).waitForExistence(timeout: 15),
+      live.element("transcript-demo-question", in: app).appears(within: 15),
       "the palette did not open the session")
   }
 
@@ -171,15 +171,15 @@ final class MacWindowFlowUITests: XCTestCase {
     let start = live.element("transcript-demo-question", in: app)
 
     app.typeKey("]", modifierFlags: .command)
-    if !start.waitForNonExistence(timeout: 5) {
+    if !start.disappears(within: 5) {
       // The first session was last in the list, so go the other way.
       app.typeKey("[", modifierFlags: .command)
-      XCTAssertTrue(start.waitForNonExistence(timeout: 10), "the keys did not change session")
+      XCTAssertTrue(start.disappears(within: 10), "the keys did not change session")
       app.typeKey("]", modifierFlags: .command)
     } else {
       app.typeKey("[", modifierFlags: .command)
     }
-    XCTAssertTrue(start.waitForExistence(timeout: 10), "the keys did not come back")
+    XCTAssertTrue(start.appears(within: 10), "the keys did not come back")
   }
 
   /// Approving in the transcript resolves the request and frees the composer to send.
@@ -193,7 +193,7 @@ final class MacWindowFlowUITests: XCTestCase {
 
     let approve = live.elements(prefix: "approval-approve-", in: app).firstMatch
     live.click(approve, "Approve")
-    XCTAssertTrue(approve.waitForNonExistence(timeout: 15), "the request stayed")
+    XCTAssertTrue(approve.disappears(within: 15), "the request stayed")
     live.assertRow("demo-design", in: app, contains: "Needs you", false)
   }
 
@@ -207,7 +207,7 @@ final class MacWindowFlowUITests: XCTestCase {
 
     let option = live.elements(prefix: "decision-option-", in: app).firstMatch
     live.click(option, "the first option")
-    XCTAssertTrue(option.waitForNonExistence(timeout: 15), "the question stayed")
+    XCTAssertTrue(option.disappears(within: 15), "the question stayed")
     live.assertRow("demo-question", in: app, contains: "Needs you", false)
   }
 }

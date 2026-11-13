@@ -33,7 +33,7 @@ final class MacSettingsFlowUITests: XCTestCase {
     for pane in panes {
       live.click(settings.toolbars.buttons[pane.tab], "the \(pane.tab) tab")
       XCTAssertTrue(
-        pane.content.waitForExistence(timeout: 10), "the \(pane.tab) tab shows the wrong pane")
+        pane.content.appears(within: 10), "the \(pane.tab) tab shows the wrong pane")
     }
   }
 
@@ -74,7 +74,7 @@ final class MacSettingsFlowUITests: XCTestCase {
       live.click(settings.toolbars.buttons["Notifications"], "the Notifications tab")
     }
     let toggle = live.element("settings.notifications.play-sound", in: app)
-    XCTAssertTrue(toggle.waitForExistence(timeout: 10), "no Play sound toggle")
+    XCTAssertTrue(toggle.appears(within: 10), "no Play sound toggle")
     let value = String(describing: toggle.value ?? "")
     if click { toggle.click() }
     return value

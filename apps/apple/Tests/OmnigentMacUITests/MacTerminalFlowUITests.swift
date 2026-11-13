@@ -27,8 +27,8 @@ final class MacTerminalFlowUITests: XCTestCase {
 
     live.click(live.element("newtab-terminal", in: app), "the Terminal launcher")
     XCTAssertTrue(
-      live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
-    XCTAssertTrue(live.element("terminal-tab", in: app).waitForExistence(timeout: 30))
+      live.tabs("terminal", in: app).firstMatch.appears(within: 30), "no terminal tab")
+    XCTAssertTrue(live.element("terminal-tab", in: app).appears(within: 30))
   }
 
   /// The + button's menu opens a shell in a new tab of the session, without the New Tab page.
@@ -44,7 +44,7 @@ final class MacTerminalFlowUITests: XCTestCase {
     live.click(live.element("tab-new", in: app), "the + button", timeout: 30)
     live.clickMenuItem("Terminal", in: app)
     XCTAssertTrue(
-      live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
+      live.tabs("terminal", in: app).firstMatch.appears(within: 30), "no terminal tab")
     XCTAssertFalse(live.tabs("newTab", in: app).firstMatch.exists, "+ opened the New Tab page")
   }
 
@@ -68,7 +68,7 @@ final class MacTerminalFlowUITests: XCTestCase {
     let surface = live.openShellTab(in: app)
     typesWithoutAClick(into: opened, live: live, app: app)
     app.typeKey("`", modifierFlags: .control)
-    XCTAssertTrue(live.element("transcript-\(session)", in: app).waitForExistence(timeout: 10))
+    XCTAssertTrue(live.element("transcript-\(session)", in: app).appears(within: 10))
     // Not Control-` again: from the chat it shows the session's own terminal, not this shell.
     app.typeKey("2", modifierFlags: .command)
     live.waitForAttachedShell(surface, in: app)
@@ -95,7 +95,7 @@ final class MacTerminalFlowUITests: XCTestCase {
 
     app.typeKey("t", modifierFlags: .command)
     XCTAssertTrue(
-      live.element("newtab-page", in: app).waitForExistence(timeout: 10),
+      live.element("newtab-page", in: app).appears(within: 10),
       "Command-T stayed in the terminal")
   }
 
@@ -118,7 +118,7 @@ final class MacTerminalFlowUITests: XCTestCase {
 
     app.typeText("exit\r")
     XCTAssertTrue(
-      live.element("terminal-status-card", in: app).waitForExistence(timeout: 30),
+      live.element("terminal-status-card", in: app).appears(within: 30),
       "no card once the shell ended")
     XCTAssertTrue(live.text(containing: "Terminal ended", in: app).exists, "the card says nothing")
     XCTAssertTrue(live.element("terminal-reattach", in: app).exists, "no way to reattach")
@@ -138,7 +138,7 @@ final class MacTerminalFlowUITests: XCTestCase {
 
     app.typeKey("w", modifierFlags: .command)
     live.clickDialogButton("Close Shell", in: app)
-    XCTAssertTrue(tab.waitForNonExistence(timeout: 15), "Close Shell left the tab")
+    XCTAssertTrue(tab.disappears(within: 15), "Close Shell left the tab")
   }
 
   /// Launches on the fixture session with a new shell started and focused.
