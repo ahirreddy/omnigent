@@ -123,7 +123,7 @@ public final class DesktopNotificationCenter: NSObject {
   /// The system's center, or `nil` outside an app bundle, where asking for it would crash.
   private static func currentSystemCenter() -> (any NotificationSystemCenter)? {
     guard isAvailable else { return nil }
-    // coverage:off exists only in an app bundle; the VM flow backlog has "a notification posts"
+    // coverage:off only in an app bundle; the flow testANotificationPostsAndOpensItsSession
     return UNUserNotificationCenter.current()
     // coverage:on
   }
