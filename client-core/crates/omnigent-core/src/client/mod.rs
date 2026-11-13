@@ -174,6 +174,9 @@ struct State {
     revision: u64,
     /// Sessions whose stream is open and hydrated; a window's tabs keep several open.
     live_sessions: BTreeSet<String>,
+    /// Sessions created here whose first message the server has not taken yet. Their machine
+    /// may still be starting (a new sandbox), so a message to them is the server's to hold.
+    awaiting_first_message: BTreeSet<String>,
     configuration_mutations: BTreeSet<String>,
     changed_files: BTreeMap<(String, String), ChangedFilesFetch>,
     ledger: SubmissionLedger,
@@ -215,6 +218,7 @@ impl State {
         self.configuration_mutations.clear();
         self.changed_files.clear();
         self.live_sessions.clear();
+        self.awaiting_first_message.clear();
         self.routing = routing::ReplicaRouting::default();
         self.side_chats.clear();
     }

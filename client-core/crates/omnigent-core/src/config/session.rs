@@ -195,6 +195,9 @@ pub struct SessionConfiguration {
     pub approval_mode: Option<String>,
     /// The workspace's git branch.
     pub git_branch: Option<String>,
+    /// A managed sandbox is still starting for the session: it has no host yet, and the server
+    /// holds a message until the sandbox is up.
+    pub sandbox_launching: Option<bool>,
 }
 
 /// Shown when a session's host is offline and cannot be woken.
@@ -242,6 +245,9 @@ impl SessionConfiguration {
     /// is an unbound native session with no host, which legacy liveness reports as online.
     #[must_use]
     pub fn execution_unavailable_reason(&self) -> Option<&'static str> {
+        if self.sandbox_launching == Some(true) {
+            return None;
+        }
         let has_host = self.host_id.as_deref().is_some_and(|id| !id.is_empty());
         let unbound_native = canonical_harness(self.harness.as_deref()).ends_with("-native")
             && self.runner_bound == Some(false)
@@ -430,6 +436,11 @@ impl SessionConfiguration {
         put_opt(&mut object, "routingMode", string(&self.routing_mode));
         put_opt(&mut object, "approvalMode", string(&self.approval_mode));
         put_opt(&mut object, "gitBranch", string(&self.git_branch));
+        put_opt(
+            &mut object,
+            "sandboxLaunching",
+            self.sandbox_launching.map(Value::Bool),
+        );
         Value::Object(object)
     }
 
@@ -463,6 +474,7 @@ impl SessionConfiguration {
             routing_mode: opt_str(object, "routingMode")?,
             approval_mode: opt_str(object, "approvalMode")?,
             git_branch: opt_str(object, "gitBranch")?,
+            sandbox_launching: opt_bool(object, "sandboxLaunching")?,
         })
     }
 }

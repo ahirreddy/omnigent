@@ -5,7 +5,7 @@ use serde_json::json;
 
 use super::create::FirstMessage;
 use super::test_support::{
-    Reply, RouteTransport, body_json, connected, envelopes, header, path_of, query_value,
+    Reply, RouteTransport, body_json, cache_row, connected, envelopes, header, path_of, query_value,
 };
 use super::{ClientEvent, SessionError};
 use crate::creation::{CreationError, CreationGit, CreationSelection, SandboxTarget};
@@ -921,6 +921,33 @@ fn create_for_message_posts_and_the_first_message_can_follow_separately() {
         &format!("POST {events}")
     );
     assert_eq!(posts(core.transport()), 2);
+}
+
+#[test]
+fn a_new_sessions_first_message_goes_out_before_its_sandbox_is_up() {
+    let transport = stub();
+    with_agent_install(&transport);
+    let core = connected(transport);
+    let receipt = block_on(core.create_sandbox_session(&selection(), &sandbox(&[]), "")).unwrap();
+    let session = receipt.session_id;
+    // What the server says of it until the sandbox registers: no runner and no host.
+    cache_row(
+        &core,
+        &format!(
+            r#"{{"id":"{session}","status":"idle","created_at":1,"permission_level":4,
+                "harness":"codex-native","runner_id":null,"runner_online":false,"host_id":null}}"#
+        ),
+    );
+    let events = format!("/v1/sessions/{session}/events");
+    core.transport().ok(&events, r#"{"queued":true}"#);
+    let sent = block_on(core.send_first_message(&session, "first words")).unwrap();
+    assert!(sent.submission.queued);
+    // Once the server has taken it, a session with no machine refuses the next one here.
+    assert!(matches!(
+        block_on(core.send_first_message(&session, "again")),
+        Err(SessionError::ExecutionUnavailable { .. })
+    ));
+    assert_eq!(posts(core.transport()), 2, "the create and the one message");
 }
 
 #[test]

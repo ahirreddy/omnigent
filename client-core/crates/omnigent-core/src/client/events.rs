@@ -500,6 +500,13 @@ impl<T: HttpTransport> ClientCore<T> {
                 (reason != HOST_OFFLINE_REASON || configuration.host_resumable.is_some())
                     .then_some(reason)
             });
+            // A session created here sends its first message before its machine is known to be
+            // up: a new sandbox has no host until it starts, and the server holds the message.
+            let unavailable = unavailable.filter(|_| {
+                !lock(&self.state)
+                    .awaiting_first_message
+                    .contains(session_id)
+            });
             if let Some(reason) = unavailable {
                 return Err(SessionError::ExecutionUnavailable {
                     reason: reason.to_owned(),
@@ -827,7 +834,12 @@ impl<T: HttpTransport> ClientCore<T> {
         match acknowledgement(&value).map_err(|detail| SessionError::DeliveryUncertain {
             detail: format!("unreadable {path} acknowledgement: {detail}"),
         })? {
-            Acknowledgement::Accepted(submission) => Ok(submission),
+            Acknowledgement::Accepted(submission) => {
+                if payload.is_message() {
+                    lock(&self.state).awaiting_first_message.remove(session_id);
+                }
+                Ok(submission)
+            }
             Acknowledgement::Denied(reason) => Err(SessionError::MessageDenied { reason }),
         }
     }

@@ -87,6 +87,9 @@ pub struct SessionConfiguration {
     /// The workspace's git branch.
     #[uniffi(default)]
     pub git_branch: Option<String>,
+    /// A managed sandbox is still starting for the session, which has no host until it is up.
+    #[uniffi(default)]
+    pub sandbox_launching: Option<bool>,
 }
 
 /// A pending model and effort choice against the configuration it started from.
@@ -258,6 +261,7 @@ impl From<core::SessionConfiguration> for SessionConfiguration {
             routing_mode: configuration.routing_mode,
             approval_mode: configuration.approval_mode,
             git_branch: configuration.git_branch,
+            sandbox_launching: configuration.sandbox_launching,
         }
     }
 }
@@ -283,6 +287,7 @@ impl From<SessionConfiguration> for core::SessionConfiguration {
             routing_mode: configuration.routing_mode,
             approval_mode: configuration.approval_mode,
             git_branch: configuration.git_branch,
+            sandbox_launching: configuration.sandbox_launching,
         }
     }
 }

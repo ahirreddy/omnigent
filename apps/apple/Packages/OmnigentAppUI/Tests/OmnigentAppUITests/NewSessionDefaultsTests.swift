@@ -47,6 +47,78 @@ struct NewSessionDefaultsTests {
     #expect(form.selection.agentId == "codex")
   }
 
+  /// A server that starts sandboxes of two providers.
+  private func sandboxCatalog(hosts: [CreationHost]) -> OmnigentCoreFFI.CreationCatalog {
+    var catalog = catalog(hosts: hosts)
+    catalog.managedSandboxes = true
+    catalog.sandboxProviders = ["arclet", "modal"]
+    return catalog
+  }
+
+  @Test func withNoMachineOnlineThePageStartsOnANewSandbox() throws {
+    let form = try form()
+    form.applyDefaults(sandboxCatalog(hosts: [host("stopped-sandbox", online: false)]))
+    #expect(form.isSandbox)
+    #expect(form.sandbox.provider == "arclet")
+
+    // A machine that is online is where a session starts, unless the last one was a sandbox.
+    let other = try self.form()
+    other.applyDefaults(sandboxCatalog(hosts: [host("mac")]))
+    #expect(!other.isSandbox)
+    #expect(other.selection.hostId == "mac")
+
+    // A server that starts no sandboxes leaves the machine, offline as it is.
+    let plain = try self.form()
+    plain.applyDefaults(catalog(hosts: [host("old", online: false)]))
+    #expect(!plain.isSandbox)
+    #expect(plain.selection.hostId == "old")
+  }
+
+  @Test func thePageOpensOnTheKindOfTargetStartedOnLast() throws {
+    let form = try form()
+    form.isSandbox = true
+    form.sandbox.provider = "modal"
+    form.selection.agentId = "codex"
+    form.rememberChoices()
+    let next = NewSessionForm()
+    next.preferences = form.preferences
+    next.applyDefaults(sandboxCatalog(hosts: [host("mac")]))
+    #expect(next.isSandbox)
+    #expect(next.sandbox.provider == "modal")
+
+    // A machine started on after that is what the next page opens on.
+    next.isSandbox = false
+    next.selection.hostId = "mac"
+    next.rememberChoices()
+    let later = NewSessionForm()
+    later.preferences = form.preferences
+    later.applyDefaults(sandboxCatalog(hosts: [host("mac")]))
+    #expect(!later.isSandbox)
+    #expect(later.selection.hostId == "mac")
+  }
+
+  @Test func theChoiceBetweenMachineAndSandboxIsMadeOnceAndNeverOverTheUsers() throws {
+    let form = try form()
+    form.hostWasChosen = true
+    form.selection.hostId = "old"
+    form.applyDefaults(sandboxCatalog(hosts: [host("old", online: false)]))
+    #expect(!form.isSandbox)
+
+    // Leaving the sandbox (a project's machine, an agent to install) is not undone later.
+    let other = try self.form()
+    other.applyDefaults(sandboxCatalog(hosts: []))
+    #expect(other.isSandbox)
+    other.isSandbox = false
+    other.applyDefaults(sandboxCatalog(hosts: []))
+    #expect(!other.isSandbox)
+
+    // A remembered provider the server no longer offers falls to its first.
+    let stale = try self.form()
+    stale.preferences.set("gone", forKey: NewSessionForm.DefaultsKey.sandboxProvider)
+    stale.applyDefaults(sandboxCatalog(hosts: [host("mac")]))
+    #expect(stale.sandbox.provider == "arclet")
+  }
+
   @Test func theAgentTheUserChoseStaysWhenItIsNotReady() throws {
     let form = try form()
     form.agentWasChosen = true

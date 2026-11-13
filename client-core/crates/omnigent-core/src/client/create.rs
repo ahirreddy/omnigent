@@ -856,6 +856,7 @@ impl<T: HttpTransport> ClientCore<T> {
             });
         }
         state.events.push(ClientEvent::InventoryInvalidated);
+        state.awaiting_first_message.insert(id.clone());
         Ok(CreationReceipt {
             session_id: id,
             summary,

@@ -398,6 +398,60 @@ fn explicit_null_clears_resume_and_changing_hosts_clears_old_liveness() {
 }
 
 #[test]
+fn a_session_whose_sandbox_is_starting_takes_messages_until_the_launch_ends() {
+    // What a new sandbox session reports: a native harness, no runner and no host yet.
+    let unbound = json!({
+        "harness": "codex-native", "runner_id": null, "runner_online": false, "host_id": null
+    });
+    let with = |status: Value| {
+        let mut fields = unbound.clone();
+        fields["sandbox_status"] = status;
+        fields
+    };
+    let reason = configuration(&unbound, None).execution_unavailable_reason();
+    assert!(reason.unwrap().contains("no execution connection"));
+    for stage in [
+        "provisioning",
+        "action_required",
+        "cloning",
+        "starting",
+        "connecting",
+    ] {
+        let launching = configuration(&with(json!({ "stage": stage })), None);
+        assert_eq!(launching.sandbox_launching, Some(true), "{stage}");
+        assert_eq!(launching.execution_unavailable_reason(), None, "{stage}");
+    }
+    let started = summary(&with(json!({ "stage": "provisioning" })), None);
+    // A read that says nothing of the launch leaves the last answer standing.
+    let silent = configuration_of(&unbound, &started);
+    assert_eq!(silent.sandbox_launching, Some(true));
+    for ended in [
+        json!({ "stage": "failed", "error": "quota" }),
+        json!({ "stage": "ready" }),
+        Value::Null,
+    ] {
+        let over = configuration_of(&with(ended.clone()), &started);
+        assert_eq!(over.sandbox_launching, Some(false), "{ended}");
+        assert!(over.execution_unavailable_reason().is_some(), "{ended}");
+    }
+    // The sandbox's host arriving ends the launch, whatever was last said of it.
+    let bound = configuration_of(
+        &json!({
+            "harness": "codex-native", "host_id": "sandbox-1", "host_online": true,
+            "runner_id": "runner-1", "runner_online": true
+        }),
+        &started,
+    );
+    assert_eq!(bound.sandbox_launching, None);
+    assert_eq!(bound.execution_unavailable_reason(), None);
+    let saved = started.configuration.unwrap();
+    assert_eq!(
+        SessionConfiguration::from_value(&saved.to_value()).unwrap(),
+        saved
+    );
+}
+
+#[test]
 fn harness_change_does_not_erase_session_execution_metadata() {
     let fixture = fixture_json(
         "sessions/SessionExecutionReadiness--HarnessChangeDoesNotEraseSessionExecutionMetadata.json",

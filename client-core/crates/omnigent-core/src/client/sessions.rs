@@ -9,7 +9,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use omnigent_protocol::sessions::{SessionList, SessionListItem, SessionSnapshot, SessionStatus};
+use omnigent_protocol::sessions::{
+    SandboxStatus, SessionList, SessionListItem, SessionSnapshot, SessionStatus,
+};
 use omnigent_protocol::{DecodeError, Field, FromWire, ServerStreamEvent};
 use serde_json::{Value, json};
 
@@ -279,6 +281,8 @@ pub(crate) struct SessionProjection {
     runner_online: Field<bool>,
     runner_id: Field<String>,
     host_resumable: Field<bool>,
+    /// The snapshot's managed-sandbox launch; a list row does not carry it.
+    sandbox_status: Field<SandboxStatus>,
     parent_id: Field<String>,
     routing_mode: Field<String>,
     launch_args: Field<Vec<String>>,
@@ -349,6 +353,7 @@ impl SessionProjection {
             runner_online: row.runner_online.clone(),
             runner_id: row.runner_id.clone(),
             host_resumable: Field::Absent,
+            sandbox_status: Field::Absent,
             parent_id: row.parent_session_id.clone(),
             routing_mode: Field::Absent,
             launch_args: Field::Absent,
@@ -396,6 +401,7 @@ impl SessionProjection {
             runner_online: snapshot.runner_online.clone(),
             runner_id: snapshot.runner_id.clone(),
             host_resumable: snapshot.host_resumable.clone(),
+            sandbox_status: snapshot.sandbox_status.clone(),
             parent_id: snapshot.parent_session_id.clone(),
             routing_mode: snapshot.cost_control_mode_override.clone(),
             launch_args: snapshot.terminal_launch_args.clone(),
@@ -562,6 +568,42 @@ impl SessionProjection {
         }
     }
 
+    /// Where the session runs and whether that is up: its host, runner and sandbox launch.
+    fn apply_execution(&self, configuration: &mut SessionConfiguration) {
+        if self.host_id.is_reported() {
+            let host_id = self.host_id.value().cloned();
+            if configuration.host_id != host_id {
+                configuration.host_online = None;
+                configuration.runner_online = None;
+                configuration.runner_bound = None;
+                configuration.host_resumable = None;
+                // A host arriving ends the launch, whatever the last snapshot said.
+                configuration.sandbox_launching = None;
+            }
+            configuration.host_id = host_id;
+        }
+        if self.sandbox_status.is_reported() {
+            configuration.sandbox_launching = Some(
+                self.sandbox_status
+                    .value()
+                    .is_some_and(SandboxStatus::is_launching),
+            );
+        }
+        self.host_online
+            .clone()
+            .apply_to(&mut configuration.host_online);
+        self.runner_online
+            .clone()
+            .apply_to(&mut configuration.runner_online);
+        if self.runner_id.is_reported() {
+            configuration.runner_bound =
+                Some(self.runner_id.value().is_some_and(|id| !id.is_empty()));
+        }
+        self.host_resumable
+            .clone()
+            .apply_to(&mut configuration.host_resumable);
+    }
+
     fn configuration(&self, prior: Option<&SessionConfiguration>) -> SessionConfiguration {
         let same = |field: &Field<String>, known: Option<&String>| match field {
             Field::Absent => true,
@@ -582,6 +624,7 @@ impl SessionProjection {
         configuration.runner_online = prior.and_then(|p| p.runner_online);
         configuration.runner_bound = prior.and_then(|p| p.runner_bound);
         configuration.host_resumable = prior.and_then(|p| p.host_resumable);
+        configuration.sandbox_launching = prior.and_then(|p| p.sandbox_launching);
         self.agent_id.clone().apply_to(&mut configuration.agent_id);
         self.harness.clone().apply_to(&mut configuration.harness);
         if self.labels.is_reported() {
@@ -604,29 +647,7 @@ impl SessionProjection {
         if self.model_options.is_reported() {
             configuration.models = self.model_options.value().cloned().unwrap_or_default();
         }
-        if self.host_id.is_reported() {
-            let host_id = self.host_id.value().cloned();
-            if configuration.host_id != host_id {
-                configuration.host_online = None;
-                configuration.runner_online = None;
-                configuration.runner_bound = None;
-                configuration.host_resumable = None;
-            }
-            configuration.host_id = host_id;
-        }
-        self.host_online
-            .clone()
-            .apply_to(&mut configuration.host_online);
-        self.runner_online
-            .clone()
-            .apply_to(&mut configuration.runner_online);
-        if self.runner_id.is_reported() {
-            configuration.runner_bound =
-                Some(self.runner_id.value().is_some_and(|id| !id.is_empty()));
-        }
-        self.host_resumable
-            .clone()
-            .apply_to(&mut configuration.host_resumable);
+        self.apply_execution(&mut configuration);
         self.parent_id
             .clone()
             .apply_to(&mut configuration.parent_id);

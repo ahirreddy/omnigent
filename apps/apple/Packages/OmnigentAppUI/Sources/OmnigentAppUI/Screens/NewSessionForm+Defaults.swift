@@ -25,12 +25,31 @@ extension NewSessionForm {
     return catalog.agents.contains { $0.id == id } ? id : nil
   }
 
-  /// Keeps this start's host (or sandbox provider) and agent for the next new session.
+  /// Starts on a new sandbox, once, when the last session started on one or no machine is
+  /// online: an offline machine, as a stopped sandbox's is, can start nothing.
+  func defaultToSandbox(_ catalog: OmnigentCoreFFI.CreationCatalog) {
+    guard !didDefaultToSandbox else { return }
+    didDefaultToSandbox = true
+    let offered = sandboxProviderOptions(catalog: catalog)
+    guard !hostWasChosen, !isSandbox, !startsPendingAgent, !offered.isEmpty,
+      rememberedHost(catalog) == nil
+    else { return }
+    let last = preferences.string(forKey: DefaultsKey.sandboxProvider)
+    guard last != nil || !catalog.hosts.contains(where: \.isAvailable) else { return }
+    let option = offered.first { ($0.provider ?? "") == last } ?? offered[0]
+    sandbox.provider = option.provider
+    isSandbox = true
+  }
+
+  /// Keeps this start's host (or sandbox provider) and agent for the next new session. Only
+  /// the kind started on last is kept, so the next page opens on it.
   func rememberChoices() {
     if isSandbox {
       preferences.set(sandbox.provider ?? "", forKey: DefaultsKey.sandboxProvider)
+      preferences.removeObject(forKey: DefaultsKey.host)
     } else if !selection.hostId.isEmpty {
       preferences.set(selection.hostId, forKey: DefaultsKey.host)
+      preferences.removeObject(forKey: DefaultsKey.sandboxProvider)
     }
     if !selection.agentId.isEmpty, selection.agentId != Self.pendingAgentID {
       preferences.set(selection.agentId, forKey: DefaultsKey.agent)

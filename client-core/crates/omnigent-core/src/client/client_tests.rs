@@ -1006,6 +1006,27 @@ fn connected_host_and_wakeable_host_allow_stopped_runner_submissions() {
 }
 
 #[test]
+fn a_message_to_a_session_whose_sandbox_is_starting_is_the_servers_to_hold() {
+    let transport = RouteTransport::local();
+    transport.ok(
+        "/v1/sessions/conv_a",
+        r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4,
+            "harness":"codex-native","runner_id":null,"runner_online":false,"host_id":null,
+            "sandbox_status":{"stage":"provisioning","provider":"arclet"}}"#,
+    );
+    transport.ok(
+        "/v1/sessions/conv_a/items",
+        r#"{"data":[],"has_more":false}"#,
+    );
+    transport.ok("/v1/sessions/conv_a/events", r#"{"queued":true}"#);
+    let core = live(transport);
+    block_on(core.conversation_snapshot("conv_a")).unwrap();
+    // No runner and no host, which alone would refuse the message without a request.
+    let sent = block_on(core.send_message("conv_a", "While it starts")).unwrap();
+    assert!(sent.submission.queued);
+}
+
+#[test]
 fn unavailable_session_never_posts_text_or_attachment_message() {
     for envelope in envelopes(
         "sessions/SessionExecutionReadiness--UnavailableSessionNeverPostsTextOrAttachmentMessage.jsonl",

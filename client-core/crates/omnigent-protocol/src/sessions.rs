@@ -160,6 +160,14 @@ pub struct SandboxStatus {
     pub details: Option<String>,
 }
 
+impl SandboxStatus {
+    /// Whether the sandbox is still on its way up: any stage before `ready`, and not `failed`.
+    #[must_use]
+    pub const fn is_launching(&self) -> bool {
+        !matches!(self.stage, SandboxStage::Ready | SandboxStage::Failed)
+    }
+}
+
 /// One MCP server's startup state (`McpServerStartup`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpServerStartup {

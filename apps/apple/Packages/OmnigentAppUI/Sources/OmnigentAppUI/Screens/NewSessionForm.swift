@@ -32,6 +32,8 @@ final class NewSessionForm {
   var pendingAgent: OmnigentCoreFFI.AgentDraft?
   /// The user picked the host, so it stays when another comes online.
   @ObservationIgnored var hostWasChosen = false
+  /// The page chose between a machine and a new sandbox once; it does not choose again.
+  @ObservationIgnored var didDefaultToSandbox = false
   /// The user picked the agent, so it stays when it isn't ready on a host.
   @ObservationIgnored var agentWasChosen = false
   /// The project the session is filed in.
@@ -60,6 +62,7 @@ final class NewSessionForm {
   /// Fills what the user hasn't chosen: an online host, then an agent ready on it. Runs again as
   /// hosts change, since one can connect after the page opened with none to judge agents by.
   func applyDefaults(_ catalog: OmnigentCoreFFI.CreationCatalog) {
+    defaultToSandbox(catalog)
     let isOnline = catalog.hosts.contains { $0.hostId == selection.hostId && $0.isAvailable }
     if !hostWasChosen, !isOnline {
       let host = catalog.hosts.first(where: \.isAvailable) ?? catalog.hosts.first
