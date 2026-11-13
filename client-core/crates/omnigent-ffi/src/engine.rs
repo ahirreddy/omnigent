@@ -115,6 +115,10 @@ pub(crate) struct View {
 }
 
 /// One input for the engine.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "an event is handed straight to the host's listener; boxing each emit buys nothing"
+)]
 pub(crate) enum Msg {
     /// Report a connection phase.
     Phase(ConnectionPhase),

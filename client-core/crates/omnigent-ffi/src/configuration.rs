@@ -7,6 +7,7 @@ use omnigent_core::config::session as core;
 
 use crate::client::ClientCore;
 use crate::errors::CoreError;
+use crate::sandbox_state::SandboxLaunch;
 use crate::sessions::SessionSummary;
 
 /// A reasoning effort a model supports.
@@ -90,6 +91,9 @@ pub struct SessionConfiguration {
     /// A managed sandbox is still starting for the session, which has no host until it is up.
     #[uniffi(default)]
     pub sandbox_launching: Option<bool>,
+    /// The sandbox launch the last session read reported: under way, waiting or failed.
+    #[uniffi(default)]
+    pub sandbox_launch: Option<SandboxLaunch>,
 }
 
 /// A pending model and effort choice against the configuration it started from.
@@ -262,6 +266,7 @@ impl From<core::SessionConfiguration> for SessionConfiguration {
             approval_mode: configuration.approval_mode,
             git_branch: configuration.git_branch,
             sandbox_launching: configuration.sandbox_launching,
+            sandbox_launch: configuration.sandbox_launch.map(Into::into),
         }
     }
 }
@@ -288,6 +293,7 @@ impl From<SessionConfiguration> for core::SessionConfiguration {
             approval_mode: configuration.approval_mode,
             git_branch: configuration.git_branch,
             sandbox_launching: configuration.sandbox_launching,
+            sandbox_launch: configuration.sandbox_launch.map(Into::into),
         }
     }
 }

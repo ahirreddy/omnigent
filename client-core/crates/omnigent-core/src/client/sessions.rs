@@ -23,6 +23,7 @@ use crate::creation::MAX_TITLE_CHARS;
 use crate::http::HttpTransport;
 use crate::intents::SessionPatch;
 use crate::reconcile::UNTITLED_SESSION;
+use crate::sandbox_state::SandboxLaunch;
 
 /// The status a session list shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -580,6 +581,7 @@ impl SessionProjection {
                 configuration.host_resumable = None;
                 // A host arriving ends the launch, whatever the last snapshot said.
                 configuration.sandbox_launching = None;
+                configuration.sandbox_launch = None;
             }
             configuration.host_id = host_id;
         }
@@ -589,6 +591,11 @@ impl SessionProjection {
                     .value()
                     .is_some_and(SandboxStatus::is_launching),
             );
+            configuration.sandbox_launch = self
+                .sandbox_status
+                .value()
+                .and_then(SandboxLaunch::of)
+                .and_then(SandboxLaunch::unfinished);
         }
         self.host_online
             .clone()
@@ -626,6 +633,7 @@ impl SessionProjection {
         configuration.runner_bound = prior.and_then(|p| p.runner_bound);
         configuration.host_resumable = prior.and_then(|p| p.host_resumable);
         configuration.sandbox_launching = prior.and_then(|p| p.sandbox_launching);
+        configuration.sandbox_launch = prior.and_then(|p| p.sandbox_launch.clone());
         self.agent_id.clone().apply_to(&mut configuration.agent_id);
         self.harness.clone().apply_to(&mut configuration.harness);
         if self.labels.is_reported() {

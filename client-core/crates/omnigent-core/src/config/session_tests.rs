@@ -562,3 +562,67 @@ fn a_harness_row_names_itself_and_readiness_gaps_are_explained() {
         Some("This harness is not configured on the host.")
     );
 }
+
+#[test]
+fn a_session_read_reports_its_sandbox_launch_until_it_ends_or_a_host_arrives() {
+    use crate::sandbox_state::LaunchStage;
+    let unbound = json!({
+        "harness": "codex-native", "runner_id": null, "runner_online": false, "host_id": null
+    });
+    let with = |status: Value| {
+        let mut fields = unbound.clone();
+        fields["sandbox_status"] = status;
+        fields
+    };
+    let waiting = summary(
+        &with(json!({
+            "stage": "action_required", "provider": "arclet", "details": "Sign in on your laptop."
+        })),
+        None,
+    );
+    let launch = waiting
+        .configuration
+        .clone()
+        .and_then(|configuration| configuration.sandbox_launch)
+        .expect("a launch");
+    assert_eq!(launch.stage, LaunchStage::ActionRequired);
+    assert_eq!(launch.provider.as_deref(), Some("arclet"));
+    assert_eq!(launch.details.as_deref(), Some("Sign in on your laptop."));
+    // A read that says nothing of the launch leaves the last answer standing.
+    assert_eq!(
+        configuration_of(&unbound, &waiting).sandbox_launch,
+        Some(launch)
+    );
+    let failed = configuration_of(
+        &with(json!({"stage": "failed", "error": "quota"})),
+        &waiting,
+    )
+    .sandbox_launch
+    .expect("a failed launch");
+    assert_eq!(
+        (failed.stage, failed.error.as_deref()),
+        (LaunchStage::Failed, Some("quota"))
+    );
+    for ended in [json!({ "stage": "ready" }), Value::Null] {
+        let over = configuration_of(&with(ended.clone()), &waiting);
+        assert_eq!(over.sandbox_launch, None, "{ended}");
+    }
+    // The sandbox's host arriving ends the launch, whatever was last said of it.
+    let bound = configuration_of(
+        &json!({"harness": "codex-native", "host_id": "sandbox-1", "host_online": true}),
+        &waiting,
+    );
+    assert_eq!(bound.sandbox_launch, None);
+    let mut saved = waiting.configuration.expect("configuration").to_value();
+    assert_eq!(saved["sandboxLaunch"]["stage"], "action_required");
+    let restored = SessionConfiguration::from_value(&saved).expect("decodes");
+    assert_eq!(
+        restored.sandbox_launch.map(|launch| launch.stage),
+        Some(LaunchStage::ActionRequired)
+    );
+    saved["sandboxLaunch"] = Value::Null;
+    let cleared = SessionConfiguration::from_value(&saved).expect("decodes");
+    assert_eq!(cleared.sandbox_launch, None);
+    saved["sandboxLaunch"] = json!({"stage": 1});
+    assert!(SessionConfiguration::from_value(&saved).is_err());
+}

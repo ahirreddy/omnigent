@@ -35,6 +35,7 @@ use crate::reducer::{
     ReportedValue, Row, SessionEventState, SessionHeader, SessionSettings, TurnStatus,
     decode_event, diff_rows, interrupted_reply, project_item, sections,
 };
+use crate::sandbox_state::SandboxProfileName;
 
 /// Browser action ids remembered for de-duplication across replays and reconnects.
 pub const MAX_REMEMBERED_BROWSER_ACTIONS: usize = 512;
@@ -121,6 +122,7 @@ struct SettingsPatch {
     parent_id: Field<String>,
     routing_mode: Field<String>,
     side_chat_allowed: Field<bool>,
+    sandbox_profile: Field<Value>,
 }
 
 fn same_as<T: PartialEq>(field: &Field<T>, known: Option<&T>) -> bool {
@@ -161,6 +163,7 @@ impl SettingsPatch {
             settings.runner_bound = prior.runner_bound;
             settings.host_resumable = prior.host_resumable;
             settings.side_chat_allowed = prior.side_chat_allowed;
+            settings.sandbox_profile.clone_from(&prior.sandbox_profile);
         }
         self.agent_id.apply_to(&mut settings.agent_id);
         self.harness.apply_to(&mut settings.harness);
@@ -198,6 +201,12 @@ impl SettingsPatch {
         // `null` means the response did not compute it, so the last answer stands.
         if let Some(allowed) = self.side_chat_allowed.value() {
             settings.side_chat_allowed = Some(*allowed);
+        }
+        if self.sandbox_profile.is_reported() {
+            settings.sandbox_profile = self
+                .sandbox_profile
+                .value()
+                .and_then(SandboxProfileName::of);
         }
         settings
     }
@@ -262,6 +271,7 @@ impl HeaderPatch<'_> {
             permission_level,
             failure_message: self.failure_message,
             settings: Some(self.settings.merge(prior_settings)),
+            sandbox_launch: None,
             metadata_revision: previous.and_then(|p| p.metadata_revision),
         })
     }
@@ -301,6 +311,7 @@ pub fn header_from_snapshot(
             parent_id: session.parent_session_id.clone(),
             routing_mode: session.cost_control_mode_override.clone(),
             side_chat_allowed: session.side_chat_allowed.clone(),
+            sandbox_profile: session.sandbox_profile.clone(),
         },
     }
     .merge(previous)
@@ -396,6 +407,7 @@ pub fn event_state_from_snapshot(session: &SessionSnapshot) -> SessionEventState
         mcp_startup,
         terminal_pending: session.terminal_pending.value().copied(),
         sandbox: session.sandbox_status.value().cloned(),
+        sandbox_settled: matches!(session.sandbox_status, Field::Null).then_some(true),
         collaboration_mode,
         ..SessionEventState::default()
     }

@@ -180,7 +180,12 @@ impl LiveReducer {
                     provider: sandbox.provider.clone(),
                     details: sandbox.details.clone(),
                 });
-                changed()
+                // The session's row learns the stage from the read this asks for.
+                Effects {
+                    changed: true,
+                    reconcile: true,
+                    ..Effects::default()
+                }
             }
             E::SessionCollaborationMode(mode) => {
                 self.state().collaboration_mode = Some(mode.mode.clone());

@@ -834,3 +834,89 @@ fn an_explicit_null_agrees_only_with_nothing_known() {
     assert!(same_as(&Field::<i32>::Null, None));
     assert!(!same_as(&Field::<i32>::Null, Some(&known)));
 }
+
+fn sandbox_session(fields: &Value) -> SessionSnapshot {
+    let mut value =
+        json!({"id": SESSION, "status": "idle", "created_at": 1, "permission_level": 4});
+    for (key, field) in fields.as_object().expect("fields") {
+        value[key] = field.clone();
+    }
+    session(value)
+}
+
+#[test]
+fn a_session_read_reports_the_sandbox_profile_and_whether_a_launch_is_under_way() {
+    let launching = sandbox_session(&json!({
+        "sandbox_status": {"stage": "cloning", "provider": "arclet"},
+        "sandbox_profile": {"id": "gpu", "name": "GPU box", "provider": "modal", "revision": "r1"}
+    }));
+    let state = event_state_from_snapshot(&launching);
+    assert_eq!(
+        state.sandbox.map(|status| status.stage.as_str().to_owned()),
+        Some("cloning".to_owned())
+    );
+    assert_eq!(state.sandbox_settled, None);
+    let header = header_from_snapshot(&launching, None).expect("header");
+    // The launch reaches a header through the reducer's event state only.
+    assert_eq!(header.sandbox_launch, None);
+    let profile = |header: &SessionHeader| {
+        header
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.sandbox_profile.clone())
+            .map(|profile| (profile.provider, profile.name))
+    };
+    assert_eq!(
+        profile(&header),
+        Some(("modal".to_owned(), "GPU box".to_owned()))
+    );
+    // A read that says nothing keeps the profile, also across an agent change.
+    let silent = sandbox_session(&json!({}));
+    assert_eq!(event_state_from_snapshot(&silent).sandbox_settled, None);
+    let kept = header_from_snapshot(&silent, Some(&header)).expect("header");
+    assert!(profile(&kept).is_some());
+    let switched = sandbox_session(&json!({"agent_id": "other", "harness": "pi-native"}));
+    let moved = header_from_snapshot(&switched, Some(&header)).expect("header");
+    assert!(profile(&moved).is_some());
+    // An explicit null ends the launch and clears the profile.
+    let settled = sandbox_session(&json!({"sandbox_status": null, "sandbox_profile": null}));
+    let state = event_state_from_snapshot(&settled);
+    assert_eq!((state.sandbox, state.sandbox_settled), (None, Some(true)));
+    let cleared = header_from_snapshot(&settled, Some(&header)).expect("header");
+    assert_eq!(profile(&cleared), None);
+}
+
+#[test]
+fn hydration_shows_the_launch_follows_its_events_and_readies_it_when_a_read_says_so() {
+    use crate::sandbox_state::LaunchStage;
+    let stage = |sync: &ConversationSync| {
+        reducer_header(sync)
+            .and_then(|header| header.sandbox_launch.as_ref())
+            .map(|launch| launch.stage)
+    };
+    let mut sync = ConversationSync::new(SESSION);
+    let request = sync.request_hydration().expect("hydration starts");
+    let launching = sandbox_session(&json!({"sandbox_status": {"stage": "cloning"}}));
+    sync.finish_hydration(&request, &launching, &[])
+        .expect("hydration");
+    assert_eq!(stage(&sync), Some(LaunchStage::Cloning));
+    let update = sync
+        .handle_event(json!({
+            "type": "session.sandbox_status", "conversation_id": SESSION, "stage": "connecting"
+        }))
+        .expect("event applies");
+    let published = update
+        .changes
+        .header
+        .and_then(|header| header.sandbox_launch);
+    assert_eq!(
+        published.map(|launch| launch.stage),
+        Some(LaunchStage::Connecting)
+    );
+    // The stage asks for a read; this one was taken after a `ready` the stream never delivered.
+    let request = update.hydrate.expect("the stage asks for a read");
+    let settled = sandbox_session(&json!({"sandbox_status": null}));
+    sync.finish_hydration(&request, &settled, &[])
+        .expect("hydration");
+    assert_eq!(stage(&sync), Some(LaunchStage::Ready));
+}

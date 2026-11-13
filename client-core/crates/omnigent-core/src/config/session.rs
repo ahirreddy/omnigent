@@ -16,6 +16,7 @@ use serde_json::{Map, Value};
 
 use crate::client::json::{as_object, opt_array, opt_bool, opt_str, put_opt, req_str};
 use crate::creation::HarnessReadiness;
+use crate::sandbox_state::SandboxLaunch;
 
 /// A reasoning effort a model supports.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -198,6 +199,9 @@ pub struct SessionConfiguration {
     /// A managed sandbox is still starting for the session: it has no host yet, and the server
     /// holds a message until the sandbox is up.
     pub sandbox_launching: Option<bool>,
+    /// The sandbox launch the last session read reported: under way, waiting on the user or
+    /// failed. `None` once it is up, and for a session without one.
+    pub sandbox_launch: Option<SandboxLaunch>,
 }
 
 /// Shown when a session's host is offline and cannot be woken.
@@ -441,6 +445,11 @@ impl SessionConfiguration {
             "sandboxLaunching",
             self.sandbox_launching.map(Value::Bool),
         );
+        put_opt(
+            &mut object,
+            "sandboxLaunch",
+            self.sandbox_launch.as_ref().map(SandboxLaunch::to_value),
+        );
         Value::Object(object)
     }
 
@@ -475,6 +484,12 @@ impl SessionConfiguration {
             approval_mode: opt_str(object, "approvalMode")?,
             git_branch: opt_str(object, "gitBranch")?,
             sandbox_launching: opt_bool(object, "sandboxLaunching")?,
+            sandbox_launch: match object.get("sandboxLaunch") {
+                None | Some(Value::Null) => None,
+                Some(launch) => {
+                    SandboxLaunch::from_value(launch)?.and_then(SandboxLaunch::unfinished)
+                }
+            },
         })
     }
 }

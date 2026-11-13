@@ -4,12 +4,13 @@
 //! `SessionConfiguration.modelLabel`/`effortLabel` and the reducer's stable fingerprints.
 
 use omnigent_protocol::display;
-use omnigent_protocol::sessions::{McpStartupStatus, ModelUsage, SandboxStage};
+use omnigent_protocol::sessions::{McpStartupStatus, ModelUsage};
 use serde_json::{Map, Value};
 
 use super::state::{
     ChangedFiles, DetailSection, ReportedValue, Row, SessionEventState, SessionSettings,
 };
+use crate::sandbox_state::LaunchStage;
 
 /// Default bound of an activity summary.
 pub(super) const SUMMARY_CHARS: usize = 320;
@@ -491,26 +492,15 @@ fn startup_line(state: &SessionEventState) -> Option<EventSection> {
         details.extend(error.map(|error| detail("error", "Error", error)));
         EventSection::new("startup", "Startup", text).with_details(details)
     };
-    if let Some(sandbox) = &state.sandbox {
-        let label = match sandbox.stage {
-            SandboxStage::Failed => {
-                return Some(line(
-                    "Sandbox launch failed".to_owned(),
-                    true,
-                    sandbox.error.as_deref(),
-                ));
-            }
-            SandboxStage::Provisioning | SandboxStage::ActionRequired => {
-                Some("Provisioning sandbox")
-            }
-            SandboxStage::Cloning => Some("Cloning repository"),
-            SandboxStage::Starting => Some("Connecting host"),
-            SandboxStage::Connecting => Some("Starting agent"),
-            _ => None,
-        };
-        if let Some(label) = label {
-            return Some(line(format!("{label}\u{2026}"), false, None));
+    if let Some(sandbox) = &state.sandbox
+        && let Some(stage) = LaunchStage::of(&sandbox.stage)
+        && stage != LaunchStage::Ready
+    {
+        let label = stage.label();
+        if stage == LaunchStage::Failed {
+            return Some(line(label.to_owned(), true, sandbox.error.as_deref()));
         }
+        return Some(line(format!("{label}\u{2026}"), false, None));
     }
     let servers = state.mcp_startup.as_ref()?;
     let starting: Vec<&str> = servers
