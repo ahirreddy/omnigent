@@ -1,9 +1,9 @@
 import OmnigentWorkspaceUI
 import SwiftUI
 
-/// Styled output: the shared markdown parse (``MarkdownParser``) drawn the way a terminal UI
+/// Styled output: the shared markdown parse (``MarkdownParser``) drawn the way the Codex CLI
 /// draws it: heading markers kept and colored, accent bold and italic, green inline code, blue
-/// underlined links followed by their URL, `>` quotes and ruled tables.
+/// underlined links followed by their URL, `>` down a quote's lines and ruled tables.
 struct CLIStyledMarkdown: View {
   let text: String
   var isStreaming = false
@@ -59,18 +59,28 @@ nonisolated enum CLIInline {
   }
 }
 
-private struct CLIBlocks: View {
+struct CLIBlocks: View {
   let blocks: [MarkdownBlock]
   let cursor: Bool
+  /// A list item's blocks: the list nested under its text follows on the next line.
+  var isListItem = false
+  @Environment(\.cliQuoteLineGrid) private var isOnLineGrid
   private(set) var size = CLIFontSize()
 
   var body: some View {
-    VStack(alignment: .leading, spacing: size.line) {
+    VStack(alignment: .leading, spacing: 0) {
       ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
         CLIMarkdownBlockView(block: block, cursor: cursor && index == blocks.count - 1)
+          .padding(.top, index == 0 ? 0 : gap(before: block))
       }
       if cursor, blocks.isEmpty { CLIMarkdownBlockView(block: .paragraph(""), cursor: true) }
     }
+  }
+
+  /// One blank line; inside a quote a whole one, so its markers stay on its lines.
+  private func gap(before block: MarkdownBlock) -> CGFloat {
+    if isListItem, case .list = block { return size.lineSpacing }
+    return isOnLineGrid ? size.blankLine : size.line
   }
 }
 
@@ -83,32 +93,24 @@ private struct CLIMarkdownBlockView: View {
   var body: some View {
     switch block {
     case .paragraph(let text):
-      Text(withCursor(CLIInline.styled(text, palette: palette)))
+      Text(withCursor(CLIInline.styled(text.keepingSoftBreaks, palette: palette)))
         .fixedSize(horizontal: false, vertical: true)
     case .heading(let level, let text):
       heading(level: level, text: text)
     case .code(let language, let code):
       Text(withCursor(highlighted(code, language: language)))
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.leading, size.character * 2)
         .accessibilityLabel("Code: \(code)")
     case .quote(let blocks):
-      HStack(alignment: .firstTextBaseline, spacing: 0) {
-        Text(verbatim: ">").foregroundStyle(palette.quote.color)
-          .frame(width: size.character * 2, alignment: .leading)
-          .accessibilityHidden(true)
-        CLIBlocks(blocks: blocks, cursor: cursor).foregroundStyle(palette.quote.color)
-      }
+      CLIQuoteView(blocks: blocks, cursor: cursor)
     case .list(let ordered, let start, let items):
       CLIListView(ordered: ordered, start: start, items: items, cursor: cursor)
     case .table(let table):
       CLITableView(table: table)
     case .rule:
-      Rectangle().fill(palette.rule.color).frame(height: 1)
-        .padding(.vertical, size.points * 0.4)
-        .accessibilityHidden(true)
+      Text(verbatim: "\u{2014}\u{2014}\u{2014}").accessibilityHidden(true)
     case .html(let raw):
-      Text(withCursor(colored(raw, palette.dim)))
+      Text(withCursor(AttributedString(raw)))
         .fixedSize(horizontal: false, vertical: true)
     case .image(let source, let alt):
       Text(withCursor(colored("[Image: \(alt.isEmpty ? source : alt)]", palette.dim)))
@@ -121,6 +123,7 @@ private struct CLIMarkdownBlockView: View {
     }
   }
 
+  /// Bold and underlined, bold, bold italic, then italic alone from the fourth level down.
   private func heading(level: Int, text: AttributedString) -> some View {
     let minor = level >= 3
     var marker = AttributedString(String(repeating: "#", count: max(1, level)) + " ")
@@ -132,16 +135,17 @@ private struct CLIMarkdownBlockView: View {
     }
     marker.append(body)
     return Text(withCursor(marker))
-      .fontWeight(.semibold)
+      .fontWeight(level <= 3 ? .semibold : .regular)
       .italic(minor)
+      .underline(level == 1)
       .fixedSize(horizontal: false, vertical: true)
       .accessibilityAddTraits(.isHeader)
   }
 
-  /// Fenced code in the terminal's colors once its block closes; plain code color until then
-  /// and for languages the highlighter does not know.
+  /// Fenced code in the terminal's colors once its block closes; plain text until then and for
+  /// languages the highlighter does not know.
   private func highlighted(_ code: String, language: String?) -> AttributedString {
-    guard !cursor, CodeHighlighting.supports(language) else { return colored(code, palette.code) }
+    guard !cursor, CodeHighlighting.supports(language) else { return AttributedString(code) }
     return CLICodeHighlightCache.shared.attributed(code, language: language, palette: palette)
   }
 
@@ -157,44 +161,6 @@ private struct CLIMarkdownBlockView: View {
     if !result.characters.isEmpty { result.append(AttributedString(" ")) }
     result.append(CLICursor.attributed(palette))
     return result
-  }
-}
-
-private struct CLIListView: View {
-  let ordered: Bool
-  let start: Int
-  let items: [MarkdownListItem]
-  let cursor: Bool
-  @Environment(\.cliPalette) private var palette
-  private(set) var size = CLIFontSize()
-
-  var body: some View {
-    let width =
-      ordered ? size.character * CGFloat("\(start + items.count).".count + 1) : size.character * 2
-    VStack(alignment: .leading, spacing: 0) {
-      ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-        HStack(alignment: .firstTextBaseline, spacing: 0) {
-          marker(index: index, item: item).frame(width: width, alignment: .leading)
-          CLIBlocks(blocks: item.blocks, cursor: cursor && index == items.count - 1)
-        }
-      }
-    }
-  }
-
-  @ViewBuilder
-  private func marker(index: Int, item: MarkdownListItem) -> some View {
-    switch item.task {
-    case .checked:
-      Text(verbatim: "[x]").foregroundStyle(palette.marker.color).accessibilityLabel("Done")
-    case .unchecked:
-      Text(verbatim: "[ ]").foregroundStyle(palette.dim.color).accessibilityLabel("Not done")
-    case .none:
-      if ordered {
-        Text(verbatim: "\(start + index).")
-      } else {
-        Text(verbatim: "\u{2022}").foregroundStyle(palette.marker.color).accessibilityHidden(true)
-      }
-    }
   }
 }
 

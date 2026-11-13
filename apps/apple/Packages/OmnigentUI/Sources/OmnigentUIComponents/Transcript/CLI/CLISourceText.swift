@@ -258,7 +258,7 @@ private struct CLIFontModifier: ViewModifier {
     let size = appearance.fontSize * scale
     content
       .font(.system(size: size, weight: weight, design: .monospaced))
-      .lineSpacing(size * 0.22)
+      .lineSpacing(size * CLIFontSize.lineSpacingRatio)
   }
 }
 
@@ -267,9 +267,18 @@ struct CLIFontSize: DynamicProperty {
   @Environment(\.transcriptAppearance) private var appearance
   @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
 
+  /// The space the CLI font adds between a text's lines, as a share of its size.
+  static let lineSpacingRatio: CGFloat = 0.22
+
   var points: CGFloat { appearance.fontSize * scale }
   /// One monospaced character's advance.
   var character: CGFloat { points * 0.602 }
+  /// The space between two lines of one text.
+  var lineSpacing: CGFloat { points * Self.lineSpacingRatio }
+  /// One line's own height, without the spacing.
+  var lineHeight: CGFloat { points * 1.22 }
   /// One line, with the CLI line spacing.
-  var line: CGFloat { points * 1.22 + points * 0.22 }
+  var line: CGFloat { lineHeight + lineSpacing }
+  /// The gap that leaves exactly one empty line between two texts.
+  var blankLine: CGFloat { line + lineSpacing }
 }

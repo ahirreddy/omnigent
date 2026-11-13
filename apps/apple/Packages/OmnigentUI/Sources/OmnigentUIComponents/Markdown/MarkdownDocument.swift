@@ -195,7 +195,9 @@ nonisolated enum MarkdownParser {
     case let text as Markdown.Text:
       return MarkdownAutolink.linking(text.string)
     case is SoftBreak:
-      return AttributedString(" ")
+      var space = AttributedString(" ")
+      space[SoftBreakAttribute.self] = true
+      return space
     case is LineBreak:
       return AttributedString("\n")
     case let code as InlineCode:
@@ -260,6 +262,26 @@ nonisolated enum MarkdownParser {
       text[run.range].inlinePresentationIntent = existing.union(intent)
     }
     return text
+  }
+}
+
+/// Marks the space a source line break inside a paragraph became, so a terminal-style renderer
+/// can keep the break.
+nonisolated enum SoftBreakAttribute: AttributedStringKey {
+  typealias Value = Bool
+  static let name = "omnigent.softBreak"
+}
+
+extension AttributedString {
+  /// The text with each soft break as the line break it was written as.
+  nonisolated var keepingSoftBreaks: AttributedString {
+    guard runs.contains(where: { $0[SoftBreakAttribute.self] == true }) else { return self }
+    var result = AttributedString()
+    for run in runs {
+      let isBreak = run[SoftBreakAttribute.self] == true
+      result.append(isBreak ? AttributedString("\n") : AttributedString(self[run.range]))
+    }
+    return result
   }
 }
 
