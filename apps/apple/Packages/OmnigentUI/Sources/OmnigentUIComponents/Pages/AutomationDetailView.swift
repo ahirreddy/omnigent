@@ -112,7 +112,7 @@ public struct AutomationDetailView: View {
 
   @ViewBuilder private var runs: some View {
     if state.isLoadingRuns {
-      ProgressView("Loading runs\u{2026}").frame(maxWidth: .infinity).padding()
+      LoadingCaption(title: "Loading runs\u{2026}").frame(maxWidth: .infinity).padding()
     } else if let error = state.runsError {
       HStack {
         Text("Couldn\u{2019}t load run history.").foregroundStyle(.secondary)

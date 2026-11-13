@@ -98,7 +98,7 @@ public struct AutomationsView: View {
       .cardSurface(cornerRadius: Theme.Radius.medium)
       .accessibilityIdentifier("automations-load-error")
     } else if state.isLoading {
-      ProgressView("Loading automations\u{2026}").frame(maxWidth: .infinity).padding()
+      LoadingCaption(title: "Loading automations\u{2026}").frame(maxWidth: .infinity).padding()
     } else if state.rows.isEmpty {
       emptyState
     } else {
