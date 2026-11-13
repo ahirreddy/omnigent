@@ -257,4 +257,25 @@
       #expect(window.window.attachedSheet != nil)
     }
   }
+
+  extension TranscriptScreenMenuTests {
+    @Test("Choosing Terminal in a compact window's menu shows the terminal, and Chat goes back")
+    func compactViewModeChoice() async throws {
+      let state = ConversationViewState(
+        header: TranscriptFixture.header, rows: [TranscriptFixture.answer("a")], terminal: .ready)
+      let window = try await screen(state, layout: .compact)
+      defer { window.close() }
+      let items = try #require(box.items)
+      // The items in a real menu, as the title menu holds them.
+      let menu = transcriptScreen(
+        Menu("Title") { items.titleMenu }.frame(width: 200, height: 40), width: 200, height: 40,
+        layout: .compact)
+      defer { menu.close() }
+      #expect(try !window.shows("terminal"))
+      try menu.choose("Terminal", in: try menu.openMenu(control: 0))
+      #expect(try await waitUntil(window) { try window.shows("terminal") })
+      try menu.choose("Chat", in: try menu.openMenu(control: 0))
+      #expect(try await waitUntil(window) { try !window.shows("terminal") })
+    }
+  }
 #endif

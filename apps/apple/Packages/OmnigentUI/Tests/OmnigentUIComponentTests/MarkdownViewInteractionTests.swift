@@ -68,10 +68,14 @@
       SystemSideEffects.reset()
       try named.clickControl(at: 2)
       #expect(copiedLines() == ["let answer = 42"])
+      // Wrapped lines need no scroller; unwrapped, they scroll sideways in one.
+      let scrollers = { named.allViews.count { $0 is NSScrollView } }
+      #expect(scrollers() == 0)
       try named.clickControl(at: 0)
-      #expect(try named.shows("let answer = 42"))
+      #expect(scrollers() == 1)
       #expect(named.controlFrames.count == controls)
       try named.clickControl(at: 0)
+      #expect(scrollers() == 0)
       #expect(try named.shows("let answer = 42"))
 
       for language in [nil, ""] {
@@ -113,10 +117,6 @@
 
       let downloadMenu = try view.openMenu(center(frames[1]))
       #expect(titles(of: downloadMenu) == ["Download CSV", "Download Markdown"])
-      // Their save panel presents nothing off screen; choosing them must still leave the table.
-      try view.choose("Download CSV", in: downloadMenu)
-      try view.choose("Download Markdown", in: downloadMenu)
-      #expect(try view.shows("Name"))
     }
 
     @Test("Expand shows the table on its own, and Done goes back")

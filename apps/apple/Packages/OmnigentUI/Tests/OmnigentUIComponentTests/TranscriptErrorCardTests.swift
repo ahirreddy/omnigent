@@ -197,4 +197,53 @@
       #expect(try signIn.shows("Open Sign-In Link"))
     }
   }
+
+  // MARK: Copying and diagnostics, by click
+
+  extension TranscriptErrorCardTests {
+    @Test("Copy error copies the failure's message, or the row's own text when it has one")
+    func copiesError() throws {
+      SystemSideEffects.reset()
+      let summarized = card(errorRow())
+      defer { summarized.close() }
+      #expect(summarized.controlFrames.count == 1, "Copy error is the card's only control")
+      try summarized.clickControl(at: 0)
+      #expect(copiedText() == "The message")
+
+      let (row, activity) = errorRow()
+      let worded = card((Row(id: row.id, role: .tool, text: "Raw failure text"), activity))
+      defer { worded.close() }
+      try worded.clickControl(at: 0)
+      #expect(copiedText() == "Raw failure text")
+    }
+
+    @Test("Copy Recovery Command copies the command the card shows, and says it did")
+    func copiesRecoveryCommand() throws {
+      SystemSideEffects.reset()
+      let screen = card(errorRow(remediation: "omnigent login"))
+      defer { screen.close() }
+      #expect(try screen.shows("Copy Recovery Command"))
+      // Copy error leads the card; the recovery command's button is the action row's only one.
+      #expect(screen.controlFrames.count == 2)
+      try screen.clickControl(at: 1)
+      #expect(copiedText() == "omnigent login")
+      #expect(try screen.shows("Copied"))
+    }
+
+    @Test("View Diagnostics opens to the details the card keeps folded, and closes again")
+    func diagnosticsOpen() throws {
+      let extra = [DetailSection(id: "trace", title: "Trace", text: "Frame one")]
+      let screen = card(errorRow(extra: extra))
+      defer { screen.close() }
+      #expect(try !screen.shows("Frame one"))
+      let disclosure = screen.controlFrames.count - 1
+      try screen.clickControl(at: disclosure)
+      screen.settle(0.1)
+      #expect(try screen.shows("Frame one"))
+      #expect(try screen.shownText().count { $0.contains("The cause") } == 1, "not repeated")
+      try screen.clickControl(at: disclosure)
+      screen.settle(0.1)
+      #expect(try !screen.shows("Frame one"))
+    }
+  }
 #endif

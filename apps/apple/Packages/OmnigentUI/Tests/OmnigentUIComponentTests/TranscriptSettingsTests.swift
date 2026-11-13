@@ -131,6 +131,17 @@
       try screen.choose(last.title, in: menu)
       #expect(preferences.outputRendering(for: .chat) == last)
       #expect(preferences.outputRendering(for: .cli) == OutputRendering.allCases[0])
+
+      let width = try #require(popUps.last)
+      let chosen = try #require(
+        TranscriptContentWidth.allCases.last { $0 != preferences.contentWidth(for: .chat) })
+      let untouched = preferences.contentWidth(for: .cli)
+      let widthFrame = width.convert(width.bounds, to: screen.host)
+      let widths = try screen.openMenu(CGPoint(x: widthFrame.midX, y: widthFrame.midY))
+      #expect(titles(of: widths) == TranscriptContentWidth.allCases.map(\.title))
+      try screen.choose(chosen.title, in: widths)
+      #expect(preferences.contentWidth(for: .chat) == chosen)
+      #expect(preferences.contentWidth(for: .cli) == untouched)
     }
 
     @Test("A stored setting that can't be read says so under the section")

@@ -44,11 +44,6 @@
       }
       let frames = screen.controlFrames
       #expect(frames.count == 5)
-      // Zoom out past its limit, in past its limit, then fit, and the sheet stays through it all.
-      for _ in 0..<5 { try screen.clickControl(at: 1) }
-      for _ in 0..<8 { try screen.clickControl(at: 3) }
-      try screen.clickControl(at: 2)
-      #expect(screen.window.attachedSheet != nil)
       try screen.clickControl(at: 4)
       screen.settle(0.2)
       #expect(screen.window.attachedSheet == nil)

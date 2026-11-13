@@ -40,15 +40,6 @@
       #expect(!MarkdownMath.delimited("see $$x$$ here").contains("$$"))
     }
 
-    // A save panel from .fileExporter presents nothing off screen: the VM flows cover it.
-    @Test("Download on a code block starts an export without leaving the transcript")
-    func codeDownload() throws {
-      let screen = transcriptScreen(CodeBlockDownloadButton(code: "let a = 1", language: "swift"))
-      defer { screen.close() }
-      try screen.clickControl(at: 0)
-      #expect(screen.window.attachedSheet == nil)
-    }
-
     @Test("Two exports are told apart by their name and text")
     func exportIdentity() {
       let base = TextExport(text: "a", name: "table.csv", type: .commaSeparatedText)

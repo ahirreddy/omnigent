@@ -13,6 +13,7 @@
   private final class RailJumpTarget {
     var name = "first"
     @ObservationIgnored var jumps: [String] = []
+    @ObservationIgnored var olderLoads = 0
   }
 
   /// A transcript's stand-in: it gives the rail a new jump whenever `name` changes, and nothing
@@ -25,7 +26,7 @@
       let name = target.name
       TurnRail(
         model: model, jump: { target.jumps.append("\(name) \($0)") }, preview: { _ in "" },
-        loadOlder: {}
+        loadOlder: { target.olderLoads += 1 }
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -80,6 +81,30 @@
       #expect(target.jumps.isEmpty)
       try screen.click(CGPoint(x: Theme.Spacing.gutter - 1, y: tick(1).y))
       #expect(target.jumps == ["first u2"])
+    }
+
+    @Test("scrolling the rail up to its top pages in older history; a layout's move does not")
+    func scrollingToTheTopLoadsOlder() throws {
+      let target = RailJumpTarget()
+      let model = TurnRailModel()
+      model.setTurns((0..<80).map { TranscriptTurn(id: "u\($0)", text: "Turn \($0)") })
+      let screen = OffscreenWindow(RailHost(target: target, model: model), width: 400, height: 400)
+      defer { screen.close() }
+      let rail = try #require(screen.allViews.compactMap { $0 as? NSScrollView }.first)
+      func scroll(to offset: CGFloat) {
+        rail.contentView.scroll(to: NSPoint(x: 0, y: offset))
+        rail.reflectScrolledClipView(rail.contentView)
+        screen.settle()
+      }
+      scroll(to: 200)
+      scroll(to: 0)
+      #expect(target.olderLoads == 0, "nobody is scrolling the rail")
+
+      scroll(to: 200)
+      screen.liveScroll(rail, began: true)
+      scroll(to: 0)
+      screen.liveScroll(rail, began: false)
+      #expect(target.olderLoads > 0)
     }
   }
 #endif

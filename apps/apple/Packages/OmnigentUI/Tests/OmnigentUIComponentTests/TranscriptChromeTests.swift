@@ -275,4 +275,22 @@
       #expect(try replyOnly.shows("Selectable words here"))
     }
   }
+
+  extension TranscriptChromeTests {
+    @Test("Ask in side chat asks about the selected words, and the popup goes")
+    func selectionPopupAsks() async throws {
+      let log = HostLog()
+      let screen = replyHost(reply: { log.add("reply \($0)") }, ask: { log.add("ask \($0)") })
+      defer { screen.close() }
+      try screen.click(CGPoint(x: 30, y: 75), clickCount: 2)
+      try await announceSelection(screen)
+      #expect(try screen.shows("Ask in side chat"))
+      // Reply, then Ask in side chat beside it.
+      try screen.clickControl(at: 1)
+      #expect(log.entries == ["ask Selectable"])
+      try await letTasksRun(screen)
+      #expect(try !screen.shows("Ask in side chat"))
+      #expect(try !screen.shows("Reply"))
+    }
+  }
 #endif
