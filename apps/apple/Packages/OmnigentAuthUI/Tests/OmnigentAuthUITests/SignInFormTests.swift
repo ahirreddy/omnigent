@@ -251,6 +251,29 @@
       #expect(spy.creations.first?.kind == .invited(token: "tok-1"))
     }
 
+    @Test("a failure that may pass offers Retry above the fields, and it asks the store to retry")
+    func retry() throws {
+      let spy = AuthSpy()
+      let error = SignInError(category: .transport, message: "Couldn\u{2019}t reach the server.")
+      let screen = hosted(form: .createAdmin, banner: .error(error), spy: spy)
+      defer { screen.close() }
+      #expect(try screen.shows("Retry"))
+      let retry = try #require(screen.controlsAboveFields.first)
+      try screen.click(retry)
+      #expect(spy.log == ["retry"])
+      #expect(spy.creations.isEmpty)
+    }
+
+    @Test("a failure that won't pass on its own offers no Retry")
+    func noRetry() throws {
+      let spy = AuthSpy()
+      let error = SignInError(category: .auth, message: "That username is taken.")
+      let screen = hosted(form: .createAdmin, banner: .error(error), spy: spy)
+      defer { screen.close() }
+      #expect(try !screen.shows("Retry"))
+      #expect(screen.controlsAboveFields.isEmpty)
+    }
+
     @Test("Sign In Instead goes back; a failure is titled; creating shows progress")
     func otherStates() throws {
       let spy = AuthSpy()

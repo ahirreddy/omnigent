@@ -91,6 +91,13 @@
       return controlFrames.filter { $0.width > 300 && $0.minY > fieldBottom }
     }
 
+    /// The controls above the first field, where a form's banner puts Retry.
+    var controlsAboveFields: [CGRect] {
+      guard let first = fields.first else { return [] }
+      let fieldTop = first.convert(first.bounds, to: host).minY
+      return controlFrames.filter { $0.maxY < fieldTop }
+    }
+
     /// Clicks the middle of a frame.
     func click(_ frame: CGRect) throws { try click(CGPoint(x: frame.midX, y: frame.midY)) }
 

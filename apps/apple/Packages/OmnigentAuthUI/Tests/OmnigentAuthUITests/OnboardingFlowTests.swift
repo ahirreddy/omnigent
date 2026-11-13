@@ -144,6 +144,57 @@
       #expect(try screen.allText().contains("Set up Omnigent locally"))
     }
 
+    @Test("Return on the landing presses its prominent button: Get started locally")
+    func returnStartsLocally() async throws {
+      let spy = AuthSpy()
+      let screen = OnboardingFixture.hosted(spy: spy)
+      defer { screen.close() }
+      #expect(try screen.allText().contains("Meet Omnigent"))
+      try screen.pressReturn()
+      await flush(screen)
+      #expect(try screen.allText().contains("Set up Omnigent locally"))
+      #expect(spy.log.isEmpty, "the intro starts nothing yet")
+    }
+
+    @Test("with an organization server, Return joins it: that button is the prominent one")
+    func returnJoinsOrganization() async throws {
+      let spy = AuthSpy()
+      let organization = ServerDirectory(managed: Array(AuthSamples.directory.managed.prefix(1)))
+      let screen = OnboardingFixture.hosted(directory: organization, spy: spy)
+      defer { screen.close() }
+      #expect(try screen.allText().contains("Join your team (Acme Agents)"))
+      try screen.pressReturn()
+      await flush(screen)
+      #expect(try screen.allText().contains("Where do you work today?"))
+      #expect(spy.log.isEmpty, "nothing connects before the answer")
+    }
+
+    @Test("Try Again after a failed start starts the server again")
+    func retriesFailedStart() async throws {
+      let spy = AuthSpy()
+      let actions = spy.actions(localSetup: spy.setup())
+      let flow = { (local: LocalSetupState) in
+        OnboardingFlowView(
+          directory: ServerDirectory(), prefill: "", banner: nil, localSetup: local,
+          validator: .preview, actions: actions)
+      }
+      let screen = OffscreenWindow(flow(OnboardingFixture.ready), width: 620, height: 820)
+      defer { screen.close() }
+      try screen.click(screen.landingButtons[0])
+      await flush(screen)
+      try screen.clickFromEnd()
+      await flush(screen)
+      #expect(spy.log == ["setup start"])
+      screen.host.rootView = flow(
+        LocalSetupState(cli: .found, server: .failed("Port 6767 is in use.")))
+      await flush(screen)
+      let text = try screen.allText()
+      #expect(text.contains("Omnigent didn\u{2019}t start"))
+      #expect(text.contains("Try Again"))
+      try screen.clickFromEnd()
+      #expect(spy.log == ["setup start", "setup start"])
+    }
+
     @Test("the landing's links open in the browser")
     func links() async throws {
       let spy = AuthSpy()
