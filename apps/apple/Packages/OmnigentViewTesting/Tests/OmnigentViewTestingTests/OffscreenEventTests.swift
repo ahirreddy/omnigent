@@ -202,6 +202,20 @@
       #expect(log.deleted == ["bordered", "borderless", "default"])
     }
 
+    @Test("a click reaches a tap gesture, once for each click")
+    func clickReachesTapGesture() throws {
+      let log = Log()
+      let screen = OffscreenWindow(
+        Color.blue.contentShape(Rectangle()).onTapGesture { log.deleted.append("tap") },
+        width: 120, height: 80)
+      defer { screen.close() }
+      #expect(log.deleted.isEmpty)
+      try screen.click(CGPoint(x: 60, y: 40))
+      #expect(log.deleted == ["tap"])
+      try screen.click(CGPoint(x: 60, y: 40))
+      #expect(log.deleted == ["tap", "tap"])
+    }
+
     @Test("a double click is two taps close together; one click is not")
     func doubleClick() throws {
       let log = Log()

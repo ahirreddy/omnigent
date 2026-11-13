@@ -60,6 +60,7 @@
       var opensFail = false
       var showsAlertSheets = false
       var menuChoice: String?
+      var ticksSuppression = false
     }
 
     static let state = OSAllocatedUnfairLock(initialState: State())
@@ -89,17 +90,20 @@
     ///   - panel: What an open or save panel returns.
     ///   - panelURL: The file an open or save panel holds, as if the person chose it.
     ///   - opensFail: Whether opening a URL or app reports a failure instead of succeeding.
+    ///   - ticksSuppression: Whether an alert's "do not ask again" box is ticked before it answers.
     public static func answer(
       alert: NSApplication.ModalResponse = .alertFirstButtonReturn,
       panel: NSApplication.ModalResponse = .cancel,
       panelURL: URL? = nil,
-      opensFail: Bool = false
+      opensFail: Bool = false,
+      ticksSuppression: Bool = false
     ) {
       state.withLock {
         $0.alertResponse = alert
         $0.panelResponse = panel
         $0.panelURL = panelURL
         $0.opensFail = opensFail
+        $0.ticksSuppression = ticksSuppression
       }
     }
 
@@ -222,10 +226,15 @@
         present, unsafeBitCast(sheet, to: IMP.self))
     }
 
-    /// Records an alert AppKit was asked to show, on the main thread.
+    /// Records an alert AppKit was asked to show, on the main thread, ticking its "do not ask
+    /// again" box first when the test answers that way.
     private static func noteAlert(_ alert: NSAlert) {
+      let ticksSuppression = state.withLock { $0.ticksSuppression }
       let (message, isSuppressible) = MainActor.assumeIsolated {
-        (alert.messageText, alert.showsSuppressionButton)
+        if ticksSuppression, alert.showsSuppressionButton {
+          alert.suppressionButton?.performClick(nil)
+        }
+        return (alert.messageText, alert.showsSuppressionButton)
       }
       note {
         $0.alertMessages.append(message)

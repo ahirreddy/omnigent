@@ -132,6 +132,10 @@
       alert.showsSuppressionButton = true
       _ = alert.runModal()
       #expect(SystemSideEffects.record.suppressibleAlertMessages == ["Delete?"])
+      #expect(alert.suppressionButton?.state == .off)
+      SystemSideEffects.answer(ticksSuppression: true)
+      _ = alert.runModal()
+      #expect(alert.suppressionButton?.state == .on, "ticked as the test asked")
       #expect(SystemSideEffects.record.panelCount == 2)
       SystemSideEffects.reset()
       #expect(NSOpenPanel().runModal() == .cancel)

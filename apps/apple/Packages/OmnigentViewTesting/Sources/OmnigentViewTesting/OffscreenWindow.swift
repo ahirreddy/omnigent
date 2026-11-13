@@ -39,10 +39,10 @@
   /// Hosts a SwiftUI view off every display and drives it with real AppKit events, so a test runs
   /// the same hit testing, focus and key handling as the app without a UI test.
   ///
-  /// Clicks reach `Button`s of any style, `Toggle`s, text fields, menus and presented sheets:
-  /// while a sheet is up, every call here acts on it. Dialogs and alerts answer at once through
-  /// `SystemSideEffects`. Clicks don't reach `onTapGesture` or `onHover`: cover those through the
-  /// action the view was given.
+  /// Clicks reach `Button`s of any style, `Toggle`s, text fields, menus, tap gestures and presented
+  /// sheets: while a sheet is up, every call here acts on it. `doubleClick` reaches a two-tap
+  /// gesture and `hover` reaches `onHover`. Dialogs and alerts answer at once through
+  /// `SystemSideEffects`.
   @MainActor
   public final class OffscreenWindow<Content: View> {
     /// Far past any display, so the window is never seen and takes no real clicks.
