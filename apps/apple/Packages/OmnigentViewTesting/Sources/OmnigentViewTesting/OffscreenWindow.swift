@@ -169,6 +169,20 @@
       return (menu, unsafe wasClosed)
     }
 
+    /// Double-clicks a point as a hand does: two presses a fraction of a second apart, with no
+    /// pause for layout between them. Not for an AppKit control that tracks the mouse itself.
+    /// - Parameter point: The point, from the top left of the view.
+    /// - Throws: `OffscreenWindowError` when AppKit declines an event.
+    public func doubleClick(_ point: CGPoint) throws {
+      let target = activeWindow
+      target.makeKey()
+      for (count, delay) in [(1, 0.0), (2, 0.08)] {
+        deliver(try mouseEvent(.leftMouseDown, point, count, [], delay: delay), to: target)
+        deliver(try mouseEvent(.leftMouseUp, point, count, [], delay: delay + 0.02), to: target)
+      }
+      settle()
+    }
+
     /// Clicks the middle of a view found in the window.
     /// - Parameter view: A view in this window.
     /// - Throws: `OffscreenWindowError` when AppKit declines an event.

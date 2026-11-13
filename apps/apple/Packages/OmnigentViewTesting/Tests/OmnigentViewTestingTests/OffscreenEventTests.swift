@@ -202,6 +202,22 @@
       #expect(log.deleted == ["bordered", "borderless", "default"])
     }
 
+    @Test("a double click is two taps close together; one click is not")
+    func doubleClick() throws {
+      let log = Log()
+      let screen = OffscreenWindow(
+        Color.blue.contentShape(Rectangle())
+          .onTapGesture(count: 2) { log.deleted.append("double") },
+        width: 120, height: 80)
+      defer { screen.close() }
+      let middle = CGPoint(x: 60, y: 40)
+      try screen.click(middle)
+      #expect(log.deleted.isEmpty)
+      screen.settle(NSEvent.doubleClickInterval + 0.1)
+      try screen.doubleClick(middle)
+      #expect(log.deleted == ["double"])
+    }
+
     @Test("a stop queued as a synchronous test returns doesn't end the run")
     func stopAsSyncTestReturns() {
       let screen = OffscreenWindow(Text("Still"), width: 100, height: 100)

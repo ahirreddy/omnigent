@@ -151,13 +151,14 @@
         AutomationsViewState(rows: [row("a"), row("b")], hasAny: true), actions: actions)
       defer { screen.close() }
       let title = try rowTitle(0, screen)
+      // The pointer rests on the row before it clicks, as a hand's does: a row that first
+      // learns of the pointer between two taps draws again and starts the double tap over.
+      try screen.hover(title)
       try screen.click(title, clickCount: 1)
       #expect(log.entries.isEmpty)
-      // Past the double-click interval, the next two clicks are a double click of their own,
-      // whether or not the row counted the one before.
+      // Past the double-click interval, so the click above is no part of the double click.
       screen.settle(NSEvent.doubleClickInterval + 0.1)
-      try screen.click(title, clickCount: 1)
-      try screen.click(title, clickCount: 2)
+      try screen.doubleClick(title)
       #expect(log.entries == ["edit a"])
     }
 
