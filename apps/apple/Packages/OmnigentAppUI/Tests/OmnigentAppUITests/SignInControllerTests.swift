@@ -22,11 +22,12 @@ nonisolated private let serverURL = "http://127.0.0.1:6797"
 
 /// A controller over a fresh core, as one app launch has. Launches share `secureStore` (the
 /// Keychain) and `defaults`.
-private func launch(secureStore: InMemorySecureStore, defaults: UserDefaults) throws
-  -> SignInController
-{
+private func launch(
+  secureStore: InMemorySecureStore, defaults: UserDefaults,
+  routes: [String: HttpResponse] = accountsRoutes
+) throws -> SignInController {
   let core = try ClientCore(
-    http: FakeHttpTransport(routes: accountsRoutes), streams: FakeEventStreamTransport(),
+    http: FakeHttpTransport(routes: routes), streams: FakeEventStreamTransport(),
     sockets: FakeWebSocketTransport(), clock: SystemClock(), scheduler: TaskScheduler(),
     secureStore: secureStore, entropy: FixedEntropySource(),
     config: HostConfig(urlPolicy: .development, oidcRedirect: .none))
@@ -107,6 +108,39 @@ struct SignInControllerTests {
     await second.connectNow(serverURL)
     // The restore is reported when connectNow returns, before the phase event may have landed.
     #expect(secondReports.count == 1)
+  }
+
+  @Test(
+    "A saved sign-in the server no longer takes brings back the form and says why",
+    .timeLimit(.minutes(1)))
+  func refusedSavedSignIn() async throws {
+    let suite = "ai.omnigent.appui.tests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let secureStore = InMemorySecureStore()
+
+    let first = try launch(secureStore: secureStore, defaults: defaults)
+    await first.connectNow(serverURL)
+    try await waitUntil("the password form") {
+      if case .signInRequired = first.store.phase { return true }
+      return false
+    }
+    first.actions.submitCredentials(AccountCredentials(username: "ada", password: "pw"))
+    try await waitUntil("the sign-in to finish") {
+      first.store.isSignedIn && first.method == nil
+    }
+
+    var routes = accountsRoutes
+    routes["/v1/me"] = .json(#"{"detail":"Token revoked"}"#, status: 401)
+    let second = try launch(secureStore: secureStore, defaults: defaults, routes: routes)
+    await second.connectNow(serverURL)
+    // The core asks for sign-in rather than failing the connection, so the reason shows here.
+    #expect(second.flowError != nil)
+    try await waitUntil("the password form again") {
+      if case .signInRequired = second.store.phase { return true }
+      return false
+    }
+    #expect(!second.store.isSignedIn)
   }
 }
 

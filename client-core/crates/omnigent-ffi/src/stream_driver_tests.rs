@@ -39,6 +39,7 @@ fn handlers_for_a_session_that_has_closed_do_nothing() {
         },
     );
     engine.open_stream("gone", AttemptId(1));
+    engine.open_routed_stream("gone", AttemptId(1));
     engine.stream_event(
         "gone",
         AttemptId(1),

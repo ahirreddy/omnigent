@@ -224,6 +224,23 @@ fn a_new_connection_cancels_a_pending_reload() {
 }
 
 #[test]
+fn arming_the_periodic_read_drops_one_still_armed() {
+    let harness = Harness::new(UrlPolicy::Development);
+    let (mut engine, _queue) = harness.idle_engine();
+    let (periodic, _registration) = futures::future::AbortHandle::new_pair();
+    engine.list.reconcile = Some(periodic.clone());
+    engine.schedule_list_reconcile();
+    assert!(periodic.is_aborted());
+    assert!(
+        engine
+            .list
+            .reconcile
+            .as_ref()
+            .is_some_and(|timer| !timer.is_aborted())
+    );
+}
+
+#[test]
 fn nothing_is_read_once_disconnected() {
     let (mut harness, _) = connected_with_first_page();
     harness.core.disconnect();
