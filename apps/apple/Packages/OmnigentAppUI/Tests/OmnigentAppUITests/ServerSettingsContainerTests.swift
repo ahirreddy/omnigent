@@ -150,6 +150,9 @@ struct ServerSettingsContainerTests {
   func signingOut() async throws {
     let page = try await page()
     defer { page.screen.close() }
+    // The pane reads the server as it opens; Sign Out is clicked where it rests.
+    try await settle(page.screen, untilShowing: "Signed in as", contains: true)
+    _ = try await settledControlFrames(page.screen)
     try clickInPane(1, on: page)
     try await settle(page.screen, until: "the sign out") { !page.connection.isSignedIn }
   }

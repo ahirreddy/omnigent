@@ -53,6 +53,22 @@ struct CreationFormTests {
     #expect(creation.workspaces.value?.isEmpty == true)
   }
 
+  @Test("A new sandbox lists no folders and its provider's models; with no provider, none")
+  func sandboxSelection() async throws {
+    let server = try creationRoutes()
+    server.route(
+      "/v1/sandbox-providers/arclet/harnesses/codex-native/model-options",
+      .json(#"{"configured":true,"models":[{"id":"cloud","model":"cloud-model"}]}"#))
+    let creation = try await loadedCreation(server)
+    await creation.selectionChanged(selection, sandbox: NewSandboxChoice(provider: "arclet"))
+    #expect(creation.workspaces.value?.isEmpty == true)
+    #expect(creation.models.value?.map(\.value) == ["cloud-model"])
+
+    await creation.selectionChanged(selection, sandbox: NewSandboxChoice(provider: nil))
+    #expect(creation.models.value?.isEmpty == true)
+    #expect(server.requests(to: "/v1/hosts/host_a/filesystem").count == 1, "no folder read")
+  }
+
   @Test("A newer selection supersedes an older one's folders and models")
   func supersededSelection() async throws {
     let server = try creationRoutes()
