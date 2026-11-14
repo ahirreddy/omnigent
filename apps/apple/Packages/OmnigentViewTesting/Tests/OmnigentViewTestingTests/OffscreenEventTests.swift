@@ -95,6 +95,21 @@
   @MainActor
   @Suite("Offscreen events", .serialized)
   struct OffscreenEventTests {
+    @Test("resting frames are the controls' frames once they stop moving, however long that takes")
+    func restingFrames() {
+      let screen = OffscreenWindow(
+        VStack {
+          Button("One") {}
+          Button("Two") {}
+        }, width: 200, height: 200)
+      defer { screen.close() }
+      let resting = screen.restingControlFrames()
+      #expect(resting.count == 2)
+      #expect(resting == screen.controlFrames)
+      // With no time to wait, the first read is what comes back.
+      #expect(screen.restingControlFrames(timeout: 0) == resting)
+    }
+
     @Test("an event runs in its own run loop, so stopping that loop can't stop the test runner's")
     func eventIsNested() throws {
       let recorder = MouseDownRecorder()

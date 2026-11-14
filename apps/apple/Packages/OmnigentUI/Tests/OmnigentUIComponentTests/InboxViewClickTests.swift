@@ -89,6 +89,8 @@
     func clickSelects() throws {
       let screen = bed.screen(items: [bed.item("a", age: 10), bed.item("b", age: 20)])
       defer { screen.close() }
+      // The rows are clicked where they rest: on a busy machine they are still being placed.
+      _ = screen.restingControlFrames()
       let rows = screen.buttonFrames.filter { $0.height < 200 && $0.width > 200 }
       try #require(rows.count == 2, "\(screen.buttonFrames)")
       try screen.click(rows[1].center)

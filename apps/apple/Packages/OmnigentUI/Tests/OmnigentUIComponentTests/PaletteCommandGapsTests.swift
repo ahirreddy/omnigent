@@ -87,9 +87,9 @@
       let fields = screen.allViews.compactMap { $0 as? NSTextField }.filter(\.isEditable)
       let search = try #require(fields.first)
       let searchFrame = search.convert(search.bounds, to: sheet)
-      // Close sits at the end of the search field's row.
+      // Close sits at the end of the search field's row, once the sheet has slid in.
       let close = try #require(
-        screen.controlFrames.first {
+        screen.restingControlFrames().first {
           abs($0.midY - searchFrame.midY) < 12 && $0.minX >= searchFrame.maxX - 1
         })
       try screen.click(CGPoint(x: close.midX, y: close.midY))
