@@ -11,6 +11,11 @@ use crate::client::sessions::SessionSummary;
 
 pub use omnigent_protocol::sessions::SessionFamily;
 
+/// The server's answer to a nested member pinned or moved on its own; the client refuses the
+/// same edits with it before sending them.
+pub const NESTED_MEMBER_EDIT_REFUSAL: &str =
+    "Only the family representative can move or pin the family";
+
 /// Where "Add nested agent" may start the new member (`sibling_session_destinations`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum SiblingDestinations {
@@ -73,6 +78,24 @@ pub fn is_pin_unit(session: &SessionSummary) -> bool {
         .family
         .as_ref()
         .is_none_or(|family| family.representative_id.as_deref() == Some(session.id.as_str()))
+}
+
+/// Whether `selected` can move to a project together (the web's bulk move): every nested member
+/// among them has its representative selected too, which moves the family.
+#[must_use]
+pub fn can_move_together(selected: &[SessionSummary]) -> bool {
+    selected
+        .iter()
+        .filter(|row| row.is_nested_member())
+        .all(|member| {
+            let representative = member
+                .family
+                .as_ref()
+                .and_then(|family| family.representative_id.as_deref());
+            selected
+                .iter()
+                .any(|row| Some(row.id.as_str()) == representative)
+        })
 }
 
 /// The pinned rows that take pin slots: what the pin limit counts and pin order rewrites.

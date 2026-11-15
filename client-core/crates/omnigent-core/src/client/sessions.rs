@@ -856,7 +856,8 @@ pub(super) struct EditRequest {
 }
 
 /// Checks `change` against the identifier rules and the cached row. Only a cached row can
-/// refuse here; a session without one is the server's to judge.
+/// refuse here; a session without one is the server's to judge. A nested family member is
+/// never pinned or moved on its own: its representative carries the family.
 pub(super) fn edit_request(
     session_id: &str,
     change: SessionChange,
@@ -866,6 +867,13 @@ pub(super) fn edit_request(
     let allowed = |tier: fn(&SessionSummary) -> bool| {
         if cached.is_some_and(|summary| !tier(summary)) {
             Err(SessionError::ReadOnly)
+        } else {
+            Ok(())
+        }
+    };
+    let representative_only = || {
+        if cached.is_some_and(SessionSummary::is_nested_member) {
+            Err(super::families::nested_member_refusal())
         } else {
             Ok(())
         }
@@ -885,12 +893,14 @@ pub(super) fn edit_request(
         }
         SessionChange::Pinned { pinned, at_ms } => {
             allowed(SessionSummary::can_pin)?;
+            representative_only()?;
             let stamp = pinned.then(|| at_ms.to_string());
             let body = json!({"labels": {PINNED_LABEL: stamp.as_deref().unwrap_or_default()}});
             (SessionPatch::Pin(stamp), body)
         }
         SessionChange::PinnedAt(stamp) => {
             allowed(SessionSummary::can_pin)?;
+            representative_only()?;
             (
                 SessionPatch::Pin(Some(stamp.label().to_owned())),
                 json!({"labels": {PINNED_LABEL: stamp.label()}}),
@@ -911,6 +921,7 @@ pub(super) fn edit_request(
         }
         SessionChange::Project(project_id) => {
             allowed(SessionSummary::can_archive)?;
+            representative_only()?;
             if let Some(id) = &project_id {
                 validate_identifier(id)?;
             }
@@ -1277,11 +1288,16 @@ impl<T: HttpTransport> ClientCore<T> {
     /// Edits of one session leave in the order made; one still waiting is replaced by a later
     /// edit of the same field. Returns the row as the list shows it.
     ///
+    /// A session family's representative carries its family: its move shows on the members
+    /// this client holds at once, and after its pin or move (or any member's archive or
+    /// restore) those members are read again.
+    ///
     /// # Errors
     ///
     /// [`SessionError::InvalidIdentifier`] and [`SessionError::InvalidTitle`] before any
     /// write; [`SessionError::ReadOnly`] without the permission, from the cached row or the
-    /// server's `403`; [`SessionError::Offline`] while the live link is down;
+    /// server's `403`; [`SessionError::InvalidInput`] for a pin or move of a nested family
+    /// member; [`SessionError::Offline`] while the live link is down;
     /// [`SessionError::SessionNotFound`] for its `404`; the write errors.
     #[allow(
         clippy::future_not_send,

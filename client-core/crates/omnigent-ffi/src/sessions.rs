@@ -62,7 +62,8 @@ pub struct SessionSummary {
     pub failure_message: Option<String>,
     /// Whether the caller may rename it.
     pub can_rename: bool,
-    /// Whether the caller may pin it.
+    /// Whether the caller may pin it. A nested family member never may: it shows its family's
+    /// pin, which its representative carries.
     pub can_pin: bool,
     /// Whether the caller may archive it.
     pub can_archive: bool,
@@ -99,6 +100,10 @@ pub struct SessionSummary {
     /// The session family it belongs to; `None` for a standalone session or a shared one.
     #[uniffi(default)]
     pub family: Option<SessionFamily>,
+    /// A family member nested under another representative: it is never pinned or moved on its
+    /// own, and the sidebar indents it under its family.
+    #[uniffi(default)]
+    pub is_nested_member: bool,
 }
 
 /// The session family ("nested agents") a session belongs to: independent root sessions grouped
@@ -297,7 +302,8 @@ impl From<CoreSummary> for SessionSummary {
     fn from(summary: CoreSummary) -> Self {
         Self {
             can_rename: summary.can_rename(),
-            can_pin: summary.can_pin(),
+            can_pin: summary.can_pin() && !summary.is_nested_member(),
+            is_nested_member: summary.is_nested_member(),
             can_archive: summary.can_archive(),
             can_stop: summary.is_stoppable(),
             id: summary.id,
@@ -463,6 +469,18 @@ pub fn session_is_pin_unit(session: SessionSummary) -> bool {
     families::is_pin_unit(&CoreSummary::from(&session))
 }
 
+/// Whether `sessions` can move to a project together.
+///
+/// Every nested family member among them needs its representative selected too: only
+/// representatives are written, and each moves its family. `edit_sessions` refuses every move of
+/// a selection that cannot.
+#[must_use]
+#[uniffi::export]
+pub fn sessions_can_move_together(sessions: Vec<SessionSummary>) -> bool {
+    let core: Vec<CoreSummary> = sessions.iter().map(Into::into).collect();
+    families::can_move_together(&core)
+}
+
 /// How many pin slots `sessions` use: their pinned, unarchived standalone sessions and family
 /// representatives. Nested members never use a slot.
 #[must_use]
@@ -518,8 +536,9 @@ impl ClientCore {
     /// # Errors
     ///
     /// [`CoreError::Session`]: `InvalidIdentifier` and `InvalidTitle` before any write;
-    /// `ReadOnly` without the permission; `DeliveryUncertain` for an unreadable acknowledgement;
-    /// the read and write errors.
+    /// `ReadOnly` without the permission; `InvalidInput` for a pin or move of a nested family
+    /// member (its representative carries the family); `DeliveryUncertain` for an unreadable
+    /// acknowledgement; the read and write errors.
     pub async fn edit_session(
         &self,
         session_id: String,
@@ -536,6 +555,9 @@ impl ClientCore {
     /// Edits several sessions at once (archiving a selection): every row changes in one
     /// `SessionListChanged` upsert before any request, then the writes run side by side.
     /// Returns the edits that were not saved, in the order given; each put its own row back.
+    /// A nested family member moves with its representative's move (no write of its own); a
+    /// selection where one is moved without its representative has every move refused (see
+    /// `sessions_can_move_together`).
     pub async fn edit_sessions(&self, edits: Vec<SessionEdit>) -> Vec<SessionEditFailure> {
         let (ids, edits): (Vec<String>, Vec<_>) = edits
             .into_iter()

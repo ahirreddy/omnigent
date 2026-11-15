@@ -39,6 +39,7 @@ pub mod databricks_session;
 mod error;
 pub mod events;
 mod export;
+mod families;
 pub mod fork;
 mod harness_setup;
 pub mod host_switch;

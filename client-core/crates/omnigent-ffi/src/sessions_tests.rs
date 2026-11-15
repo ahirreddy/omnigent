@@ -11,7 +11,7 @@ use crate::sessions::{
     ProjectSummary, SessionChange, SessionFamily, SessionFilter, SessionListStatus, SessionSummary,
     SiblingSessionDestinations, filter_sessions, pinned_unit_count, project_members,
     session_filter_title, session_is_nested_member, session_is_owned_by, session_is_pin_unit,
-    session_shows_pinned,
+    session_shows_pinned, sessions_can_move_together,
 };
 use crate::test_support::{Harness, connected, json};
 
@@ -140,6 +140,17 @@ fn family_helpers_read_the_nest_the_pin_and_the_slots() {
     let solo = summary("solo", |session| session.is_pinned = true);
     assert!(session_is_nested_member(member.clone()));
     assert!(!session_is_nested_member(lead.clone()));
+    // A nested member is never offered a pin, whatever its permission.
+    assert!(member.is_nested_member && !member.can_pin);
+    assert!(!lead.is_nested_member && lead.can_pin);
+    assert!(sessions_can_move_together(vec![
+        member.clone(),
+        lead.clone()
+    ]));
+    assert!(!sessions_can_move_together(vec![
+        member.clone(),
+        solo.clone()
+    ]));
     assert!(session_shows_pinned(member.clone(), Some(lead.clone())));
     assert!(!session_shows_pinned(member.clone(), None));
     assert!(session_shows_pinned(solo.clone(), None));
