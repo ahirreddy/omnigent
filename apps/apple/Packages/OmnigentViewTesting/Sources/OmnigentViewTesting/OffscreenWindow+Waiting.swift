@@ -12,8 +12,8 @@
       host.layoutSubtreeIfNeeded()
     }
 
-    /// Settles as ``settle(_:)`` does, suspending between turns so main actor tasks, and the
-    /// `Task.sleep`s ending before `limit`, run too.
+    /// Settles as ``settle(_:)`` does, suspending between turns so main actor tasks that are
+    /// ready run too. A task's later `Task.sleep` is not waited for.
     /// - Parameter limit: The longest wait; reached only while work keeps coming.
     public func settleTasks(limit: Duration = .milliseconds(100)) async {
       host.layoutSubtreeIfNeeded()
