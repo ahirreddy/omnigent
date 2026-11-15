@@ -15,9 +15,7 @@ static int shield_requested = 0;
 // A stop can arrive as a test's body returns, so the shield must be up before the first test.
 // Only AppKit's window server events stop the runner's loop, so iOS needs none of this.
 __attribute__((constructor)) static void omnigent_view_testing_bootstrap(void) {
-  omnigent_view_testing_install_sleep_hooks();
 #if TARGET_OS_OSX
-  omnigent_view_testing_foreground_timers();
   shield_requested = 1;
   omnigent_view_testing_install_runner_loop_shield();
   omnigent_view_testing_clear_earlier_settings();

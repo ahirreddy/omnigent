@@ -90,7 +90,7 @@
       window.contentView = nil
       // AppKit queues run loop stops while windows change. Left for the test runner's own loop,
       // one would end the process early with exit code 0: a false pass.
-      RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+      _ = MainLoop.poll(until: CFAbsoluteTimeGetCurrent() + 0.01)
     }
 
     /// Clicks a point with a real mouse down and up.
@@ -145,7 +145,7 @@
         let target = activeWindow
         // A destructive button ignores a first mouse; keying an inactive app's window steals nothing.
         target.makeKey()
-        press(down, releasedBy: mouseUp, in: target) { unsafe opened != nil }
+        press(down, releasedBy: mouseUp, in: target)
         // Tracking that ended early, as a closing menu's does, leaves the posted up queued. A
         // later button's tracking would end on it, and that button's action would never run.
         NSApp.discardEvents(matching: .leftMouseUp, before: nil)

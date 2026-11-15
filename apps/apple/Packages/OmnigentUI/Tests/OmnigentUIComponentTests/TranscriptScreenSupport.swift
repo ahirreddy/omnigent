@@ -37,7 +37,7 @@
 
   /// Lets what a click or a view's `task` started finish: a run loop spun inside the test's job
   /// would hold those tasks back on the main queue, so this suspends instead. It returns once the
-  /// window is at rest, waiting for a task's `Task.sleep` ending within `milliseconds`.
+  /// window is at rest, within `milliseconds`; a task's later `Task.sleep` is not waited for.
   @MainActor
   func letTasksRun(_ screen: OffscreenWindow<AnyView>, milliseconds: Int = 60) async throws {
     await screen.settleTasks(limit: .milliseconds(milliseconds))
@@ -47,8 +47,8 @@
   /// long as this machine's timers and main thread make it, and then what follows that wait.
   @MainActor
   func letOpeningEnd(_ screen: OffscreenWindow<AnyView>) async throws {
-    // The settle waits out the opening's own sleeps, one after another, then what follows them.
-    await screen.settleTasks(limit: .milliseconds(800))
+    try await TranscriptFollow.waitForFrameLanding()
+    await screen.settleTasks(limit: .milliseconds(300))
   }
 
   /// Whether `condition` comes true within ten seconds, for what takes however long the machine

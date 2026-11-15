@@ -12,7 +12,7 @@
     var body: some View {
       VStack {
         Button("Show") { isShown = true }
-        if isShown { Text("Shown").frame(width: 120, height: 40) }
+        if isShown { Button("Shown") {} }
       }
       .frame(width: 200, height: 200)
     }
@@ -40,7 +40,7 @@
         try screen.clickControl(at: 0)
         screen.settle(2)
       }
-      #expect(screen.allViews.contains { $0.frame.size == CGSize(width: 120, height: 40) })
+      #expect(screen.controlFrames.count == 2, "the new button is laid out")
       #expect(seconds < 1, "\(seconds)")
     }
 
@@ -74,15 +74,16 @@
       #expect(done.isSet)
     }
 
-    @Test("a task's sleep ending before the limit is waited for, and its work runs")
-    func waitsForSleepingTask() async {
+    @Test("a task's later sleep is not waited for; waiting for its effect is")
+    func sleepingTaskNeedsAConditionWait() async {
       let done = Flag()
       Task { @MainActor in
-        try? await Task.sleep(for: .milliseconds(80))
+        try? await Task.sleep(for: .milliseconds(300))
         done.isSet = true
       }
-      await MainLoop.settleTasks(limit: .seconds(1))
-      #expect(done.isSet)
+      let seconds = await elapsed { await MainLoop.settleTasks(limit: .seconds(2)) }
+      #expect(seconds < 0.25, "\(seconds)")
+      #expect(await MainLoop.waitUntil(timeout: .seconds(5)) { done.isSet })
     }
 
     @Test("with nothing to do the async settle ends at once")

@@ -1,6 +1,5 @@
 #if os(macOS)
   import AppKit
-  import OmnigentViewTestingBootstrap
 
   extension MainLoop {
     /// What a turn of the loop did; empty when it was idle.
@@ -8,14 +7,10 @@
       let rawValue: Int
       /// A run loop source or event was handled.
       static let source = Self(rawValue: 1 << 0)
-      /// Work was queued for the main actor: a task started or resumed.
-      static let mainActorWork = Self(rawValue: 1 << 1)
       /// A window had constraints or layout pending.
       static let layout = Self(rawValue: 1 << 2)
       /// A window drew what it had pending.
       static let drawing = Self(rawValue: 1 << 3)
-      /// A `Task.sleep` ends before the wait's limit.
-      static let sleep = Self(rawValue: 1 << 4)
     }
 
     /// Runs one short turn of the loop and finishes the windows' pending layout. Timers due in
@@ -30,13 +25,8 @@
       defer { SettleTrace.note(turnTook: CFAbsoluteTimeGetCurrent() - start) }
       let watched = withSheetsAndChildren(windows)
       let drawingBefore = watched.map { $0.isVisible && $0.viewsNeedDisplay }
-      let queuedBefore = omnigent_view_testing_main_actor_jobs()
       var activity: Activity = []
-      let slice = min(turn, max(0, deadline - start))
-      if CFRunLoopRunInMode(.defaultMode, slice, true) == .handledSource {
-        activity.insert(.source)
-      }
-      if omnigent_view_testing_main_actor_jobs() != queuedBefore { activity.insert(.mainActorWork) }
+      if poll(until: min(start + turn, deadline)) { activity.insert(.source) }
       for (window, neededDrawing) in zip(watched, drawingBefore) {
         // The loop's own display pass draws a window; a flag that never clears is no work, as
         // with a transparent window off every display.
@@ -46,6 +36,45 @@
         }
       }
       return activity
+    }
+
+    /// Runs whole passes of the loop until `end`, never sleeping in one: a sleep wakes late where
+    /// timers are coarse, by 15 to 90 ms in a VM.
+    /// - Parameter end: When to stop, as an absolute time.
+    /// - Returns: Whether a source or event was handled.
+    static func poll(until end: CFAbsoluteTime) -> Bool {
+      var handled = false
+      repeat {
+        if runPass() { handled = true }
+        sched_yield()
+      } while CFAbsoluteTimeGetCurrent() < end
+      return handled
+    }
+
+    /// Runs one pass of the main run loop, its observers' layout, display and commit before
+    /// waiting included, and ends it there instead of letting it sleep.
+    /// - Returns: Whether a source or event was handled.
+    static func runPass() -> Bool {
+      let main = CFRunLoopGetMain()
+      // Last among the observers before waiting, it ends the pass and wakes the wait it ends.
+      let end = CFRunLoopObserverCreateWithHandler(
+        nil, CFRunLoopActivity.beforeWaiting.rawValue, false, CFIndex.max
+      ) { _, _ in
+        CFRunLoopStop(main)
+        CFRunLoopWakeUp(main)
+      }
+      CFRunLoopAddObserver(main, end, .defaultMode)
+      defer { CFRunLoopObserverInvalidate(end) }
+      var handled = false
+      while true {
+        switch CFRunLoopRunInMode(.defaultMode, 1, true) {
+        case .handledSource: handled = true
+        case .stopped, .finished, .timedOut: return handled
+        @unknown default: return handled
+        }
+        // A source ended the pass before its wait; run on to the observers.
+        guard CFRunLoopObserverIsValid(end) else { return handled }
+      }
     }
 
     /// The windows, each followed by the sheets over it and its child windows.

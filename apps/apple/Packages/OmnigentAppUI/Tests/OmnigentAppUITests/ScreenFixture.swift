@@ -32,7 +32,7 @@ func settle<Content: View>(
 }
 
 /// Lets the screen's tasks run until the window is at rest, or for `time` while work keeps
-/// coming. A `Task.sleep` ending within `time` is waited for.
+/// coming. A task's later `Task.sleep` is not waited for.
 @MainActor
 func pause<Content: View>(_ screen: OffscreenWindow<Content>, _ time: Duration = .milliseconds(60))
   async throws

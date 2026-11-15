@@ -1,23 +1,22 @@
 #if os(macOS)
   public import AppKit
-  import OmnigentViewTestingBootstrap
 
   /// Waits that end as soon as the main thread has nothing left to do, instead of after a fixed
   /// time. A duration passed to them is only a limit, reached when work keeps coming.
   ///
   /// At rest means a few short run loop turns in a row did no work: no source or event was
-  /// handled, no main actor job was queued, the given windows had no layout pending and drew
-  /// nothing, and, for the async waits, no `Task.sleep` ends before the limit. A timer scheduled
-  /// for later is not work. `OMNIGENT_FIXED_WAITS=1` makes every wait take its whole limit again,
-  /// to tell a flaky wait from a flaky test.
+  /// handled and the given windows had no layout pending and drew nothing. A turn never sleeps,
+  /// so coarse timers (a VM's wake 15 to 90 ms late) don't stretch it. Work still to come at a
+  /// later time, a timer or a `Task.sleep`, is not waited for: wait for its effect with
+  /// ``waitUntil(timeout:_:)``, or for the time with ``run(for:)`` or `Task.sleep`.
+  /// `OMNIGENT_FIXED_WAITS=1` makes every wait take its whole limit again, to tell a flaky wait
+  /// from a flaky test.
   @MainActor
   public enum MainLoop {
     /// One turn: short, so a wait ends within a few milliseconds of the work running out.
     static let turn: TimeInterval = 0.002
     /// Idle turns in a row that count as at rest.
     static let idleTurns = 3
-    /// The fewest main actor jobs a turn and its yield were seen to queue: the yield's own.
-    static var ownYieldJobs = Int.max
 
     /// Runs the main run loop until it is at rest, or until `limit` passes.
     ///
@@ -45,8 +44,8 @@
       SettleTrace.end("settle", limit: limit, reachedLimit: idle < idleTurns)
     }
 
-    /// Settles as ``settle(limit:windows:)`` does, suspending between turns so main actor tasks,
-    /// and what they wait for, run too. A `Task.sleep` ending before `limit` is waited for.
+    /// Settles as ``settle(limit:windows:)`` does, suspending between turns so main actor tasks
+    /// that are ready run too.
     /// - Parameters:
     ///   - limit: The longest wait.
     ///   - windows: The windows whose layout and drawing count, with their sheets and children.
@@ -64,20 +63,9 @@
       var idle = 0
       SettleTrace.begin()
       while idle < idleTurns, CFAbsoluteTimeGetCurrent() < deadline {
-        let turnStart = CFAbsoluteTimeGetCurrent()
-        let queued = omnigent_view_testing_main_actor_jobs()
-        var activity = runTurn(until: deadline, windows: windows)
+        let activity = runTurn(until: deadline, windows: windows)
         await Task.yield()
-        // The yield queues one job of its own; more were queued by the work it let run.
-        let jobs = Int(omnigent_view_testing_main_actor_jobs() &- queued)
-        ownYieldJobs = min(ownYieldJobs, jobs)
-        if jobs > ownYieldJobs { activity.insert(.mainActorWork) }
-        if SleepTracker.hasSleep(endingBefore: deadline) { activity.insert(.sleep) }
         SettleTrace.note(activity)
-        // Time spent only because a task sleeps: what shorter product delays would save.
-        if activity == .sleep {
-          WaitStats.record("settleTasks on a sleep", since: turnStart, reachedLimit: false)
-        }
         idle = activity.isEmpty ? idle + 1 : 0
       }
       WaitStats.record("settleTasks", since: start, reachedLimit: idle < idleTurns)
@@ -131,7 +119,7 @@
     /// - Parameter seconds: How long to run.
     public static func run(for seconds: TimeInterval) {
       let start = CFAbsoluteTimeGetCurrent()
-      spin(seconds)
+      _ = poll(until: start + seconds)
       WaitStats.record("run(for:)", since: start, reachedLimit: true)
     }
 

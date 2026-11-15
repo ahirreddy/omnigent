@@ -1,6 +1,5 @@
 #if os(macOS)
   import Foundation
-  import OmnigentViewTestingBootstrap
   import os
 
   /// Where a test process's waits spend their time. With `OMNIGENT_WAIT_STATS=1` each wait's
@@ -70,19 +69,5 @@
   /// Prints the totals as the process exits.
   private func printWaitStats() {
     FileHandle.standardError.write(Data((WaitStats.report() + "\n").utf8))
-  }
-
-  /// When the process's sleeping tasks wake: the Swift runtime tells the test bundle's loader
-  /// each `Task.sleep`'s end.
-  enum SleepTracker {
-    /// Whether some `Task.sleep` ends from now until `deadline`.
-    /// - Parameter deadline: An absolute time, as `CFAbsoluteTimeGetCurrent()` gives.
-    /// - Returns: Whether one does.
-    static func hasSleep(endingBefore deadline: CFAbsoluteTime) -> Bool {
-      let now = omnigent_view_testing_now_ns()
-      let remaining = deadline - CFAbsoluteTimeGetCurrent()
-      guard remaining > 0 else { return false }
-      return omnigent_view_testing_sleep_ends_between(now, now + UInt64(remaining * 1e9)) == 1
-    }
   }
 #endif
