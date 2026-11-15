@@ -131,8 +131,11 @@ pub(crate) fn matches(session: &SessionSummary, query: &str, filter: SessionFilt
 
 #[cfg(test)]
 mod tests {
+    use serde_json::{Value, json};
+
     use super::*;
-    use crate::client::sessions::SummaryStatus;
+    use crate::client::sessions::test_support::wire;
+    use crate::client::sessions::{SummaryStatus, decode_list_row};
 
     fn session(id: &str, title: &str, preview: &str, updated_at: i64) -> SessionSummary {
         SessionSummary {
@@ -212,6 +215,33 @@ mod tests {
             ["archive"]
         );
         assert_eq!(SessionFilter::ALL.map(SessionFilter::title)[2], "Needs you");
+    }
+
+    #[test]
+    fn running_and_needs_you_read_list_rows_as_the_web_does() {
+        let row = |fields: Value| {
+            decode_list_row(wire(&fields, true))
+                .unwrap()
+                .summary(None)
+                .unwrap()
+        };
+        let sessions = [
+            row(json!({"id": "turn", "status": "running"})),
+            // The turn ended, but a background shell or a goal is still running.
+            row(json!({"id": "shell", "created_at": 2, "background_work_running": true})),
+            // Running, but parked on a prompt in the agent's terminal.
+            row(json!({"id": "prompt", "status": "running", "created_at": 3,
+                       "blocked_on": "permission prompt"})),
+            row(json!({"id": "done", "created_at": 4, "background_work_running": false})),
+        ];
+        assert_eq!(
+            ids(&matching(&sessions, "", SessionFilter::Running)),
+            ["shell", "turn"]
+        );
+        assert_eq!(
+            ids(&matching(&sessions, "", SessionFilter::NeedsResponse)),
+            ["prompt"]
+        );
     }
 
     #[test]

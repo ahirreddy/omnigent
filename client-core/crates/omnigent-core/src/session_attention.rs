@@ -3,11 +3,12 @@
 //!
 //! A session has exactly one [`AttentionState`], in precedence order
 //! **Needs you > Failed > Working > Unread > Idle**:
-//! - **Needs you:** it has pending decisions the caller can answer (edit permission or above). A
-//!   read-only viewer cannot answer, so for them the session is blocked on someone else and reads
-//!   as Working.
+//! - **Needs you:** it has pending decisions the caller can answer (edit permission or above), or
+//!   its agent is parked on a prompt in its terminal (`blocked_on`). A read-only viewer cannot
+//!   answer, so for them the session is blocked on someone else and reads as Working.
 //! - **Failed:** the last turn failed.
-//! - **Working:** a turn or background work is in progress.
+//! - **Working:** a turn is in progress, or work outlives the ended turn
+//!   (`background_work_running`), as the web's sidebar shows it.
 //! - **Unread:** the host says it has activity the user has not seen.
 //! - **Idle:** none of the above.
 //!
@@ -27,12 +28,12 @@ use crate::client::sessions::{SessionSummary, SummaryStatus};
 /// precedence: a smaller value wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum AttentionState {
-    /// Pending decisions the caller can answer.
+    /// Pending decisions the caller can answer, or a prompt in the agent's terminal.
     NeedsYou,
     /// The last turn failed.
     Failed,
     /// A turn or background work is in progress (including a turn blocked on a decision the
-    /// caller cannot answer).
+    /// caller cannot answer, and work outliving the ended turn).
     Working,
     /// Activity the user has not seen.
     Unread,
@@ -54,19 +55,22 @@ impl SessionAttention {
     /// The attention of `summary`. `is_unread` is the host's read state.
     #[must_use]
     pub const fn of(summary: &SessionSummary, is_unread: bool) -> Self {
-        let requests = if summary.is_read_only {
-            0
-        } else {
+        let can_answer = !summary.is_read_only;
+        let requests = if can_answer {
             summary.pending_requests
+        } else {
+            0
         };
-        let state = if requests > 0 {
+        let state = if requests > 0 || (can_answer && summary.is_parked_in_terminal()) {
             AttentionState::NeedsYou
         } else if summary.failure_message.is_some() {
             AttentionState::Failed
-        } else if matches!(
-            summary.status,
-            SummaryStatus::Running | SummaryStatus::NeedsResponse
-        ) {
+        } else if summary.background_work_running
+            || matches!(
+                summary.status,
+                SummaryStatus::Running | SummaryStatus::NeedsResponse
+            )
+        {
             AttentionState::Working
         } else if is_unread {
             AttentionState::Unread
@@ -200,6 +204,59 @@ mod tests {
             SessionAttention {
                 state: AttentionState::Working,
                 requests: 0
+            }
+        );
+    }
+
+    #[test]
+    fn work_outliving_the_turn_is_working_and_a_terminal_prompt_needs_you() {
+        let background = SessionSummary {
+            background_work_running: true,
+            ..session("background")
+        };
+        assert_eq!(
+            SessionAttention::of(&background, true).state,
+            AttentionState::Working
+        );
+        // A failed turn still reads as failed while its background work goes on.
+        let failed = SessionSummary {
+            failure_message: Some("boom".into()),
+            ..background.clone()
+        };
+        assert_eq!(
+            SessionAttention::of(&failed, false).state,
+            AttentionState::Failed
+        );
+        let parked = SessionSummary {
+            status: SummaryStatus::NeedsResponse,
+            blocked_on: Some("permission prompt".into()),
+            ..session("parked")
+        };
+        assert_eq!(
+            SessionAttention::of(&parked, false),
+            SessionAttention {
+                state: AttentionState::NeedsYou,
+                requests: 0
+            }
+        );
+        // A viewer who cannot answer sees the prompt as work going on.
+        let shared = SessionSummary {
+            is_read_only: true,
+            ..parked.clone()
+        };
+        assert_eq!(
+            SessionAttention::of(&shared, false).state,
+            AttentionState::Working
+        );
+        let totals = AttentionTotals::of([&background, &parked, &shared], |_| false);
+        assert_eq!(
+            totals,
+            AttentionTotals {
+                sessions_needing_you: 1,
+                requests: 0,
+                working: 2,
+                failed: 0,
+                unread: 0,
             }
         );
     }

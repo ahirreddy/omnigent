@@ -32,7 +32,7 @@ pub enum SummaryStatus {
     Idle,
     /// A turn or background work is in progress.
     Running,
-    /// A decision is pending.
+    /// A decision is pending, here or at a prompt in the agent's terminal.
     NeedsResponse,
 }
 
@@ -54,6 +54,11 @@ pub struct SessionSummary {
     /// Pending decisions the server reports: the list row's `pending_elicitations_count`, or the
     /// snapshot's pending requests (which include sub-agent requests it carries).
     pub pending_requests: u32,
+    /// Work outlives its ended turn (`background_work_running`): a background shell, or a goal
+    /// between turns. The status stays as reported, so the session still takes a message.
+    pub background_work_running: bool,
+    /// What its agent is parked on in its terminal (`blocked_on`), e.g. `permission prompt`.
+    pub blocked_on: Option<String>,
     /// Below edit permission (or unknown permission).
     pub is_read_only: bool,
     /// Last activity, Unix seconds.
@@ -125,6 +130,8 @@ impl SessionSummary {
             preview: preview.into(),
             status: SummaryStatus::Idle,
             pending_requests: 0,
+            background_work_running: false,
+            blocked_on: None,
             is_read_only: false,
             updated_at: 0,
             workspace: "Omni mobile".to_owned(),
@@ -147,6 +154,12 @@ impl SessionSummary {
             client_create_token: None,
             family: None,
         }
+    }
+
+    /// Whether its agent waits on a prompt in its terminal (the web's `parkedInTerminal`).
+    #[must_use]
+    pub const fn is_parked_in_terminal(&self) -> bool {
+        matches!(self.status, SummaryStatus::NeedsResponse) && self.blocked_on.is_some()
     }
 
     /// Whether it is a family member nested under another representative (the web's
@@ -288,6 +301,10 @@ pub(crate) struct SessionProjection {
     pending_count: Field<u64>,
     /// The snapshot's pending requests; `None` for a list row.
     pending_elicitations: Option<usize>,
+    /// A list row's background work; a snapshot does not carry it.
+    background_work_running: Field<bool>,
+    /// A list row's terminal prompt; a snapshot does not carry it.
+    blocked_on: Field<String>,
     search_snippet: Field<String>,
     permission_level: Field<i64>,
     last_task_error_message: Option<String>,
@@ -361,6 +378,9 @@ impl SessionProjection {
             archived: row.archived.clone(),
             pending_count: row.pending_elicitations_count.clone(),
             pending_elicitations: None,
+            // A list row omits them only when unset, or when its server predates them.
+            background_work_running: reported_or_null(&row.background_work_running),
+            blocked_on: reported_or_null(&row.blocked_on),
             search_snippet: row.search_snippet.clone(),
             permission_level: row.permission_level.clone(),
             last_task_error_message: None,
@@ -386,10 +406,7 @@ impl SessionProjection {
             project_id: row.project_id.clone(),
             comments_count: row.comments_count.clone(),
             // A list row omits `family` only when it has none (update rows send `null`).
-            family: match &row.family {
-                Field::Absent => Field::Null,
-                reported => reported.clone(),
-            },
+            family: reported_or_null(&row.family),
         }
     }
 
@@ -411,6 +428,8 @@ impl SessionProjection {
             archived: snapshot.archived.clone(),
             pending_count: Field::Absent,
             pending_elicitations: Some(snapshot.pending_elicitations.len()),
+            background_work_running: Field::Absent,
+            blocked_on: Field::Absent,
             search_snippet: Field::Absent,
             permission_level: snapshot.permission_level.clone(),
             last_task_error_message: snapshot
@@ -470,6 +489,15 @@ impl SessionProjection {
         previous: Option<&SessionSummary>,
     ) -> Result<SessionSummary, String> {
         let pending_requests = self.pending_requests();
+        let background_work_running = match self.background_work_running {
+            Field::Absent => previous.is_some_and(|previous| previous.background_work_running),
+            Field::Null => false,
+            Field::Present(running) => running,
+        };
+        let blocked_on = reported_or_previous(
+            &self.blocked_on,
+            previous.and_then(|previous| previous.blocked_on.as_ref()),
+        );
         let (status, status_preview) = match &self.status {
             SessionStatus::Idle => (SummaryStatus::Idle, "Idle"),
             SessionStatus::Running => (SummaryStatus::Running, "Running"),
@@ -489,6 +517,8 @@ impl SessionProjection {
             || self.permission_level.is_reported() || previous.is_none_or(|p| p.is_read_only),
             |level| level < 2,
         );
+        // A running agent parked on a prompt in its terminal waits on the user, as a decision does.
+        let parked = status == SummaryStatus::Running && blocked_on.is_some();
         let labels = self.labels.value();
         let configuration = self.configuration(previous.and_then(|p| p.configuration.as_ref()));
         Ok(SessionSummary {
@@ -501,18 +531,22 @@ impl SessionProjection {
                 .unwrap_or_else(|| UNTITLED_SESSION.to_owned()),
             preview: if pending_requests > 0 {
                 "Needs your response".to_owned()
+            } else if let Some(reason) = blocked_on.as_deref().filter(|_| parked) {
+                terminal_wait_preview(reason)
             } else {
                 self.search_snippet
                     .value()
                     .cloned()
                     .unwrap_or_else(|| status_preview.to_owned())
             },
-            status: if pending_requests > 0 {
+            status: if pending_requests > 0 || parked {
                 SummaryStatus::NeedsResponse
             } else {
                 status
             },
             pending_requests,
+            background_work_running,
+            blocked_on,
             is_read_only,
             updated_at: self
                 .updated_at
@@ -722,6 +756,27 @@ fn reported_or_previous(field: &Field<String>, previous: Option<&String>) -> Opt
         Field::Absent => previous.cloned(),
         Field::Null => None,
         Field::Present(value) => Some(value.clone()).filter(|value| !value.is_empty()),
+    }
+}
+
+/// `field`, with "not sent" read as `null`: for a full row that omits what it does not have.
+fn reported_or_null<T: Clone>(field: &Field<T>) -> Field<T> {
+    match field {
+        Field::Absent => Field::Null,
+        reported => reported.clone(),
+    }
+}
+
+/// The runner's `blocked_on` when it only guesses a prompt from the terminal's screen.
+const TERMINAL_PROMPT_BLOCKED_ON: &str = "terminal prompt";
+
+/// The web's words for an agent parked on a prompt in its terminal; a guessed prompt stays
+/// tentative.
+fn terminal_wait_preview(reason: &str) -> String {
+    if reason == TERMINAL_PROMPT_BLOCKED_ON {
+        "May need your input in the agent's terminal".to_owned()
+    } else {
+        format!("Waiting for you in the agent's terminal ({reason})")
     }
 }
 
@@ -1611,7 +1666,7 @@ mod family_tests;
 mod tests {
     use serde_json::json;
 
-    use super::test_support::summary_of;
+    use super::test_support::{summary_of, wire};
     use super::*;
 
     #[test]
@@ -1709,6 +1764,56 @@ mod tests {
         assert_eq!(snapshot.pending_requests, 2);
         let cleared = summary_of(&json!({}), Some(&snapshot), true);
         assert_eq!(cleared.pending_requests, 0);
+    }
+
+    #[test]
+    fn list_rows_carry_background_work_and_a_terminal_prompt_and_snapshots_keep_them() {
+        let row = |fields: Value| decode_list_row(wire(&fields, true)).unwrap();
+        let shell = row(json!({"background_work_running": true}))
+            .summary(None)
+            .unwrap();
+        assert!(shell.background_work_running);
+        // The status stays idle, so the session still takes a message.
+        assert_eq!(
+            (shell.status, shell.preview.as_str()),
+            (SummaryStatus::Idle, "Idle")
+        );
+        // A snapshot does not carry it; a row that omits it (or an older server's) clears it.
+        assert!(summary_of(&json!({}), Some(&shell), true).background_work_running);
+        let older = row(json!({})).summary(Some(&shell)).unwrap();
+        assert!(!older.background_work_running);
+
+        let parked = row(json!({"status": "running", "blocked_on": "permission prompt"}))
+            .summary(None)
+            .unwrap();
+        assert_eq!(parked.status, SummaryStatus::NeedsResponse);
+        assert!(parked.is_parked_in_terminal());
+        assert_eq!(
+            parked.preview,
+            "Waiting for you in the agent's terminal (permission prompt)"
+        );
+        let guessed = row(json!({"status": "running", "blocked_on": "terminal prompt"}))
+            .summary(None)
+            .unwrap();
+        assert_eq!(
+            guessed.preview,
+            "May need your input in the agent's terminal"
+        );
+        // Only a running agent is parked. A snapshot keeps the prompt; a row without it clears it.
+        let idle = row(json!({"blocked_on": "permission prompt"}))
+            .summary(None)
+            .unwrap();
+        assert!(!idle.is_parked_in_terminal());
+        assert_eq!(idle.status, SummaryStatus::Idle);
+        let kept = summary_of(&json!({"status": "running"}), Some(&parked), true);
+        assert!(kept.is_parked_in_terminal());
+        let resumed = row(json!({"status": "running"}))
+            .summary(Some(&parked))
+            .unwrap();
+        assert_eq!(
+            (resumed.status, resumed.blocked_on),
+            (SummaryStatus::Running, None)
+        );
     }
 
     #[test]

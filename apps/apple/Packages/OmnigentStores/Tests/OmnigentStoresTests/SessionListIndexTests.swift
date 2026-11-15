@@ -125,6 +125,8 @@ struct SessionListIndexTests {
     first.title = "Renamed"
     first.preview = "A new message"
     first.canStop = true
+    first.backgroundWorkRunning = true
+    first.blockedOn = "permission prompt"
     stays("the first row's text, time and status") { store.apply(.upsert(sessions: [first])) }
     #expect(store.visible.first == first)
     stays("an unchanged row") { store.apply(.upsert(sessions: [first])) }

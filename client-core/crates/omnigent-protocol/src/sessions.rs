@@ -392,6 +392,12 @@ pub struct SessionListItem {
     /// Outstanding approval prompts.
     #[serde(default, skip_serializing_if = "Field::is_absent")]
     pub pending_elicitations_count: Field<u64>,
+    /// Work outlives the ended turn: a background shell, or a goal between turns.
+    #[serde(default, skip_serializing_if = "Field::is_absent")]
+    pub background_work_running: Field<bool>,
+    /// What a `running` session's agent is parked on in its terminal, e.g. `permission prompt`.
+    #[serde(default, skip_serializing_if = "Field::is_absent")]
+    pub blocked_on: Field<String>,
     /// Workspace path.
     #[serde(default, skip_serializing_if = "Field::is_absent")]
     pub workspace: Field<String>,
