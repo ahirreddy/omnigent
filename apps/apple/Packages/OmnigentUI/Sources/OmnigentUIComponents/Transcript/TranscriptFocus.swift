@@ -110,6 +110,8 @@ struct TranscriptMessageFocus: ViewModifier {
   let loadOlder: () -> Void
   /// Scrolls to a row.
   let show: (String) -> Void
+  /// How long a link waits before scrolling, so a newer link or session replaces it first.
+  var settle: Duration = .milliseconds(150)
   @Environment(\.transcriptFocus) private var focus
 
   private var sessionID: String { state.header.id }
@@ -121,7 +123,7 @@ struct TranscriptMessageFocus: ViewModifier {
       .task(id: focus?.messageID(in: sessionID)) {
         guard focus?.messageID(in: sessionID) != nil else { return }
         do {
-          try await Task.sleep(for: .milliseconds(150))
+          try await Task.sleep(for: settle)
         } catch {
           return  // Another link or session replaced it.
         }
