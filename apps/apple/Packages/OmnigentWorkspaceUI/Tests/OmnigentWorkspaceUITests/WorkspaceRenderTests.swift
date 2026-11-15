@@ -1,6 +1,7 @@
 #if os(macOS)
   import AppKit
   import Foundation
+  import OmnigentViewTesting
   import SwiftUI
   import Testing
 
@@ -142,7 +143,7 @@
       var drawn: (NSBitmapImageRep, Pixels)?
       for _ in 0..<maxPasses {
         host.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+        MainLoop.settle(limit: 0.03, windows: [window])
         guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
           throw Failure.bitmapUnavailable
         }
