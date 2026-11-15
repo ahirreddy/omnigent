@@ -187,12 +187,12 @@ struct ManagedPreferencesTests {
   @Test("internal features need an explicit boolean true")
   func internalFeatures() throws {
     let key = ManagedPreferences.databricksInternalFeaturesKey
-    #expect(try reader(["ai.omnigent.desktop": [key: true]]).0.databricksInternalFeaturesEnabled())
-    #expect(try !reader(["ai.omnigent.mac": [key: false]]).0.databricksInternalFeaturesEnabled())
-    #expect(try !reader([:]).0.databricksInternalFeaturesEnabled())
+    #expect(try reader(["ai.omnigent.desktop": [key: true]]).0.internalFeaturesEnabled())
+    #expect(try !reader(["ai.omnigent.mac": [key: false]]).0.internalFeaturesEnabled())
+    #expect(try !reader([:]).0.internalFeaturesEnabled())
     for value: Any in [1, "true", [true]] {
       #expect(throws: ManagedPreferencesError.notABoolean(domain: "ai.omnigent.mac", key: key)) {
-        try reader(["ai.omnigent.mac": [key: value]]).0.databricksInternalFeaturesEnabled()
+        try reader(["ai.omnigent.mac": [key: value]]).0.internalFeaturesEnabled()
       }
     }
   }
@@ -226,6 +226,6 @@ struct ManagedPreferencesTests {
   func realDefaults() throws {
     let preferences = ManagedPreferences(domains: ["ai.omnigent.tests.\(UUID().uuidString)"])
     #expect(try preferences.servers().servers.isEmpty)
-    #expect(try !preferences.databricksInternalFeaturesEnabled())
+    #expect(try !preferences.internalFeaturesEnabled())
   }
 }

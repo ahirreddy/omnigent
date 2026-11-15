@@ -12,7 +12,7 @@ nonisolated public enum ManagedPreferencesError: Error, Equatable, Sendable {
   case tooManyServers(domain: String, count: Int)
   /// One entry is not a string, is empty, is malformed or is not https.
   case invalidServer(domain: String, index: Int, reason: String)
-  /// `databricksInternalFeaturesEnabled` is present but not a boolean.
+  /// The internal features key is present but not a boolean.
   case notABoolean(domain: String, key: String)
 }
 
@@ -45,7 +45,7 @@ public struct ManagedPreferences {
   nonisolated public static let serverURLsKey = "serverUrls"
   /// Query parameter naming a server inside a `serverUrls` entry.
   nonisolated public static let serverNameParameter = "omnigentServerName"
-  /// Boolean gating Databricks-internal features.
+  /// Boolean gating internal features.
   nonisolated public static let databricksInternalFeaturesKey = "databricksInternalFeaturesEnabled"
   /// Keeps the connect screen's organization list bounded.
   nonisolated public static let maximumServerCount = 10
@@ -97,10 +97,10 @@ public struct ManagedPreferences {
     return ManagedPreferencesSnapshot(serversDomain: nil, serversAreForced: false, servers: [])
   }
 
-  /// Reads `databricksInternalFeaturesEnabled`. Only an explicit boolean `true` enables it.
+  /// Reads the internal features key. Only an explicit boolean `true` enables it.
   /// - Returns: Whether the features are enabled.
   /// - Throws: `ManagedPreferencesError.notABoolean` for numbers, strings and other types.
-  public func databricksInternalFeaturesEnabled() throws(ManagedPreferencesError) -> Bool {
+  public func internalFeaturesEnabled() throws(ManagedPreferencesError) -> Bool {
     for domain in domains {
       guard let value = readValue(Self.databricksInternalFeaturesKey, domain) else { continue }
       guard Self.isCFBoolean(value), let flag = value as? Bool else {

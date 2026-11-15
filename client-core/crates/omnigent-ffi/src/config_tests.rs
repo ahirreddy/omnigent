@@ -259,7 +259,7 @@ fn managed_preferences_read_the_winning_domain_and_each_server_field() {
     assert_eq!(server.origin, "https://corp.example.com:8443");
     assert_eq!(server.authority, "corp.example.com:8443");
     assert_eq!(server.display_name, "Corp");
-    assert!(preferences.databricks_internal_features_enabled().unwrap());
+    assert!(preferences.internal_features_enabled().unwrap());
     assert!(format!("{preferences:?}").contains("ai.omnigent.desktop"));
 }
 

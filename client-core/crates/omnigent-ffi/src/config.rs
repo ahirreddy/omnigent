@@ -385,13 +385,13 @@ impl ManagedPreferences {
         })
     }
 
-    /// Whether Databricks-internal features are enabled.
+    /// Whether internal features are enabled.
     ///
     /// # Errors
     ///
     /// As [`Self::servers`].
-    pub fn databricks_internal_features_enabled(&self) -> Result<bool, CoreError> {
-        self.checked(self.inner.databricks_internal_features_enabled())
+    pub fn internal_features_enabled(&self) -> Result<bool, CoreError> {
+        self.checked(self.inner.internal_features_enabled())
     }
 }
 

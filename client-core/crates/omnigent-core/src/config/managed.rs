@@ -25,7 +25,7 @@
 //! | hosts | anything the URL parser accepts (numeric hosts are canonicalized) | [`ServerOrigin`] grammar: no credentials, ambiguous numeric or non-ASCII hosts |
 //! | `omnigentServerName` query item | kept in the URL | removed and used as the display name |
 //! | a non-string entry | [`ManagedConfigError::ServerUrlsNotAnArray`] | [`ManagedConfigError::InvalidServer`] with [`ManagedEntryError::NotAString`] |
-//! | a non-boolean `databricksInternalFeaturesEnabled` | fails closed to `false`, keeps the servers, and is recorded in [`ManagedConfiguration::issues`] | [`ManagedConfigError::NotABoolean`] |
+//! | a non-boolean internal features key | fails closed to `false`, keeps the servers, and is recorded in [`ManagedConfiguration::issues`] | [`ManagedConfigError::NotABoolean`] |
 //! | channels | declarative wins over the legacy defaults key ([`ManagedConfiguration::resolve`]) | first domain that sets a key wins ([`ManagedPreferences`]) |
 //!
 //! Electron returns an empty list (and `false`) for every invalid value instead of an error.
@@ -41,7 +41,7 @@ use crate::server_url::{self, ServerUrlError};
 
 /// The array of server URL strings.
 pub const SERVER_URLS_KEY: &str = "serverUrls";
-/// Boolean gating Databricks-internal features. Only an explicit `true` enables them.
+/// Boolean gating internal features. Only an explicit `true` enables them.
 pub const DATABRICKS_INTERNAL_FEATURES_KEY: &str = "databricksInternalFeaturesEnabled";
 /// Query parameter naming a server inside a desktop `serverUrls` entry.
 pub const SERVER_NAME_PARAMETER: &str = "omnigentServerName";
@@ -233,8 +233,8 @@ impl ManagedServer {
 pub struct ManagedConfiguration {
     /// Organization servers in administrator order, de-duplicated by origin (first kept).
     pub servers: Vec<ManagedServer>,
-    /// Whether Databricks-internal features are on.
-    pub databricks_internal_features_enabled: bool,
+    /// Whether internal features are on.
+    pub internal_features_enabled: bool,
     /// Problems resolved fail-closed instead of rejecting the configuration: an iOS non-boolean
     /// flag read as `false`, or an iOS legacy dictionary ignored as a whole. Hosts log these; the
     /// legacy channel has no way to report them to the administrator.
@@ -245,11 +245,11 @@ impl ManagedConfiguration {
     /// No servers, features off.
     pub const EMPTY: Self = Self {
         servers: Vec::new(),
-        databricks_internal_features_enabled: false,
+        internal_features_enabled: false,
         issues: Vec::new(),
     };
 
-    /// Decodes a flat configuration dictionary (`serverUrls`, `databricksInternalFeaturesEnabled`).
+    /// Decodes a flat configuration dictionary (`serverUrls` and the internal features key).
     /// Unknown keys are ignored. An absent `serverUrls` offers no servers.
     ///
     /// # Errors
@@ -262,7 +262,7 @@ impl ManagedConfiguration {
         };
         let mut issues = Vec::new();
         let flag = map.get(DATABRICKS_INTERNAL_FEATURES_KEY);
-        let databricks_internal_features_enabled = match (dialect, flag) {
+        let internal_features_enabled = match (dialect, flag) {
             (_, None) => false,
             (_, Some(Value::Bool(enabled))) => *enabled,
             // Only a boolean true opts in; a malformed flag must not discard valid servers.
@@ -278,7 +278,7 @@ impl ManagedConfiguration {
         };
         Ok(Self {
             servers,
-            databricks_internal_features_enabled,
+            internal_features_enabled,
             issues,
         })
     }
@@ -309,7 +309,7 @@ impl ManagedConfiguration {
         issues.extend(legacy.issues);
         Self {
             servers: resolve_servers(declarative.servers, legacy.servers),
-            databricks_internal_features_enabled: declarative.databricks_internal_features_enabled,
+            internal_features_enabled: declarative.internal_features_enabled,
             issues,
         }
     }
@@ -702,12 +702,12 @@ impl<S: ManagedPreferenceSource> ManagedPreferences<S> {
         Ok(ManagedPreferencesSnapshot::default())
     }
 
-    /// Reads `databricksInternalFeaturesEnabled`. Only an explicit boolean `true` enables it.
+    /// Reads the internal features key. Only an explicit boolean `true` enables it.
     ///
     /// # Errors
     ///
     /// [`ManagedConfigError::NotABoolean`] for numbers, strings and other types.
-    pub fn databricks_internal_features_enabled(&self) -> Result<bool, ManagedConfigError> {
+    pub fn internal_features_enabled(&self) -> Result<bool, ManagedConfigError> {
         for domain in &self.domains {
             let Some(value) = self.source.value(DATABRICKS_INTERNAL_FEATURES_KEY, domain) else {
                 continue;
@@ -856,12 +856,12 @@ mod tests {
 
     #[test]
     fn managed_preserves_workspace_mount() {
-        let config =
-            decode(&json!({"serverUrls": ["https://ws.cloud.databricks.com/ml/omnigents"]}));
-        assert_eq!(
-            config.server_urls(),
-            ["https://ws.cloud.databricks.com/ml/omnigents"]
+        let workspace = format!(
+            "https://ws.cloud.{}/ml/omnigents",
+            crate::auth::testing::WORKSPACE_DOMAIN
         );
+        let config = decode(&json!({"serverUrls": [workspace]}));
+        assert_eq!(config.server_urls(), [workspace]);
     }
 
     #[test]
@@ -886,14 +886,13 @@ mod tests {
         );
     }
 
-    // MARK: Databricks-internal features
+    // MARK: Internal features
 
     #[test]
     fn managed_internal_features_default_disabled() {
-        assert!(!decode(&json!({})).databricks_internal_features_enabled);
+        assert!(!decode(&json!({})).internal_features_enabled);
         assert!(
-            !decode(&json!({"serverUrls": ["https://corp.example.com"]}))
-                .databricks_internal_features_enabled
+            !decode(&json!({"serverUrls": ["https://corp.example.com"]})).internal_features_enabled
         );
     }
 
@@ -901,7 +900,7 @@ mod tests {
     fn managed_internal_flag_bool_without_servers() {
         for enabled in [true, false] {
             let config = decode(&json!({"databricksInternalFeaturesEnabled": enabled}));
-            assert_eq!(config.databricks_internal_features_enabled, enabled);
+            assert_eq!(config.internal_features_enabled, enabled);
             assert_eq!(config.servers, Vec::new());
             assert_eq!(config.issues, Vec::new());
         }
@@ -923,7 +922,7 @@ mod tests {
                 "databricksInternalFeaturesEnabled": value,
             }));
             assert!(
-                !config.databricks_internal_features_enabled,
+                !config.internal_features_enabled,
                 "unexpected opt-in for {value}"
             );
             assert_eq!(config.servers.len(), 1);
@@ -950,16 +949,13 @@ mod tests {
         ] {
             let legacy = json!({"databricksInternalFeaturesEnabled": value});
             assert_eq!(
-                ManagedConfiguration::decode_ios_legacy(Some(&legacy))
-                    .databricks_internal_features_enabled,
+                ManagedConfiguration::decode_ios_legacy(Some(&legacy)).internal_features_enabled,
                 expected,
                 "{value}"
             );
         }
         // Removing the key.
-        assert!(
-            !ManagedConfiguration::decode_ios_legacy(None).databricks_internal_features_enabled
-        );
+        assert!(!ManagedConfiguration::decode_ios_legacy(None).internal_features_enabled);
     }
 
     #[test]
@@ -972,7 +968,7 @@ mod tests {
         ] {
             assert!(
                 !ManagedConfiguration::resolve(Some(declarative), legacy.clone())
-                    .databricks_internal_features_enabled
+                    .internal_features_enabled
             );
         }
     }
@@ -982,14 +978,14 @@ mod tests {
         let declarative = decode(&json!({"databricksInternalFeaturesEnabled": true}));
         let legacy = decode(&json!({"serverUrls": ["https://corp.example.com"]}));
         let resolved = ManagedConfiguration::resolve(Some(declarative), legacy.clone());
-        assert!(resolved.databricks_internal_features_enabled);
+        assert!(resolved.internal_features_enabled);
         assert_eq!(resolved.servers, legacy.servers);
     }
 
     #[test]
     fn managed_legacy_flag_only_when_declarative_absent() {
         let legacy = decode(&json!({"databricksInternalFeaturesEnabled": true}));
-        assert!(ManagedConfiguration::resolve(None, legacy).databricks_internal_features_enabled);
+        assert!(ManagedConfiguration::resolve(None, legacy).internal_features_enabled);
         assert_eq!(
             ManagedConfiguration::resolve(None, ManagedConfiguration::EMPTY),
             ManagedConfiguration::EMPTY
@@ -1103,7 +1099,7 @@ mod tests {
         let legacy = json!({"serverUrls": ["http://insecure.example.com"]});
         let config = ManagedConfiguration::decode_ios_legacy(Some(&legacy));
         assert_eq!(config.servers, Vec::new());
-        assert!(!config.databricks_internal_features_enabled);
+        assert!(!config.internal_features_enabled);
         // Ignored, but still reported to the host.
         assert_eq!(config.issues.len(), 1);
         assert_eq!(
@@ -1503,13 +1499,12 @@ mod tests {
     fn desktop_internal_features_need_an_explicit_true() {
         let key = DATABRICKS_INTERNAL_FEATURES_KEY;
         let enabled = |domain: &str, value: Value| {
-            reader(FakeSource::default().with(domain, key, value))
-                .databricks_internal_features_enabled()
+            reader(FakeSource::default().with(domain, key, value)).internal_features_enabled()
         };
         assert_eq!(enabled("ai.omnigent.desktop", json!(true)), Ok(true));
         assert_eq!(enabled("ai.omnigent.mac", json!(false)), Ok(false));
         assert_eq!(
-            reader(FakeSource::default()).databricks_internal_features_enabled(),
+            reader(FakeSource::default()).internal_features_enabled(),
             Ok(false)
         );
         for value in [json!(1), json!("true"), json!([true])] {

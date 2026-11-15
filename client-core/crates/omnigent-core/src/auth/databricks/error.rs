@@ -176,14 +176,13 @@ pub enum WorkspaceFailure<'a> {
 #[must_use]
 pub fn workspace_error_message(
     failure: WorkspaceFailure<'_>,
-    databricks_internal_features: bool,
+    internal_features: bool,
 ) -> Option<String> {
     match failure {
         WorkspaceFailure::Databricks(error) => error.user_message(),
-        WorkspaceFailure::Platform(error) => Some(connection_error_message(
-            error,
-            databricks_internal_features,
-        )),
+        WorkspaceFailure::Platform(error) => {
+            Some(connection_error_message(error, internal_features))
+        }
     }
 }
 
