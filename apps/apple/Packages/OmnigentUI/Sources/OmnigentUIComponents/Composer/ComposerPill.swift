@@ -29,21 +29,22 @@ struct ComposerFooter: View {
       || ((state.tray != nil || state.context != nil) && tray.hasLeadingItems)
   }
 
+  /// How narrow where it runs may get before the row splits in two.
+  static let shortestLeadingWidth: CGFloat = 140
+
   var body: some View {
-    // A narrow pane puts where it runs on its own line above the controls.
+    // A narrow pane first shortens where it runs; only a very narrow one gives it its own line.
     ViewThatFits(in: .horizontal) {
-      HStack(spacing: Theme.Spacing.medium) {
+      row(leading)
+      row(
+        leading.frame(
+          minWidth: Self.shortestLeadingWidth, idealWidth: Self.shortestLeadingWidth,
+          maxWidth: .infinity, alignment: .leading))
+      VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
         leading
-        Spacer(minLength: Theme.Spacing.small)
         trailing
       }
-      VStack(alignment: .trailing, spacing: Theme.Spacing.extraSmall) {
-        HStack(spacing: Theme.Spacing.medium) {
-          leading
-          Spacer(minLength: 0)
-        }
-        trailing
-      }
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
     .font(.callout)
     .menuStyle(.button)
@@ -53,18 +54,28 @@ struct ComposerFooter: View {
     .accessibilityIdentifier("composer-footer")
   }
 
+  private func row(_ leading: some View) -> some View {
+    HStack(spacing: Theme.Spacing.medium) {
+      leading
+      Spacer(minLength: Theme.Spacing.small)
+      trailing
+    }
+  }
+
   @ViewBuilder private var leading: some View {
     if hasLeading {
       HStack(spacing: Theme.Spacing.medium) {
         // The context line names the host; the chip keeps its symbol, status and menu.
         if let hosts = choosableHosts {
           HostChip(hosts: hosts, actions: actions.extras, showsName: false).tint(.secondary)
+            .fixedSize()
         }
         if state.tray != nil || state.context != nil {
           tray.leadingItems.menuIndicator(.visible)
         }
         if !indicators.isEmpty {
           ComposerIndicatorsView(indicators: indicators, actions: actions.extras.indicators)
+            .fixedSize()
         }
       }
       .font(.caption)
