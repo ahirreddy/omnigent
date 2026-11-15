@@ -228,6 +228,17 @@ pub enum SandboxOperation {
     Stop,
 }
 
+/// What the server did with an operation it took.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SandboxOperationOutcome {
+    /// It is bringing the sandbox and its agent back.
+    Started,
+    /// Nothing needed waking: the agent's runner was already connected.
+    AlreadyRunning,
+    /// It ended the agent's process, or found none running.
+    Stopped,
+}
+
 /// One operation as a button: its title and why it does not apply now.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SandboxOperationState {

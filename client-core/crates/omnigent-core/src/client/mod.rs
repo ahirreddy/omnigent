@@ -60,6 +60,7 @@ mod remote_browsers;
 mod requests;
 mod routing;
 mod sandbox;
+mod sandbox_operations;
 pub mod server_admin;
 mod session_actions;
 pub mod session_search;
@@ -651,6 +652,10 @@ mod attachment_previews_tests;
 #[cfg(test)]
 #[path = "recovery_tests.rs"]
 mod recovery_tests;
+
+#[cfg(test)]
+#[path = "sandbox_operations_tests.rs"]
+mod sandbox_operations_tests;
 
 #[cfg(test)]
 #[path = "agent_info_tests.rs"]

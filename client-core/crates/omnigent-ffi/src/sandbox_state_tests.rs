@@ -206,3 +206,69 @@ fn the_rules_answer_for_a_sandbox_session_and_not_for_a_machine() {
     };
     assert_eq!(sandbox_state(machine), None);
 }
+
+#[test]
+fn an_operation_and_its_outcome_convert() {
+    use core::SandboxOperationOutcome as O;
+    for (ours, theirs) in [
+        (SandboxOperation::Wake, core::SandboxOperation::Wake),
+        (SandboxOperation::Stop, core::SandboxOperation::Stop),
+    ] {
+        assert_eq!(core::SandboxOperation::from(ours), theirs);
+    }
+    for (theirs, ours) in [
+        (O::Started, SandboxOperationOutcome::Started),
+        (O::AlreadyRunning, SandboxOperationOutcome::AlreadyRunning),
+        (O::Stopped, SandboxOperationOutcome::Stopped),
+    ] {
+        assert_eq!(SandboxOperationOutcome::from(theirs), ours);
+    }
+}
+
+#[test]
+fn an_operation_reaches_the_server_and_reports_its_outcome_or_its_refusal() {
+    use std::sync::Arc;
+
+    use crate::test_support::{connected, json};
+    const EVENTS: &str = "/v1/sessions/conv_a/events";
+    let mut harness = connected();
+    harness
+        .http
+        .route(EVENTS, json(202, r#"{"queued":false,"recovered":true}"#));
+    let core = Arc::clone(&harness.core);
+    let woken = harness.run(async move {
+        core.sandbox_operation("conv_a".into(), SandboxOperation::Wake)
+            .await
+    });
+    assert!(
+        matches!(woken, Ok(SandboxOperationOutcome::Started)),
+        "{woken:?}"
+    );
+    let core = Arc::clone(&harness.core);
+    let stopped = harness.run(async move {
+        core.sandbox_operation("conv_a".into(), SandboxOperation::Stop)
+            .await
+    });
+    assert!(
+        matches!(stopped, Ok(SandboxOperationOutcome::Stopped)),
+        "{stopped:?}"
+    );
+
+    harness.http.route(
+        EVENTS,
+        json(
+            503,
+            r#"{"error":{"code":"runner_unavailable","message":"No runner is available."}}"#,
+        ),
+    );
+    let core = Arc::clone(&harness.core);
+    let refused = harness.run(async move {
+        core.sandbox_operation("conv_a".into(), SandboxOperation::Wake)
+            .await
+    });
+    assert!(
+        matches!(&refused, Err(CoreError::Session { message, .. })
+            if message.contains("No runner is available.")),
+        "{refused:?}"
+    );
+}

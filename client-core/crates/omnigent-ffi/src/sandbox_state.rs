@@ -3,6 +3,9 @@
 
 use omnigent_core::sandbox_state as core;
 
+use crate::client::ClientCore;
+use crate::errors::CoreError;
+
 /// A stage of a sandbox launch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum SandboxLaunchStage {
@@ -211,6 +214,36 @@ impl From<core::SandboxOperation> for SandboxOperation {
     }
 }
 
+impl From<SandboxOperation> for core::SandboxOperation {
+    fn from(operation: SandboxOperation) -> Self {
+        match operation {
+            SandboxOperation::Wake => Self::Wake,
+            SandboxOperation::Stop => Self::Stop,
+        }
+    }
+}
+
+/// What the server did with an operation it took.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum SandboxOperationOutcome {
+    /// It is bringing the sandbox and its agent back.
+    Started,
+    /// Nothing needed waking: the agent's runner was already connected.
+    AlreadyRunning,
+    /// It ended the agent's process, or found none running.
+    Stopped,
+}
+
+impl From<core::SandboxOperationOutcome> for SandboxOperationOutcome {
+    fn from(outcome: core::SandboxOperationOutcome) -> Self {
+        match outcome {
+            core::SandboxOperationOutcome::Started => Self::Started,
+            core::SandboxOperationOutcome::AlreadyRunning => Self::AlreadyRunning,
+            core::SandboxOperationOutcome::Stopped => Self::Stopped,
+        }
+    }
+}
+
 /// One operation as a button: its title and why it does not apply now.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct SandboxOperationState {
@@ -294,6 +327,28 @@ pub fn sandbox_state(signals: SandboxSignals) -> Option<SandboxState> {
 #[uniffi::export]
 pub fn sandbox_launch_label(stage: SandboxLaunchStage) -> String {
     core::LaunchStage::from(stage).label().to_owned()
+}
+
+#[uniffi::export]
+impl ClientCore {
+    /// Asks the server to wake `session_id`'s sandbox and start its agent, or to stop the
+    /// agent: one request, never retried.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the preflight and write errors, the server's refusal with its
+    /// reason, and `DeliveryUncertain` when its answer cannot be read.
+    pub async fn sandbox_operation(
+        &self,
+        session_id: String,
+        operation: SandboxOperation,
+    ) -> Result<SandboxOperationOutcome, CoreError> {
+        self.sessions()
+            .sandbox_operation(&session_id, operation.into())
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
 }
 
 #[cfg(test)]
