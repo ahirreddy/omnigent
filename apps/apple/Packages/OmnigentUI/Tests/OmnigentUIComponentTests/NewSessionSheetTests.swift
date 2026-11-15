@@ -251,7 +251,9 @@
     func longTitle() throws {
       let (screen, _) = open()
       defer { screen.close() }
-      try screen.type(String(repeating: "t", count: 121), intoField: 1)
+      // Focuses the title, then enters it as one key event, as an input method does.
+      try screen.type("", intoField: 1)
+      try screen.press(keyCode: 0, characters: String(repeating: "t", count: 121))
       screen.settle(0.05)
       #expect(try screen.shows("Titles can be up to 120 characters."))
       try expectCreateDisabled(screen)

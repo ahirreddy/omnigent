@@ -42,11 +42,14 @@
       get throws { try openMenu(control: 0) }
     }
 
-    /// Checks an item's shortcut, then runs it and checks what it did.
+    /// Checks an item's shortcut, then runs it and checks what it did. A table of checks can
+    /// share one opened `menu`; otherwise this opens it.
     fileprivate func expect(
-      _ title: String, _ shortcut: KeyboardShortcut?, runs call: String, log: MenuLog
+      _ title: String, _ shortcut: KeyboardShortcut?, runs call: String, log: MenuLog,
+      in menu: NSMenu? = nil
     ) throws {
-      let item = try #require(try items.item(named: title), "\(title)")
+      let menu = try menu ?? items
+      let item = try #require(menu.item(named: title), "\(title)")
       #expect(item.isEnabled, "\(title)")
       var modifiers: NSEvent.ModifierFlags = []
       if let shortcut {
@@ -59,7 +62,7 @@
       #expect(item.keyEquivalent.lowercased() == key.lowercased(), "\(title)")
       #expect(item.keyEquivalentModifierMask == modifiers, "\(title)")
       log.calls = []
-      try choose(title, in: try items)
+      try choose(title, in: menu)
       #expect(log.calls == [call], "\(title)")
     }
   }
@@ -101,8 +104,9 @@
         .init("Previous Session", AppShortcuts.previousSession, "previous"),
         .init("Next Session", AppShortcuts.nextSession, "next"),
       ]
+      let menu = try screen.items
       for check in table {
-        try screen.expect(check.title, check.shortcut, runs: check.call, log: log)
+        try screen.expect(check.title, check.shortcut, runs: check.call, log: log, in: menu)
       }
     }
 
@@ -257,8 +261,9 @@
         .init("Move Tab to New Window", nil, "new window"),
         .init("Move Tab to Other Pane", nil, "other pane"),
       ]
+      let menu = try screen.items
       for check in table {
-        try screen.expect(check.title, check.shortcut, runs: check.call, log: log)
+        try screen.expect(check.title, check.shortcut, runs: check.call, log: log, in: menu)
       }
     }
 
