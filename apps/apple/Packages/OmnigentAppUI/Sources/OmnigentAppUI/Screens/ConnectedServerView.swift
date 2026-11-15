@@ -126,7 +126,10 @@ public struct ConnectedServerView: View {
     .task(id: connection.connectedServer?.baseUrl) {
       if connection.connectedServer != nil { await connection.loadOfferedPages() }
     }
-    .modifier(WindowTabOverview(tabs: tabs, isPresented: $showsTabOverview))
+    .modifier(
+      WindowTabOverview(
+        tabs: tabs, isPresented: $showsTabOverview, renameSession: renameSessionOfTab)
+    )
     .alert(
       connection.sessionList.editRetry?.title ?? "Could Not Update the Session",
       isPresented: editErrorPresented,
@@ -166,9 +169,14 @@ public struct ConnectedServerView: View {
   /// A chat tab's menu renames its session, as the session menu and Option-Command-R do.
   private func renamable(_ actions: TabActions) -> TabActions {
     var actions = actions
-    let (model, tabs, list) = (sidebarModel, session.tabs, connection.sessionList)
-    actions.renameSession = { model.askToRename(tabID: $0, tabs: tabs, list: list) }
+    actions.renameSession = renameSessionOfTab
     return actions
+  }
+
+  /// Asks for a new title for the session of a chat tab, by the tab's id.
+  var renameSessionOfTab: @MainActor (String) -> Void {
+    let (model, tabs, list) = (sidebarModel, session.tabs, connection.sessionList)
+    return { model.askToRename(tabID: $0, tabs: tabs, list: list) }
   }
 
   var sidebarState: SidebarViewState {

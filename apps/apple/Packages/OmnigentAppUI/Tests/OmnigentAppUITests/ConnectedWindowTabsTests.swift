@@ -74,6 +74,43 @@ extension ConnectedWindowFlowTests {
     }
   }
 
+  @Test("Rename Session on a chat's row in the tab overview closes it and renames the session")
+  func renamingFromTheOverview() async throws {
+    let server = threeSessionServer()
+    server.route(
+      "/v1/sessions/conv_a", method: "PATCH",
+      .json(#"{"id":"conv_a","status":"idle","created_at":1,"title":"Renamed"}"#))
+    let mounted = try await mounted(server)
+    let list = mounted.session.connection.sessionList
+    try await settle(mounted.screen, until: "the list") { list.session("conv_a") != nil }
+    // The overview as the window presents it, over the window's own tabs and rename.
+    let overview = OffscreenWindow(
+      TabOverviewHost(view: mounted.view), width: 600, height: 600)
+    defer {
+      overview.close()
+      mounted.screen.close()
+    }
+    try await settle(overview, until: "the overview") { overview.window.attachedSheet != nil }
+
+    // The rename prompt is the connected window's; its Rename button answers it.
+    SystemSideEffects.answer(alert: .alertFirstButtonReturn, for: mounted.screen.window)
+    // The chat's row follows the list's own first row.
+    let menu = try contextMenu(ofListRow: 1, in: overview)
+    let rename = try #require(menu.items.firstIndex { $0.title == "Rename Session\u{2026}" })
+    menu.performActionForItem(at: rename)
+    // The prompt opens on the session's title.
+    #expect(mounted.model.renamingFromTab?.id == "conv_a")
+    #expect(mounted.model.renameText == list.session("conv_a")?.title)
+    mounted.model.renameText = "Renamed"
+    try await settle(overview, until: "the overview to close") {
+      overview.window.attachedSheet == nil
+    }
+    try await settle(mounted.screen, until: "the rename") {
+      !server.requests("PATCH", "/v1/sessions/conv_a").isEmpty
+    }
+    #expect(try server.patched("/v1/sessions/conv_a").first?["title"] as? String == "Renamed")
+  }
+
   #if DEBUG
     @Test("Switching to a chat that stayed built renders it once")
     func switchingRendersTheShownChatOnce() async throws {
@@ -115,5 +152,18 @@ extension ConnectedWindowFlowTests {
       return id != "tab_old"
     }
     #expect(group.tabs.count == 2, "its chat, and the tab in its old place")
+  }
+}
+
+/// The window's tab overview, shown, as `view` presents it: its tabs and its Rename Session.
+private struct TabOverviewHost: View {
+  let view: ConnectedServerView
+  @State private var isPresented = true
+
+  var body: some View {
+    Color.clear.modifier(
+      WindowTabOverview(
+        tabs: view.windowTabs, isPresented: $isPresented,
+        renameSession: view.renameSessionOfTab))
   }
 }
