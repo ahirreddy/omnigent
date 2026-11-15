@@ -85,11 +85,11 @@ struct ConnectedWindowFlowTests {
     let store = try #require(mounted.session.tabs.current)
     let inbox = store.open(.inbox)
     store.show(inbox.id, in: .trailing)
-    try await pause(mounted.screen, .milliseconds(100))
+    try await settle(mounted.screen, untilShowing: "Inbox")
     #expect(store.splitState != nil)
     #expect(try mounted.screen.shows("Inbox"))
     store.close(inbox.id)
-    try await pause(mounted.screen)
+    try await settle(mounted.screen, until: "the split to close") { store.splitState == nil }
     #expect(store.splitState == nil)
   }
 
@@ -250,6 +250,6 @@ func titled<Root: View>(_ root: Root, width: CGFloat, height: CGFloat) async thr
   screen.window.setFrame(frame, display: false)
   screen.host.sceneBridgingOptions = [.toolbars, .title]
   screen.window.contentView = screen.host
-  try await pause(screen, .milliseconds(300))
+  await screen.settleTasks(limit: .milliseconds(300))
   return screen
 }

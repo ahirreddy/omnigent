@@ -26,27 +26,6 @@ struct ConnectedAppTests {
     return (screen, (session, selection))
   }
 
-  private static let sessionTitles = [
-    "Native mobile design", "Choose the first release", "Project notes",
-  ]
-
-  /// Waits for the sidebar to list every demo session.
-  private func waitForSessions(_ screen: Screen) async throws {
-    for title in Self.sessionTitles {
-      try await settle(screen, untilShowing: title, contains: true)
-    }
-  }
-
-  /// Waits for the session's chat to show its request card, or none, with its editor holding
-  /// the keyboard.
-  private func waitForComposer(_ screen: Screen, pending: Bool) async throws {
-    try await settle(screen, until: "the chat's editor to take the keyboard") {
-      let showsRequest = (try? screen.shows("Apply the sample design?")) == true
-      let editor = screen.window.firstResponder as? NSTextView
-      return showsRequest == pending && editor?.isEditable == true
-    }
-  }
-
   @Test("The sidebar lists the server's sessions")
   func theSidebarLists() async throws {
     let (screen, _) = try await window()
@@ -133,6 +112,8 @@ struct ConnectedAppTests {
     let (screen, _) = try await window(page: .session("demo-design"))
     defer { screen.close() }
     try await settle(screen, untilShowing: "Apply the sample design?")
+    try await settle(
+      screen, untilShowing: "Help me make the mobile session screen easier to scan.")
     try await settle(screen, untilShowing: "1 request needs you")
     #expect(try screen.shows("Apply the sample design?"), "the pending approval")
     #expect(try screen.shows("Help me make the mobile session screen easier to scan."))
@@ -287,6 +268,29 @@ struct ConnectedAppTests {
     try await settle(screen, untilShowing: "What should we build?")
     #expect(try screen.shows("What should we build?"))
     #expect(try !screen.shows("The disk is on fire"))
+  }
+}
+
+extension ConnectedAppTests {
+  private static let sessionTitles = [
+    "Native mobile design", "Choose the first release", "Project notes",
+  ]
+
+  /// Waits for the sidebar to list every demo session.
+  private func waitForSessions(_ screen: Screen) async throws {
+    for title in Self.sessionTitles {
+      try await settle(screen, untilShowing: title, contains: true)
+    }
+  }
+
+  /// Waits for the session's chat to show its request card, or none, with its editor holding
+  /// the keyboard.
+  private func waitForComposer(_ screen: Screen, pending: Bool) async throws {
+    try await settle(screen, until: "the chat's editor to take the keyboard") {
+      let showsRequest = (try? screen.shows("Apply the sample design?")) == true
+      let editor = screen.window.firstResponder as? NSTextView
+      return showsRequest == pending && editor?.isEditable == true
+    }
   }
 }
 

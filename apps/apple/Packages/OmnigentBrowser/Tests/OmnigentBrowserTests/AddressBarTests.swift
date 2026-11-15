@@ -72,7 +72,7 @@ struct AddressBarTests {
       window.contentView = host
       host.frame = CGRect(origin: .zero, size: size)
       host.layoutSubtreeIfNeeded()
-      RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+      MainLoop.settle(limit: 0.4, windows: [window])
       host.layoutSubtreeIfNeeded()
       let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
       host.cacheDisplay(in: host.bounds, to: bitmap)

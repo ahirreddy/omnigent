@@ -80,11 +80,13 @@ struct PermissionsCommandTests {
   /// in the suggestion the command menu highlights.
   private func sendPermissions(_ screen: Screen, _ composer: ComposerStore) async throws {
     try screen.type("/permissions")
-    try await pause(screen)
+    try await settle(screen, until: "the keys") { composer.text == "/permissions" }
     #expect(composer.text == "/permissions", "the keys reach the composer")
     for _ in 0..<2 where composer.approvalPickerRequests == 0 {
       try screen.press(keyCode: 36, characters: "\r")
-      try await pause(screen, .milliseconds(200))
+      _ = await screen.waitUntil(timeout: .milliseconds(200)) {
+        composer.approvalPickerRequests > 0
+      }
     }
     #expect(composer.approvalPickerRequests == 1)
     try await settle(screen, until: "the approval dialog") {

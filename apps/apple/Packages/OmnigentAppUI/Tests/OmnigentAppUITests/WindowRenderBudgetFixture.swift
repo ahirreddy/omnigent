@@ -89,9 +89,11 @@ import Testing
         selection: selection, chatTabID: chat.id, sideChatTabID: sideChat)
       try window.feed(shown, reply: "Alpha reply", streaming: true)
       try window.feed(hidden, reply: "Beta reply", streaming: false)
-      try await pause(screen, .milliseconds(400))
+      try await settle(screen, until: "the shown chat's reply") {
+        (try? window.builtReplies())?.contains("Alpha reply") == true
+      }
       try window.focusComposer()
-      try await pause(screen, .milliseconds(200))
+      await screen.settleTasks(limit: .milliseconds(200))
       return window
     }
 
