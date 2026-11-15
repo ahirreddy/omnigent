@@ -10,12 +10,32 @@
     private static var counts: [String: Int] = [:]
     private static var details: [String: Int] = [:]
     private static var printed = 0
+    private static var longestTurn: TimeInterval = 0
+    private static var turnTime: TimeInterval = 0
 
     /// Starts tracing one wait.
     static func begin() {
       guard isOn else { return }
       counts = [:]
       details = [:]
+      longestTurn = 0
+      turnTime = 0
+    }
+
+    /// Adds one turn's duration.
+    /// - Parameter seconds: How long the turn took.
+    static func note(turnTook seconds: TimeInterval) {
+      guard isOn else { return }
+      longestTurn = max(longestTurn, seconds)
+      turnTime += seconds
+    }
+
+    /// Names a window whose drawing stayed pending through its own display pass.
+    /// - Parameter window: The window.
+    static func note(stuckDrawingIn window: NSWindow) {
+      guard isOn else { return }
+      let place = "\(Int(window.frame.minX)),\(Int(window.frame.minY))"
+      details["drawing stays pending: \(type(of: window)) at \(place)", default: 0] += 1
     }
 
     /// Counts one turn's activity.
@@ -23,8 +43,7 @@
     static func note(_ activity: MainLoop.Activity) {
       guard isOn else { return }
       let names: [(MainLoop.Activity, String)] = [
-        (.source, "source"), (.timer, "timer"), (.layout, "layout"), (.drawing, "drawing"),
-        (.sleep, "sleep"),
+        (.source, "source"), (.layout, "layout"), (.drawing, "drawing"),
       ]
       for (bit, name) in names where activity.contains(bit) { counts[name, default: 0] += 1 }
       if activity.isEmpty { counts["idle", default: 0] += 1 }
@@ -63,6 +82,7 @@
       let causes = details.sorted { $0.value > $1.value }.prefix(6).map { "\($0.key) x\($0.value)" }
       let line =
         "settle-trace \(name) limit=\(limit)s turns: \(turns.joined(separator: " "))"
+        + " longest turn \(Int(longestTurn * 1000)) ms, turns took \(Int(turnTime * 1000)) ms"
         + (causes.isEmpty ? "" : "\n  " + causes.joined(separator: "\n  "))
       FileHandle.standardError.write(Data((line + "\n").utf8))
     }

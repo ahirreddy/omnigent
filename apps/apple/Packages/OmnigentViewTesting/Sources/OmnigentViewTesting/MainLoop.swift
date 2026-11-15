@@ -4,10 +4,13 @@
   /// Waits that end as soon as the main thread has nothing left to do, instead of after a fixed
   /// time. A duration passed to them is only a limit, reached when work keeps coming.
   ///
-  /// At rest means, for a few short run loop turns in a row: no source or event was handled, no
-  /// shown window has layout or drawing pending, no run loop timer is due before the limit and,
-  /// for the async waits, no `Task.sleep` ends before it. `OMNIGENT_FIXED_WAITS=1` makes every
-  /// wait take its whole limit again, to tell a flaky wait from a flaky test.
+  /// At rest means a few short run loop turns in a row did no work: no source or event was
+  /// handled and the given windows had no layout pending and drew nothing. A turn never sleeps,
+  /// so coarse timers (a VM's wake 15 to 90 ms late) don't stretch it. Work still to come at a
+  /// later time, a timer or a `Task.sleep`, is not waited for: wait for its effect with
+  /// ``waitUntil(timeout:_:)``, or for the time with ``run(for:)`` or `Task.sleep`.
+  /// `OMNIGENT_FIXED_WAITS=1` makes every wait take its whole limit again, to tell a flaky wait
+  /// from a flaky test.
   @MainActor
   public enum MainLoop {
     /// One turn: short, so a wait ends within a few milliseconds of the work running out.
@@ -21,7 +24,7 @@
     /// suspend; ``settleTasks(limit:windows:)`` lets them run too.
     /// - Parameters:
     ///   - limit: The longest wait, in seconds.
-    ///   - windows: Windows never shown whose layout counts too, as every shown window's does.
+    ///   - windows: The windows whose layout and drawing count, with their sheets and children.
     public static func settle(limit: TimeInterval = 0.1, windows: [NSWindow] = []) {
       let start = CFAbsoluteTimeGetCurrent()
       let deadline = start + limit
@@ -41,11 +44,11 @@
       SettleTrace.end("settle", limit: limit, reachedLimit: idle < idleTurns)
     }
 
-    /// Settles as ``settle(limit:windows:)`` does, suspending between turns so main actor tasks,
-    /// and what they wait for, run too. A `Task.sleep` ending before `limit` is waited for.
+    /// Settles as ``settle(limit:windows:)`` does, suspending between turns so main actor tasks
+    /// that are ready run too.
     /// - Parameters:
     ///   - limit: The longest wait.
-    ///   - windows: Windows never shown whose layout counts too, as every shown window's does.
+    ///   - windows: The windows whose layout and drawing count, with their sheets and children.
     public static func settleTasks(
       limit: Duration = .milliseconds(100), windows: [NSWindow] = []
     ) async {
@@ -60,9 +63,8 @@
       var idle = 0
       SettleTrace.begin()
       while idle < idleTurns, CFAbsoluteTimeGetCurrent() < deadline {
-        var activity = runTurn(until: deadline, windows: windows)
+        let activity = runTurn(until: deadline, windows: windows)
         await Task.yield()
-        if SleepTracker.hasSleep(endingBefore: deadline) { activity.insert(.sleep) }
         SettleTrace.note(activity)
         idle = activity.isEmpty ? idle + 1 : 0
       }
@@ -117,7 +119,7 @@
     /// - Parameter seconds: How long to run.
     public static func run(for seconds: TimeInterval) {
       let start = CFAbsoluteTimeGetCurrent()
-      spin(seconds)
+      _ = poll(until: start + seconds)
       WaitStats.record("run(for:)", since: start, reachedLimit: true)
     }
 

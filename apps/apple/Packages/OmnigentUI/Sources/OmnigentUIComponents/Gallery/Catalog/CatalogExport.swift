@@ -27,6 +27,8 @@ struct CatalogExportJob {
   var rightToLeft = false
   /// How long each render settles before it is captured.
   var settleTime: Duration = .milliseconds(150)
+  /// How a render waits for its view to settle; a test's wait can end as soon as it is at rest.
+  var settle: CatalogSettle = CatalogExporter.sleep
   /// Capture through the window server, so Liquid Glass and scroll edge effects draw (Mac).
   var capturesWindow = false
 }
@@ -72,7 +74,13 @@ enum CatalogExportError: Error, CustomStringConvertible {
   }
 }
 
+/// Waits up to a duration for a render's view to settle.
+typealias CatalogSettle = @MainActor (Duration) async throws -> Void
+
 enum CatalogExporter {
+  /// Waits the whole duration.
+  static let sleep: CatalogSettle = { try await Task.sleep(for: $0) }
+
   /// Every render the job makes, in catalog order: each state of each entry, on each device the
   /// entry supports, in each appearance.
   static func plan(_ job: CatalogExportJob) -> [CatalogExportItem] {
@@ -128,7 +136,7 @@ enum CatalogExporter {
           traits: traits(job, scheme: item.scheme, screen: item.screen),
           layout: CatalogLayout(canvas: entry.canvas, screen: item.screen, framed: job.framed),
           name: item.fileName,
-          settleTime: job.settleTime, capturesWindow: job.capturesWindow)
+          settleTime: job.settleTime, settle: job.settle, capturesWindow: job.capturesWindow)
         let url = job.directory.appending(path: item.fileName)
         try data.write(to: url)
         images.append(url)
@@ -151,6 +159,7 @@ enum CatalogExporter {
     static func render(
       _ state: CatalogState, context: CatalogContext, traits: CatalogTraits,
       layout: CatalogLayout, name: String, settleTime: Duration = .milliseconds(150),
+      settle: CatalogSettle = sleep,
       capturesWindow: Bool = false
     ) async throws -> Data {
       _ = NSApplication.shared
@@ -168,10 +177,10 @@ enum CatalogExporter {
       window.contentView = host
       if capturesWindow { CatalogWindowCapture.prepare(window) }
       resize(host, window: window, layout: layout)
-      try await Task.sleep(for: settleTime)
+      try await settle(settleTime)
       // Lazy content may change the fitting height once it has laid out.
       resize(host, window: window, layout: layout)
-      try await Task.sleep(for: .milliseconds(20))
+      try await settle(.milliseconds(20))
       host.layoutSubtreeIfNeeded()
       defer { window.orderOut(nil) }
       if capturesWindow {
@@ -206,6 +215,7 @@ enum CatalogExporter {
     static func render(
       _ state: CatalogState, context: CatalogContext, traits: CatalogTraits,
       layout: CatalogLayout, name: String, settleTime: Duration = .milliseconds(150),
+      settle: CatalogSettle = sleep,
       capturesWindow: Bool = false
     ) async throws -> Data {
       let window = UIApplication.shared.connectedScenes
@@ -221,7 +231,7 @@ enum CatalogExporter {
       window.addSubview(controller.view)
       defer { controller.view.removeFromSuperview() }
       controller.view.layoutIfNeeded()
-      try await Task.sleep(for: settleTime)
+      try await settle(settleTime)
       let image = UIGraphicsImageRenderer(size: size).image { _ in
         controller.view.drawHierarchy(
           in: CGRect(origin: .zero, size: size), afterScreenUpdates: true)

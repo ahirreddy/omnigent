@@ -12,7 +12,7 @@
     var body: some View {
       VStack {
         Button("Show") { isShown = true }
-        if isShown { Text("Shown").frame(width: 120, height: 40) }
+        if isShown { Button("Shown") {} }
       }
       .frame(width: 200, height: 200)
     }
@@ -40,19 +40,8 @@
         try screen.clickControl(at: 0)
         screen.settle(2)
       }
-      #expect(screen.allViews.contains { $0.frame.size == CGSize(width: 120, height: 40) })
+      #expect(screen.controlFrames.count == 2, "the new button is laid out")
       #expect(seconds < 1, "\(seconds)")
-    }
-
-    @Test("a run loop timer due before the limit fires before the settle returns")
-    func waitsForTimer() {
-      let fired = Flag()
-      let timer = Timer(timeInterval: 0.05, repeats: false) { _ in
-        MainActor.assumeIsolated { fired.isSet = true }
-      }
-      RunLoop.main.add(timer, forMode: .common)
-      MainLoop.settle(limit: 1)
-      #expect(fired.isSet)
     }
 
     @Test("a timer due after the limit is left for later")
@@ -73,30 +62,28 @@
       #expect(seconds < 0.4, "\(seconds)")
     }
 
-    @Test("only valid one-shot timers are read from a run loop's description")
-    func readsOneShotTimers() {
-      let listed = """
-        <CFRunLoopTimer 0x1 [0x2]>{valid = Yes, firing = No, interval = 0.05, tolerance = 0, \
-        next fire date = 816476870 (0.0487 @ 586), callout = (NSTimer) poll}
-        <CFRunLoopTimer 0x3 [0x2]>{valid = Yes, firing = No, interval = 0, tolerance = 0, \
-        next fire date = 816476871 (0.2986 @ 586), callout = (NSTimer) once}
-        <CFRunLoopTimer 0x4 [0x2]>{valid = No, firing = No, interval = 0, tolerance = 0, \
-        next fire date = 816476871 (-1.5 @ 586), callout = (NSTimer) gone}
-        """
-      let dates = TimerQueue.oneShotFireDates(in: listed, now: 100)
-      #expect(dates.count == 1)
-      #expect(abs((dates.first ?? 0) - 100.2986) < 1e-9)
-    }
-
-    @Test("a task's sleep ending before the limit is waited for, and its work runs")
-    func waitsForSleepingTask() async {
+    @Test("a task queued for the main actor runs before the async settle returns")
+    func runsQueuedTasks() async {
       let done = Flag()
       Task { @MainActor in
-        try? await Task.sleep(for: .milliseconds(80))
+        await Task.yield()
+        await Task.yield()
         done.isSet = true
       }
       await MainLoop.settleTasks(limit: .seconds(1))
       #expect(done.isSet)
+    }
+
+    @Test("a task's later sleep is not waited for; waiting for its effect is")
+    func sleepingTaskNeedsAConditionWait() async {
+      let done = Flag()
+      Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(300))
+        done.isSet = true
+      }
+      let seconds = await elapsed { await MainLoop.settleTasks(limit: .seconds(2)) }
+      #expect(seconds < 0.25, "\(seconds)")
+      #expect(await MainLoop.waitUntil(timeout: .seconds(5)) { done.isSet })
     }
 
     @Test("with nothing to do the async settle ends at once")

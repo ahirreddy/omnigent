@@ -90,7 +90,7 @@
       window.contentView = nil
       // AppKit queues run loop stops while windows change. Left for the test runner's own loop,
       // one would end the process early with exit code 0: a false pass.
-      RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+      _ = MainLoop.poll(until: CFAbsoluteTimeGetCurrent() + 0.01)
     }
 
     /// Clicks a point with a real mouse down and up.
@@ -111,7 +111,8 @@
     /// How long a plain click's menu may track before the click closes it and fails.
     static var stuckMenuLimit: TimeInterval { 5 }
 
-    /// Clicks, closing a menu the click opens if it is still tracking `delay` after it opened.
+    /// Clicks, closing a menu the click opens if it is still tracking `delay` after it opened,
+    /// or, for a `delay` of zero, as soon as its tracking loop runs.
     /// - Returns: The menu the click opened, if any, and whether this closed it.
     private func clickClosingMenus(
       _ point: CGPoint, clickCount: Int, modifiers: NSEvent.ModifierFlags, after delay: TimeInterval
@@ -126,10 +127,22 @@
         let menu = note.object as? NSMenu
         unsafe opened = menu
         // Canceling before the tracking loop starts would be lost.
-        let close = Timer(timeInterval: delay, repeats: false) { _ in
+        nonisolated(unsafe) let cancel = {
           guard let menu, unsafe opened === menu else { return }
           unsafe wasClosed = true
           menu.cancelTrackingWithoutAnimation()
+        }
+        guard delay > 0 else {
+          // The block runs in the tracking loop's first pass; a timer would fire late in a VM.
+          let tracking = CFRunLoopMode(RunLoop.Mode.eventTracking.rawValue as CFString)
+          CFRunLoopPerformBlock(CFRunLoopGetMain(), tracking.rawValue) {
+            MainActor.assumeIsolated { unsafe cancel() }
+          }
+          CFRunLoopWakeUp(CFRunLoopGetMain())
+          return
+        }
+        let close = Timer(timeInterval: delay, repeats: false) { _ in
+          MainActor.assumeIsolated { unsafe cancel() }
         }
         RunLoop.main.add(close, forMode: .common)
         unsafe closers.append(close)
@@ -145,7 +158,7 @@
         let target = activeWindow
         // A destructive button ignores a first mouse; keying an inactive app's window steals nothing.
         target.makeKey()
-        press(down, releasedBy: mouseUp, in: target) { unsafe opened != nil }
+        press(down, releasedBy: mouseUp, in: target)
         // Tracking that ended early, as a closing menu's does, leaves the posted up queued. A
         // later button's tracking would end on it, and that button's action would never run.
         NSApp.discardEvents(matching: .leftMouseUp, before: nil)
@@ -313,7 +326,7 @@
     /// - Returns: The menu; pass it to `choose(_:in:)` to run an item.
     /// - Throws: `OffscreenWindowError` when the click opened no menu.
     public func openMenu(_ point: CGPoint) throws -> NSMenu {
-      guard let opened = try clickClosingMenus(point, clickCount: 1, modifiers: [], after: 0.05)
+      guard let opened = try clickClosingMenus(point, clickCount: 1, modifiers: [], after: 0)
       else {
         throw OffscreenWindowError.notFound("a menu")
       }
