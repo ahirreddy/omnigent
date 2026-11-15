@@ -50,8 +50,48 @@ import Testing
   @MainActor
   @Suite("Window render budgets", .serialized, .timeLimit(.minutes(1)))
   struct WindowRenderBudgetTests {
-    @Test("An interaction renders only the scopes that show it", arguments: WindowInteraction.all)
-    func staysWithinItsBudget(_ interaction: WindowInteraction) async throws {
+    /// How many tests the table is split over, so a runner can spread it over processes.
+    nonisolated static let partCount = 6
+
+    /// Every `partCount`th interaction of the table, starting at `index`.
+    nonisolated static func part(_ index: Int) -> [WindowInteraction] {
+      WindowInteraction.all.indices.filter { $0 % partCount == index }.map {
+        WindowInteraction.all[$0]
+      }
+    }
+
+    @Test("An interaction renders only the scopes that show it, part 1", arguments: part(0))
+    func staysWithinItsBudget1(_ interaction: WindowInteraction) async throws {
+      try await staysWithinItsBudget(interaction)
+    }
+    @Test("An interaction renders only the scopes that show it, part 2", arguments: part(1))
+    func staysWithinItsBudget2(_ interaction: WindowInteraction) async throws {
+      try await staysWithinItsBudget(interaction)
+    }
+    @Test("An interaction renders only the scopes that show it, part 3", arguments: part(2))
+    func staysWithinItsBudget3(_ interaction: WindowInteraction) async throws {
+      try await staysWithinItsBudget(interaction)
+    }
+    @Test("An interaction renders only the scopes that show it, part 4", arguments: part(3))
+    func staysWithinItsBudget4(_ interaction: WindowInteraction) async throws {
+      try await staysWithinItsBudget(interaction)
+    }
+    @Test("An interaction renders only the scopes that show it, part 5", arguments: part(4))
+    func staysWithinItsBudget5(_ interaction: WindowInteraction) async throws {
+      try await staysWithinItsBudget(interaction)
+    }
+    @Test("An interaction renders only the scopes that show it, part 6", arguments: part(5))
+    func staysWithinItsBudget6(_ interaction: WindowInteraction) async throws {
+      try await staysWithinItsBudget(interaction)
+    }
+
+    @Test("the parts hold every interaction exactly once")
+    func partsCoverTheTable() {
+      let names = (0..<Self.partCount).flatMap { Self.part($0).map(\.name) }
+      #expect(names.sorted() == WindowInteraction.all.map(\.name).sorted())
+    }
+
+    private func staysWithinItsBudget(_ interaction: WindowInteraction) async throws {
       let window = try await BudgetWindow.open()
       defer { window.screen.close() }
       try await interaction.prepare(window)
