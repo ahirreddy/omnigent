@@ -138,13 +138,10 @@
 
   extension OffscreenWindow {
     /// Lets what the view started with `Task` or `.task` run: a run loop spun inside this test's
-    /// job holds them back on the main queue, so the test has to suspend.
+    /// job holds them back on the main queue, so the test has to suspend. It returns once the
+    /// window is at rest; each pass adds 20 ms to the limit.
     func letTasksRun(passes: Int = 4) async throws {
-      for _ in 0..<passes {
-        settle(0.01)
-        try await Task.sleep(for: .milliseconds(10))
-      }
-      settle(0.01)
+      await settleTasks(limit: .milliseconds(20 * passes + 10))
     }
   }
 
