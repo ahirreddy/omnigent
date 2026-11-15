@@ -166,6 +166,20 @@
       return CGFloat(last - first + 1) * pointsPerPixel
     }
 
+    /// A color's channels from 0 to 1.
+    struct RGB {
+      let red: Double
+      let green: Double
+      let blue: Double
+    }
+
+    /// A color's hue, saturation and brightness from 0 to 1.
+    struct HSB {
+      let hue: Double
+      let saturation: Double
+      let brightness: Double
+    }
+
     /// An image's pixels in 8-bit device RGB, converted once: reading an `NSColor` for each pixel
     /// took most of a render test's time.
     struct Pixels {
@@ -196,23 +210,22 @@
       }
 
       /// A pixel's color, from the top left, with its alpha taken out.
-      func color(_ column: Int, _ row: Int) -> (red: Double, green: Double, blue: Double) {
+      func color(_ column: Int, _ row: Int) -> RGB {
         let index = (row * width + column) * 4
         let alpha = Double(bytes[index + 3])
-        guard alpha > 0 else { return (0, 0, 0) }
-        return (
-          Double(bytes[index]) / alpha, Double(bytes[index + 1]) / alpha,
-          Double(bytes[index + 2]) / alpha
-        )
+        guard alpha > 0 else { return RGB(red: 0, green: 0, blue: 0) }
+        return RGB(
+          red: Double(bytes[index]) / alpha, green: Double(bytes[index + 1]) / alpha,
+          blue: Double(bytes[index + 2]) / alpha)
       }
 
-      /// Hue, saturation and brightness from 0 to 1, as `NSColor` gives them.
-      static func hsb(_ color: (red: Double, green: Double, blue: Double)) -> (
-        hue: Double, saturation: Double, brightness: Double
-      ) {
+      /// Hue, saturation and brightness, as `NSColor` gives them.
+      static func hsb(_ color: RGB) -> HSB {
         let highest = max(color.red, color.green, color.blue)
         let spread = highest - min(color.red, color.green, color.blue)
-        guard highest > 0, spread > 0 else { return (0, 0, highest) }
+        guard highest > 0, spread > 0 else {
+          return HSB(hue: 0, saturation: 0, brightness: highest)
+        }
         let sector: Double =
           if highest == color.red {
             (color.green - color.blue) / spread
@@ -222,14 +235,14 @@
             4 + (color.red - color.green) / spread
           }
         let hue = (sector / 6).truncatingRemainder(dividingBy: 1)
-        return (hue < 0 ? hue + 1 : hue, spread / highest, highest)
+        return HSB(hue: hue < 0 ? hue + 1 : hue, saturation: spread / highest, brightness: highest)
       }
 
       /// A pixel's color in 5 bits a channel, so near-equal colors count as one.
       func key(_ column: Int, _ row: Int) -> UInt32 {
-        let (red, green, blue) = color(column, row)
-        return UInt32(min(red, 1) * 31) << 10 | UInt32(min(green, 1) * 31) << 5
-          | UInt32(min(blue, 1) * 31)
+        let pixel = color(column, row)
+        return UInt32(min(pixel.red, 1) * 31) << 10 | UInt32(min(pixel.green, 1) * 31) << 5
+          | UInt32(min(pixel.blue, 1) * 31)
       }
     }
   }
