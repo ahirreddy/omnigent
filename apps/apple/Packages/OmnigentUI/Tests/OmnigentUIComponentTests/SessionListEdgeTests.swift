@@ -351,5 +351,25 @@
       defer { screen.close() }
       #expect(try screen.shows("only child"))
     }
+
+    @Test("A server name that doesn't fit beside the wordmark goes on its own line under it")
+    func headerLayoutWrapsTheName() throws {
+      let log = FrameLog()
+      let header = SidebarHeaderLayout(spacing: 4) {
+        Text("Omnigent").recordingFrame("wordmark", in: log)
+        Text("A server name far too long for this row").recordingFrame("name", in: log)
+        Text("Buttons").recordingFrame("buttons", in: log)
+      }
+      let screen = OffscreenWindow(
+        AnyView(header.frame(width: 200).fixedSize(horizontal: false, vertical: true)),
+        width: 200, height: 80)
+      defer { screen.close() }
+      let wordmark = try #require(log.frames["wordmark"])
+      let name = try #require(log.frames["name"])
+      let buttons = try #require(log.frames["buttons"])
+      #expect(name.minY > wordmark.maxY, "\(name) under \(wordmark)")
+      #expect(abs(name.minX - wordmark.minX) < 1)
+      #expect(abs(buttons.midY - wordmark.midY) < 1)
+    }
   }
 #endif
