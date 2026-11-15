@@ -161,6 +161,31 @@
       #expect(watcher.bounds(of: NSRange(location: 0, length: 1), in: unlaidOut) == nil)
     }
 
+    @Test("Selection bounds come from TextKit 2, which the editor keeps; none past the text's end")
+    func selectionBoundsKeepTextKit2() throws {
+      let editor = NSTextView(usingTextLayoutManager: true)
+      editor.frame = CGRect(x: 0, y: 0, width: 300, height: 100)
+      editor.string = "one two three"
+      let rect = try #require(
+        SelectionWatcher.WatcherView.containerBounds(
+          of: NSRange(location: 4, length: 3), in: editor))
+      #expect(rect.width > 10 && rect.height > 10)
+      let pastEnd = NSRange(location: 40, length: 3)
+      #expect(SelectionWatcher.WatcherView.containerBounds(of: pastEnd, in: editor) == nil)
+      #expect(editor.textLayoutManager != nil, "still TextKit 2")
+    }
+
+    @Test("A TextKit 1 editor's selection bounds come from its layout manager")
+    func selectionBoundsTextKit1() throws {
+      let editor = NSTextView(usingTextLayoutManager: false)
+      editor.frame = CGRect(x: 0, y: 0, width: 300, height: 100)
+      editor.string = "one two three"
+      let rect = try #require(
+        SelectionWatcher.WatcherView.containerBounds(
+          of: NSRange(location: 4, length: 3), in: editor))
+      #expect(rect.width > 10 && rect.height > 10)
+    }
+
     @Test("Output that arrives during a scroll waits, and catches up when the scroll ends")
     func catchesUpAfterScroll() async throws {
       let rows = (0..<10).flatMap { index in
