@@ -55,7 +55,12 @@ struct TabItemView: View {
 
   var body: some View {
     HStack(spacing: Theme.Spacing.small - 2) {
-      TabIcon(tab: tab, isSelected: isSelected)
+      // A pinned tab has room for its icon alone; its menu and the menu bar keep the switch.
+      if let mode = tab.viewMode, let setViewMode = actions.setViewMode, !tab.isPinned {
+        TabViewModeSwitch(mode: mode) { setViewMode(tab.id, $0) }
+      } else {
+        TabIcon(tab: tab, isSelected: isSelected)
+      }
       if !tab.isPinned {
         Text(tab.displayTitle)
           .font(.callout.weight(isSelected || isVisibleInOtherPane ? .medium : .regular))
@@ -295,6 +300,14 @@ struct TabContextMenu: View {
     if tab.canRenameSession, let rename = actions.renameSession {
       Button("Rename Session\u{2026}", systemImage: "pencil") { rename(tab.id) }
         .accessibilityIdentifier("tab-menu-rename-session")
+    }
+    // The tab's switch, for a pinned tab, the overview and a strip too narrow to show it.
+    if let mode = tab.viewMode, let setViewMode = actions.setViewMode {
+      let other: SessionViewMode = mode == .chat ? .terminal : .chat
+      Button("Show \(other.title)", systemImage: other.systemImage) {
+        setViewMode(tab.id, other)
+      }
+      .accessibilityIdentifier("tab-menu-view-mode")
     }
     if tab.canMoveToNewWindow, let moveToNewWindow = actions.moveToNewWindow {
       Button("Move Tab to New Window", systemImage: "macwindow.badge.plus") {

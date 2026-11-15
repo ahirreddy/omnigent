@@ -194,10 +194,12 @@ private struct HeldWhileHidden<Content: View>: View, Equatable {
 
 extension View {
   /// On Mac, keeps the view at the size it last had on screen while its tab is hidden
-  /// (``HeldTabSize``). Elsewhere the view is unchanged.
-  @ViewBuilder func holdsSizeWhileTabHidden() -> some View {
+  /// (``HeldTabSize``). Elsewhere, and for a view that is no tab's content, it is unchanged.
+  /// - Parameter isTabContent: The view is one tab's content.
+  /// - Returns: The view.
+  @ViewBuilder func holdsSizeWhileTabHidden(_ isTabContent: Bool = true) -> some View {
     #if os(macOS)
-      modifier(HoldsSizeWhileTabHidden())
+      if isTabContent { modifier(HoldsSizeWhileTabHidden()) } else { self }
     #else
       self
     #endif

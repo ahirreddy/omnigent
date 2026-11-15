@@ -18,6 +18,12 @@ public struct ConversationExtras {
   public var exportTranscript: (@MainActor () -> Void)?
   /// The Share sheet opened: read the current grants.
   public var shareOpened: (@MainActor () -> Void)?
+  /// Shows the right panel on a tab, where the window shows the session's panel itself; `nil`
+  /// where the conversation shows its own.
+  public var showPanelTab: (@MainActor (InspectorTab) -> Void)?
+  /// Shows or hides the right panel, where the window shows the session's panel itself; `nil`
+  /// where the conversation shows its own.
+  public var togglePanel: (@MainActor () -> Void)?
   /// What the sandbox status panel's buttons ask the server for.
   public var sandbox: SandboxStatusActions
 
@@ -139,17 +145,6 @@ struct ViewModePicker: View {
     .fixedSize()
     .help("Chat or Terminal (Option-Command-\\)")
     .accessibilityIdentifier("session-view-mode")
-  }
-}
-
-struct HeaderShareLabelStyle: LabelStyle {
-  let isCompact: Bool
-
-  func makeBody(configuration: Configuration) -> some View {
-    HStack(spacing: Theme.Spacing.extraSmall) {
-      configuration.icon
-      if !isCompact { configuration.title }
-    }
   }
 }
 

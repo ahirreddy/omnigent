@@ -11,44 +11,9 @@
   @MainActor
   struct TranscriptChromeTests {
     private let session = SessionSummary(id: "s", title: "Old title")
-    private let projects = [
-      SessionProject(id: "p", name: "Alpha", sessionIds: [], icon: "🚀"),
-      SessionProject(id: "q", name: "Beta", sessionIds: []),
-    ]
 
     init() {
       SystemSideEffects.reset()
-    }
-
-    @Test("The project tag moves the session, skips its own project and can remove it")
-    func projectTag() throws {
-      var moved: [String?] = []
-      let filed = transcriptScreen(
-        HeaderProjectTag(
-          session: session, context: SessionMenuContext(projects: projects, projectID: "p"),
-          move: { _, project in moved.append(project?.id) }))
-      defer { filed.close() }
-      #expect(try filed.shows("Alpha"))
-      let frame = try #require(filed.controlFrames.first)
-      let menu = try filed.openMenu(CGPoint(x: frame.midX, y: frame.midY))
-      #expect(titles(of: menu) == ["Alpha", "Beta", "Remove from Project"])
-      #expect(menu.items.first { $0.title == "Alpha" }?.isEnabled == false)
-      try filed.choose("Beta", in: menu)
-      try filed.choose("Remove from Project", in: menu)
-      #expect(moved == ["q", nil])
-
-      let unfiled = transcriptScreen(
-        HeaderProjectTag(
-          session: session, context: SessionMenuContext(projects: projects), move: { _, _ in }))
-      defer { unfiled.close() }
-      #expect(try unfiled.shows("Add to project"))
-
-      let noIcon = transcriptScreen(
-        HeaderProjectTag(
-          session: session, context: SessionMenuContext(projects: projects, projectID: "q"),
-          move: { _, _ in }))
-      defer { noIcon.close() }
-      #expect(try noIcon.shows("Beta"))
     }
 
     @Test("The origin bar names the relation and opens that session, titled or not")
@@ -205,21 +170,15 @@
       #expect(shown == [try #require(labels.tabs.first)])
     }
 
-    @Test("The session menu button opens its actions, and Share's label can drop its title")
+    @Test("The session menu button opens its actions")
     func sessionMenuButton() throws {
       var ran = 0
       let screen = transcriptScreen(
         VStack {
           SessionActionsButton { Button("Pin") { ran += 1 } }
-          Label("Share", systemImage: "person.badge.plus")
-            .labelStyle(HeaderShareLabelStyle(isCompact: true))
-          Label("Wide", systemImage: "person.badge.plus")
-            .labelStyle(HeaderShareLabelStyle(isCompact: false))
           BarHitShield().frame(height: 10)
         })
       defer { screen.close() }
-      #expect(try !screen.shows("Share"))
-      #expect(try screen.shows("Wide"))
       let frame = try #require(screen.controlFrames.first)
       let menu = try screen.openMenu(CGPoint(x: frame.midX, y: frame.midY))
       try screen.choose("Pin", in: menu)

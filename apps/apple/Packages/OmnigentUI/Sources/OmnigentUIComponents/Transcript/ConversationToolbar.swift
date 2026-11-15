@@ -6,15 +6,28 @@ extension EnvironmentValues {
   @Entry var hostsConversationToolbar = false
 }
 
-/// The conversation's toolbar items and what they act on: the Chat / Terminal switch, viewers,
-/// Agent info, the project tag, the session menu, Share and the right-panel toggle.
+extension EnvironmentValues {
+  /// The session's chat tab in the titlebar's strip carries the Chat / Terminal switch, as on
+  /// a Mac; elsewhere the switch leads the toolbar's trailing items.
+  @Entry var tabCarriesViewSwitch: Bool = {
+    #if os(macOS)
+      return true
+    #else
+      return false
+    #endif
+  }()
+}
+
+/// The conversation's toolbar items and what they act on: Agent info, the session menu, Share
+/// and the right-panel toggle, led by the Chat / Terminal switch where no tab carries it.
 struct ConversationToolbarItems {
   let state: ConversationViewState
   let extras: ConversationExtras
   let offersTerminal: Bool
   let tabsInTitlebar: Bool
   let isRegular: Bool
-  let showsProjectTag: Bool
+  /// The session's chat tab carries the Chat / Terminal switch, so the toolbar has none.
+  var tabCarriesViewSwitch = false
   let mode: Binding<SessionViewMode>
   let showsInspector: Binding<Bool>
   let showsInfo: Binding<Bool>
@@ -40,7 +53,7 @@ struct ConversationToolbar: ToolbarContent {
   var body: some ToolbarContent {
     // The tabs hold the titlebar's middle, so the switch leads the trailing items there; at
     // compact width it leads the title menu, so the title stays.
-    if items.offersTerminal, items.isRegular {
+    if items.offersTerminal, items.isRegular, !items.tabCarriesViewSwitch {
       ToolbarItem(placement: items.tabsInTitlebar ? .primaryAction : .principal) {
         ViewModePicker(mode: items.mode, status: items.state.terminal)
       }
@@ -52,35 +65,23 @@ struct ConversationToolbar: ToolbarContent {
           SandboxStatusControl(state: sandbox, actions: items.extras.sandbox)
         }
       #endif
-      if let presence = state.section("presence"), items.isRegular {
-        ViewerStack(viewers: SectionReading.viewers(presence))
-      }
       if let info = state.agentInfo, !(info.tools.isEmpty && info.policies.isEmpty) {
         Button("Agent info", systemImage: "info.circle") { items.showsInfo.wrappedValue.toggle() }
           .popover(isPresented: items.showsInfo) { AgentInfoPopover(info: info) }
           .help("Agent info")
           .accessibilityIdentifier("header-agent-info")
       }
-      // At compact width the title menu's Move session files it, so the title keeps its room.
-      if let summary = state.summary, items.showsProjectTag, items.isRegular,
-        let move = items.extras.sessionActions.moveToProject
-      {
-        HeaderProjectTag(session: summary, context: items.extras.menuContext, move: move)
-      }
-      // The title menu's commands, Share among them, when the titlebar holds the tabs.
+      // The title menu's commands, Move session and Share among them, when the titlebar holds
+      // the tabs.
       if items.tabsInTitlebar {
         SessionActionsButton { items.titleMenu }
       }
       // At compact width Share lives in the title menu; the top corner is out of thumb reach.
       if items.extras.share != nil, items.isRegular {
-        Button(action: items.showShare) {
-          Label("Share", systemImage: "person.badge.plus")
-            .labelStyle(HeaderShareLabelStyle(isCompact: false))
-        }
-        .buttonStyle(.bordered)
-        .disabled(state.shareUnavailableReason != nil)
-        .help(state.shareUnavailableReason ?? "Share this session")
-        .accessibilityIdentifier("header-share")
+        Button("Share", systemImage: "person.badge.plus", action: items.showShare)
+          .disabled(state.shareUnavailableReason != nil)
+          .help(state.shareUnavailableReason ?? "Share this session")
+          .accessibilityIdentifier("header-share")
       }
       Button {
         items.showsInspector.wrappedValue.toggle()

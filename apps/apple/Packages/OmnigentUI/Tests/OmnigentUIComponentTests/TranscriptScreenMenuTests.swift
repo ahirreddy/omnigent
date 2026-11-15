@@ -279,7 +279,7 @@
     }
 
     @Test(
-      "A nested member's header has no Pin, Add to project or project tag; its family's head does")
+      "A nested member's header menu has no Pin or Add to project; its family's head's does")
     func nestedMemberHeader() async throws {
       var sessionActions = SessionListActions()
       sessionActions.setPinned = { _, _ in }
@@ -298,7 +298,6 @@
         #expect(try menu.shows("Pin") == offers, "\(summary.id)")
         #expect(try menu.shows("Add to project") == offers, "\(summary.id)")
         #expect(try menu.shows("Copy Session ID"), "\(summary.id)")
-        #expect(box.items?.showsProjectTag == offers, "\(summary.id)")
       }
     }
   }

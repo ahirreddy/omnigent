@@ -34,7 +34,7 @@ struct TabStatusDetailsTests {
     ConversationToolbarItems(
       state: ConversationViewState(header: SessionHeader(id: id, title: id)),
       extras: ConversationExtras(), offersTerminal: false, tabsInTitlebar: true, isRegular: true,
-      showsProjectTag: false, mode: .constant(.chat), showsInspector: .constant(false),
+      mode: .constant(.chat), showsInspector: .constant(false),
       showsInfo: .constant(false), showShare: {}, titleMenu: AnyView(EmptyView()))
   }
 }

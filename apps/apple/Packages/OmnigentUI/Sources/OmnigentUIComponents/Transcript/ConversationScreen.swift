@@ -32,21 +32,13 @@ public struct ConversationScreen<Terminal: View>: View {
   @State private var modelPickerRequest = 0
   @State private var localInspectorTab: InspectorTab = .files
   private let externalInspectorTab: Binding<InspectorTab>?
-  @State private var showsShare = false
-  @State private var showsInfo = false
+  /// The session the Rename Session command is renaming.
   @State private var renaming: SessionSummary?
   @State private var renameText = ""
-  @State private var confirmingDelete: SessionSummary?
-  @State private var confirmingLeave: SessionSummary?
-  @State private var confirmingStop: SessionSummary?
   @State private var drafts = DecisionDrafts()
   @State private var approveCandidate: DecisionShortcutTarget?
   @State private var decisionSurfaces = DecisionSurfaces()
   @State private var commandRelay = FocusedActionsRelay<SessionCommandActions>()
-  @Environment(\.layoutWidth) private var layoutWidth
-  @Environment(\.transcriptWindow) private var transcriptWindow
-  @Environment(\.openAppearanceSettings) private var openAppearanceSettings
-  @Environment(\.tabsInTitlebar) private var tabsInTitlebar
   @Environment(\.offersTerminalView) private var offersTerminalView
 
   /// Creates the screen.
@@ -90,11 +82,6 @@ public struct ConversationScreen<Terminal: View>: View {
 
   /// Only a chat whose harness has a terminal offers the terminal view; other tabs do not.
   private var offersTerminal: Bool { state.terminalAvailable && offersTerminalView }
-
-  /// The Chat / Terminal switch shows among the trailing toolbar items, beside the tabs.
-  private var showsViewSwitch: Bool {
-    offersTerminal && tabsInTitlebar && layoutWidth == .regular
-  }
 
   private var inspectorTab: Binding<InspectorTab> { externalInspectorTab ?? $localInspectorTab }
 
@@ -142,14 +129,14 @@ public struct ConversationScreen<Terminal: View>: View {
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .safeAreaInset(edge: .top, spacing: 0) {
       if let open = actions.openSession {
-        if let sourceID = sideChatSourceID {
+        if let sourceID = state.sideChatSourceID {
           let parent = extras.menuContext.parent
           SessionOriginBar(
             relation: .sideChatOf,
             origin: CreatingSession(
               id: sourceID, title: parent?.id == sourceID ? parent?.title : nil),
             open: open)
-        } else if let parentID = parentSessionID {
+        } else if let parentID = state.parentSessionID {
           let parent = extras.menuContext.parent
           SessionOriginBar(
             relation: .subagentOf,
@@ -166,121 +153,28 @@ public struct ConversationScreen<Terminal: View>: View {
     .environment(drafts).environment(decisionSurfaces)
     .modifier(CommandReturnOwnership(arbitration: commandReturn))
     .onPreferenceChange(ApproveShortcutCandidate.self) { approveCandidate = $0 }
-    .workspaceInspector(
-      state: state, actions: actions, slots: extras.slots,
-      isPresented: $showsInspector, tab: inspectorTab
-    )
-    // A hidden tab publishes no title, so the shown tab or full page keeps the window's.
-    .background { ShownTabOnly { windowTitle } }
-    .modifier(
-      ShownTabTrailingItems(
-        count: TitlebarTrailingItems.count(
-          state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
-          isRegular: layoutWidth == .regular, projectTag: showsProjectTag)
-          + (showsViewSwitch ? TitlebarTrailingItems.viewSwitch : 0))
-    )
-    .modifier(ActivePaneToolbar(items: toolbarItems))
-    .sheet(isPresented: $showsShare) {
-      if let share = extras.share {
-        ShareSheet(state: share.state, actions: share.actions) { showsShare = false }
-          .onAppear { extras.shareOpened?() }
-      }
-    }
+    // The toolbar controls and the right panel, unless the window shows its session's.
+    .modifier(OwnSessionChrome(chrome: chrome))
     .sheet(item: ForkSheetID.binding($fork)) { _ in
       if let fork, let forkActions = extras.forkActions {
         ForkSheet(state: fork, actions: forkActions)
       }
     }
-    .modifier(
-      SessionMenuDialogs(
-        renaming: $renaming, renameText: $renameText, confirmingDelete: $confirmingDelete,
-        confirmingLeave: $confirmingLeave, confirmingStop: $confirmingStop,
-        actions: extras.sessionActions, branch: extras.menuContext.branch)
-    )
+    .sessionRenamePrompt($renaming, text: $renameText, rename: extras.sessionActions.rename)
     // In a split window only the focused pane's conversation drives the menus.
     .modifier(
       ActivePaneCommands(commands: commands, commandReturn: commandReturn, relay: commandRelay))
   }
 
-  /// The trailing toolbar items, shown for the focused pane's conversation.
-  private var toolbarItems: ConversationToolbarItems {
-    ConversationToolbarItems(
-      state: state, extras: extras, offersTerminal: offersTerminal,
-      tabsInTitlebar: tabsInTitlebar, isRegular: layoutWidth == .regular,
-      showsProjectTag: showsProjectTag, mode: $mode, showsInspector: $showsInspector,
-      showsInfo: $showsInfo, showShare: { showsShare = true }, titleMenu: AnyView(titleMenu))
-  }
-
-  /// The window title with the one status line ("Waiting for you · 2 requests"); the project
-  /// shows in the sidebar.
-  private var windowTitle: some View {
-    Color.clear
-      .navigationTitle(state.header.title)
-      .navigationSubtitle(SessionStatusLine(state).text)
-      .toolbarTitleMenu { titleMenu }
-  }
-
-  @ViewBuilder private var titleMenu: some View {
-    if offersTerminal, layoutWidth == .compact {
-      CompactViewModeItems(mode: $mode)
-    }
-    if let summary = state.summary {
-      sessionMenu(summary).items
-    } else {
-      ConfirmedCopyButton(
-        title: "Copy Session ID", systemImage: "number", text: state.header.id,
-        confirmation: "Session ID copied")
-    }
-    if let exportTranscript = extras.exportTranscript {
-      Button("Export\u{2026}", systemImage: "square.and.arrow.down", action: exportTranscript)
-        .accessibilityIdentifier("header-export-conversation")
-    }
-    if let open = actions.openSession {
-      if let parentID = parentSessionID ?? sideChatSourceID {
-        Button("Go to Parent Session", systemImage: "chevron.backward") { open(parentID) }
-      }
-      if let creator = extras.menuContext.createdBy {
-        Button("Go to Creating Session", systemImage: "arrow.up.backward") { open(creator.id) }
-      }
-    }
-    if layoutWidth == .compact {
-      CompactPanelItems(labels: InspectorTabLabels(state: state, slots: extras.slots)) { tab in
-        inspectorTab.wrappedValue = tab
-        extras.slots.documents?.showPanel()
-        showsInspector = true
-      }
-    }
-    transcriptTitleMenuItems(
-      TranscriptTitleMenu(window: transcriptWindow, openAppearance: openAppearanceSettings))
+  /// The toolbar controls and the right panel, over this conversation.
+  private var chrome: SessionChrome {
+    SessionChrome(
+      state: state, extras: extras, actions: actions, mode: $mode,
+      showsInspector: $showsInspector, inspectorTab: inspectorTab, fork: $fork)
   }
 }
 
 extension ConversationScreen {
-  /// The sidebar row's menu for this session (as the web's header menu mirrors its row), with
-  /// Share opening this screen's sheet.
-  private func sessionMenu(_ summary: SessionSummary) -> SessionRowMenu {
-    var actions = extras.sessionActions
-    actions.share = nil
-    if extras.share != nil {
-      let present: @MainActor (SessionSummary) -> Void = { _ in showsShare = true }
-      actions.share = present
-    }
-    let context = extras.menuContext
-    var menu = SessionRowMenu(
-      session: summary, isUnread: false, isShared: context.isShared, pinLimitReached: false,
-      projects: context.projects, actions: actions,
-      rename: {
-        renameText = summary.title
-        renaming = summary
-      },
-      confirmDelete: { confirmingDelete = summary },
-      confirmLeave: { confirmingLeave = summary },
-      confirmStop: { confirmingStop = summary },
-      project: context.projects.first { $0.id == context.projectID })
-    menu.shareUnavailableReason = state.shareUnavailableReason
-    return menu
-  }
-
   /// Who answers Command-Return, resolved where it is used: the draft gaining or losing its
   /// text reaches Send and Approve without running this screen's body.
   private var commandReturn: CommandReturnArbitration {
@@ -321,15 +215,11 @@ extension ConversationScreen {
       send: sendCommand,
       interrupt: composer.isRunning ? composerActions.interrupt : nil,
       jumpToLatest: jump, focusComposer: focus,
-      toggleInspector: { showsInspector.toggle() },
+      toggleInspector: extras.togglePanel ?? { showsInspector.toggle() },
       previousSession: extras.navigation.previousSession,
       nextSession: extras.navigation.nextSession,
       toggleViewMode: toggleMode,
-      openChanges: {
-        inspectorTab.wrappedValue = .changes
-        extras.slots.documents?.showPanel()
-        showsInspector = true
-      })
+      openChanges: { chrome.showPanel(.changes) })
     if chat, let configuration = composer.configuration, configuration.acceptsChanges {
       addModelCommands(to: &actions, configuration: configuration)
     }
@@ -339,7 +229,7 @@ extension ConversationScreen {
         renaming = summary
       }
     }
-    actions.addNestedAgent = addNestedAgentCommand
+    actions.addNestedAgent = chrome.addNestedAgentCommand
     return actions
   }
 

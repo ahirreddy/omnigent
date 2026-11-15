@@ -21,6 +21,8 @@
     var isHiddenTab = false
     /// The window's titlebar holds the tabs.
     var tabsInTitlebar = false
+    /// The chat's tab in the strip carries the Chat / Terminal switch, as on a Mac.
+    var tabCarriesViewSwitch = false
     /// The commands the menus would run.
     @ObservationIgnored var commands: SessionCommandActions?
     /// The trailing toolbar widths the screen reports to the tab strip.
@@ -59,6 +61,7 @@
         }
         .environment(\.isTabContentHidden, model.isHiddenTab)
         .environment(\.tabsInTitlebar, model.tabsInTitlebar)
+        .environment(\.tabCarriesViewSwitch, model.tabCarriesViewSwitch)
         .onPreferenceChange(TitlebarTrailingItems.self) { model.trailingItems = $0 }
         CommandsProbe(model: model)
       }
@@ -374,6 +377,12 @@
       try await letTasksRun(window)
       let withoutSwitch = try #require(model.trailingItems)
       #expect(withSwitch == withoutSwitch + TitlebarTrailingItems.viewSwitch)
+
+      model.state.terminal = .ready
+      model.tabCarriesViewSwitch = true
+      try await letTasksRun(window)
+      #expect(model.trailingItems == withoutSwitch, "the chat's tab has the switch")
+      model.tabCarriesViewSwitch = false
 
       model.state.terminal = .ready
       model.tabsInTitlebar = false

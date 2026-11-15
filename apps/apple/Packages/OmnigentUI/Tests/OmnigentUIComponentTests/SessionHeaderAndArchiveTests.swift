@@ -20,16 +20,11 @@ struct SessionHeaderAndArchiveTests {
     #expect(decide([], true, nil) == .archive(deletingWorktrees: []))
   }
 
-  @Test("The header's project tag is for the viewer's own top-level sessions")
-  func projectTagApplies() {
+  @Test("The session menu's context names the project the session is filed in")
+  func menuContextProject() {
     let projects = [SessionProject(id: "p", name: "Alpha", sessionIds: [], icon: "🚀")]
-    let own = SessionMenuContext(projects: projects, projectID: "p")
-    #expect(own.project?.name == "Alpha")
-    #expect(HeaderProjectTag.applies(own, isSubagent: false, canMove: true))
-    #expect(!HeaderProjectTag.applies(own, isSubagent: true, canMove: true))
-    #expect(!HeaderProjectTag.applies(own, isSubagent: false, canMove: false))
-    let shared = SessionMenuContext(projects: projects, isShared: true)
-    #expect(!HeaderProjectTag.applies(shared, isSubagent: false, canMove: true))
-    #expect(!HeaderProjectTag.applies(SessionMenuContext(), isSubagent: false, canMove: true))
+    #expect(SessionMenuContext(projects: projects, projectID: "p").project?.name == "Alpha")
+    #expect(SessionMenuContext(projects: projects).project == nil)
+    #expect(SessionMenuContext(projects: projects, projectID: "gone").project == nil)
   }
 }

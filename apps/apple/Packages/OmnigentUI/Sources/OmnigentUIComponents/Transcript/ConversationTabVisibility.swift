@@ -41,7 +41,8 @@ struct ShownTabTrailingItems: ViewModifier {
 /// The focused pane's conversation toolbar; a split window's other pane and a hidden tab show
 /// none.
 struct ActivePaneToolbar: ViewModifier {
-  let items: ConversationToolbarItems
+  /// The items; `nil` on a page without a session.
+  let items: ConversationToolbarItems?
   @Environment(\.isActiveTabPane) private var isActivePane
 
   func body(content: Content) -> some View {
