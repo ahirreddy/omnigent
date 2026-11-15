@@ -22,4 +22,20 @@ extension CreationStore {
     return creationValidationError(
       catalog: catalog, selection: selection, models: models.value ?? [])
   }
+
+  /// Why a nested agent on `selection`'s host cannot be created now: the capability, the
+  /// server's destination policy, then the checks of ``unavailableReason(_:)`` with the source's
+  /// own sandbox host allowed.
+  /// - Parameters:
+  ///   - selection: The selection.
+  ///   - sourceHostID: The source session's host.
+  /// - Returns: The reason to show, or `nil` when it can be created.
+  public func nestedUnavailableReason(
+    _ selection: CreationSelection, sourceHostID: String?
+  ) -> String? {
+    guard let catalog = catalog.value else { return "The host and agent list has not loaded." }
+    return nestedCreationValidationError(
+      catalog: catalog, selection: selection, models: models.value ?? [],
+      sourceHostId: sourceHostID)
+  }
 }
