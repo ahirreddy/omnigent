@@ -32,6 +32,9 @@ public struct ConnectedServerView: View {
   @State private var overviewPresenter = TabOverviewPresenter()
   @State private var tabFailure: String?
   @State private var tabCommandRelay = FocusedActionsRelay<TabCommandActions>()
+  #if os(macOS)
+    @State private var chromeWiring = SessionChromeWiring()
+  #endif
   /// The session a chat tab's Rename Session is renaming.
   @Environment(\.horizontalSizeClass) private var sizeClass
   @Environment(\.openSettingsAt) private var openSettingsAt
@@ -154,31 +157,6 @@ public struct ConnectedServerView: View {
     }
   }
 
-  /// The strip's tabs, read when the titlebar asks for them; a session-less page has no strip.
-  /// They are the last shown session's, which a page leaves as they were: going to a page then
-  /// takes the strip away without rendering it first.
-  private func strip(of tabs: WindowTabs) -> ShellTabs {
-    ShellTabs(
-      isShown: { tabs.groups.currentSessionID != nil },
-      content: {
-        guard let store = tabs.groups.lastShown else { return (TabsState(), TabActions()) }
-        return (tabs.state(store), renamable(tabs.actions(store)))
-      })
-  }
-
-  /// A chat tab's menu renames its session, as the session menu and Option-Command-R do.
-  private func renamable(_ actions: TabActions) -> TabActions {
-    var actions = actions
-    actions.renameSession = renameSessionOfTab
-    return actions
-  }
-
-  /// Asks for a new title for the session of a chat tab, by the tab's id.
-  var renameSessionOfTab: @MainActor (String) -> Void {
-    let (model, tabs, list) = (sidebarModel, session.tabs, connection.sessionList)
-    return { model.askToRename(tabID: $0, tabs: tabs, list: list) }
-  }
-
   var sidebarState: SidebarViewState {
     var state = sidebarMemo.state(
       list: connection.sessionList, display: sidebar.display,
@@ -226,30 +204,8 @@ public struct ConnectedServerView: View {
   ) -> some View {
     switch destination {
     case .session(let id):
-      if let conversation = connection.openConversation(id) {
-        ConversationContainer(
-          conversation: conversation, summary: connection.sessionList.sessionWithoutActivity(id),
-          terminals: session.terminals(of: id), workspace: session.workspace(of: id),
-          panel: session.panel(of: id),
-          changedFilesRevision: { connection.fileChanges(in: id) },
-          navigation: navigation(from: ownerID ?? id),
-          opener: linkOpener(from: id, in: ownerID ?? id),
-          openSession: { selection = .session($0) },
-          retry: { connection.foreground() }, server: connection.connectedServer,
-          hostEnvironment: { connection.sessionList.hostEnvironments[$0] },
-          tabRoutes: windowTabs.routes(
-            for: id, in: ownerID, subagentsApart: openSubagentsApart),
-          terminalNames: session.declaredTerminalNames(in: id),
-          sessionActions: sidebarActions.sessions,
-          makeForkStore: { connection.makeForkStore() },
-          menuContext: ConversationContainer.menuContext(
-            connection.sessionList, session: connection.sessionList.sessionWithoutActivity(id),
-            sideChatOf: source),
-          makeShareStore: { connection.share(sessionID: id) },
-          offersShare: source == nil && ShareAdapter.offered(connection.pages?.offered),
-          shareUnavailableReason: ShareAdapter.unavailableReason(connection.pages?.offered)
-        )
-        .id(id)
+      if let chat = chat(id, in: ownerID, sideChatOf: source) {
+        chat.id(id)
       } else {
         ProgressView("Opening the session\u{2026}")
       }
@@ -276,6 +232,44 @@ public struct ConnectedServerView: View {
     }
   }
 
+  /// A session's chat, once its conversation is open. A side chat or sub-agent shows in a tab
+  /// of `ownerID`, whose workspace the window's right panel shows.
+  private func chat(
+    _ id: String, in ownerID: String? = nil, sideChatOf source: String? = nil
+  ) -> ConversationContainer? {
+    guard let conversation = connection.openConversation(id) else { return nil }
+    let summary = connection.sessionList.sessionWithoutActivity(id)
+    let hostsPanel = SessionChromeState.isWindowHosted
+    return ConversationContainer(
+      conversation: conversation, summary: summary,
+      terminals: session.terminals(of: id), workspace: session.workspace(of: id),
+      panel: session.panel(of: id),
+      changedFilesRevision: { connection.fileChanges(in: id) },
+      navigation: navigation(from: ownerID ?? id),
+      opener: linkOpener(from: id, in: ownerID ?? id),
+      openSession: { selection = .session($0) },
+      retry: { connection.foreground() }, server: connection.connectedServer,
+      hostEnvironment: { connection.sessionList.hostEnvironments[$0] },
+      tabRoutes: windowTabs.routes(for: id, in: ownerID, subagentsApart: openSubagentsApart),
+      terminalNames: session.declaredTerminalNames(in: id),
+      sessionActions: sidebarActions.sessions,
+      makeForkStore: { connection.makeForkStore() },
+      menuContext: ConversationContainer.menuContext(
+        connection.sessionList, session: summary, sideChatOf: source),
+      makeShareStore: { connection.share(sessionID: id) },
+      offersShare: source == nil && ShareAdapter.offered(connection.pages?.offered),
+      shareUnavailableReason: ShareAdapter.unavailableReason(connection.pages?.offered),
+      linkedWorkspace: ownerID.flatMap { hostsPanel ? session.workspace(of: $0) : nil })
+  }
+
+  #if os(macOS)
+    /// The shown session's toolbar controls and right panel around the tabs, read from the
+    /// chats as this render builds them.
+    private var sessionChrome: SessionChromeContainer {
+      chromeWiring.chat = { chat($0) }
+      return SessionChromeContainer(session: session, wiring: chromeWiring)
+    }
+  #endif
 }
 
 // MARK: Tabs
@@ -322,6 +316,9 @@ extension ConnectedServerView {
           .zIndex(1)
       }
     }
+    #if os(macOS)
+      .modifier(sessionChrome)
+    #endif
   }
 
   /// A tab's content: a session's chat through ``detail(_:)``, the other kinds through their

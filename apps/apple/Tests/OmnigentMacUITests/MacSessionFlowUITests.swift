@@ -2,6 +2,7 @@ import XCTest
 
 /// A session's life in the sidebar on the offline demo server: open, rename, pin, archive,
 /// unarchive and delete. demo-notes is read-only, so what changes a session acts on demo-question.
+/// Filing a session in a project, which the demo has none of, runs on the local server.
 final class MacSessionFlowUITests: XCTestCase {
   override func setUp() {
     super.setUp()
@@ -198,5 +199,66 @@ final class MacSessionFlowUITests: XCTestCase {
       live.element("transcript-demo-question", in: app).disappears(within: 15),
       "the deleted session stayed on screen")
     live.assertRunning(app, "after deleting the open session")
+  }
+
+  /// The toolbar's session menu ("…") files the session in a project, as the folder button it
+  /// replaced did, and takes it out again; the toolbar has no folder button.
+  @MainActor
+  func testSessionMenuFilesTheSessionInAProject() async throws {
+    let live = MacLiveUITestSupport(self)
+    let session = try live.fixtureSession()
+    let name = "UI flow \(UUID().uuidString.prefix(6))"
+    let project = try await live.serverJSON("POST", "/v1/projects", body: ["name": name])
+    let projectID = try XCTUnwrap(project["id"] as? String, "\(project)")
+    let app = live.launch()
+    defer { app.terminate() }
+    live.open(session, in: app)
+    XCTAssertFalse(
+      live.element("header-project-tag", in: app).exists, "the folder button is in the toolbar")
+
+    live.openSessionMenu(in: app)
+    live.clickMenuItem("Add to project", in: app)
+    live.clickMenuItem(name, in: app)
+    let filed = try await live.projectOf(session, becomes: projectID)
+    XCTAssertEqual(filed, projectID, "the session menu did not file the session")
+
+    live.openSessionMenu(in: app)
+    live.clickMenuItem("Move session", in: app)
+    live.clickMenuItem("Remove from project", in: app)
+    let unfiled = try await live.projectOf(session, becomes: nil)
+    XCTAssertNil(unfiled, "Remove from project left the session filed")
+    _ = try await live.serverJSON("DELETE", "/v1/projects/\(projectID)")
+  }
+}
+
+extension MacLiveUITestSupport {
+  /// Sends a request to the local server the flows run on and reads its JSON object; an empty
+  /// `body` sends none.
+  func serverJSON(
+    _ method: String, _ path: String, body: [String: String] = [:]
+  ) async throws -> [String: Any] {
+    let url = try XCTUnwrap(URL(string: server + path))
+    var request = URLRequest(url: url)
+    request.httpMethod = method
+    if !body.isEmpty {
+      request.httpBody = try JSONSerialization.data(withJSONObject: body)
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    }
+    let (data, response) = try await URLSession.shared.data(for: request)
+    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+    XCTAssertTrue((200..<300).contains(status), "\(method) \(path) answered \(status)")
+    return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+  }
+
+  /// The project the server files `sessionID` in, read until it is `expected` or ten seconds
+  /// pass: the app's move reaches the server after the menu closes.
+  func projectOf(_ sessionID: String, becomes expected: String?) async throws -> String? {
+    var filed: String?
+    for _ in 0..<50 {
+      filed = try await serverJSON("GET", "/v1/sessions/\(sessionID)")["project_id"] as? String
+      if filed == expected { break }
+      try await Task.sleep(for: .milliseconds(200))
+    }
+    return filed
   }
 }

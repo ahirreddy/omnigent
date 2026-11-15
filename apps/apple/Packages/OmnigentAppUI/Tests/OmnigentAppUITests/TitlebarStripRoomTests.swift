@@ -7,9 +7,9 @@ import Testing
 @testable import OmnigentAppUI
 @testable import OmnigentUIComponents
 
-/// The titlebar's tab strip takes the width the window's trailing toolbar items leave. A page
-/// focused beside a chat shows none and the chat stops showing its own, so the page's tabs
-/// reach New Tab instead of stopping at room kept for buttons that are not there.
+/// The titlebar's tab strip takes the width the window's trailing toolbar items leave. The
+/// session's controls stay in the toolbar whichever pane has the focus, so the strip keeps
+/// the room it has: a page focused beside the chat neither widens it nor folds a control.
 @MainActor
 @Suite("The tab strip's room beside a chat", .serialized, .timeLimit(.minutes(1)))
 struct TitlebarStripRoomTests {
@@ -35,7 +35,13 @@ struct TitlebarStripRoomTests {
       detailWidth: try detailWidth(screen), isSidebarHidden: false, trailingItems: items)
   }
 
-  @Test("Links opened beside a chat get the room of the toolbar items the chat stops showing")
+  /// The toolbar's session controls on screen, by label.
+  private func sessionControls(_ screen: Screen) -> [String] {
+    let labels = (screen.window.toolbar?.visibleItems ?? []).map(\.label)
+    return labels.filter { ["View", "Session", "Share", "Right panel"].contains($0) }
+  }
+
+  @Test("Links opened beside a chat leave the strip the room it had beside the session's controls")
   func pagesBesideAChat() async throws {
     let session = try await connectedDemo()
     let context = TabWindowContext(browser: FakeBrowserHost())
@@ -47,6 +53,8 @@ struct TitlebarStripRoomTests {
     try await pause(screen, .milliseconds(400))
     let besideTheChatsItems = stripWidth(screen)
     try #require(besideTheChatsItems < (try strip(beside: 0, in: screen)), "the chat has items")
+    let controls = sessionControls(screen)
+    try #require(controls.contains("Right panel"), "the session's controls: \(controls)")
 
     let tabs = WindowTabs(session: session, context: context, showAll: {}, fail: { _ in })
     for page in ["a", "b", "c"] {
@@ -57,19 +65,17 @@ struct TitlebarStripRoomTests {
     #expect(group.split?.trailing.count == 3, "each link is a tab of the pane beside the chat")
     #expect(group.split?.focused == .trailing)
 
-    let reachingNewTab = try strip(beside: 0, in: screen)
-    try await settle(screen, until: "the strip to reach New Tab") {
-      stripWidth(screen) == reachingNewTab
-    }
-    #expect(stripWidth(screen) == reachingNewTab, "kept for the chat: \(besideTheChatsItems)")
+    // The pages' pane has the focus: the session's controls stay, and the strip beside them.
+    try await pause(screen, .milliseconds(400))
+    #expect(stripWidth(screen) == besideTheChatsItems, "the strip keeps its room")
+    #expect(sessionControls(screen) == controls, "the session's controls stay over a page")
     let folded = screen.window.toolbar?.items.filter { !$0.isVisible } ?? []
-    #expect(folded.isEmpty, "the wider strip folds no toolbar item")
+    #expect(folded.isEmpty, "no toolbar item is folded away")
 
-    // The chat's pane takes the focus back, and its toolbar items their room.
+    // The chat's pane takes the focus back: nothing in the titlebar moves.
     group.focus(.leading)
-    try await settle(screen, until: "the strip beside the chat's items again") {
-      stripWidth(screen) == besideTheChatsItems
-    }
+    try await pause(screen, .milliseconds(400))
     #expect(stripWidth(screen) == besideTheChatsItems)
+    #expect(sessionControls(screen) == controls)
   }
 }

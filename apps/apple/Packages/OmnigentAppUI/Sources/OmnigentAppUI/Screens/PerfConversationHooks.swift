@@ -7,8 +7,9 @@
   /// (`ai.omnigent.perf.panel.<tab>`, `panel.close`), a browser tab (`browser`), and a new side
   /// chat, empty (`sidechat.open`) or asking a question at once (`sidechat.ask`).
   struct PerfConversationHooks: ViewModifier {
-    @Binding var showsInspector: Bool
-    @Binding var inspectorTab: InspectorTab
+    /// Shows the right panel on a tab, or hides it (`nil`). A closure, not bindings: a binding
+    /// reads its value as it is made, so the chat would render as the window's panel changes.
+    let showPanel: @MainActor (InspectorTab?) -> Void
     let openBrowser: (@MainActor () -> Void)?
     var openSideChat: (@MainActor (String, Bool) -> Void)?
     @Environment(\.isTabContentHidden) private var isHidden
@@ -26,7 +27,7 @@
     /// Does what `hook` measures.
     func perform(_ hook: String) {
       switch hook {
-      case "panel.close": showsInspector = false
+      case "panel.close": showPanel(nil)
       case "browser": openBrowser?()
       case "sidechat.open": openSideChat?("", false)
       case "sidechat.ask": openSideChat?("What does a side chat see?", true)
@@ -34,8 +35,7 @@
         guard let tab = InspectorTab(rawValue: String(hook.dropFirst("panel.".count))) else {
           return
         }
-        inspectorTab = tab
-        showsInspector = true
+        showPanel(tab)
       }
     }
   }

@@ -1500,6 +1500,64 @@ existing Release samples. To confirm in the VM (Release, the profile's data set)
   720 pt of column: time per step against 26-29 ms;
 - chat to browser and back, chat to terminal and back: unchanged at 190-350 ms.
 
+## Twelfth pass: the session's toolbar controls and right panel around the tabs (November 2026)
+
+The eleventh pass left two things with the chat's tab that belong to the session: its toolbar
+items, which a switch to a browser, terminal or New Tab page removed and the way back created,
+and its right panel, which a split showed between the panes. On a Mac both now belong to the
+window's session (`sessionChrome(_:)`, placed by `SessionChromeContainer` around
+`TabSplitView`): Agent info, the session menu, Share and the right-panel toggle show over
+every tab and pane and act on the session whose tabs the window shows, and the panel is one
+column at the window's trailing edge. The Chat / Terminal switch left the toolbar for the
+session's chat tab in the strip (`TabViewModeSwitch`), and the viewers and the project tag
+left it altogether (the Info tab lists viewers; the session menu files the session). iPhone
+and iPad keep each chat's own toolbar items and panel (`OwnSessionChrome`).
+
+Counts in the hosted window (Debug, offscreen; `WindowRenderBudgetTests`):
+
+| One step | Before | After |
+| --- | --- | --- |
+| Chat to a tab of another kind | 2 toolbar items removed (1 added on a terminal); the strip measured at the 236 pt reserve | no toolbar item added or removed, the chrome not rendered: detail 1, strip 1, tab 1, tab controls 1 |
+| Back to the chat | 2 items added, 88 menu forms; strip 2 | no item added or removed; strip 1 |
+| The right panel shown over the shown chat | composer 1, rows 1, screen 1, transcript 1 | chrome 1; nothing of the chat |
+| The right panel shown over a page, two chats kept behind it | not possible: the panel was the chat's | chrome 1; the kept chats keep their size |
+
+What makes it hold:
+
+- **The chrome reads the session in a body of its own** (`countsRenders("chrome")`), from the
+  session's stores and not from a chat's view: the header, sections, decisions, the
+  workspace's open files and the pull requests (`ConversationAdapter.chromeState`), and no
+  rows, turn timer or history paging. A streamed delta and a key in the composer do not
+  render it.
+- **A tab or pane switch does not run it.** It takes what the window builds a chat from by
+  reference (`SessionChromeWiring`, refreshed as the detail renders), so it compares equal
+  across the window's renders; it reads the shown session and never the shown tab. The one
+  reader of the focused tab is `SessionChromeCommands`, which publishes the session's menu
+  commands while no conversation has the focus.
+- **A chat inside leaves its toolbar, panel and titlebar room to the window**
+  (`hostsSessionChrome`): it builds no panel content, reads no workspace or pull-request
+  state for one, and reaches the window's panel through `WindowPanelRoute`. Showing the panel
+  renders the chrome and no chat; a chat kept behind the shown tab keeps the size it had
+  (`HeldTabSize`), as in a resize.
+- **A terminal tab adds no toolbar item on a Mac** (Show Chat is the chat's tab, always in
+  the strip), so every tab of a session has the same items.
+
+The budget rows that moved, each by what the window now draws:
+
+- the session chrome renders once where the session's own state changes: its title (1), a
+  switch to another session (2: for the session, then as its conversation opens), a switch
+  back to a kept session (1), and a page shown or left (1);
+- showing the right panel renders the chrome alone (it was composer, rows, screen and
+  transcript 1 each, the chat that held the panel);
+- the split keystroke measures and places the kept tabs' stack once (1 each): it sits in the
+  panel's column now, and no hidden tab is laid out;
+- a switch from a chat to another kind of tab renders the composer once, as it gives up the
+  keyboard.
+
+Not checked in a real window: the times. The eleventh pass's chat to browser switch had the
+toolbar in 30-34% of its samples; that work is gone from the hosted counts, and the switch
+was not timed again.
+
 ## A layout that never ended, with an assistive client reading (November 2026)
 
 The Mac app could stop for good, its main thread inside one layout. It needed all of: an

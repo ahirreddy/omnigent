@@ -47,17 +47,27 @@ struct UserPromptTests {
     #expect(UserPrompt.runs("a -> b") == [UserPrompt.Run(text: "a -> b", isQuote: false)])
   }
 
-  @Test("Share counts two button widths in the titlebar beside the session menu")
+  @Test("Share counts one button width in the titlebar beside the session menu")
   func titlebarShare() {
-    let state = ConversationViewState(header: SessionHeader(id: "s", title: "T"))
+    // The right-panel toggle and the group's margins, then each button.
+    var state = ConversationViewState(header: SessionHeader(id: "s", title: "T"))
     #expect(
       TitlebarTrailingItems.count(state, hasShare: true, tabsInTitlebar: true, isRegular: true)
         == 4)
+    state.sections = [EventSection(id: "presence", title: "Viewers", summary: "")]
+    #expect(
+      TitlebarTrailingItems.count(state, hasShare: true, tabsInTitlebar: true, isRegular: true)
+        == 4, "the toolbar shows no viewers")
+    state.agentInfo = AgentInfo(name: "Helper", tools: ["docs"])
+    #expect(
+      TitlebarTrailingItems.count(state, hasShare: true, tabsInTitlebar: true, isRegular: true)
+        == 5, "Agent info")
+    state.agentInfo = nil
     #expect(
       TitlebarTrailingItems.count(state, hasShare: false, tabsInTitlebar: true, isRegular: true)
-        == 2)
+        == 3)
     #expect(
       TitlebarTrailingItems.count(state, hasShare: true, tabsInTitlebar: false, isRegular: false)
-        == 1)
+        == 2)
   }
 }

@@ -10,14 +10,17 @@ extension View {
   ///   - slots: The panel's content.
   ///   - isPresented: Whether the panel shows; hiding it leaves full screen.
   ///   - tab: The panel's fixed tab.
+  ///   - holdsTabSize: The view is one tab's content, which keeps its size while its tab is
+  ///     hidden; a window's panel, beside every tab, holds none.
   /// - Returns: The view with the panel.
   func workspaceInspector(
     state: ConversationViewState, actions: ConversationActions, slots: WorkspaceSlots,
-    isPresented: Binding<Bool>, tab: Binding<InspectorTab>
+    isPresented: Binding<Bool>, tab: Binding<InspectorTab>, holdsTabSize: Bool = true
   ) -> some View {
     modifier(
       WorkspaceInspectorPresentation(
-        state: state, actions: actions, slots: slots, shows: isPresented, tab: tab))
+        state: state, actions: actions, slots: slots, shows: isPresented, tab: tab,
+        holdsTabSize: holdsTabSize))
   }
 }
 
@@ -103,6 +106,7 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
   let slots: WorkspaceSlots
   @Binding var shows: Bool
   @Binding var tab: InspectorTab
+  let holdsTabSize: Bool
   @Environment(\.isActiveTabPane) private var handlesShortcuts
   @Environment(\.isTabContentHidden) private var isHiddenTab
   @State private var maximized = false
@@ -121,7 +125,7 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
   func body(content: Content) -> some View {
     let isPresented = presented.wrappedValue
     content
-      .holdsSizeWhileTabHidden()
+      .holdsSizeWhileTabHidden(holdsTabSize)
       .unmeasuredMinimum(UnmeasuredMinimum.column)
       .overlay {
         if isPresented, maximized { panel }

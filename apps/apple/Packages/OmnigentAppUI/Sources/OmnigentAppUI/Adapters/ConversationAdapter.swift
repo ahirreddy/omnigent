@@ -70,6 +70,28 @@ enum ConversationAdapter {
     return state
   }
 
+  /// The session for its toolbar controls and right panel, where the window shows them beside
+  /// every tab. It reads no rows, turn timer or history paging, so a turn that runs renders
+  /// the toolbar only for what it shows.
+  /// - Parameters:
+  ///   - store: The conversation.
+  ///   - summary: Its session-list row, for the title before the header arrives.
+  /// - Returns: The state, without a transcript.
+  static func chromeState(
+    _ store: ConversationStore, summary: OmnigentCoreFFI.SessionSummary?
+  ) -> ConversationViewState {
+    var state = ConversationViewState(
+      header: Self.header(store, summary: summary),
+      decisions: store.decisions.cards.map(OmnigentUIComponents.DecisionCard.init),
+      decisionPhases: decisionPhases(store.decisions),
+      sections: store.sections.map(OmnigentUIComponents.EventSection.init),
+      errorMessage: errorMessage(store),
+      summary: summary.map(OmnigentUIComponents.SessionSummary.init))
+    state.approvalModeTitle = approvalModeTitle(store)
+    state.effortTitle = ComposerAdapter.configuration(store.composer).effortTitle
+    return state
+  }
+
   /// The session's status line (``SessionStatusLine``). It reads only the header, decisions,
   /// sections and transcript digest, so a view showing it (the tab strip's tooltip) does not
   /// redraw for the turn timer, the link or history paging.

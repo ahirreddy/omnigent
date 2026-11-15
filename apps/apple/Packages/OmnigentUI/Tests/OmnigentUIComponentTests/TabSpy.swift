@@ -27,6 +27,7 @@ final class TabSpy {
     actions.focusPane = { [self] in calls.append("focus \($0.rawValue)") }
     actions.setSplitFraction = { [self] in calls.append("fraction \($0)") }
     actions.renameSession = { [self] in calls.append("rename \($0)") }
+    actions.setViewMode = { [self] in calls.append("view \($0) \($1.rawValue)") }
     return actions
   }
 

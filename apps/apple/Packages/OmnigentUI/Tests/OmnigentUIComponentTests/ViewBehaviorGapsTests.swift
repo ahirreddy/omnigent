@@ -223,28 +223,6 @@
       #expect(unsafe opened == 1)
     }
 
-    @Test("The toolbar offers the project tag and toggles the right panel")
-    func toolbarItems() throws {
-      let inspector = EditedValue(false)
-      let moved = EditedValue<[String]>([])
-      var state = ConversationViewState(header: TranscriptFixture.header)
-      state.summary = SessionSummary(id: "session-1", title: "A session")
-      var extras = ConversationExtras()
-      extras.sessionActions.moveToProject = { session, _ in moved.value.append(session.id) }
-      let items = ConversationToolbarItems(
-        state: state, extras: extras, offersTerminal: false, tabsInTitlebar: false,
-        isRegular: true, showsProjectTag: true, mode: .constant(.chat),
-        showsInspector: inspector.binding, showsInfo: .constant(false), showShare: {},
-        titleMenu: AnyView(EmptyView()))
-      let screen = toolbarWindow(items)
-      defer { screen.close() }
-      #expect(screen.window.toolbar?.items.map(\.label) == ["Add to project", "Right panel"])
-      try screen.press(keyCode: 30, characters: "]", modifiers: [.command, .option])
-      #expect(inspector.value)
-      try screen.press(keyCode: 30, characters: "]", modifiers: [.command, .option])
-      #expect(!inspector.value)
-    }
-
     @Test("Reply to a selection in a conversation quotes it for the composer")
     func replyFromConversation() async throws {
       let log = HostLog()
@@ -274,37 +252,103 @@
   }
 
   extension ViewBehaviorGapsTests {
+    @Test("The toolbar has an icon-only Share, no viewers or project tag, and the panel toggle")
+    func toolbarItems() throws {
+      let inspector = EditedValue(false)
+      let shared = EditedValue(0)
+      var state = ConversationViewState(
+        header: TranscriptFixture.header,
+        sections: [EventSection(id: "presence", title: "Viewers", summary: "")])
+      state.summary = SessionSummary(id: "session-1", title: "A session")
+      var extras = ConversationExtras(
+        share: (ShareViewState(), ShareActions()),
+        menuContext: SessionMenuContext(
+          projects: [SessionProject(id: "p1", name: "Work", sessionIds: [])]))
+      extras.sessionActions.moveToProject = { _, _ in }
+      let items = ConversationToolbarItems(
+        state: state, extras: extras, offersTerminal: false, tabsInTitlebar: false,
+        isRegular: true, mode: .constant(.chat), showsInspector: inspector.binding,
+        showsInfo: .constant(false), showShare: { shared.value += 1 },
+        titleMenu: AnyView(EmptyView()))
+      let screen = toolbarWindow(items)
+      defer { screen.close() }
+      let toolbar = try #require(screen.window.toolbar)
+      #expect(toolbar.items.map(\.label) == ["Share", "Right panel"])
+      let share = try #require(toolbar.items.first?.view)
+      let toggle = try #require(toolbar.items.last?.view)
+      // A titled Share was twice its neighbour's width.
+      #expect(
+        abs(share.frame.width - toggle.frame.width) < 8,
+        "an icon, about as wide as its neighbour: \(share.frame.width) \(toggle.frame.width)")
+      let frame = share.convert(share.bounds, to: screen.host)
+      try screen.click(CGPoint(x: frame.midX, y: frame.midY))
+      #expect(shared.value == 1)
+      try screen.press(keyCode: 30, characters: "]", modifiers: [.command, .option])
+      #expect(inspector.value)
+      try screen.press(keyCode: 30, characters: "]", modifiers: [.command, .option])
+      #expect(!inspector.value)
+    }
+
+    @Test("Share is disabled, with its reason, where the server turned sharing off")
+    func shareUnavailable() throws {
+      let shared = EditedValue(0)
+      var state = ConversationViewState(header: TranscriptFixture.header)
+      state.shareUnavailableReason = "Sharing has been disabled for this Omnigent server."
+      let items = ConversationToolbarItems(
+        state: state, extras: ConversationExtras(share: (ShareViewState(), ShareActions())),
+        offersTerminal: false, tabsInTitlebar: false, isRegular: true, mode: .constant(.chat),
+        showsInspector: .constant(false), showsInfo: .constant(false),
+        showShare: { shared.value += 1 }, titleMenu: AnyView(EmptyView()))
+      let screen = toolbarWindow(items)
+      defer { screen.close() }
+      let share = try #require(screen.window.toolbar?.items.first { $0.label == "Share" }?.view)
+      let frame = share.convert(share.bounds, to: screen.host)
+      try screen.click(CGPoint(x: frame.midX, y: frame.midY))
+      #expect(shared.value == 0, "a disabled Share opens nothing")
+    }
+
     /// A window whose toolbar holds a conversation's items, as the app's windows show them.
     private func toolbarWindow(_ items: ConversationToolbarItems) -> OffscreenWindow<some View> {
       let screen = OffscreenWindow(
         NavigationStack { Color.clear.toolbar { ConversationToolbar(items: items) } },
         width: 900, height: 400)
+      let frame = screen.window.frame
       screen.window.contentView = nil
       screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
+      screen.window.setFrame(frame, display: false)
       screen.host.sceneBridgingOptions = [.toolbars, .title]
       screen.window.contentView = screen.host
       screen.settle(0.5)
+      // The toolbar places its items in the first layout pass after the window has them.
+      screen.window.setContentSize(CGSize(width: 900, height: 401))
+      screen.settle(0.3)
       return screen
     }
 
     /// The labels of the toolbar items a chat with a ready terminal shows, spaces left out.
-    private func toolbarLabels(offersTerminal: Bool, tabsInTitlebar: Bool) -> [String] {
+    private func toolbarLabels(
+      offersTerminal: Bool, tabsInTitlebar: Bool, tabCarriesViewSwitch: Bool = false
+    ) -> [String] {
       let items = ConversationToolbarItems(
         state: ConversationViewState(header: TranscriptFixture.header, terminal: .ready),
         extras: ConversationExtras(), offersTerminal: offersTerminal,
-        tabsInTitlebar: tabsInTitlebar, isRegular: true, showsProjectTag: false,
-        mode: .constant(.chat), showsInspector: .constant(false), showsInfo: .constant(false),
+        tabsInTitlebar: tabsInTitlebar, isRegular: true,
+        tabCarriesViewSwitch: tabCarriesViewSwitch, mode: .constant(.chat),
+        showsInspector: .constant(false), showsInfo: .constant(false),
         showShare: {}, titleMenu: AnyView(EmptyView()))
       let screen = toolbarWindow(items)
       defer { screen.close() }
       return (screen.window.toolbar?.items.map(\.label) ?? []).filter { !$0.isEmpty }
     }
 
-    @Test("With the tabs in the titlebar, Chat / Terminal leads the trailing toolbar items")
+    @Test("Chat / Terminal leads the trailing toolbar items unless the chat's tab carries it")
     func viewSwitchBesideTheTabs() {
       #expect(
         toolbarLabels(offersTerminal: true, tabsInTitlebar: true)
           == ["View", "Session", "Right panel"])
+      #expect(
+        toolbarLabels(offersTerminal: true, tabsInTitlebar: true, tabCarriesViewSwitch: true)
+          == ["Session", "Right panel"], "the tab has the switch, so the toolbar has none")
       #expect(
         toolbarLabels(offersTerminal: false, tabsInTitlebar: true)
           == ["Session", "Right panel"], "a chat without a terminal has no switch")

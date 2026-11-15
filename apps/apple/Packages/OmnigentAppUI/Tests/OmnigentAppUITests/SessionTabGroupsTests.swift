@@ -43,6 +43,26 @@ struct SessionTabGroupsTests {
     #expect(groups.tab(page.id)?.sessionID == "a", "a browser tab joins the shown session")
   }
 
+  @Test("The window's panel is the shown session's; a write after a switch leaves the one left")
+  func shownPanel() {
+    let groups = SessionTabGroups()
+    groups.show(.session("a"))
+    groups.shownPanelIsShown = true
+    #expect(groups.chrome("a").panel.isShown)
+    groups.show(.session("b"))
+    groups.chrome("b").panel.isShown = false
+    #expect(!groups.shownPanelIsShown, "b's own choice")
+    // The inspector writing the state it closed with, late, as the session changed.
+    groups.shownPanelIsShown = false
+    #expect(groups.chrome("a").panel.isShown, "a's panel stays as it was left")
+    groups.show(.usage)
+    #expect(!groups.shownPanelIsShown, "a page has no panel")
+    groups.shownPanelIsShown = true
+    #expect(!groups.shownPanelIsShown, "and takes none")
+    groups.show(.session("a"))
+    #expect(groups.shownPanelIsShown)
+  }
+
   @Test("The session shown last keeps its tabs for the strip while a page covers it")
   func lastShown() throws {
     let groups = SessionTabGroups()

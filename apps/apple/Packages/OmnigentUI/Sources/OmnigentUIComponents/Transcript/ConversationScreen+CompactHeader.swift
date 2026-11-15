@@ -3,36 +3,27 @@ import SwiftUI
 // The compact (iPhone) header, as the web's mobile header: the title keeps its menu, which leads
 // with Chat and Terminal and lists the right panel's tabs with their counts.
 
-extension ConversationScreen {
+extension ConversationViewState {
   /// A sub-agent's parent session.
   var parentSessionID: String? {
-    state.header.settings?.parentId.flatMap { $0.isEmpty || $0 == state.header.id ? nil : $0 }
+    header.settings?.parentId.flatMap { $0.isEmpty || $0 == header.id ? nil : $0 }
   }
 
   /// The session a side chat was forked from.
   var sideChatSourceID: String? {
-    state.header.settings?.sideChatSourceId.flatMap {
-      $0.isEmpty || $0 == state.header.id ? nil : $0
-    }
+    header.settings?.sideChatSourceId.flatMap { $0.isEmpty || $0 == header.id ? nil : $0 }
   }
+}
 
+extension SessionChrome {
   /// Add Nested Agent (Option-Command-A) for the viewer's own top-level session that is not
   /// archived; `nil` disables it.
-  var addNestedAgentCommand: (@MainActor () -> Void)? {
+  public var addNestedAgentCommand: (@MainActor () -> Void)? {
     guard let summary = state.summary, let add = extras.sessionActions.addNestedAgent,
-      !extras.menuContext.isShared, !summary.isArchived, parentSessionID == nil,
-      sideChatSourceID == nil
+      !extras.menuContext.isShared, !summary.isArchived, state.parentSessionID == nil,
+      state.sideChatSourceID == nil
     else { return nil }
     return { add(summary) }
-  }
-
-  /// The header's project tag: the viewer's own top-level session, but a nested member, whose
-  /// project is its representative's.
-  var showsProjectTag: Bool {
-    state.summary != nil && state.summary?.isNestedMember != true
-      && HeaderProjectTag.applies(
-        extras.menuContext, isSubagent: parentSessionID != nil,
-        canMove: extras.sessionActions.moveToProject != nil)
   }
 }
 

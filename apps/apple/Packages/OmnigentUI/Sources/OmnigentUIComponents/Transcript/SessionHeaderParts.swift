@@ -29,50 +29,6 @@ extension View {
   }
 }
 
-/// The header's project tag, as the web's breadcrumb folder: the project's icon (its name in the
-/// tooltip), or "Add to project" when unfiled. Choosing a project moves the session there.
-struct HeaderProjectTag: View {
-  let session: SessionSummary
-  let context: SessionMenuContext
-  let move: @MainActor (SessionSummary, SessionProject?) -> Void
-
-  var body: some View {
-    let current = context.project
-    Menu {
-      ForEach(context.projects) { project in
-        Button(project.name) { move(session, project) }
-          .disabled(project.id == current?.id)
-      }
-      if current != nil {
-        Divider()
-        Button("Remove from Project", systemImage: "folder.badge.minus") { move(session, nil) }
-      }
-    } label: {
-      if let icon = current?.icon, !icon.isEmpty {
-        Label {
-          Text(current?.name ?? "")
-        } icon: {
-          Text(icon)
-        }
-      } else {
-        Label(
-          current?.name ?? "Add to project",
-          systemImage: current == nil ? "folder.badge.plus" : "folder")
-      }
-    }
-    .menuIndicator(.hidden)
-    .help(current.map { "Project: \($0.name). Move to another project" } ?? "Add to project")
-    .accessibilityIdentifier("header-project-tag")
-  }
-
-  /// Whether the tag applies: the viewer's own top-level session, with projects to file into.
-  static func applies(
-    _ context: SessionMenuContext, isSubagent: Bool, canMove: Bool
-  ) -> Bool {
-    canMove && !context.isShared && !isSubagent && !context.projects.isEmpty
-  }
-}
-
 /// "Created by <session>" under the header for an independent worker, "Sub-agent of <session>"
 /// for a sub-agent, or "Side chat of <session>" for a side chat, linking to that session (the
 /// web's `CreatedBySession` and breadcrumb).

@@ -67,13 +67,15 @@ import Testing
 
     /// Going to a page: the detail and the sidebar's rows, whose list reads the selection. The
     /// strip leaves without rendering, and the chats kept under the page are not rendered.
-    private static let toPage = ["composer": 1, "detail": 1, "session row": 4, "tab": 1]
+    private static let toPage = [
+      "chrome": 1, "composer": 1, "detail": 1, "session row": 4, "tab": 1,
+    ]
 
     /// Back to the session: the detail, the strip and the chat that was kept, once each, and
     /// never the leaving page's body or the chats kept behind the shown one.
     private static let backFromPage = [
-      "composer": 1, "detail": 1, "rows": 1, "screen": 1, "session row": 4, "strip": 1,
-      "tab": 1, "tab controls": 1, "transcript": 1,
+      "chrome": 1, "composer": 1, "detail": 1, "rows": 1, "screen": 1, "session row": 4,
+      "strip": 1, "tab": 1, "tab controls": 1, "transcript": 1,
     ]
 
     /// Shows the Usage page over the shown session, noting the chats' scroll views first.

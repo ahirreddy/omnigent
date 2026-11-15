@@ -235,7 +235,15 @@ func titledWindow(
 ) async throws -> OffscreenWindow<AppWindowRoot> {
   let root = AppWindowRoot(
     session: session, selection: selection, tabContext: tabContext, preferences: preferences)
-  let screen = OffscreenWindow(root, width: 900, height: 600)
+  return try await titled(root, width: 900, height: 600)
+}
+
+/// A window with a titlebar over `root`, so its toolbar and title have somewhere to go.
+@MainActor
+func titled<Root: View>(_ root: Root, width: CGFloat, height: CGFloat) async throws
+  -> OffscreenWindow<Root>
+{
+  let screen = OffscreenWindow(root, width: width, height: height)
   let frame = screen.window.frame
   screen.window.contentView = nil
   screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]

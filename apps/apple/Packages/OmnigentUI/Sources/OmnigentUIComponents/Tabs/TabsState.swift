@@ -87,6 +87,9 @@ nonisolated public struct TabItemState: Identifiable, Hashable, Sendable {
   /// Whether a window of its own can show the tab: Move Tab to New Window and dragging it off
   /// the strip are offered. A host sets `false` for a tab that only its window can show.
   public var canMoveToNewWindow = true
+  /// Whether a session's primary chat shows its transcript or its agent's terminal, where the
+  /// tab carries that switch; `nil` for every other tab and a session with no terminal view.
+  public var viewMode: SessionViewMode?
 
   /// Creates a tab.
   /// - Parameters:
@@ -301,6 +304,9 @@ public struct TabActions {
   public var newTabMenu: (@MainActor () -> NewTabOptions)?
   /// Rename the session of a chat tab (``TabItemState/canRenameSession``); `nil` hides it.
   public var renameSession: (@MainActor (String) -> Void)?
+  /// Show a chat tab's transcript or its agent's terminal (``TabItemState/viewMode``); `nil`
+  /// hides the tab's switch.
+  public var setViewMode: (@MainActor (String, SessionViewMode) -> Void)?
 
   /// Creates the actions.
   /// - Parameters:
