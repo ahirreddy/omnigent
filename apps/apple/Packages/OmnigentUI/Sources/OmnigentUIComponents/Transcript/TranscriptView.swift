@@ -262,7 +262,7 @@ public struct TranscriptView: View {
       pacer.hold()
       loadOlder()
     } else {
-      withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+      withAnimation(reduceMotion ? nil : Theme.Motion.animation(.easeOut(duration: 0.25))) {
         proxy.scrollTo(Self.topID, anchor: .top)
       }
     }
@@ -301,7 +301,7 @@ public struct TranscriptView: View {
     }
     follow.readEarlier()
     scroll.jumped(to: target)
-    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+    withAnimation(reduceMotion ? nil : Theme.Motion.animation(.easeOut(duration: 0.25))) {
       proxy.scrollTo(target, anchor: .top)
     }
   }
@@ -309,7 +309,7 @@ public struct TranscriptView: View {
   private func jumpToLatest(_ proxy: ScrollViewProxy) {
     follow.jumpToLatest()
     scroll.jumped(to: Self.bottomID)
-    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+    withAnimation(reduceMotion ? nil : Theme.Motion.animation(.easeOut(duration: 0.25))) {
       proxy.scrollTo(Self.bottomID, anchor: .bottom)
     }
   }
@@ -335,7 +335,7 @@ extension TranscriptView {
         follow.readEarlier()
         scroll.jumped(to: id)
         focus?.flash(id)
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+        withAnimation(reduceMotion ? nil : Theme.Motion.animation(.easeOut(duration: 0.25))) {
           proxy.scrollTo(id, anchor: .top)
         }
       },

@@ -208,7 +208,7 @@ private struct TurnTick: View, Equatable {
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .animation(.easeOut(duration: 0.15), value: isHovered)
+    .animation(Theme.Motion.animation(.easeOut(duration: 0.15)), value: isHovered)
     .accessibilityLabel("Jump to: \(turn.text.prefix(80))")
     .accessibilityAddTraits(isActive ? .isSelected : [])
     .accessibilityIdentifier("turn-rail-tick-\(turn.id)")

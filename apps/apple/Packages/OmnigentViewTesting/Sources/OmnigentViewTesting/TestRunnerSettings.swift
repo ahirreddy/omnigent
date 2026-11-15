@@ -13,6 +13,12 @@
     TestRunnerSettings.overlayScrollBars()
   }
 
+  /// The test bundle's load calls this from C, before the process makes a view.
+  @_cdecl("omnigent_view_testing_quiet_motion")
+  func quietMotion() {
+    TestRunnerSettings.quietMotion()
+  }
+
   /// `@AppStorage` saves to the test runner's own settings on disk, so a value one run leaves
   /// behind would decide what the next run's views show. Each run starts with none.
   enum TestRunnerSettings {
@@ -47,6 +53,29 @@
       let defaults = UserDefaults.standard
       var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
       arguments[scrollBarsKey] = scrollBarsWhenScrolling
+      defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+    }
+
+    /// The setting Omnigent's views read to skip their animations, as a launch argument would.
+    static let animationsKey = "OmnigentDisableAnimations"
+
+    /// What makes this process's windows and views reach their end state at once: Omnigent's own
+    /// animations, sheets sliding, window animations and animated scrolls are off.
+    static var quietMotionSettings: [String: Any] {
+      [
+        animationsKey: true,
+        "NSWindowResizeTime": 0.001,
+        "NSAutomaticWindowAnimationsEnabled": false,
+        "NSScrollAnimationEnabled": false,
+      ]
+    }
+
+    /// Turns motion off for this process alone, over the machine's own settings. A test that
+    /// needs real animation sets the view's own switch back for its duration.
+    static func quietMotion() {
+      let defaults = UserDefaults.standard
+      var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
+      arguments.merge(quietMotionSettings) { _, quiet in quiet }
       defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
     }
   }

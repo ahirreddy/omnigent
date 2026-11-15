@@ -94,7 +94,9 @@ struct MessageFlash: View {
         } catch {
           return  // The row scrolled away and the flash ended with it.
         }
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.9)) { isVisible = false }
+        withAnimation(reduceMotion ? nil : Theme.Motion.animation(.easeOut(duration: 0.9))) {
+          isVisible = false
+        }
       }
   }
 }
