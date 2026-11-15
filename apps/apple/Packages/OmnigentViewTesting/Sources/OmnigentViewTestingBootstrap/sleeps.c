@@ -5,8 +5,9 @@
 #include <stdint.h>
 #include <time.h>
 
-// Notes when each `Task.sleep` in the process ends, through the Swift runtime's enqueue hooks,
-// so a test's wait can tell work still to come from a process at rest.
+// Notes when each `Task.sleep` in the process ends, and counts the jobs queued for the main
+// actor, through the Swift runtime's enqueue hooks, so a test's wait can tell work still to come
+// from a process at rest.
 
 typedef void *SwiftJob;
 typedef __attribute__((swiftcall)) void (*DeadlineOriginal)(
@@ -17,6 +18,9 @@ extern __attribute__((swiftcall, weak_import)) void (*swift_task_enqueueGlobalWi
     long long, long long, long long, long long, int, SwiftJob, DeadlineOriginal);
 extern __attribute__((swiftcall, weak_import)) void (*swift_task_enqueueGlobalWithDelay_hook)(
     unsigned long long, SwiftJob, DelayOriginal);
+typedef __attribute__((swiftcall)) void (*MainOriginal)(SwiftJob);
+extern __attribute__((swiftcall, weak_import)) void (*swift_task_enqueueMainExecutor_hook)(
+    SwiftJob, MainOriginal);
 extern __attribute__((swiftcall, weak_import)) void swift_get_time(
     long long *seconds, long long *nanoseconds, int clock);
 
@@ -25,6 +29,7 @@ static uint64_t sleep_ends[slot_count];
 static int sleep_end_count = 0;
 static os_unfair_lock sleep_lock = OS_UNFAIR_LOCK_INIT;
 static int hooks_installed = 0;
+static _Atomic unsigned long main_actor_jobs = 0;
 
 uint64_t omnigent_view_testing_now_ns(void) { return clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }
 
@@ -68,6 +73,13 @@ static __attribute__((swiftcall)) void on_delay(
   original(delay, job);
 }
 
+static __attribute__((swiftcall)) void on_main_job(SwiftJob job, MainOriginal original) {
+  main_actor_jobs++;
+  original(job);
+}
+
+unsigned long omnigent_view_testing_main_actor_jobs(void) { return main_actor_jobs; }
+
 void omnigent_view_testing_install_sleep_hooks(void) {
   if (hooks_installed) return;
   hooks_installed = 1;
@@ -76,6 +88,9 @@ void omnigent_view_testing_install_sleep_hooks(void) {
   }
   if (&swift_task_enqueueGlobalWithDelay_hook && !swift_task_enqueueGlobalWithDelay_hook) {
     swift_task_enqueueGlobalWithDelay_hook = on_delay;
+  }
+  if (&swift_task_enqueueMainExecutor_hook && !swift_task_enqueueMainExecutor_hook) {
+    swift_task_enqueueMainExecutor_hook = on_main_job;
   }
 }
 

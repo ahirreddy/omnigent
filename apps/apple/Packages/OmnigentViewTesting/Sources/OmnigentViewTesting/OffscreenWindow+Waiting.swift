@@ -8,7 +8,7 @@
     /// - Parameter seconds: The longest wait; reached only while work keeps coming.
     public func settle(_ seconds: TimeInterval = 0.1) {
       host.layoutSubtreeIfNeeded()
-      MainLoop.settle(limit: seconds)
+      MainLoop.settle(limit: seconds, windows: [window])
       host.layoutSubtreeIfNeeded()
     }
 
@@ -17,7 +17,7 @@
     /// - Parameter limit: The longest wait; reached only while work keeps coming.
     public func settleTasks(limit: Duration = .milliseconds(100)) async {
       host.layoutSubtreeIfNeeded()
-      await MainLoop.settleTasks(limit: limit)
+      await MainLoop.settleTasks(limit: limit, windows: [window])
       host.layoutSubtreeIfNeeded()
     }
 
