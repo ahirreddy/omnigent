@@ -83,9 +83,11 @@
       for child in children { try collect(child, into: &found) }
     }
 
-    /// The resolved string a text view caches, a few levels into its private storage.
+    /// The resolved string a text view caches, a few levels into its private storage: as an
+    /// attributed string, or in TextKit 2 storage once something reads the text's layout.
     private static func attributedString(in value: Any, depth: Int) -> String? {
       if let text = value as? NSAttributedString { return text.string }
+      if let storage = value as? NSTextContentStorage { return storage.attributedString?.string }
       guard depth < 6 else { return nil }
       for child in Mirror(reflecting: value).children {
         if let found = attributedString(in: child.value, depth: depth + 1) { return found }

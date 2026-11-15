@@ -14,6 +14,9 @@
         Text(verbatim: "Verbatim {braces}")
         Text(AttributedString("Attributed"))
         Text("Selectable").textSelection(.enabled)
+        Text("Laid out")
+          .overlayPreferenceValue(Text.LayoutKey.self) { _ in Color.clear }
+          .textSelection(.enabled)
         Button("Reveal") { isOpen = true }
         if isOpen { Text("Revealed") }
       }
@@ -70,7 +73,8 @@
       let screen = OffscreenWindow(TextKinds(), width: 300, height: 300)
       defer { screen.close() }
       for text in [
-        "Plain text", "Count 3 done", "Verbatim {braces}", "Attributed", "Selectable", "Reveal",
+        "Plain text", "Count 3 done", "Verbatim {braces}", "Attributed", "Selectable", "Laid out",
+        "Reveal",
       ] {
         #expect(try screen.shows(text), "\(text)")
       }
