@@ -312,7 +312,8 @@
 
       model.hasSession = false
       model.shownID = "page"
-      try await letTasksRun(screen, milliseconds: 300)
+      // The split view lets the panel go a layout pass or more later on a busy machine.
+      _ = try await waitUntil(screen) { labels(screen).isEmpty && panel(screen) == nil }
       #expect(labels(screen).isEmpty)
       #expect(panel(screen) == nil)
       #expect(model.trailingItems == 1, "the page's own")
