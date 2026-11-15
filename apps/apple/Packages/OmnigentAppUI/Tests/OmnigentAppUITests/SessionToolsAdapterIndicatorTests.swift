@@ -71,6 +71,24 @@ struct SessionToolsAdapterIndicatorTests {
     #expect(empty.subagents.isEmpty)
   }
 
+  @Test("The sub-agent count lists the children still in play, in order; finished ones drop out")
+  func subagents() async throws {
+    func child(_ id: String, _ state: String) -> OmnigentUIComponents.EventSection {
+      OmnigentUIComponents.EventSection(
+        id: "child-\(id)", title: id, summary: "",
+        details: [OmnigentUIComponents.DetailSection(id: "state", title: "State", text: state)],
+        sessionId: id)
+    }
+    var screen = self.screen
+    screen.sections = [
+      child("a", "done"), child("b", "working"), child("c", "idle"), child("d", "needs_you"),
+    ]
+    let store = try await Fixtures.store()
+    let subagents = SessionToolsAdapter.indicators(store, screen: screen).subagents
+    #expect(subagents.map(\.id) == ["b", "d"])
+    #expect(subagents.map(\.statusLabel) == ["Working", "Needs you"])
+  }
+
   @Test("A goal's usage reads at both ends of the 64-bit range")
   func goalUsage() {
     func usage(tokens: UInt64, budget: UInt64?, seconds: UInt64) -> String {

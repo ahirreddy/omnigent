@@ -119,12 +119,13 @@
     @Test("Each status draws its own mark")
     func statuses() throws {
       var pictures: Set<Data> = []
-      for status in SubagentStatus.allCases where status != .starting {
+      // Launching draws working's spinner.
+      for status in AgentTreeActivity.allCases where status != .launching {
         let state = child([("state", status.rawValue)])
         pictures.insert(
           try RenderSupport.picture(AgentsPanel(state: state, open: nil), width: 300, height: 120))
       }
-      #expect(pictures.count == 4)
+      #expect(pictures.count == AgentTreeActivity.allCases.count - 1)
     }
 
     @Test("A child's line prefers its error, then activity, then goal")

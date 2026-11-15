@@ -322,7 +322,6 @@ impl LiveReducer {
             return Effects::default();
         }
         let mut update = Map::new();
-        update.insert("status".to_owned(), Value::String("Created".to_owned()));
         let agent = created.agent_id.as_deref().unwrap_or("Subagent");
         update.insert("agent_name".to_owned(), Value::String(agent.to_owned()));
         self.merge_child(&created.child_session_id, update)

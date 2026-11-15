@@ -117,9 +117,9 @@ enum ConversationFlowCatalog {
         Step("running", "Children running", note: "Three sub-agents work for the parent."),
         Step(
           "blocked", "A child blocks",
-          note: "The migration check needs approval; the group shows Needs you."
+          note: "The migration check needs approval; the composer's count shows Needs you."
         ) { model in model.parent = PreviewData.subagentConversation },
-        Step("answer", "Answer from the parent", note: "Approve in the parent's group.") { model in
+        Step("answer", "Answer from the parent", note: "Approve in the parent's chat.") { model in
           model.respond(card, .approve)
         },
         Step("open-child", "Open the child", note: "The child's transcript routes back.") { model in
@@ -268,7 +268,7 @@ struct SubagentFlowModel {
     if let index = parent.sections.firstIndex(where: { $0.sessionId == card.targetSessionId }) {
       let section = parent.sections[index]
       parent.sections[index] = PreviewData.childSection(
-        card.targetSessionId, title: section.title, state: .running, agent: "Codex",
+        card.targetSessionId, title: section.title, state: .working, agent: "Codex",
         goal: section.details.first { $0.id == "goal" }?.text,
         activity: "Running the migration check", startedAgo: 150)
     }
@@ -294,13 +294,20 @@ private struct SubagentFlowScreen: View {
   @State private var draft = ""
 
   var body: some View {
+    let state = model.child ?? model.parent
     NavigationStack {
       ConversationScreen(
-        state: model.child ?? model.parent, composer: PreviewData.sessionComposer, draft: $draft,
-        showsInspector: .constant(false), actions: actions,
-        composerActions: GalleryActions.composer)
+        state: state, composer: PreviewData.composer(counting: state), draft: $draft,
+        showsInspector: .constant(false), actions: actions, composerActions: composerActions)
     }
-    .catalogNavigationBar((model.child ?? model.parent).header.title)
+    .catalogNavigationBar(state.header.title)
+  }
+
+  /// The gallery's composer actions, with the count's rows opening a child.
+  private var composerActions: ComposerActions {
+    var actions = GalleryActions.composer
+    actions.extras.indicators.openSubagent = { model.open($0) }
+    return actions
   }
 
   private var actions: ConversationActions {

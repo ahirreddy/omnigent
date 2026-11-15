@@ -122,9 +122,7 @@
       let log = FormValidationLog()
       let screen = OffscreenWindow(
         ScrollView {
-          InlineDecisions(
-            state: .requests([FormValidationLog.card]), actions: log.actions,
-            groupRowShown: false)
+          InlineDecisions(state: .requests([FormValidationLog.card]), actions: log.actions)
         }
         .frame(width: 800, height: 600))
       defer { screen.close() }

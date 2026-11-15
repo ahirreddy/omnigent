@@ -13,7 +13,7 @@ struct InspectorTabLabels {
     case .changes where changedCount > 0: "Changes (\(changedCount))"
     case .pullRequests where pullRequestCount > 0: "Pull Requests (\(pullRequestCount))"
     case .agents where !children.isEmpty:
-      "Agents (\(children.filter { $0.summary.lowercased() == "running" }.count)/\(children.count))"
+      "Agents (\(children.count { $0.status == .working })/\(children.count))"
     default: tab.title
     }
   }
@@ -23,7 +23,7 @@ struct InspectorTabLabels {
       .reduce(0) { $0 + SectionReading.changedFiles($1).count }
   }
 
-  private var children: [EventSection] { state.sections.filter { $0.id.hasPrefix("child-") } }
+  private var children: [SubagentChild] { SubagentGroup(state: state)?.children ?? [] }
 
   private var pullRequestCount: Int {
     if case .loaded(let pullRequests, _) = slots.pullRequests { return pullRequests.count }

@@ -41,7 +41,6 @@ use serde_json::{Map, Value};
 use crate::realtime::StreamEvent;
 
 pub use activity::{ProjectionError, interrupted_reply, project_item};
-pub use children::ChildState;
 pub use live::{BrowserActionRequest, Effects, LiveReducer, Outcome};
 pub use ops::{ChangeSet, RowOp, RowOpError, apply_row_ops, diff_rows};
 pub use presentation::{

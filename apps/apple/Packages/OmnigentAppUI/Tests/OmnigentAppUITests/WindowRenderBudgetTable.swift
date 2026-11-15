@@ -183,6 +183,16 @@ import Testing
           #expect(text.contains("3m"), "the row's time again, with no draft left: \(text)")
         }),
       WindowInteraction(
+        name: "a sub-agent that starts working",
+        // Sub-agents arrive as sections, which the chat and the window's chrome read whole.
+        budget: ["chrome": 1, "composer": 1, "rows": 1, "screen": 1, "transcript": 1],
+        prepare: { try $0.subagent("done", in: BudgetWindow.shown) },
+        perform: { try $0.subagent("working", in: BudgetWindow.shown) },
+        verify: { window in
+          let text = try window.screen.shownText()
+          #expect(text.contains("1"), "the composer's sub-agent count: \(text)")
+        }),
+      WindowInteraction(
         name: "a composer keystroke",
         budget: ["composer": 1],
         prepare: { try $0.screen.type("j") },

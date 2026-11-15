@@ -595,6 +595,7 @@ budget.
 | A session that needs the user; a session marked unread | session row 1 |
 | A streamed delta | nothing counted (the streaming row's text only) |
 | A composer keystroke | composer 1 |
+| A sub-agent that starts working (its count appears in the composer's tray) | chrome 1, screen 1, transcript 1, rows 1, composer 1: sub-agents are sections, which the chat and the window's chrome read whole, as for any other section change |
 | A draft's first keystroke; its last character deleted | composer 1 (the open session's row hides its pencil and does not read the draft) |
 | A tab switch | detail 1, tab 1, screen 1, transcript 1, rows 1, composer 2, strip 1, tab controls 1 |
 | Back to a chat from a New Tab page, three chats kept | detail 1, tab 1, screen 1, transcript 1, rows 1, composer 1, strip 2, tab controls 1; the three chats' scroll views are the same objects |

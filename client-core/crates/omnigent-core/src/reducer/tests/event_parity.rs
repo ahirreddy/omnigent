@@ -478,7 +478,7 @@ fn child_sections_classify_the_server_child_summary() {
     };
     assert_eq!(
         summary(&harness),
-        Some(("Starting".to_owned(), Some("child-1".to_owned())))
+        Some(("Idle".to_owned(), Some("child-1".to_owned())))
     );
     harness.send(json!({
         "type": "session.child_session.updated",
@@ -500,7 +500,44 @@ fn child_sections_classify_the_server_child_summary() {
     }));
     assert_eq!(
         summary(&harness).map(|(text, _)| text).as_deref(),
-        Some("Ready")
+        Some("Done")
+    );
+}
+
+/// Finished children whose later summary carries no task status (a reconnect after the server
+/// lost its status cache) read as idle, as the web reads them, never as starting.
+#[test]
+fn settled_children_never_read_as_starting() {
+    let mut harness = Harness::new(SESSION);
+    let lines = events("EventParity--SettledChildrenNeverReadAsStarting.jsonl");
+    let states = |harness: &Harness| -> Vec<(String, String)> {
+        harness
+            .reducer
+            .sections()
+            .iter()
+            .filter(|section| section.id.starts_with("child-"))
+            .map(|section| {
+                let state = section.details.iter().find(|detail| detail.id == "state");
+                let key = state.map(|detail| detail.text.clone()).unwrap_or_default();
+                (section.summary.clone(), key)
+            })
+            .collect()
+    };
+    let pair = |label: &str, key: &str| (label.to_owned(), key.to_owned());
+    let mut replayed = Harness::new(SESSION);
+    replayed.send_all(&lines);
+    assert_eq!(states(&replayed), vec![pair("Idle", "idle"); 3]);
+
+    harness.send_all(&lines[..4]);
+    assert_eq!(states(&harness)[0], pair("Launching", "launching"));
+    harness.send_all(&lines[4..7]);
+    assert_eq!(
+        states(&harness),
+        [
+            pair("Done", "done"),
+            pair("Working", "working"),
+            pair("Idle", "idle")
+        ]
     );
 }
 

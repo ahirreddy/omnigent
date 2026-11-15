@@ -6,35 +6,29 @@
 
   @Suite("Sub-agent and phone posture rendering", .serialized)
   struct SubagentRenderTests {
-    private func group(_ state: ConversationViewState) -> some View {
-      ScrollView {
-        SubagentGroupView(
-          state: state,
-          actions: ConversationActions(openSession: { _ in }, respond: { _, _ in })
-        )
-        .padding(Theme.Spacing.large)
+    /// The composer count's list, with a child in each state it shows.
+    private var list: some View {
+      let children = AgentTreeActivity.allCases.filter(\.isTallied).map { status in
+        SubagentChild(
+          id: status.rawValue, title: "general-purpose:\(status.rawValue)",
+          agent: "Check the \(status.title.lowercased()) path", status: status)
       }
-      .themeCanvas()
-      .omnigentTheme(.omni)
+      return SubagentRows(children: children, open: { _ in })
+        .frame(width: 360)
+        .themeCanvas()
+        .omnigentTheme(.omni)
     }
 
-    @Test("the group, the child's route back and the phone posture render at Mac and phone widths")
+    @Test("the count's list, the route back and the phone posture render at both widths")
     func render() throws {
       for width in [390.0, 760.0] {
         for scheme in [ColorScheme.light, .dark] {
           let layout: LayoutWidth = width < 600 ? .compact : .regular
           let suffix = "\(Int(width))-\(scheme == .dark ? "dark" : "light")"
-          let expanded = try RenderSupport.render(
-            group(PreviewData.subagentConversation), width: width, height: 560, scheme: scheme,
-            layout: layout)
-          #expect(RenderSupport.inkCoverage(expanded) > 0.01)
-          try RenderSupport.write(expanded, name: "rm-wave2a-subagents-\(suffix)")
-
-          var answered = PreviewData.subagentConversation
-          answered.decisionPhases[PreviewData.subagentCommand.id] = .answered(summary: "Approved")
-          let collapsed = try RenderSupport.render(
-            group(answered), width: width, height: 120, scheme: scheme, layout: layout)
-          try RenderSupport.write(collapsed, name: "rm-wave2a-subagents-collapsed-\(suffix)")
+          let rows = try RenderSupport.render(
+            list, width: 360, height: 320, scheme: scheme, layout: layout)
+          #expect(RenderSupport.inkCoverage(rows) > 0.01)
+          try RenderSupport.write(rows, name: "rm-wave2a-subagents-\(suffix)")
 
           let parent = try RenderSupport.render(
             SubagentPlayground().omnigentTheme(.omni), width: width, height: 844,

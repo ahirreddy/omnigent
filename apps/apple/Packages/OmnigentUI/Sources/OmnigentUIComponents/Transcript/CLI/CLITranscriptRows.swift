@@ -124,7 +124,7 @@ struct CLITranscriptRows<Header: View>: View {
     }
     // No sub-agent block here: an agent's start reads where the turn logged it, the sidebar
     // lists the agents, and a request of theirs shows with the transcript's own.
-    InlineDecisions(state: state, actions: actions, groupRowShown: false)
+    InlineDecisions(state: state, actions: actions)
       .transcriptColumn()
     if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
       CLIWorkingLine(

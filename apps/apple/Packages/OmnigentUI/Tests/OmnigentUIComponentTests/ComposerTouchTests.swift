@@ -67,7 +67,7 @@ struct ComposerTouchTests {
         backgroundTasks: 2,
         subagents: [
           SubagentChild(id: "a", sectionID: "child-a", title: "Tests", status: .needsYou),
-          SubagentChild(id: "b", sectionID: "child-b", title: "Docs", status: .running),
+          SubagentChild(id: "b", sectionID: "child-b", title: "Docs", status: .working),
         ],
         goal: ComposerGoal(objective: "Ship the token refresh fix", status: "active"))
       let states = [("idle", ComposerSamples.idle), ("running", running)]

@@ -80,7 +80,7 @@ nonisolated public struct ComposerTaskIndicators: Hashable, Sendable {
   public var backgroundTaskList: [ComposerBackgroundTask]
   /// "+1 more — details unavailable", when some tasks are not named.
   public var backgroundTaskNote: String?
-  /// Sub-agents still in play (everything but Ready).
+  /// Sub-agents still in play: see ``SubagentGroup/tally``.
   public var subagents: [SubagentChild]
   /// The goal, when the session has one.
   public var goal: ComposerGoal?
@@ -106,14 +106,27 @@ nonisolated public struct ComposerTaskIndicators: Hashable, Sendable {
   /// Nothing to show.
   public var isEmpty: Bool { backgroundTasks <= 0 && subagents.isEmpty && goal == nil }
 
-  /// "2 sub-agents: 1 running, 1 needs you".
+  /// "3 sub-agents: 2 active, 1 awaiting input" (web `statusSummary`).
   public var subagentSummary: String {
-    let counts = SubagentStatus.allCases.compactMap { status -> String? in
-      let count = subagents.count { $0.status == status }
-      return count > 0 ? status.count(count) : nil
+    let count = { (statuses: Set<AgentTreeActivity>) in
+      subagents.count { statuses.contains($0.status) }
     }
+    let errors = count([.failed])
+    let parts = [
+      (count([.launching, .working]), "active"), (count([.needsYou]), "awaiting input"),
+      (count([.disconnected]), "disconnected"),
+      (errors, errors == 1 ? "needs attention" : "need attention"),
+    ].filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
     let total = "\(subagents.count) sub-agent\(subagents.count == 1 ? "" : "s")"
-    return counts.isEmpty ? total : "\(total): \(counts.joined(separator: ", "))"
+    return parts.isEmpty ? total : "\(total): \(parts.joined(separator: ", "))"
+  }
+
+  /// What tints the sub-agent count: a failure first, then a request waiting on the user; `nil`
+  /// leaves it plain (web trigger state).
+  public var subagentAlert: AgentTreeActivity? {
+    if subagents.contains(where: { $0.status == .failed }) { return .failed }
+    if subagents.contains(where: { $0.status == .needsYou }) { return .needsYou }
+    return nil
   }
 }
 

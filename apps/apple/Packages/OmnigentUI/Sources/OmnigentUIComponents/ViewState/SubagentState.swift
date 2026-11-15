@@ -1,43 +1,6 @@
 public import Foundation
 
-/// Where a sub-agent stands: the core's `ChildState`, from the `state` detail of its
-/// `child-<id>` section.
-nonisolated public enum SubagentStatus: String, Hashable, Sendable, CaseIterable {
-  /// Blocked on an approval or a question.
-  case needsYou = "needs_you"
-  /// Working.
-  case running
-  /// Starting, with no task reported yet.
-  case starting
-  /// The latest task failed.
-  case failed
-  /// Finished and ready for review.
-  case ready
-
-  /// The word on the child's row.
-  public var title: String {
-    switch self {
-    case .needsYou: "Needs you"
-    case .running: "Running"
-    case .starting: "Starting"
-    case .failed: "Failed"
-    case .ready: "Ready"
-    }
-  }
-
-  /// "1 running", "2 need you".
-  func count(_ count: Int) -> String {
-    switch self {
-    case .needsYou: "\(count) \(count == 1 ? "needs" : "need") you"
-    case .running: "\(count) running"
-    case .starting: "\(count) starting"
-    case .failed: "\(count) failed"
-    case .ready: "\(count) ready"
-    }
-  }
-}
-
-/// One sub-agent in the parent's group row.
+/// One sub-agent of the parent, from its `child-<id>` section.
 nonisolated public struct SubagentChild: Hashable, Sendable, Identifiable {
   /// The child session's id.
   public var id: String
@@ -54,11 +17,11 @@ nonisolated public struct SubagentChild: Hashable, Sendable, Identifiable {
   /// Why its latest task failed.
   public var error: String?
   /// Where it stands.
-  public var status: SubagentStatus
+  public var status: AgentTreeActivity
+  /// The word for where it stands ("Working", or a task status as reported).
+  public var statusLabel: String
   /// When it started.
   public var startedAt: Date?
-  /// Requests mirrored into the parent that target this child, answerable from the parent.
-  public var decisions: [DecisionCard]
 
   /// Creates a child.
   /// - Parameters:
@@ -70,12 +33,12 @@ nonisolated public struct SubagentChild: Hashable, Sendable, Identifiable {
   ///   - activity: Latest message.
   ///   - error: Failure.
   ///   - status: Status.
+  ///   - statusLabel: Status word; the status's title when `nil`.
   ///   - startedAt: Start.
-  ///   - decisions: Mirrored requests.
   public init(
     id: String, sectionID: String? = nil, title: String, agent: String? = nil,
     goal: String? = nil, activity: String? = nil, error: String? = nil,
-    status: SubagentStatus, startedAt: Date? = nil, decisions: [DecisionCard] = []
+    status: AgentTreeActivity, statusLabel: String? = nil, startedAt: Date? = nil
   ) {
     self.id = id
     self.sectionID = sectionID ?? "child-\(id)"
@@ -85,13 +48,16 @@ nonisolated public struct SubagentChild: Hashable, Sendable, Identifiable {
     self.activity = activity
     self.error = error
     self.status = status
+    self.statusLabel = statusLabel ?? status.title
     self.startedAt = startedAt
-    self.decisions = decisions
   }
+
+  /// What its row is called (web `subagentLabel`): its task, else its title.
+  public var name: String { goal ?? title }
 }
 
-/// The parent's live sub-agent group: `2 agents · 1 running · 1 ready`, expandable to each
-/// child's goal, latest activity and pending requests.
+/// The parent's sub-agents, from its `child-<id>` sections, for the composer's count and the
+/// Agents tab.
 nonisolated public struct SubagentGroup: Hashable, Sendable {
   /// Children in the order the core lists them (by start).
   public var children: [SubagentChild]
@@ -102,9 +68,9 @@ nonisolated public struct SubagentGroup: Hashable, Sendable {
     self.children = children
   }
 
-  /// The group of `state`'s `child-<id>` sections, with the mirrored requests that target each
-  /// child; `nil` when the session has no children. A child with an unanswered mirrored request
-  /// needs the user whatever its section says, so a pending request is never hidden.
+  /// The children of `state`'s `child-<id>` sections; `nil` when the session has none. A child
+  /// with an unanswered mirrored request needs the user whatever its section says, so a pending
+  /// request is never hidden.
   /// - Parameter state: The parent conversation.
   public init?(state: ConversationViewState) {
     let children: [SubagentChild] = state.sections.compactMap { section in
@@ -112,83 +78,29 @@ nonisolated public struct SubagentGroup: Hashable, Sendable {
       let detail = { (key: String) -> String? in
         section.details.first { $0.id == key }.map(\.text).flatMap { $0.isEmpty ? nil : $0 }
       }
-      let decisions = state.decisions.filter { $0.isMirrored && $0.targetSessionId == id }
-      let waiting = decisions.contains { card in
+      let waiting = state.decisions.contains { card in
+        guard card.isMirrored, card.targetSessionId == id else { return false }
         switch state.phase(of: card) {
-        case .pending, .resolving, .failed: true
-        case .answered: false
+        case .pending, .resolving, .failed: return true
+        case .answered: return false
         }
       }
-      var status = detail("state").flatMap(SubagentStatus.init(rawValue:)) ?? .starting
-      if waiting { status = .needsYou }
+      let reported = detail("state").flatMap(AgentTreeActivity.init(rawValue:)) ?? .idle
+      let status = waiting ? .needsYou : reported
+      let label = waiting || section.summary.isEmpty ? status.title : section.summary
       return SubagentChild(
         id: id, sectionID: section.id, title: section.title, agent: detail("agent"),
         goal: detail("goal"), activity: detail("activity"), error: detail("error"),
-        status: status,
+        status: status, statusLabel: label,
         startedAt: detail("started").flatMap(TimeInterval.init).map(
-          Date.init(timeIntervalSince1970:)),
-        decisions: decisions)
+          Date.init(timeIntervalSince1970:)))
     }
     guard !children.isEmpty else { return nil }
     self.init(children: children)
   }
 
-  /// How many children are in `status`.
-  /// - Parameter status: A status.
-  /// - Returns: The count.
-  public func count(_ status: SubagentStatus) -> Int {
-    children.count { $0.status == status }
-  }
-
-  /// The non-zero counts, most urgent first.
-  public var counts: [(status: SubagentStatus, count: Int)] {
-    SubagentStatus.allCases.compactMap { status in
-      let count = count(status)
-      return count > 0 ? (status, count) : nil
-    }
-  }
-
-  /// "2 agents".
-  public var total: String {
-    "\(children.count) \(children.count == 1 ? "agent" : "agents")"
-  }
-
-  /// "2 agents · 1 running · 1 ready".
-  public var headline: String {
-    ([total] + counts.map { $0.status.count($0.count) }).joined(separator: " \u{00B7} ")
-  }
-
-  /// Opens expanded while a child needs the user, so its request is answerable at a glance.
-  public var startsExpanded: Bool { count(.needsYou) > 0 }
-
-  /// Children still in play (everything but Ready), in order.
-  public var active: [SubagentChild] { children.filter { $0.status != .ready } }
-
-  /// Finished children; they fold to "2 done" while others are still active.
-  public var done: [SubagentChild] { children.filter { $0.status == .ready } }
-
-  /// Whether the transcript shows the group's row: only while a child is still in play. Once
-  /// every child is ready there is nothing to watch or answer, so the row goes.
-  public var showsInTranscript: Bool { !active.isEmpty }
-
-  /// The mirrored requests the group renders, which the transcript's inline list then skips.
-  public var decisionIDs: Set<String> {
-    Set(children.flatMap { $0.decisions.map(\.id) })
-  }
-
-  /// The requests the transcript's inline list shows: every unanswered one the group row does
-  /// not render. While the row is hidden the inline list keeps the sub-agents' requests too, so
-  /// a request waiting on the user is never left without a place.
-  /// - Parameters:
-  ///   - state: The parent conversation.
-  ///   - groupRowShown: Whether the transcript shows the group's row.
-  /// - Returns: The cards, in order.
-  public static func inlineDecisions(
-    in state: ConversationViewState, groupRowShown: Bool
-  ) -> [DecisionCard] {
-    let grouped = groupRowShown ? Self(state: state)?.decisionIDs ?? [] : []
-    return state.decisions.filter { !$0.answered && !grouped.contains($0.id) }
-  }
+  /// The children the composer's count lists, in order: see ``AgentTreeActivity/isTallied``.
+  public var tally: [SubagentChild] { children.filter(\.status.isTallied) }
 
   /// "Subagent · Write auth tests" for a mirrored card, when its child is known.
   /// - Parameters:

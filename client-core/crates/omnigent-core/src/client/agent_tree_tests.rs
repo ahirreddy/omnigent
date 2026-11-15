@@ -75,6 +75,23 @@ fn a_pending_request_outranks_busy_and_a_disconnect_is_not_a_failure() {
 }
 
 #[test]
+fn each_activity_has_its_own_machine_value() {
+    let keys = [
+        (AgentActivity::Launching, "launching"),
+        (AgentActivity::Working, "working"),
+        (AgentActivity::NeedsYou, "needs_you"),
+        (AgentActivity::Done, "done"),
+        (AgentActivity::Failed, "failed"),
+        (AgentActivity::Disconnected, "disconnected"),
+        (AgentActivity::Idle, "idle"),
+        (AgentActivity::Other, "other"),
+    ];
+    for (activity, key) in keys {
+        assert_eq!(activity.key(), key);
+    }
+}
+
+#[test]
 fn names_prefer_the_task_and_native_sub_agents_use_their_type() {
     let spawned = row(&json!({"title": "researcher:auth", "tool": "researcher",
         "session_name": "auth", "task_summary": "Investigate auth flow"}));

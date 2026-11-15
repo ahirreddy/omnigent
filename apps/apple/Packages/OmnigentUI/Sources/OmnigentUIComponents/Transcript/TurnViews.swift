@@ -155,16 +155,14 @@ struct PlanCard: View {
 struct InlineDecisions: View {
   let state: ConversationViewState
   let actions: ConversationActions
-  /// Whether the sub-agent group row follows this list; it then answers its children's requests.
-  let groupRowShown: Bool
   @Environment(DecisionDrafts.self) private var sharedDrafts: DecisionDrafts?
   @State private var localDrafts = DecisionDrafts()
 
   private var drafts: DecisionDrafts { sharedDrafts ?? localDrafts }
 
   var body: some View {
-    let cards = SubagentGroup.inlineDecisions(in: state, groupRowShown: groupRowShown)
-    ForEach(cards) { card in
+    // Every unanswered request, a sub-agent's mirrored ones included.
+    ForEach(state.decisions.filter { !$0.answered }) { card in
       DecisionCardView(
         card: card, phase: state.phase(of: card), isReadOnly: state.header.readOnly,
         respond: actions.respond.map { respond in { respond(card, $0) } },

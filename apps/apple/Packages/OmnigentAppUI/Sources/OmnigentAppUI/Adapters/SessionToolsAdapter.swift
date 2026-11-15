@@ -179,7 +179,7 @@ enum SessionToolsAdapter {
     return ComposerTaskIndicators(
       backgroundTasks: background ?? 0, backgroundTaskList: tasks.list,
       backgroundTaskNote: tasks.note,
-      subagents: SubagentGroup(state: screen)?.active ?? [],
+      subagents: SubagentGroup(state: screen)?.tally ?? [],
       goal: store.tools.goal.map(goal))
   }
 

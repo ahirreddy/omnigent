@@ -347,11 +347,11 @@ enum PreviewData {
         DetailSection(id: "linear", title: "linear", text: "failed\nOAuth token expired"),
       ]),
     childSection(
-      "sess_c1", title: "Write auth tests", state: .running, agent: "tester",
+      "sess_c1", title: "Write auth tests", state: .working, agent: "tester",
       goal: "Cover expiry and concurrent refresh in auth/tests.rs.",
       activity: "Running cargo test -p omnigent-core auth", startedAgo: 260),
     childSection(
-      "sess_c2", title: "Review patch", state: .ready, agent: "reviewer",
+      "sess_c2", title: "Review patch", state: .done, agent: "reviewer",
       goal: "Review the refresh patch for races.",
       activity: "No blocking issues. Two naming nits.", startedAgo: 900),
     EventSection(
