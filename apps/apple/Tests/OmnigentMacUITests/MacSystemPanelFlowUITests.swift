@@ -159,7 +159,7 @@ final class MacSystemPanelFlowUITests: XCTestCase {
   private func addIsEnabled(_ picker: XCUIElement) -> Bool {
     guard picker.exists else { return false }
     let image = picker.screenshot().image
-    guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+    guard let cgImage = unsafe image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
       return false
     }
     let bitmap = NSBitmapImageRep(cgImage: cgImage)
