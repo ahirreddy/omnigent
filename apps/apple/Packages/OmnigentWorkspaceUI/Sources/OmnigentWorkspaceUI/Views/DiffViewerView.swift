@@ -225,7 +225,7 @@ public struct DiffViewerView: View {
   private func move(forward: Bool, proxy: ScrollViewProxy) {
     let target = forward ? navigator.next() : navigator.previous()
     guard let target else { return }
-    withAnimation(.easeInOut(duration: 0.15)) {
+    withAnimation(WorkspaceTheme.motion(.easeInOut(duration: 0.15))) {
       proxy.scrollTo(DiffIDs.hunk(target), anchor: .top)
     }
   }

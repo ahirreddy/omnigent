@@ -50,7 +50,7 @@
         gridWidth = geometry.width
       }
       .task {
-        withAnimation(.snappy(duration: 0.35)) { zoomedID = nil }
+        withAnimation(Theme.Motion.animation(.snappy(duration: 0.35))) { zoomedID = nil }
       }
       // A container element, so the cards keep their own identifiers.
       .accessibilityElement(children: .contain)
@@ -116,7 +116,7 @@
     private func closeButton(_ tab: TabItemState) -> some View {
       Button {
         TabThumbnails.shared.remove(tab.id)
-        withAnimation(.snappy) { actions.close(tab.id) }
+        withAnimation(Theme.Motion.animation(.snappy)) { actions.close(tab.id) }
       } label: {
         Image(systemName: "xmark")
           .font(.system(size: 11, weight: .bold))
@@ -170,7 +170,7 @@
         return
       }
       if tabID != state.selectedID { actions.select(tabID) }
-      withAnimation(.snappy(duration: 0.3)) {
+      withAnimation(Theme.Motion.animation(.snappy(duration: 0.3))) {
         zoomedID = tabID
       } completion: {
         dismiss()
