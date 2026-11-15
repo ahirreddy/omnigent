@@ -8,10 +8,10 @@ host now uses.
 
 | | Linux VM | Mac |
 |---|---|---|
-| Machine | `arca_qemu2`: Intel Xeon 6975P-C, 192 vCPU, Ubuntu 24.04 | MacBook Pro, M1 Max, macOS 26 |
+| Machine | Linux test VM: Intel Xeon 6975P-C, 192 vCPU, Ubuntu 24.04 | MacBook Pro, M1 Max, macOS 26 |
 | Host | `omnigent-browser-host` 0.1.0, CEF 156.0.15 (Chromium 156.0.8078.80), Alloy windowless, CPU `OnPaint` | same |
 | Display | headless Ozone (default) and Xvfb | n/a |
-| Encoder | `ffmpeg -c:v libx264` (Ubuntu ffmpeg 6.1.1, libx264 0.164.3108). The x264 CLI cannot be installed: apt is blocked by the Arca policy guard | `x264` CLI 0.165.3222 (Homebrew) |
+| Encoder | `ffmpeg -c:v libx264` (Ubuntu ffmpeg 6.1.1, libx264 0.164.3108). The x264 CLI cannot be installed: apt is blocked by the VM's policy guard | `x264` CLI 0.165.3222 (Homebrew) |
 
 Both encoders are the same x264 library run as a child process; only the wrapper differs.
 

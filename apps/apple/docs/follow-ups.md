@@ -148,13 +148,13 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   1 s of opening a session.
 - [ ] **iPhone:** transcript content shows briefly under the dock and composer while the layout
   settles.
-- [ ] **Onboarding (Mac):** offer the remote (Arca) runner in "Where do you work today?" where
+- [ ] **Onboarding (Mac):** offer the remote runner in "Where do you work today?" where
   Electron does (Databricks-managed servers only).
 - [ ] **Invite links:** `https://…/register?invite=` links open in the browser; only
   `omnigent://host/register?invite=` links and pasted links reach the app. Opening the https form
   needs associated domains on the server.
 - [ ] **Harnesses:** Settings does not probe harness accounts on open
-  (`POST /v1/hosts/{id}/harnesses/accounts/refresh`), lacks the Isaac/personal credential cards
+  (`POST /v1/hosts/{id}/harnesses/accounts/refresh`), lacks the gateway/personal credential cards
   of the web's Authenticate step, and has no MCP servers / skills / plugins tabs on the details.
 - [ ] **Tabs:** drag-to-reorder on iPad.
 - [ ] **Split view:** in iPad portrait the right pane's tab-strip section is narrow and clips titles.
@@ -261,7 +261,7 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   (HTTP 503)…"); map them to plain-language banners with a retry.
 - [ ] **Tabs (Mac):** no hover card for tabs (only the close button and a title tooltip).
 - [ ] **Sandboxes, not yet native:** the sandbox model preview (`inference_models`,
-  `configuration_revision`), the Databricks git-credentials hint, the arclet dbcert preflight,
+  `configuration_revision`), the Databricks git-credentials hint, the sandbox certificate preflight,
   remembering the last sandbox repositories, and re-checking a chosen profile's revision before
   launch (the server rejects a stale one). Verified against fake servers only: the local
   server has `sandbox_profiles` off.

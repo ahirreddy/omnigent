@@ -36,9 +36,8 @@ frame type in it has at least one example here. Rust consumers: `omnigent-protoc
 
 ## How the media was made
 
-Encoded on the Linux x86_64 test VM (`ssh arca_qemu2.ssh`, Ubuntu `ffmpeg 7:6.1.1-3ubuntu5`
-with `libx264-164 0.164.3108`, the encoder family the host runs), from ffmpeg's `testsrc`
-pattern:
+Encoded on the Linux x86_64 test VM (Ubuntu `ffmpeg 7:6.1.1-3ubuntu5` with
+`libx264-164 0.164.3108`, the encoder family the host runs), from ffmpeg's `testsrc` pattern:
 
 ```sh
 X264="keyint=infinite:min-keyint=infinite:scenecut=0:aud=1:repeat-headers=1:bframes=0:ref=1"
