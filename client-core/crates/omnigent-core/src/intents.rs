@@ -42,7 +42,8 @@ impl IntentId {
 pub enum SessionPatch {
     /// The title.
     Title(String),
-    /// The pin's sort key, or `None` for unpinned.
+    /// The pin's sort key, or `None` for unpinned. A family representative's pin is its
+    /// family's, so the row's family shows it too.
     Pin(Option<String>),
     /// Archived or restored. Archiving also unpins, as the server does.
     Archived(bool),
@@ -65,6 +66,11 @@ impl SessionPatch {
             Self::Pin(stamp) => {
                 row.is_pinned = stamp.is_some();
                 row.pin_stamp.clone_from(stamp);
+                let id = row.id.as_str();
+                if let Some(family) = row.family.as_mut().filter(|family| !family.nests(id)) {
+                    family.pinned = stamp.is_some();
+                    family.pinned_at.clone_from(stamp);
+                }
             }
             Self::Archived(archived) => {
                 row.is_archived = *archived;

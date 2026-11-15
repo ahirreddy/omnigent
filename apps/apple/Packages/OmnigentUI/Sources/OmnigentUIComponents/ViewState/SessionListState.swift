@@ -49,6 +49,9 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
   public var attention: SessionAttentionState
   /// Stop can end its live process.
   public var canStop: Bool
+  /// A session family member nested under another representative: it is never pinned or moved
+  /// on its own, and takes no pin slot.
+  public var isNestedMember: Bool
   /// The nested-agent family it belongs to; `nil` for a session on its own or someone else's.
   public var family: SessionFamilyInfo?
 
@@ -71,6 +74,7 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
   ///   - canArchive: May archive.
   ///   - attention: Attention; `nil` derives it from `status` and `failureMessage`.
   ///   - canStop: Stop can end it.
+  ///   - isNestedMember: Nested under another family representative.
   ///   - family: Its nested-agent family.
   public init(
     id: String, title: String, preview: String = "", status: SessionListStatus = .idle,
@@ -78,7 +82,7 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
     agentName: String = "", isPinned: Bool = false, isArchived: Bool = false,
     permissionLevel: Int64? = nil, failureMessage: String? = nil, canRename: Bool = true,
     canPin: Bool = true, canArchive: Bool = true, attention: SessionAttentionState? = nil,
-    canStop: Bool = false, family: SessionFamilyInfo? = nil
+    canStop: Bool = false, isNestedMember: Bool = false, family: SessionFamilyInfo? = nil
   ) {
     self.id = id
     self.title = title
@@ -97,6 +101,7 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
     self.canArchive = canArchive
     self.attention = attention ?? SessionAttentionState(status: status, failure: failureMessage)
     self.canStop = canStop
+    self.isNestedMember = isNestedMember
     self.family = family
   }
 

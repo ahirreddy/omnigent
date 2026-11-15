@@ -273,8 +273,9 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
     servers.first { $0.id == currentServerID }
   }
 
-  /// The pin slots taken now: pinned sessions on their own and pinned family representatives.
-  public var pinnedCount: Int { SidebarFamilies.pinUnits(list.sessions) }
+  /// Pin slots in use: pinned standalone sessions and family representatives. A nested family
+  /// member never takes one, even with a pin of its own.
+  public var pinnedCount: Int { list.sessions.count { $0.isPinned && !$0.isNestedMember } }
 
   /// The sort `group` shows: the one chosen for it, or its default.
   /// - Parameter group: Pinned, or a project.

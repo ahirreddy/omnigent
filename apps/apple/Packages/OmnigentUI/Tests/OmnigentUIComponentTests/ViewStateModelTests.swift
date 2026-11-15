@@ -26,11 +26,12 @@ struct ViewStateModelTests {
     #expect(LoadPhase<Int>.loading.errorMessage == nil)
   }
 
-  @Test("The sidebar finds its current server and counts pins")
+  @Test("The sidebar finds its current server and counts pin slots, never a nested member's")
   func sidebar() {
     let sessions = [
       SessionSummary(id: "a", title: "A", isPinned: true),
       SessionSummary(id: "b", title: "B"),
+      SessionSummary(id: "c", title: "C", isPinned: true, isNestedMember: true),
     ]
     var state = SidebarViewState(
       list: SessionListViewState(sessions: sessions),
