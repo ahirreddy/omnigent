@@ -289,24 +289,22 @@ mod tests {
 #[cfg(test)]
 mod databricks_tests {
     use super::*;
+    use crate::api_tests::workspace_host;
 
     #[test]
     fn databricks_workspaces_skip_unauthenticated_discovery() {
-        let url = normalize(
-            "https://dbc-1.cloud.databricks.com/?o=42",
-            UrlPolicy::Release,
-        )
-        .unwrap();
+        let workspace = workspace_host();
+        let url = normalize(&format!("{workspace}/?o=42"), UrlPolicy::Release).unwrap();
         let discovery = databricks_discovery(&url);
         assert_eq!(
             discovery.base_url,
-            "https://dbc-1.cloud.databricks.com/api/2.0/omnigent?o=42"
+            format!("{workspace}/api/2.0/omnigent?o=42")
         );
         let endpoint = ServerEndpoint::new(&discovery.base_url).unwrap();
         assert_eq!(endpoint.databricks_org_id(), Some("42"));
         assert_eq!(
             databricks_workspace(&endpoint).unwrap().as_str(),
-            "https://dbc-1.cloud.databricks.com/?o=42"
+            format!("{workspace}/?o=42")
         );
     }
 

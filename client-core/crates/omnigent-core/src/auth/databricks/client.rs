@@ -165,13 +165,16 @@ mod tests {
     use crate::auth::databricks::test_support::{
         ACCOUNT_ISSUER, TOKEN_BODY, attempt_for, discovery_body, form_fields, url,
     };
-    use crate::auth::testing::{FixedEntropy, ScriptedTransport, header};
+    use crate::auth::testing::{FixedEntropy, ScriptedTransport, WORKSPACE_DOMAIN, header};
     use crate::http::TransportError;
 
-    const WORKSPACE: &str = "https://test-workspace.cloud.databricks.com";
+    /// The workspace these tests sign in to.
+    fn workspace() -> String {
+        format!("https://test-workspace.cloud.{WORKSPACE_DOMAIN}")
+    }
 
     fn exchange(transport: &ScriptedTransport) -> Result<DatabricksTokens, DatabricksError> {
-        let attempt = attempt_for(WORKSPACE, &FixedEntropy::counting());
+        let attempt = attempt_for(&workspace(), &FixedEntropy::counting());
         let authorization = attempt
             .authorization_response(&url(&format!(
                 "https://login.databricks.com/mobile-redirect?state={}&code=code",
@@ -182,7 +185,7 @@ mod tests {
     }
 
     fn with_workspace_discovery(transport: &ScriptedTransport) -> &ScriptedTransport {
-        transport.json(200, &discovery_body(&format!("{WORKSPACE}/oidc")))
+        transport.json(200, &discovery_body(&format!("{}/oidc", workspace())))
     }
 
     /// `DatabricksOAuthClientTests::testExchangeUsesIsolatedSession`: the exchange carries no
@@ -194,16 +197,19 @@ mod tests {
         let tokens = exchange(&transport).unwrap();
         assert_eq!(tokens.access_token.expose(), "opaque-access");
         assert_eq!(tokens.expires_at_ms, 121_000);
-        assert_eq!(tokens.issuer.unwrap().as_str(), format!("{WORKSPACE}/oidc"));
+        assert_eq!(
+            tokens.issuer.unwrap().as_str(),
+            format!("{}/oidc", workspace())
+        );
         let requests = transport.take();
         assert_eq!(requests.len(), 2);
         assert_eq!(requests[0].method, "GET");
         assert_eq!(
             requests[0].url,
-            format!("{WORKSPACE}/oidc/.well-known/openid-configuration")
+            format!("{}/oidc/.well-known/openid-configuration", workspace())
         );
         assert_eq!(requests[1].method, "POST");
-        assert_eq!(requests[1].url, format!("{WORKSPACE}/oidc/v1/token"));
+        assert_eq!(requests[1].url, format!("{}/oidc/v1/token", workspace()));
         for request in &requests {
             assert_eq!(header(request, "Cookie"), None);
             assert_eq!(header(request, "Authorization"), None);
@@ -269,7 +275,7 @@ mod tests {
     fn databricks_refresh_form_and_rotated_response() {
         let transport = ScriptedTransport::new();
         transport.json(200, TOKEN_BODY);
-        let scope = attempt_for(WORKSPACE, &FixedEntropy::counting())
+        let scope = attempt_for(&workspace(), &FixedEntropy::counting())
             .scope()
             .clone();
         let tokens = block_on(OAuthClient::new(&transport).refresh(
@@ -282,7 +288,7 @@ mod tests {
         assert_eq!(tokens.refresh_token.expose(), "opaque-refresh");
         let request = transport.take().remove(0);
         assert_eq!(request.method, "POST");
-        assert_eq!(request.url, format!("{WORKSPACE}/oidc/v1/token"));
+        assert_eq!(request.url, format!("{}/oidc/v1/token", workspace()));
         assert_eq!(header(&request, "Authorization"), None);
         let fields = form_fields(&request);
         assert_eq!(fields.len(), 3);
@@ -293,8 +299,8 @@ mod tests {
 
     /// `DatabricksOAuthClientTests::testOnlyValidatedInvalidGrantResponseInvalidatesRefresh`.
     #[test]
-    fn databricks_only_invalid_grant_invalidates_refresh() {
-        let scope = attempt_for(WORKSPACE, &FixedEntropy::counting())
+    fn only_invalid_grant_invalidates_refresh() {
+        let scope = attempt_for(&workspace(), &FixedEntropy::counting())
             .scope()
             .clone();
         for (status, body, expected) in [
@@ -358,7 +364,7 @@ mod tests {
     /// `DatabricksOAuthIssuerTests::testExchangeAndRefreshUseDiscoveredIssuerWithoutChangingDestination`.
     #[test]
     fn databricks_exchange_and_refresh_use_discovered_issuer() {
-        let attempt = attempt_for(WORKSPACE, &FixedEntropy::counting());
+        let attempt = attempt_for(&workspace(), &FixedEntropy::counting());
         let issuer = OAuthIssuer::parse(ACCOUNT_ISSUER).unwrap();
         let authorization = AuthorizationResponse {
             code: SecretString::new("test-code"),
@@ -381,7 +387,7 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(refreshed.issuer.as_ref(), Some(&issuer));
-        assert_eq!(attempt.scope().workspace_origin(), WORKSPACE);
+        assert_eq!(attempt.scope().workspace_origin(), workspace());
         let requests = transport.take();
         let token_url = format!("{ACCOUNT_ISSUER}/v1/token");
         for request in &requests[1..] {
@@ -389,7 +395,7 @@ mod tests {
             assert_eq!(request.url, token_url);
             assert!(!request.url.contains('?'));
         }
-        assert!(requests.iter().all(|r| !r.url.starts_with(WORKSPACE)));
+        assert!(requests.iter().all(|r| !r.url.starts_with(&workspace())));
     }
 
     /// `DatabricksOAuthIssuerTests::testInvalidDiscoveryNeverReceivesAuthorizationCode`.

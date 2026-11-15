@@ -131,7 +131,7 @@ fn repository_lists_respect_the_providers_cap() {
 fn providers_are_labelled_by_name() {
     assert_eq!(sandbox_option_label(None), "New Sandbox");
     assert_eq!(sandbox_option_label(Some("")), "New Sandbox");
-    assert_eq!(sandbox_option_label(Some("lakebox")), "Databricks Sandbox");
+    assert_eq!(sandbox_option_label(Some("e2b")), "E2B Sandbox");
     assert_eq!(sandbox_option_label(Some("modal")), "Modal Sandbox");
     assert_eq!(sandbox_option_label(Some("docker")), "Docker Sandbox");
 }

@@ -335,7 +335,7 @@ mod tests {
 
     use super::*;
     use crate::auth::endpoint::DATABRICKS_ORG_HEADER;
-    use crate::auth::testing::{ScriptedTransport, fixture, header};
+    use crate::auth::testing::{ScriptedTransport, WORKSPACE_DOMAIN, fixture, header};
 
     const MOUNT: &str = "/api/2.0/omnigent";
     const TOKEN: &str = "fixture-token-not-a-real-credential";
@@ -687,14 +687,9 @@ mod tests {
 
     #[test]
     fn identity_notification_and_draft_scopes_separate_orgs_on_same_host() {
-        let first_endpoint = ServerEndpoint::new(&format!(
-            "https://fixture.cloud.databricks.com:8443{MOUNT}?o=123"
-        ))
-        .unwrap();
-        let second_endpoint = ServerEndpoint::new(&format!(
-            "https://fixture.cloud.databricks.com:8443{MOUNT}?o=456"
-        ))
-        .unwrap();
+        let root = format!("https://fixture.cloud.{WORKSPACE_DOMAIN}:8443{MOUNT}");
+        let first_endpoint = ServerEndpoint::new(&format!("{root}?o=123")).unwrap();
+        let second_endpoint = ServerEndpoint::new(&format!("{root}?o=456")).unwrap();
         let transport = ScriptedTransport::new();
         script(
             &transport,

@@ -7,16 +7,16 @@ use super::test_support::{Reply, RouteTransport, core, header, path_of, query_va
 use super::{SLICE_KEY_HEADER, SessionError};
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
+use crate::auth::testing::WORKSPACE_DOMAIN;
 
 const MOUNT: &str = "/api/2.0/omnigent";
-const WORKSPACE: &str = "https://dbc-1.cloud.databricks.com/api/2.0/omnigent";
 const WRONG_REPLICA: &str =
     r#"{"error":{"code":"wrong_replica","message":"host shell inventory is on another replica"}}"#;
 
 fn workspace(transport: RouteTransport) -> super::ClientCore<RouteTransport> {
     let core = core(transport);
     block_on(core.connect(
-        ServerEndpoint::new(WORKSPACE).unwrap(),
+        ServerEndpoint::new(&format!("https://dbc-1.cloud.{WORKSPACE_DOMAIN}{MOUNT}")).unwrap(),
         Some(SecretString::new("token")),
         None,
     ))

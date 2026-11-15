@@ -294,9 +294,12 @@ mod tests {
     use crate::auth::databricks::test_support::{
         TOKEN_BODY, TokenHarness, config, discovery_body, scope, tokens, url,
     };
-    use crate::auth::testing::{FixedEntropy, ScriptedTransport};
+    use crate::auth::testing::{FixedEntropy, ScriptedTransport, WORKSPACE_DOMAIN};
 
-    const WORKSPACE: &str = "https://test-workspace.cloud.databricks.com";
+    /// The workspace these tests sign in to.
+    fn workspace() -> String {
+        format!("https://test-workspace.cloud.{WORKSPACE_DOMAIN}")
+    }
 
     struct Login {
         harness: TokenHarness,
@@ -406,8 +409,8 @@ mod tests {
             OAuthConfiguration::new("test-client", "https://auth.example.com/custom/callback")
                 .unwrap(),
         );
-        login.script_success(&format!("{WORKSPACE}/oidc"));
-        let start = login.start(WORKSPACE).unwrap();
+        login.script_success(&format!("{}/oidc", workspace()));
+        let start = login.start(&workspace()).unwrap();
         assert!(login.manager.is_in_flight());
         assert_eq!(start.callback_host, "auth.example.com");
         assert_eq!(start.callback_path, "/custom/callback");
@@ -428,7 +431,7 @@ mod tests {
             .count();
         assert_eq!(token_requests, 1);
         assert_eq!(
-            login.harness.stored(&login.scope(WORKSPACE)),
+            login.harness.stored(&login.scope(&workspace())),
             Some(signed_in)
         );
         assert!(!login.manager.is_in_flight());
@@ -438,9 +441,9 @@ mod tests {
     #[test]
     fn databricks_login_rejects_concurrent_login() {
         let mut login = Login::new();
-        let first = login.start(WORKSPACE).unwrap();
+        let first = login.start(&workspace()).unwrap();
         assert_eq!(
-            login.start(WORKSPACE),
+            login.start(&workspace()),
             Err(DatabricksError::LoginInProgress)
         );
         assert_eq!(
@@ -458,20 +461,20 @@ mod tests {
     #[test]
     fn databricks_login_stale_callback_ignored_after_cancel() {
         let mut login = Login::new();
-        let first = login.start(WORKSPACE).unwrap();
+        let first = login.start(&workspace()).unwrap();
         assert_eq!(
             login.manager.cancel(&mut login.harness.manager),
             Some(first.id)
         );
         assert!(!login.manager.is_in_flight());
-        let second = login.start(WORKSPACE).unwrap();
+        let second = login.start(&workspace()).unwrap();
         let stale = login.callback(&first, None);
         assert_eq!(
             login.browser(first.id, stale),
             Err(DatabricksError::Cancelled)
         );
         assert!(login.manager.is_in_flight(), "the newer login is untouched");
-        login.script_success(&format!("{WORKSPACE}/oidc"));
+        login.script_success(&format!("{}/oidc", workspace()));
         let current = login.callback(&second, None);
         let pending = login.browser(second.id, current).unwrap();
         assert!(login.exchange(&pending).is_ok());
@@ -482,7 +485,7 @@ mod tests {
     #[test]
     fn databricks_login_cancel_during_exchange_aborts() {
         let mut login = Login::new();
-        let start = login.start(WORKSPACE).unwrap();
+        let start = login.start(&workspace()).unwrap();
         let callback = login.callback(&start, None);
         let pending = login.browser(start.id, callback).unwrap();
         // The host cancels the exchange task for the returned login.
@@ -500,14 +503,14 @@ mod tests {
             login.finish(pending.id, Ok(tokens("late", "late", 9_000_000, None))),
             Err(DatabricksError::Cancelled)
         );
-        assert_eq!(login.harness.stored(&login.scope(WORKSPACE)), None);
+        assert_eq!(login.harness.stored(&login.scope(&workspace())), None);
     }
 
     /// `DatabricksLoginManagerTests::testInvalidCallbackAndBrowserFailureNeverExchangeCode`.
     #[test]
     fn a_login_start_hides_its_url_and_late_answers_after_cancel_are_cancelled() {
         let mut login = Login::new();
-        let start = login.start(WORKSPACE).unwrap();
+        let start = login.start(&workspace()).unwrap();
         let debug = format!("{start:?}");
         assert!(debug.contains("<redacted>"), "{debug}");
         assert!(!debug.contains(&start.authorization_url), "{debug}");
@@ -546,7 +549,7 @@ mod tests {
             (BrowserOutcome::InProgress, DatabricksError::LoginInProgress),
             (BrowserOutcome::Cancelled, DatabricksError::Cancelled),
         ] {
-            let start = login.start(WORKSPACE).unwrap();
+            let start = login.start(&workspace()).unwrap();
             assert_eq!(login.browser(start.id, outcome), Err(expected));
             assert!(!login.manager.is_in_flight());
         }
@@ -562,8 +565,8 @@ mod tests {
     fn databricks_login_save_failure_is_not_success() {
         let mut login = Login::new();
         login.harness.store.fail_set.set(true);
-        login.script_success(&format!("{WORKSPACE}/oidc"));
-        let start = login.start(WORKSPACE).unwrap();
+        login.script_success(&format!("{}/oidc", workspace()));
+        let start = login.start(&workspace()).unwrap();
         let callback = login.callback(&start, None);
         let pending = login.browser(start.id, callback).unwrap();
         assert!(matches!(
@@ -578,9 +581,9 @@ mod tests {
     fn databricks_login_old_commit_rejected_after_clear_or_newer() {
         for replace_with_login in [false, true] {
             let mut login = Login::new();
-            let scope = login.scope(WORKSPACE);
-            login.script_success(&format!("{WORKSPACE}/oidc"));
-            let start = login.start(WORKSPACE).unwrap();
+            let scope = login.scope(&workspace());
+            login.script_success(&format!("{}/oidc", workspace()));
+            let start = login.start(&workspace()).unwrap();
             let newer = tokens("new-login", "new-login-refresh", 9_000_000, None);
             if replace_with_login {
                 let sign_in = login.harness.manager.begin_sign_in(&scope);
@@ -603,10 +606,10 @@ mod tests {
     #[test]
     fn databricks_cancelled_replacement_keeps_saved_tokens() {
         let mut login = Login::new();
-        let scope = login.scope(WORKSPACE);
+        let scope = login.scope(&workspace());
         let original = tokens("test-access", "test-refresh", 3_000_000, None);
         login.harness.save(&scope, &original).unwrap();
-        let start = login.start(WORKSPACE).unwrap();
+        let start = login.start(&workspace()).unwrap();
         assert_eq!(
             login.manager.cancel(&mut login.harness.manager),
             Some(start.id)
@@ -618,9 +621,11 @@ mod tests {
     #[test]
     fn databricks_login_issuer_discovery_keeps_workspace_scope() {
         let mut login = Login::new();
-        let authority = "https://authority-workspace.cloud.databricks.com/oidc";
+        let authority_origin = format!("https://authority-workspace.cloud.{WORKSPACE_DOMAIN}");
+        let authority = format!("{authority_origin}/oidc");
+        let authority = authority.as_str();
         login.script_success(authority);
-        let selected = format!("{WORKSPACE}/omnigent?o=123");
+        let selected = format!("{}/omnigent?o=123", workspace());
         let start = login.start(&selected).unwrap();
         let authorize = url(&start.authorization_url);
         assert_eq!(
@@ -641,12 +646,7 @@ mod tests {
             login.harness.stored(&login.scope(&selected)),
             Some(signed_in)
         );
-        assert_eq!(
-            login
-                .harness
-                .stored(&scope("https://authority-workspace.cloud.databricks.com")),
-            None
-        );
+        assert_eq!(login.harness.stored(&scope(&authority_origin)), None);
         assert!(
             login
                 .transport
@@ -660,14 +660,14 @@ mod tests {
     #[test]
     fn databricks_login_unsupported_issuer_never_stores() {
         let mut login = Login::new();
-        let start = login.start(WORKSPACE).unwrap();
+        let start = login.start(&workspace()).unwrap();
         let callback = login.callback(&start, Some("https://example.org/oidc"));
         assert_eq!(
             login.browser(start.id, callback),
             Err(DatabricksError::InvalidIssuer)
         );
         assert_eq!(login.transport.take(), Vec::new());
-        assert_eq!(login.harness.stored(&login.scope(WORKSPACE)), None);
+        assert_eq!(login.harness.stored(&login.scope(&workspace())), None);
         assert!(!login.manager.is_in_flight());
     }
 }

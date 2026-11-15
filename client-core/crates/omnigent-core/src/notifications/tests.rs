@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use super::*;
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
+use crate::auth::testing::WORKSPACE_DOMAIN;
 use crate::http::{HttpRequest, HttpResponse, TransportError};
 
 const TOKEN: &str = "fixture-token-not-a-real-credential";
@@ -389,8 +390,8 @@ fn notification_scope_includes_mount_and_account() {
 
 #[test]
 fn both_notification_clients_use_header_and_strip_scope_query() {
-    let endpoint =
-        ServerEndpoint::new("https://fixture.cloud.databricks.com/api/2.0/omnigent?o=123").unwrap();
+    let root = format!("https://fixture.cloud.{WORKSPACE_DOMAIN}/api/2.0/omnigent");
+    let endpoint = ServerEndpoint::new(&format!("{root}?o=123")).unwrap();
     let bearer = SecretString::new(TOKEN);
     let registration =
         PushRegistration::new("install_a", "ab", "sandbox", "ai.test", Vec::new()).unwrap();
@@ -401,9 +402,11 @@ fn both_notification_clients_use_header_and_strip_scope_query() {
     ] {
         assert_eq!(header(&request, "X-Databricks-Org-Id"), Some("123"));
         assert!(!request.url.contains('?'), "{}", request.url);
-        assert!(request.url.starts_with(
-            "https://fixture.cloud.databricks.com/api/2.0/omnigent/v1/notifications/"
-        ));
+        assert!(
+            request
+                .url
+                .starts_with(&format!("{root}/v1/notifications/"))
+        );
     }
 }
 

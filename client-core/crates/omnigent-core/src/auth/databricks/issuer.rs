@@ -166,16 +166,22 @@ fn is_supported_path(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::testing::response;
+    use crate::auth::testing::{APPS_DOMAIN, AZURE_WORKSPACE_DOMAIN, WORKSPACE_DOMAIN, response};
+
+    /// The workspace origin these tests use.
+    fn workspace() -> String {
+        format!("https://workspace.cloud.{WORKSPACE_DOMAIN}")
+    }
 
     /// `DatabricksOAuthIssuerTests::testPreservesWorkspaceAndAccountIssuerPaths`.
     #[test]
     fn databricks_issuer_preserves_paths_and_derives_endpoints() {
         for raw in [
-            "https://workspace.cloud.databricks.com/oidc",
-            "https://accounts.cloud.databricks.com/oidc/accounts/test-account",
-            "https://accounts.azuredatabricks.net/oidc/accounts/test-account",
+            format!("{}/oidc", workspace()),
+            "https://accounts.cloud.databricks.com/oidc/accounts/test-account".to_owned(),
+            format!("https://accounts.{AZURE_WORKSPACE_DOMAIN}/oidc/accounts/test-account"),
         ] {
+            let raw = raw.as_str();
             let issuer = OAuthIssuer::parse(raw).unwrap();
             assert_eq!(issuer.as_str(), raw);
             assert_eq!(
@@ -186,41 +192,37 @@ mod tests {
             // The record codec stores the issuer as this string; it must round-trip.
             assert_eq!(OAuthIssuer::parse(issuer.as_str()).unwrap(), issuer);
         }
-        let workspace =
-            OAuthIssuer::workspace(&Url::parse("https://workspace.cloud.databricks.com").unwrap())
-                .unwrap();
-        assert_eq!(
-            workspace.as_str(),
-            "https://workspace.cloud.databricks.com/oidc"
-        );
-        assert!(!workspace.is_account());
+        let issuer = OAuthIssuer::workspace(&Url::parse(&workspace()).unwrap()).unwrap();
+        assert_eq!(issuer.as_str(), format!("{}/oidc", workspace()));
+        assert!(!issuer.is_account());
     }
 
     /// `DatabricksOAuthIssuerTests::testRejectsUnsupportedIssuerAuthoritiesAndPaths`.
     #[test]
     fn databricks_issuer_rejects_unsupported_authorities() {
+        let host = format!("workspace.cloud.{WORKSPACE_DOMAIN}");
         for raw in [
-            "http://workspace.cloud.databricks.com/oidc",
-            "https://example.com/oidc",
-            "https://databricks.com.example.org/oidc",
-            "https://my-app.databricksapps.com/oidc",
-            "https://user@workspace.cloud.databricks.com/oidc",
-            "https://workspace.cloud.databricks.com:8443/oidc",
-            "https://workspace.cloud.databricks.com/oidc?next=foo",
-            "https://workspace.cloud.databricks.com/oidc#fragment",
-            "https://workspace.cloud.databricks.com",
-            "https://workspace.cloud.databricks.com/other",
-            "https://accounts.cloud.databricks.com/oidc/accounts/",
-            "https://accounts.cloud.databricks.com/oidc/accounts/a/b",
-            "https://accounts.cloud.databricks.com/oidc/accounts/a%2Fb",
-            "https://accounts.cloud.databricks.com/oidc/accounts/..",
+            format!("http://{host}/oidc"),
+            "https://example.com/oidc".to_owned(),
+            "https://databricks.com.example.org/oidc".to_owned(),
+            format!("https://my-app.{APPS_DOMAIN}/oidc"),
+            format!("https://user@{host}/oidc"),
+            format!("https://{host}:8443/oidc"),
+            format!("https://{host}/oidc?next=foo"),
+            format!("https://{host}/oidc#fragment"),
+            format!("https://{host}"),
+            format!("https://{host}/other"),
+            "https://accounts.cloud.databricks.com/oidc/accounts/".to_owned(),
+            "https://accounts.cloud.databricks.com/oidc/accounts/a/b".to_owned(),
+            "https://accounts.cloud.databricks.com/oidc/accounts/a%2Fb".to_owned(),
+            "https://accounts.cloud.databricks.com/oidc/accounts/..".to_owned(),
             // Non-canonical spellings that would otherwise alias a supported issuer.
-            "https://accounts.cloud.databricks.com/x/../oidc",
-            "https://WORKSPACE.cloud.databricks.com/oidc",
-            "",
+            "https://accounts.cloud.databricks.com/x/../oidc".to_owned(),
+            format!("https://WORKSPACE.cloud.{WORKSPACE_DOMAIN}/oidc"),
+            String::new(),
         ] {
             assert_eq!(
-                OAuthIssuer::parse(raw),
+                OAuthIssuer::parse(&raw),
                 Err(DatabricksError::InvalidIssuer),
                 "{raw}"
             );

@@ -36,7 +36,6 @@
       "usage_page": false,
       "harness_install": false,
       "canvas": false,
-      "arca_shutdown_warnings": false,
       "import_review": false,
       "custom_agents_settings_ui": false,
       "sidebar_grouping_ui": false,

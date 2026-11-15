@@ -17,6 +17,14 @@ use std::future::{Future, ready};
 use super::{EntropyError, EntropySource, SecureStore, SecureStoreError, SecureStoreKey};
 use crate::http::{HttpHeader, HttpRequest, HttpResponse, HttpTransport, TransportError};
 
+/// The classifier's workspace domain, for tests that need a Databricks host: build one as
+/// `format!("https://example.{WORKSPACE_DOMAIN}")` instead of spelling a hostname.
+pub(crate) const WORKSPACE_DOMAIN: &str = super::mode::WORKSPACE_DOMAINS[0];
+/// The classifier's Azure workspace domain.
+pub(crate) const AZURE_WORKSPACE_DOMAIN: &str = super::mode::WORKSPACE_DOMAINS[1];
+/// The classifier's Databricks Apps domain.
+pub(crate) const APPS_DOMAIN: &str = super::mode::APPS_DOMAIN;
+
 /// Entropy that returns predictable bytes.
 #[derive(Debug)]
 pub(crate) struct FixedEntropy {

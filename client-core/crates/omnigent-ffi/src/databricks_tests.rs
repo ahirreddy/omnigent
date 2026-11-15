@@ -6,7 +6,7 @@ use std::sync::Arc;
 use futures::FutureExt as _;
 
 use super::*;
-use crate::api_tests::{WORKSPACE_HOST, databricks, route_databricks};
+use crate::api_tests::{databricks, route_databricks, workspace_host};
 use crate::connection::UrlPolicy;
 use crate::engine::lock;
 use crate::errors::DatabricksErrorKind;
@@ -28,7 +28,10 @@ fn locked() -> crate::host::SecureStoreError {
 
 fn connect(harness: &mut Harness) -> Result<ConnectionPhase, CoreError> {
     let core = Arc::clone(&harness.core);
-    harness.run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
+    harness.run(async move {
+        core.connect(format!("{}/?o=42", workspace_host()), None)
+            .await
+    })
 }
 
 fn callback_for(challenge: &DatabricksChallenge) -> String {
@@ -322,8 +325,10 @@ fn a_connect_replaced_during_its_refresh_reports_nothing() {
     harness.advance(4_000_000);
     let gate = harness.http.hold(TOKEN);
     let core = Arc::clone(&harness.core);
-    let first =
-        harness.start(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await });
+    let first = harness.start(async move {
+        core.connect(format!("{}/?o=42", workspace_host()), None)
+            .await
+    });
     harness.pump();
     harness.core.disconnect();
     harness.pump();
@@ -465,8 +470,10 @@ fn a_connect_during_a_renewal_refresh_shares_its_answer() {
     harness.advance(3_600_000);
     let refreshes = harness.http.count(TOKEN);
     let core = Arc::clone(&harness.core);
-    let joined =
-        harness.start(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await });
+    let joined = harness.start(async move {
+        core.connect(format!("{}/?o=42", workspace_host()), None)
+            .await
+    });
     assert!(joined.borrow().is_none(), "it waits for the same refresh");
     gate.send(()).unwrap();
     harness.pump();
@@ -512,8 +519,10 @@ fn a_connect_abandoned_during_its_refresh_still_saves_the_rotated_grant() {
     let refreshes = harness.http.count(TOKEN);
     let gate = harness.http.hold(TOKEN);
     let core = Arc::clone(&harness.core);
-    let mut call =
-        Box::pin(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await });
+    let mut call = Box::pin(async move {
+        core.connect(format!("{}/?o=42", workspace_host()), None)
+            .await
+    });
     for _ in 0..20 {
         assert!(call.as_mut().now_or_never().is_none());
         harness.pump();
@@ -716,8 +725,10 @@ fn a_shared_refresh_with_no_waiter_left_still_saves_its_grant() {
     route_databricks(&harness, "access-2", 3_600);
     harness.advance(3_600_000);
     let core = Arc::clone(&harness.core);
-    let joined =
-        harness.start(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await });
+    let joined = harness.start(async move {
+        core.connect(format!("{}/?o=42", workspace_host()), None)
+            .await
+    });
     let auth = harness.core.inner.databricks.clone().unwrap();
     let waiting = {
         let mut state = lock(&auth.state);

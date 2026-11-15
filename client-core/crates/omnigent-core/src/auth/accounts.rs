@@ -315,7 +315,9 @@ mod tests {
     use futures::executor::block_on;
 
     use super::*;
-    use crate::auth::testing::{MemoryStore, ScriptedTransport, body_text, header};
+    use crate::auth::testing::{
+        MemoryStore, ScriptedTransport, WORKSPACE_DOMAIN, body_text, header,
+    };
 
     const MOUNT: &str = "/api/2.0/omnigent";
     const TOKEN: &str = "fixture-token-not-a-real-credential";
@@ -561,12 +563,9 @@ mod tests {
     #[test]
     fn keychain_separates_databricks_workspaces_for_the_same_account() {
         let store = MemoryStore::default();
-        let first =
-            ServerEndpoint::new("https://example.cloud.databricks.com/api/2.0/omnigent?o=123")
-                .unwrap();
-        let second =
-            ServerEndpoint::new("https://example.cloud.databricks.com/api/2.0/omnigent?o=456")
-                .unwrap();
+        let root = format!("https://example.cloud.{WORKSPACE_DOMAIN}/api/2.0/omnigent");
+        let first = ServerEndpoint::new(&format!("{root}?o=123")).unwrap();
+        let second = ServerEndpoint::new(&format!("{root}?o=456")).unwrap();
         let a = block_on(save_credential(
             &store,
             &first,

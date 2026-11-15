@@ -883,7 +883,7 @@ fn a_title_over_the_limit_is_refused_before_any_request() {
 fn a_new_sandboxs_models_come_from_its_providers_preview_for_the_agent() {
     let transport = stub();
     transport.ok(
-        "/v1/sandbox-providers/arclet/harnesses/codex-native/model-options",
+        "/v1/sandbox-providers/daytona/harnesses/codex-native/model-options",
         r#"{"configured":true,"status":"ready","default_model":"fast","models":[
             {"id":"fast","model":"fast","displayName":"Fast"},
             {"id":"deep","model":"deep","displayName":"Deep"},
@@ -891,7 +891,7 @@ fn a_new_sandboxs_models_come_from_its_providers_preview_for_the_agent() {
             {"id":"quiet","model":"quiet","hidden":true}]}"#,
     );
     let core = connected(transport);
-    let models = block_on(core.sandbox_creation_models("ag_codex", "arclet")).unwrap();
+    let models = block_on(core.sandbox_creation_models("ag_codex", "daytona")).unwrap();
     assert_eq!(
         models
             .iter()
@@ -907,10 +907,10 @@ fn a_new_sandboxs_models_come_from_its_providers_preview_for_the_agent() {
         .unwrap();
     assert_eq!(query_value(read, "agent_id").as_deref(), Some("ag_codex"));
     assert!(matches!(
-        block_on(core.sandbox_creation_models("ag_missing", "arclet")),
+        block_on(core.sandbox_creation_models("ag_missing", "daytona")),
         Err(SessionError::Creation(CreationError::Unavailable(_)))
     ));
-    for (agent, provider) in [("ag codex", "arclet"), ("ag_codex", "../x")] {
+    for (agent, provider) in [("ag codex", "daytona"), ("ag_codex", "../x")] {
         assert!(matches!(
             block_on(core.sandbox_creation_models(agent, provider)),
             Err(SessionError::InvalidIdentifier { .. })
@@ -928,7 +928,7 @@ fn a_harness_without_a_model_preview_offers_a_new_sandbox_no_models() {
     );
     let core = connected(plain);
     assert_eq!(
-        block_on(core.sandbox_creation_models("ag_plain", "arclet")).unwrap(),
+        block_on(core.sandbox_creation_models("ag_plain", "daytona")).unwrap(),
         []
     );
     assert!(
