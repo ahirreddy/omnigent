@@ -24,9 +24,11 @@ host_id="$(env -i HOME="${HOME:?HOME must be set}" PATH="$PATH" \
   "$repo_dir/.venv/bin/python" "$repo_dir/apps/apple/Tools/local-services.py" host-id)"
 
 # Keep local host lifecycle records separate from any hosted Omnigent connection.
+# PYTHONPATH: this checkout's own code, even when .venv came from another checkout.
 exec env -i \
   HOME="${HOME:?HOME must be set so the provider CLI can find the local login}" \
   PATH="$repo_dir/.venv/bin:${PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}" \
+  PYTHONPATH="$repo_dir" \
   PYTHONUNBUFFERED=1 \
   OMNIGENT_HOST_ID="$host_id" \
   OMNIGENT_HOST_NAME="NativeLab $(hostname -s)" \
