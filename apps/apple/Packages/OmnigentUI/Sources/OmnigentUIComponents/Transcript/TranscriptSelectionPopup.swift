@@ -177,6 +177,18 @@ import SwiftUI
 
       /// The selected range's bounds in this view's coordinates.
       func bounds(of range: NSRange, in editor: NSTextView) -> CGRect? {
+        guard let rect = Self.containerBounds(of: range, in: editor) else { return nil }
+        let origin = editor.textContainerOrigin
+        return convert(
+          editor.convert(rect.offsetBy(dx: origin.x, dy: origin.y), to: nil), from: nil)
+      }
+
+      /// The range's bounds in the editor's text container. A TextKit 2 editor's `layoutManager`
+      /// would turn the window's field editor into TextKit 1, which drops exact line heights.
+      static func containerBounds(of range: NSRange, in editor: NSTextView) -> CGRect? {
+        if let layout = editor.textLayoutManager {
+          return containerBounds(of: range, in: layout)
+        }
         // Both are AppKit `unowned(unsafe)` references the editor keeps alive while it shows.
         guard let layout = unsafe editor.layoutManager, let container = unsafe editor.textContainer
         else {
@@ -184,10 +196,27 @@ import SwiftUI
         }
         // No actual range is asked for, so the out-pointer is nil.
         let glyphs = unsafe layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-        let origin = editor.textContainerOrigin
-        let rect = layout.boundingRect(forGlyphRange: glyphs, in: container)
-          .offsetBy(dx: origin.x, dy: origin.y)
-        return convert(editor.convert(rect, to: nil), from: nil)
+        return layout.boundingRect(forGlyphRange: glyphs, in: container)
+      }
+
+      /// The union of TextKit 2's selection segments for `range`; `nil` past the text's end.
+      private static func containerBounds(of range: NSRange, in layout: NSTextLayoutManager)
+        -> CGRect?
+      {
+        guard let content = layout.textContentManager,
+          let start = content.location(content.documentRange.location, offsetBy: range.location),
+          let end = content.location(start, offsetBy: range.length),
+          let textRange = NSTextRange(location: start, end: end)
+        else {
+          return nil
+        }
+        layout.ensureLayout(for: textRange)
+        var union: CGRect?
+        layout.enumerateTextSegments(in: textRange, type: .selection) { _, frame, _, _ in
+          union = union?.union(frame) ?? frame
+          return true
+        }
+        return union
       }
     }
   }
