@@ -11,12 +11,15 @@ extension SessionSummary {
   }
 
   /// This summary without what its own row says (title, preview, time, status, requests,
-  /// failure): what is left decides where the row is and what is around it.
+  /// background work, terminal prompt, failure): what is left decides where the row is and what
+  /// is around it.
   var placement: SessionSummary {
     var summary = withoutActivity
     summary.title = ""
     summary.status = .idle
     summary.pendingRequests = 0
+    summary.backgroundWorkRunning = false
+    summary.blockedOn = nil
     summary.failureMessage = nil
     summary.canStop = false
     return summary

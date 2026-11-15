@@ -63,6 +63,8 @@ fn a_summary_survives_the_round_trip_through_the_core() {
         session.preview = "Preview".into();
         session.status = SummaryStatus::Running;
         session.pending_requests = 2;
+        session.background_work_running = true;
+        session.blocked_on = Some("permission prompt".into());
         session.is_read_only = true;
         session.updated_at = 5;
         session.workspace = "/w".into();
@@ -90,6 +92,8 @@ fn a_summary_survives_the_round_trip_through_the_core() {
     assert_eq!(mapped.preview, "Preview");
     assert_eq!(mapped.status, SessionListStatus::Running);
     assert_eq!(mapped.pending_requests, 2);
+    assert!(mapped.background_work_running);
+    assert_eq!(mapped.blocked_on.as_deref(), Some("permission prompt"));
     assert!(mapped.is_read_only);
     assert_eq!(mapped.updated_at, 5);
     assert_eq!(mapped.workspace, "/w");

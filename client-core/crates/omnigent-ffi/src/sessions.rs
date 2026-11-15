@@ -25,7 +25,7 @@ pub enum SessionListStatus {
     Idle,
     /// A turn or background work is in progress.
     Running,
-    /// A decision is pending.
+    /// A decision is pending, here or at a prompt in the agent's terminal.
     NeedsResponse,
 }
 
@@ -107,6 +107,12 @@ pub struct SessionSummary {
     /// own, and the sidebar indents it under its family.
     #[uniffi(default)]
     pub is_nested_member: bool,
+    /// Work outlives its ended turn: a background shell, or a goal between turns.
+    #[uniffi(default)]
+    pub background_work_running: bool,
+    /// What its agent is parked on in its terminal, e.g. `permission prompt`.
+    #[uniffi(default)]
+    pub blocked_on: Option<String>,
 }
 
 /// The session family ("nested agents") a session belongs to: independent root sessions grouped
@@ -314,6 +320,8 @@ impl From<CoreSummary> for SessionSummary {
             preview: summary.preview,
             status: summary.status.into(),
             pending_requests: summary.pending_requests,
+            background_work_running: summary.background_work_running,
+            blocked_on: summary.blocked_on,
             is_read_only: summary.is_read_only,
             updated_at: summary.updated_at,
             workspace: summary.workspace,
@@ -342,6 +350,8 @@ impl From<&SessionSummary> for CoreSummary {
         Self {
             status: summary.status.into(),
             pending_requests: summary.pending_requests,
+            background_work_running: summary.background_work_running,
+            blocked_on: summary.blocked_on.clone(),
             is_read_only: summary.is_read_only,
             updated_at: summary.updated_at,
             workspace: summary.workspace.clone(),
