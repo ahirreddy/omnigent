@@ -147,9 +147,7 @@ struct SignInControllerTests {
 #if os(macOS)
   /// A Databricks workspace serving Omnigent at its API mount, with its OAuth endpoints.
   nonisolated private let workspaceRoutes: [String: HttpResponse] = [
-    "/oidc/.well-known/openid-configuration": .json(
-      #"{"issuer":"https://dbc-1.cloud.databricks.com/oidc","#
-        + #""token_endpoint":"https://dbc-1.cloud.databricks.com/oidc/v1/token"}"#),
+    "/oidc/.well-known/openid-configuration": .json(TestWorkspace.discovery),
     "/oidc/v1/token": .json(
       #"{"access_token":"access-1","refresh_token":"refresh-1","token_type":"Bearer","#
         + #""expires_in":3600}"#),
@@ -207,13 +205,13 @@ struct SignInControllerTests {
         store: ConnectionStore(core: core), opener: ExternalURLOpener { browser.open($0) },
         defaults: defaults)
 
-      await controller.connectNow("https://dbc-1.cloud.databricks.com/?o=42")
+      await controller.connectNow(TestWorkspace.url)
       try await waitUntil("the workspace sign-in") {
         if case .signInRequired = controller.store.phase { return true }
         return false
       }
       controller.actions.startBrowserSignIn(
-        .databricksWorkspace(workspaceHost: "dbc-1.cloud.databricks.com"))
+        .databricksWorkspace(workspaceHost: TestWorkspace.host))
       try await waitUntil("the sign-in to finish") {
         controller.store.isSignedIn && controller.method == nil
       }
@@ -223,7 +221,7 @@ struct SignInControllerTests {
       #expect(controller.store.connectedServer?.userId == "ada")
       let opened = try #require(browser.opened.first)
       #expect(
-        opened.host() == "dbc-1.cloud.databricks.com" && opened.path() == "/oidc/v1/authorize")
+        opened.host() == TestWorkspace.host && opened.path() == "/oidc/v1/authorize")
       let redirect = URLComponents(url: opened, resolvingAgainstBaseURL: false)?.queryItems?
         .first { $0.name == "redirect_uri" }?.value
       #expect(redirect?.hasPrefix("http://localhost:") == true, "\(redirect ?? "none")")
@@ -242,7 +240,7 @@ struct SignInControllerTests {
       let controller = SignInController(
         store: ConnectionStore(core: core), opener: ExternalURLOpener { _ in opens },
         defaults: try scratchDefaults())
-      await controller.connectNow("https://dbc-1.cloud.databricks.com/?o=42")
+      await controller.connectNow(TestWorkspace.url)
       try await waitUntil("the workspace sign-in") {
         if case .signInRequired = controller.store.phase { return true }
         return false
@@ -254,7 +252,7 @@ struct SignInControllerTests {
     func browserRefuses() async throws {
       let controller = try await offered(opens: false)
       controller.actions.startBrowserSignIn(
-        .databricksWorkspace(workspaceHost: "dbc-1.cloud.databricks.com"))
+        .databricksWorkspace(workspaceHost: TestWorkspace.host))
       try await waitUntil("the failure") { controller.flowError != nil }
       #expect(!controller.store.isSignedIn)
     }
@@ -263,7 +261,7 @@ struct SignInControllerTests {
     func cancelWhileWaiting() async throws {
       let controller = try await offered(opens: true)
       controller.actions.startBrowserSignIn(
-        .databricksWorkspace(workspaceHost: "dbc-1.cloud.databricks.com"))
+        .databricksWorkspace(workspaceHost: TestWorkspace.host))
       try await waitUntil("the sign-in to start") { controller.method != nil }
       try await Task.sleep(for: .milliseconds(100))
       controller.actions.cancel()

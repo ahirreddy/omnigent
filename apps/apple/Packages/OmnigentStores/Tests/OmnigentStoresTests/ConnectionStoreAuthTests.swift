@@ -8,9 +8,7 @@ import Testing
 
 /// A Databricks workspace serving Omnigent at its API mount, with its OAuth endpoints.
 nonisolated private let workspaceRoutes: [String: HttpResponse] = [
-  "/oidc/.well-known/openid-configuration": .json(
-    #"{"issuer":"https://dbc-1.cloud.databricks.com/oidc","#
-      + #""token_endpoint":"https://dbc-1.cloud.databricks.com/oidc/v1/token"}"#),
+  "/oidc/.well-known/openid-configuration": .json(TestWorkspace.discovery),
   "/oidc/v1/token": .json(
     #"{"access_token":"access-1","refresh_token":"refresh-1","token_type":"Bearer","#
       + #""expires_in":3600}"#),
@@ -32,7 +30,7 @@ struct ConnectionStoreAuthTests {
         urlPolicy: .development, oidcRedirect: .none,
         databricks: DatabricksOAuthSettings(clientId: "omnigent", redirectUrl: "http://localhost")))
     let store = ConnectionStore(core: core)
-    await store.connect(serverURL: "https://dbc-1.cloud.databricks.com/?o=42")
+    await store.connect(serverURL: TestWorkspace.url)
     try await eventually("the sign-in request") {
       if case .signInRequired = store.phase { return true }
       return false

@@ -161,9 +161,9 @@ struct ScreenMappingTests {
   }
 
   @Test func databricksWorkspace() {
-    let option = SignInOption.databricksWorkspace(workspaceHost: "dbc.cloud.databricks.com")
+    let option = SignInOption.databricksWorkspace(workspaceHost: "dbc.example.com")
     let idle = AuthViewState(phase: required(mode: .proxy, methods: [option])).screen
-    guard case .workspaceSignIn(_, "dbc.cloud.databricks.com", nil, false) = idle else {
+    guard case .workspaceSignIn(_, "dbc.example.com", nil, false) = idle else {
       Issue.record("expected workspace sign-in, got \(idle)")
       return
     }

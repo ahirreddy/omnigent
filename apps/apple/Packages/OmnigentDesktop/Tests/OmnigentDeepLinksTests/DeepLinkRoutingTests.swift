@@ -11,7 +11,7 @@ struct DeepLinkRoutingTests {
   let other: ServerOrigin
 
   init() throws {
-    origin = try ServerOrigin(serialized: "https://my-workspace.cloud.databricks.com")
+    origin = try ServerOrigin(serialized: "https://my-workspace.example.com")
     other = try ServerOrigin(serialized: "https://other.example.com")
   }
 
@@ -92,7 +92,7 @@ struct DeepLinkRoutingTests {
 
   @Test("matches windows by origin regardless of spelling")
   func originEquality() throws {
-    let spelled = try ServerOrigin(serialized: "HTTPS://My-Workspace.cloud.databricks.com:443")
+    let spelled = try ServerOrigin(serialized: "HTTPS://My-Workspace.Example.com:443")
     #expect(decide([window(0, spelled)], known: []) == .navigate(0))
   }
 }

@@ -25,9 +25,7 @@ struct SignInListenerTests {
     let server = AppServer()
     server.route(
       "/oidc/.well-known/openid-configuration",
-      .json(
-        #"{"issuer":"https://dbc-1.cloud.databricks.com/oidc","token_endpoint":"https://dbc-1.cloud.databricks.com/oidc/v1/token"}"#
-      ))
+      .json(TestWorkspace.discovery))
     return server
   }
 
@@ -60,12 +58,12 @@ struct SignInListenerTests {
   }
 
   private func startDatabricks(_ controller: SignInController) async throws {
-    await controller.connectNow("https://dbc-1.cloud.databricks.com/?o=42")
+    await controller.connectNow(TestWorkspace.url)
     try await eventually("the workspace sign-in") {
       if case .signInRequired = controller.store.phase { true } else { false }
     }
     controller.actions.startBrowserSignIn(
-      .databricksWorkspace(workspaceHost: "dbc-1.cloud.databricks.com"))
+      .databricksWorkspace(workspaceHost: TestWorkspace.host))
   }
 
   @Test("A listener that can't start says so, and no sign-in page opens")

@@ -18,11 +18,11 @@ struct RunnerLivenessStoreTests {
   func hostOfflineWatch() {
     var watch = HostOfflineWatch()
     let first = watch.observe([
-      host("a", "offline"), host("b", "online"), host("s", "online", sandbox: "arca"),
+      host("a", "offline"), host("b", "online"), host("s", "online", sandbox: "modal"),
     ])
     #expect(first.isEmpty)
     let offline = watch.observe([
-      host("a", "offline"), host("b", "offline"), host("s", "offline", sandbox: "arca"),
+      host("a", "offline"), host("b", "offline"), host("s", "offline", sandbox: "modal"),
     ])
     #expect(offline == [HostWentOffline(hostID: "b", name: "Host b")])
     #expect(watch.observe([host("b", "offline")]).isEmpty)

@@ -23,8 +23,8 @@ struct DeepLinkTests {
 
   @Test("parses a remote host as https")
   func remoteIsHTTPS() throws {
-    let link = try parse("omnigent://my-workspace.cloud.databricks.com/c/x")
-    #expect(link.origin.serialized == "https://my-workspace.cloud.databricks.com")
+    let link = try parse("omnigent://my-workspace.example.com/c/x")
+    #expect(link.origin.serialized == "https://my-workspace.example.com")
     #expect(link.route == .conversation(sessionID: "x"))
   }
 
