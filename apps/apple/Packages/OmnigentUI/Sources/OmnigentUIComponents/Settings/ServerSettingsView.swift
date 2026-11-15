@@ -2,7 +2,7 @@ public import SwiftUI
 
 /// Server settings as native panes: a server picker, then the panes the server and caller offer
 /// (Account, Harnesses, MCP, Integrations, Git, Import, the Admin panes and Archived sessions).
-/// Each pane loads when shown. The Mac Settings window shows them as a sidebar and a detail;
+/// Each pane loads when shown. The Mac's Settings page shows them as a list and a detail;
 /// iPhone and iPad as a list inside the host's `NavigationStack`, under the host's own rows,
 /// each pane pushed by its ``ServerSettingsPane`` value.
 public struct ServerSettingsView: View {
@@ -42,8 +42,10 @@ public struct ServerSettingsView: View {
   private var pane: Binding<ServerSettingsPane?> { selectedPane ?? $localPane }
 
   #if os(macOS)
-    /// The pane list's width in the Mac Settings window.
+    /// The pane list's width on the Mac's Settings page.
     static let paneListWidth: CGFloat = 200
+    /// The least the two columns need: they fit beside the page's sidebar in the smallest window.
+    static let minimumSize = CGSize(width: 440, height: 400)
   #endif
 
   private var shownPane: ServerSettingsPane? {
@@ -61,7 +63,7 @@ public struct ServerSettingsView: View {
 
   #if os(macOS)
     /// Two columns side by side, not a `NavigationSplitView`: that one puts its own items in
-    /// the Settings window's toolbar, which then folds a tab away and stops switching tabs.
+    /// the window's toolbar, which the Settings page hides.
     private var splitLayout: some View {
       HStack(spacing: 0) {
         List(selection: pane) {
@@ -77,7 +79,7 @@ public struct ServerSettingsView: View {
         Divider()
         paneForm(shownPane).frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-      .frame(minWidth: 720, minHeight: 480)
+      .frame(minWidth: Self.minimumSize.width, minHeight: Self.minimumSize.height)
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("server-settings")
     }
@@ -182,7 +184,8 @@ public struct ServerSettingsView: View {
         ProgressView().frame(maxWidth: .infinity)
       }
       if let pane, let hosted = hostedPane(pane) {
-        hosted
+        // A hosted pane is a form of its own; only the outer form draws on the page.
+        hosted.scrollContentBackground(.hidden)
       } else {
         builtInPane(pane)
       }

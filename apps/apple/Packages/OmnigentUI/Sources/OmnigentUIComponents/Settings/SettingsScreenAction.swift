@@ -1,6 +1,6 @@
 public import SwiftUI
 
-/// Opens the Settings screen on iPhone and iPad (the Mac has its Settings window). Like
+/// Opens the Settings screen on iPhone and iPad, and the window's Settings page on the Mac. Like
 /// ``OpenNotificationSettingsAction`` it holds no closure, so it stays equal across updates.
 public struct OpenSettingsScreenAction: Equatable {
   private let presenter: SettingsScreenPresenter
@@ -32,6 +32,10 @@ extension EnvironmentValues {
   /// Opens the Settings screen; `nil` keeps the server menu's separate Appearance and
   /// Notifications items.
   @Entry public var openSettingsScreen: OpenSettingsScreenAction?
+  #if os(macOS)
+    /// Opens the window's Settings page; `nil` hides the sidebar's Settings button.
+    @Entry public var openSettingsPage: OpenSettingsScreenAction?
+  #endif
 }
 
 extension View {

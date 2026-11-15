@@ -1,50 +1,21 @@
 import AppKit
 public import SwiftUI
 
-/// A Settings tab the app adds from packages the desktop shell does not depend on (for
-/// example Appearance from the UI components, or Terminal from the terminal package).
-public struct SettingsTabItem: Identifiable {
-  /// The tab title, also its identity.
-  public let title: String
-  /// An SF Symbol.
-  public let systemImage: String
-  /// The tab's content, usually a `Form`.
-  public let content: AnyView
-  /// The content sizes itself (a split view) instead of taking the form width.
-  public let isWide: Bool
-
-  /// Creates a tab.
-  /// - Parameters:
-  ///   - title: The tab title.
-  ///   - systemImage: An SF Symbol.
-  ///   - isWide: The content sizes itself instead of taking the form width.
-  ///   - content: The tab's content.
-  public init(
-    _ title: String, systemImage: String, isWide: Bool = false,
-    @ViewBuilder content: () -> some View
-  ) {
-    self.title = title
-    self.systemImage = systemImage
-    self.isWide = isWide
-    self.content = AnyView(content())
-  }
-
-  /// The title.
-  public var id: String { title }
-}
-
-/// The Settings window: General, Notifications, the app's extra tabs, Local Server and Advanced.
-/// Use inside a `Settings` scene.
+/// Settings: General, Notifications, the app's extra tabs, Local Server and Advanced, handed in
+/// that order to the page that lays them out. The app shows them as a page of its window, with
+/// the tabs as a sidebar's categories; without a page they are a `Settings` scene's tabs
+/// (``SettingsTabWindow``).
 ///
 /// The package does not depend on the browser package, so the app supplies the General tab's
 /// browser section (typically `OmnigentBrowser.BrowserEngineSettingsView`, which lists only the
 /// engines its build offers).
-public struct OmnigentSettingsView<BrowserSettings: View>: View {
+public struct OmnigentSettingsView<BrowserSettings: View, Page: View>: View {
   private let desktop: DesktopController
   private let recentServers: [URL]
   private let browserSettings: BrowserSettings
   private let extraTabs: [SettingsTabItem]
   private let selection: Binding<String>?
+  private let page: ([SettingsTabItem], Binding<String>) -> Page
   @State private var localSelection = SettingsTabID.general
 
   /// Creates the view.
@@ -52,69 +23,78 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
   ///   - desktop: The shell services.
   ///   - recentServers: The user's recent servers, offered as the default server.
   ///   - extraTabs: Tabs after Notifications, in order.
-  ///   - selection: The shown tab's id (a ``SettingsTabID`` or an extra tab's title), so other
-  ///     windows can open Settings at a tab; the view keeps its own when `nil`.
+  ///   - selection: The shown tab's id (a ``SettingsTabID`` or an extra tab's title), so the
+  ///     app can open Settings at a tab; the view keeps its own when `nil`.
   ///   - browserSettings: A `Section` for the General tab's browser settings.
+  ///   - page: Lays out the tabs, in order, around the shown tab's id.
   public init(
     desktop: DesktopController, recentServers: [URL] = [],
     extraTabs: [SettingsTabItem] = [], selection: Binding<String>? = nil,
-    @ViewBuilder browserSettings: () -> BrowserSettings
+    @ViewBuilder browserSettings: () -> BrowserSettings,
+    @ViewBuilder page: @escaping ([SettingsTabItem], Binding<String>) -> Page
   ) {
     self.desktop = desktop
     self.recentServers = recentServers
     self.extraTabs = extraTabs
     self.selection = selection
     self.browserSettings = browserSettings()
+    self.page = page
   }
 
-  /// The tabs.
+  /// The page, over every tab.
   public var body: some View {
-    TabView(selection: selection ?? $localSelection) {
-      Tab(SettingsTabID.general, systemImage: "gearshape", value: SettingsTabID.general) {
+    page(tabs, selection ?? $localSelection)
+  }
+
+  /// Every tab, in order: General and Notifications, the app's, then Local Server and Advanced.
+  var tabs: [SettingsTabItem] {
+    let leading = [
+      SettingsTabItem(SettingsTabID.general, systemImage: "gearshape") {
         GeneralSettingsTab(
           preferences: desktop.preferences, managed: desktop.managedPreferences,
-          recentServers: recentServers, browserSettings: browserSettings
-        )
-        .frame(width: Self.formWidth)
-      }
-      Tab(
-        SettingsTabID.notifications, systemImage: "bell.badge", value: SettingsTabID.notifications
-      ) {
+          recentServers: recentServers, browserSettings: browserSettings)
+      },
+      SettingsTabItem(SettingsTabID.notifications, systemImage: "bell.badge") {
         NotificationSettingsTab(
-          preferences: desktop.preferences, notifications: desktop.notifications
-        )
-        .frame(width: Self.formWidth)
-      }
-      ForEach(extraTabs) { item in
-        Tab(item.title, systemImage: item.systemImage, value: item.id) {
-          item.content.frame(width: item.isWide ? nil : Self.formWidth)
-        }
-      }
-      Tab(SettingsTabID.localServer, systemImage: "server.rack", value: SettingsTabID.localServer) {
+          preferences: desktop.preferences, notifications: desktop.notifications)
+      },
+    ]
+    let trailing = [
+      SettingsTabItem(SettingsTabID.localServer, systemImage: "server.rack") {
         LocalServerSettingsTab(
-          manager: desktop.localServer, preferences: desktop.localServerPreferences
-        )
-        .frame(width: Self.formWidth)
-      }
-      Tab(SettingsTabID.advanced, systemImage: "gearshape.2", value: SettingsTabID.advanced) {
+          manager: desktop.localServer, preferences: desktop.localServerPreferences)
+      },
+      SettingsTabItem(SettingsTabID.advanced, systemImage: "gearshape.2") {
         AdvancedSettingsTab(managed: desktop.managedPreferences)
-          .frame(width: Self.formWidth)
-      }
-    }
-    .scenePadding()
-    // The window takes the content's minimum, so this keeps General and Appearance unclipped.
-    .frame(minHeight: Self.formHeight)
+      },
+    ]
+    return leading + extraTabs + trailing
   }
-
-  /// The width of the form tabs; a wide tab (``SettingsTabItem/isWide``) sizes itself.
-  static var formWidth: CGFloat { 580 }
-
-  /// The tabs' least height: tall enough that General and Appearance show their groups; each
-  /// form scrolls within it.
-  static var formHeight: CGFloat { 680 }
 }
 
-extension OmnigentSettingsView where BrowserSettings == EmptyView {
+extension OmnigentSettingsView where Page == SettingsTabWindow {
+  /// Creates the view as a `Settings` scene's tabs.
+  /// - Parameters:
+  ///   - desktop: The shell services.
+  ///   - recentServers: The user's recent servers, offered as the default server.
+  ///   - extraTabs: Tabs after Notifications, in order.
+  ///   - selection: The shown tab's id; the view keeps its own when `nil`.
+  ///   - browserSettings: A `Section` for the General tab's browser settings.
+  public init(
+    desktop: DesktopController, recentServers: [URL] = [], extraTabs: [SettingsTabItem] = [],
+    selection: Binding<String>? = nil,
+    @ViewBuilder browserSettings: () -> BrowserSettings
+  ) {
+    self.init(
+      desktop: desktop, recentServers: recentServers, extraTabs: extraTabs,
+      selection: selection, browserSettings: browserSettings
+    ) { tabs, selection in
+      SettingsTabWindow(tabs: tabs, selection: selection)
+    }
+  }
+}
+
+extension OmnigentSettingsView where BrowserSettings == EmptyView, Page == SettingsTabWindow {
   /// Creates the view without browser settings.
   /// - Parameters:
   ///   - desktop: The shell services.

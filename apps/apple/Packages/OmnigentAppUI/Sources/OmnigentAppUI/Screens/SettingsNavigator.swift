@@ -3,7 +3,7 @@ public import Observation
 public import OmnigentUIComponents
 public import SwiftUI
 
-/// A place in the Settings window: a tab, or one server's settings pane.
+/// A place in Settings: a tab (a category of the Mac's page), or one server's settings pane.
 public enum SettingsDestination: Hashable, Sendable {
   /// A tab, by id (its title, for example ``SettingsNavigator/generalTab``).
   case tab(String)
@@ -28,12 +28,13 @@ public struct ServerSettingsRequest: Hashable, Sendable {
   }
 }
 
-/// Which Settings tab shows, and the server pane to show next, shared by the Settings window and
-/// the windows that open it.
+/// Which Settings tab shows, and the server pane to show next. Each Mac window has its own,
+/// which also says whether the window shows its Settings page; iPhone and iPad have one for
+/// their Settings screen.
 @MainActor
 @Observable
 public final class SettingsNavigator {
-  /// The app's navigator.
+  /// The Settings window's navigator.
   public static let shared = SettingsNavigator()
 
   /// General (the built-in tab's title).
@@ -51,11 +52,14 @@ public final class SettingsNavigator {
   public var tab = SettingsNavigator.generalTab
   /// The server pane the Servers tab shows next; it clears it once shown.
   public private(set) var serverRequest: ServerSettingsRequest?
+  /// Whether a Mac window shows its Settings page over its content. iPhone and iPad present
+  /// their Settings screen themselves.
+  public private(set) var isPresented = false
 
   /// Creates a navigator on General.
   public init() {}
 
-  /// Moves the Settings window's state to `destination`; the caller opens the window.
+  /// Moves Settings to `destination`; the caller shows it.
   /// - Parameter destination: The tab or server pane.
   public func show(_ destination: SettingsDestination) {
     switch destination {
@@ -80,7 +84,23 @@ public final class SettingsNavigator {
   }
 }
 
-/// Opens the Settings window at a destination. The app sets it where it has a Settings window.
+#if os(macOS)
+  extension SettingsNavigator {
+    /// Shows the window's Settings page, at `destination` or where it last was.
+    /// - Parameter destination: The tab or server pane to show, if any.
+    public func open(_ destination: SettingsDestination? = nil) {
+      if let destination { show(destination) }
+      if !isPresented { isPresented = true }
+    }
+
+    /// Goes back to the window's content.
+    public func close() {
+      if isPresented { isPresented = false }
+    }
+  }
+#endif
+
+/// Opens Settings at a destination. The app sets it where it has Settings to show.
 public struct OpenSettingsDestinationAction {
   private let open: @MainActor (SettingsDestination) -> Void
 
@@ -97,12 +117,19 @@ public struct OpenSettingsDestinationAction {
 }
 
 extension EnvironmentValues {
-  /// Opens the Settings window at a destination; `nil` where there is no Settings window.
+  /// Opens Settings at a destination; `nil` where there is no Settings to show.
   @Entry public var openSettingsAt: OpenSettingsDestinationAction?
 }
 
 #if os(macOS)
   extension OpenSettingsDestinationAction {
+    /// Shows a window's Settings page at the destination.
+    /// - Parameter navigator: The window's navigator.
+    /// - Returns: The action.
+    @MainActor public static func settingsPage(_ navigator: SettingsNavigator) -> Self {
+      Self { destination in navigator.open(destination) }
+    }
+
     /// Moves `navigator` to the destination, then opens (or fronts) the Settings scene.
     /// - Parameters:
     ///   - navigator: The Settings window's navigator.
