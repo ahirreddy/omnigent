@@ -39,6 +39,12 @@ import Testing
     var gate: RouteGate?
     /// The edit the step started, with whether the server saved it.
     var edit: Task<Bool, Never>?
+    /// A tab of another kind the step opened beside the chat.
+    var pageTabID = ""
+    /// The toolbar's item objects before the step.
+    var toolbarItems: [ObjectIdentifier] = []
+    /// The frames of the kept chats' scroll views before the step.
+    var keptChatFrames: [CGRect] = []
   }
 
   extension BudgetWindow {
@@ -169,7 +175,8 @@ import Testing
         }),
       WindowInteraction(
         name: "the right panel shown",
-        budget: ["composer": 1, "rows": 1, "screen": 1, "transcript": 1],
+        // The window's session chrome holds the panel beside the tabs: no chat renders.
+        budget: ["chrome": 1],
         prepare: { window in
           let open = try window.openPanels
           try #require(open == 0, "a panel is open before its shortcut")
@@ -181,7 +188,7 @@ import Testing
         },
         verify: { window in
           let open = try window.openPanels
-          #expect(open == 1, "the shown chat's panel, and not the hidden one's")
+          #expect(open == 1, "the window's one panel")
           // Showing it becomes the default for the next chat, in the window's own preferences.
           let stored = window.preferences.string(forKey: panelKey)
           #expect(stored == WorkspacePanelDefault.open.rawValue)

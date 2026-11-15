@@ -49,14 +49,17 @@ import Testing
 
   nonisolated extension WindowInteraction {
     /// What nothing built behind the shown chat may take part in.
+    /// The kept tabs' stack sits under the window's right panel, whose column measures and
+    /// places it once; no hidden tab is laid out.
     private static let reachesOnlyTheShownTab = CountLimit.atMost([
-      "shown tab measure": 1, "shown tab place": 1,
+      "kept tabs measure": 1, "kept tabs place": 1, "shown tab measure": 1,
+      "shown tab place": 1,
     ])
 
     /// A session kept open that shows again, as its chat was: nothing in it is built again.
     private static let keptSessionSwitch = [
-      "composer": 2, "detail": 1, "rows": 1, "screen": 1, "session row": 4, "strip": 1,
-      "tab": 1, "tab controls": 1, "transcript": 1,
+      "chrome": 1, "composer": 2, "detail": 1, "rows": 1, "screen": 1, "session row": 4,
+      "strip": 1, "tab": 1, "tab controls": 1, "transcript": 1,
     ]
 
     /// Chats kept built: in a split's panes, behind the shown tab and in other sessions.
@@ -82,8 +85,8 @@ import Testing
         name: "a session switch back to a split session",
         // Both panes' chats take the window's new values; neither builds a row again.
         budget: [
-          "composer": 3, "detail": 1, "rows": 2, "screen": 2, "session row": 4, "strip": 1,
-          "tab": 2, "tab controls": 1, "transcript": 2,
+          "chrome": 1, "composer": 3, "detail": 1, "rows": 2, "screen": 2, "session row": 4,
+          "strip": 1, "tab": 2, "tab controls": 1, "transcript": 2,
         ],
         prepare: { window in
           try await window.splitWithSideChat()

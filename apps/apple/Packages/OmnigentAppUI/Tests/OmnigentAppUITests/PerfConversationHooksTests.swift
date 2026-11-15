@@ -19,8 +19,10 @@
 
     private func hooks(_ panel: Panel) -> PerfConversationHooks {
       PerfConversationHooks(
-        showsInspector: Binding(get: { panel.isShown }, set: { panel.isShown = $0 }),
-        inspectorTab: Binding(get: { panel.tab }, set: { panel.tab = $0 }),
+        showPanel: { tab in
+          if let tab { panel.tab = tab }
+          panel.isShown = tab != nil
+        },
         openBrowser: { panel.browsers += 1 },
         openSideChat: { panel.sideChats.append(($0, $1)) })
     }

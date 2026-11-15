@@ -16,7 +16,7 @@ import Testing
     /// The budget table: every interaction the window is held to.
     static let all: [WindowInteraction] =
       sessionRows + edits + chat + navigation + kept + pages + sidebar + layout
-      + preferences
+      + preferences + chrome
 
     /// The server's news about one session.
     private static let sessionRows: [WindowInteraction] = [
@@ -95,9 +95,10 @@ import Testing
         }),
       WindowInteraction(
         name: "the shown session's title",
+        // The window's session chrome holds the title for its session menu.
         budget: [
-          "composer": 2, "rows": 2, "screen": 2, "session row": 1, "strip": 1, "tab": 2,
-          "tab controls": 1, "transcript": 2,
+          "chrome": 1, "composer": 2, "rows": 2, "screen": 2, "session row": 1, "strip": 1,
+          "tab": 2, "tab controls": 1, "transcript": 2,
         ],
         perform: { try $0.change(BudgetWindow.shown) { $0.title = "Alpha renamed" } },
         verify: { window in
@@ -187,9 +188,11 @@ import Testing
 
     /// A session that opens in the detail: its chat, the strip and the sidebar's rows, whose
     /// list reads the selection. The window, the shell and the sidebar's scope stay as they are.
+    /// The window's session chrome renders for the session that shows, and again as its
+    /// conversation opens.
     private static let sessionSwitch = [
-      "composer": 3, "detail": 1, "rows": 2, "screen": 2, "session row": 4, "strip": 1,
-      "tab": 1, "tab controls": 1, "transcript": 2,
+      "chrome": 2, "composer": 3, "detail": 1, "rows": 2, "screen": 2, "session row": 4,
+      "strip": 1, "tab": 1, "tab controls": 1, "transcript": 2,
     ]
 
     /// Moving between tabs and sessions.
@@ -270,8 +273,8 @@ import Testing
       WindowInteraction(
         name: "back to a session kept open",
         budget: [
-          "composer": 2, "detail": 1, "rows": 1, "screen": 1, "session row": 4, "strip": 1,
-          "tab": 1, "tab controls": 1, "transcript": 1,
+          "chrome": 1, "composer": 2, "detail": 1, "rows": 1, "screen": 1, "session row": 4,
+          "strip": 1, "tab": 1, "tab controls": 1, "transcript": 1,
         ],
         prepare: { window in
           window.selection.page = .session(BudgetWindow.other)

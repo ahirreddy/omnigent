@@ -92,6 +92,127 @@ final class MacWorkspaceFlowUITests: XCTestCase {
       live.element("workspace.tree.row.README.md", in: app).appears(within: 5), "it hid the match")
   }
 
+  /// Where the session's runner hosts its terminal, the session's chat tab carries Chat /
+  /// Terminal: each side shows that view in the tab, and the click opens or closes no tab.
+  @MainActor
+  func testChatTabSwitchShowsTheSessionsTerminal() throws {
+    let live = MacLiveUITestSupport(self)
+    try live.requireTerminals()
+    let session = try live.fixtureSession()
+    let app = live.launch()
+    defer { app.terminate() }
+    live.open(session, in: app)
+    let transcript = live.element("transcript-\(session)", in: app)
+    XCTAssertTrue(transcript.appears(within: 15), "no chat")
+    let terminalSide = live.element("tab-view-mode-terminal", in: app)
+    try XCTSkipUnless(
+      terminalSide.appears(within: 15), "The fixture session's runner hosts no terminal view.")
+
+    live.click(terminalSide, "the tab's Terminal side")
+    XCTAssertTrue(
+      live.element("session-terminal", in: app).appears(within: 30),
+      "the tab's switch did not show the session's terminal")
+    XCTAssertEqual(live.tabs("chat", in: app).count, 1, "the click opened or closed a tab")
+    live.shot(app, "session-chrome-tab-switch-terminal")
+    live.click(live.element("tab-view-mode-chat", in: app), "the tab's Chat side")
+    XCTAssertTrue(transcript.appears(within: 15), "the tab's switch did not show the chat")
+    live.assertRunning(app, "after the tab's switch")
+  }
+
+  #if OMNIGENT_CHROMIUM
+    /// With a browser tab focused, alone and then in a split beside the chat, the session's
+    /// toolbar controls stay in the titlebar, and its toggle shows the right panel to the right
+    /// of both panes, with the session's files.
+    @MainActor
+    func testSessionControlsAndPanelStayOverABrowserTab() throws {
+      let live = MacLiveUITestSupport(self)
+      let session = try live.fixtureSession()
+      let app = live.launch()
+      defer { app.terminate() }
+      live.open(session, in: app)
+      let controls = ["header-session-menu", "toggle-inspector"]
+      for control in controls {
+        XCTAssertTrue(live.element(control, in: app).appears(within: 15), "no \(control)")
+      }
+      XCTAssertFalse(
+        live.element("header-project-tag", in: app).exists, "the project tag is in the toolbar")
+
+      app.typeKey("b", modifierFlags: [.command, .option])
+      let tab = live.tabs("browser", in: app).firstMatch
+      XCTAssertTrue(tab.appears(within: 20), "Option-Command-B opened no browser tab")
+      MacNotificationPrompts.decline(waiting: 2)
+      let omnibox = live.element("browser.omnibox", in: app)
+      live.click(omnibox, "the address field", timeout: 20)
+      for control in controls {
+        XCTAssertTrue(live.element(control, in: app).exists, "\(control) left with the chat")
+      }
+      // With no chat on screen, the toggle shows the session's panel and hides it again.
+      let toggle = live.element("toggle-inspector", in: app)
+      let panel = live.element("inspector-tabs", in: app)
+      live.click(toggle, "the right-panel toggle over the browser")
+      XCTAssertTrue(panel.appears(within: 10), "the toggle did not show the panel over the browser")
+      live.shot(app, "session-chrome-browser-panel-open")
+      live.click(toggle, "the right-panel toggle over the browser")
+      XCTAssertTrue(panel.disappears(within: 10), "the toggle did not hide it over the browser")
+      try panelBesideTheSplit(of: tab, session: session, controls: controls, live: live, app: app)
+      live.assertRunning(app, "after the panel")
+    }
+
+    /// Puts the browser `tab` in a split beside the chat: the session's controls stay with
+    /// either pane focused, and the panel opens to the right of both panes, with its files.
+    @MainActor
+    private func panelBesideTheSplit(
+      of tab: XCUIElement, session: String, controls: [String], live: MacLiveUITestSupport,
+      app: XCUIApplication
+    ) throws {
+      let (toggle, panel) = (
+        live.element("toggle-inspector", in: app), live.element("inspector-tabs", in: app)
+      )
+      let omnibox = live.element("browser.omnibox", in: app)
+      live.contextMenu(tab, choose: "Open in Split View", in: app)
+      let divider = live.element("tab-split-divider", in: app)
+      XCTAssertTrue(divider.appears(within: 15), "no split")
+      XCTAssertTrue(
+        live.element("transcript-\(session)", in: app).appears(within: 15), "no chat pane")
+      live.focusComposer(in: app)
+      live.shot(app, "session-chrome-split-chat-focused")
+      live.click(omnibox, "the address field in its pane", timeout: 20)
+      for control in controls {
+        XCTAssertTrue(live.element(control, in: app).exists, "\(control) left in the split")
+      }
+      live.shot(app, "session-chrome-split-browser-focused")
+
+      // The VM's window has room for both panes beside the panel once the sidebar hides;
+      // narrower, the split shows the focused pane alone.
+      let sidebar = live.element("sidebar", in: app)
+      app.typeKey("s", modifierFlags: [.command, .control])
+      XCTAssertTrue(sidebar.disappears(within: 10), "the sidebar did not hide")
+      live.click(toggle, "the right-panel toggle")
+      XCTAssertTrue(panel.appears(within: 10), "the toggle did not show the panel")
+      XCTAssertTrue(divider.exists, "both panes beside the panel")
+      live.click(live.element("inspector-tab-files", in: app), "the Files tab")
+      XCTAssertTrue(
+        live.element("workspace.tree.row.README.md", in: app).appears(within: 30),
+        "the panel does not show the session's files")
+      XCTAssertTrue(
+        live.waitUntil { panel.frame.minX >= omnibox.frame.maxX },
+        "the panel at \(panel.frame) is not to the right of the browser's pane \(omnibox.frame)")
+      let chat = live.element("transcript-\(session)", in: app)
+      XCTAssertLessThan(chat.frame.minX, omnibox.frame.minX, "the chat left, the browser right")
+      // The tab row's last control, Full screen, sits at the panel's trailing edge.
+      let fullScreen = app.buttons.matching(
+        NSPredicate(format: "identifier == 'inspector-tabs' AND label == 'Full screen'")
+      ).firstMatch
+      let window = app.windows.firstMatch.frame
+      XCTAssertLessThan(window.maxX - fullScreen.frame.maxX, 24, "the panel at the window's edge")
+      live.shot(app, "session-chrome-split-panel-open")
+
+      live.click(omnibox, "the address field again", timeout: 10)
+      live.click(toggle, "the right-panel toggle")
+      XCTAssertTrue(panel.disappears(within: 10), "the toggle did not hide the panel")
+    }
+  #endif
+
   /// Typing @ offers the workspace's files, and attaching a folder puts it in the composer.
   @MainActor
   func testAtMentionAttachesAFolder() throws {

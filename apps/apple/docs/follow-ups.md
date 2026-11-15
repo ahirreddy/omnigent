@@ -422,12 +422,16 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     six and eight. Their memory with more was not measured.
   - The tenth pass's counts are from a hosted offscreen window; the list of what to
     measure in a real window is at the end of that pass in performance.md.
-  - A switch from a chat to a browser, terminal or New Tab page removes the conversation's
-    two toolbar items and the switch back creates them (88 menu forms, three toolbar
-    layouts; a third of the switch in the real window), and the strip moves to the 236 pt
-    reserve between. Kept invisible, the items leave an empty glass capsule and push Show
-    Chat into the overflow menu. The session's items shown disabled on those tabs would
-    make the switch an update in place; a design decision (eleventh pass).
+  - The twelfth pass's counts (the session's toolbar controls and right panel around the
+    tabs) are from a hosted offscreen window. A chat to browser or terminal switch and the
+    way back were not timed in a real window since; the eleventh pass had 190-350 ms, a
+    third of it adding and removing the toolbar items the switch no longer touches.
+  - iPad still shows each chat's own toolbar items and right panel, so its split has the
+    panel between the panes and a page's pane shows no session controls. The Mac's window
+    chrome (`sessionChrome(_:)`) would serve it; its panel column and sheet differ.
+  - With a side chat or sub-agent tab focused, the Mac toolbar's session menu is the
+    window's session's. The side chat's own Export, Copy Session ID and Archive are in no
+    toolbar; its tab's menu renames it and Rename Session still acts on it.
   - A resize across 560 pt of detail column removes a terminal chat's Chat / Terminal
     switch from the toolbar and puts it back, and at the strip's 220 pt minimum a trailing
     item folds or shows again: 19-30 menu forms and item viewers moved, a hitch of a step
@@ -474,6 +478,15 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Done
 
+- [x] **Mac: the session's toolbar controls and right panel around the tabs.** Agent info, the
+  session menu, an icon-only Share and the right-panel toggle show over every tab and pane of
+  the session and act on it, and the right panel is one column at the window's trailing edge,
+  beside both panes of a split (`sessionChrome(_:)`, `SessionChromeContainer`). The Chat /
+  Terminal switch is on the session's chat tab in the strip, and also in the session menu and
+  the tab's menu; the viewers and the project tag left the toolbar (the Info tab and the
+  session menu's Add to project have them). A switch between a chat and a browser, terminal
+  or New Tab page no longer adds or removes a toolbar item, and a terminal tab adds none of
+  its own (performance.md, twelfth pass). 2026-11-13.
 - [x] Turn rail: one tick per user turn at the transcript's leading edge (Mac and iPad, both
   transcript styles; left out at compact widths as the web leaves it out on phones), with the
   hover preview, click to scroll, the active turn and paging from its top. List paging: the

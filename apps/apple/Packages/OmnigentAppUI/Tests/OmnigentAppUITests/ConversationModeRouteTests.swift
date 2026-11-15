@@ -60,6 +60,11 @@ struct ConversationModeRouteTests {
     route.isShown = false
     #expect(route.choice == .collapsed)
     #expect(!route.isShown(default: .open, isSheet: false, .constant(route)).wrappedValue)
+
+    // A presentation syncing its binding writes what shows already: no choice is made.
+    let untouched = ConversationPanelRoute()
+    untouched.isShown = false
+    #expect(untouched.choice == nil)
   }
 
   @Test func forkSheetBindingCancelsOnlyOnDismiss() {

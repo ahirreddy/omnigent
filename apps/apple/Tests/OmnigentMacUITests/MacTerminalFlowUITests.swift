@@ -78,15 +78,15 @@ final class MacTerminalFlowUITests: XCTestCase {
     typesWithoutAClick(into: shownAgain, live: live, app: app)
   }
 
-  /// Waits for the session's Chat and Terminal switch, which arrives with its toolbar once it
-  /// loads and pushes the tab strip's buttons aside, then for `element` to stay put for a second.
+  /// Waits for the Chat and Terminal switch on the session's chat tab, which arrives as the
+  /// session loads, with its toolbar, then for `element` to stay put for a second.
   @MainActor
   private func waitUntilSettled(
     _ element: XCUIElement, _ live: MacLiveUITestSupport, _ app: XCUIApplication
   ) {
     XCTAssertTrue(
       live.element("session-view-mode", in: app).appears(within: 30),
-      "the session's toolbar never showed its Chat and Terminal switch")
+      "the session's chat tab never showed its Chat and Terminal switch")
     var lastFrame = CGRect.null
     var stillSince = Date()
     let settled = live.waitUntil(timeout: 15) {
