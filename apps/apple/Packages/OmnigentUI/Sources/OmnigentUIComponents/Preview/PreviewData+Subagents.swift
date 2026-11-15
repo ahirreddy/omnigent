@@ -4,7 +4,7 @@ extension PreviewData {
   /// A `child-<id>` section shaped like the core's (`state`, `goal`, `activity`, `agent`,
   /// `started`, `id` details).
   static func childSection(
-    _ id: String, title: String, state: SubagentStatus, agent: String? = nil,
+    _ id: String, title: String, state: AgentTreeActivity, agent: String? = nil,
     goal: String? = nil, activity: String? = nil, error: String? = nil, startedAgo: Int = 120
   ) -> EventSection {
     var details = [DetailSection(id: "state", title: "State", text: state.rawValue)]
@@ -39,15 +39,15 @@ extension PreviewData {
     state.sections.removeAll { $0.id.hasPrefix("child-") }
     state.sections += [
       childSection(
-        "sess_c1", title: "Write auth tests", state: .running, agent: "tester",
+        "sess_c1", title: "Write auth tests", state: .working, agent: "tester",
         goal: "Cover expiry and concurrent refresh in auth/tests.rs.",
         activity: "Running cargo test -p omnigent-core auth", startedAgo: 260),
       childSection(
-        "sess_c3", title: "Check migrations", state: .running, agent: "Codex",
+        "sess_c3", title: "Check migrations", state: .working, agent: "Codex",
         goal: "Make sure the session schema migration is current.",
         activity: "Waiting for approval to run the migration check", startedAgo: 140),
       childSection(
-        "sess_c2", title: "Review patch", state: .ready, agent: "reviewer",
+        "sess_c2", title: "Review patch", state: .done, agent: "reviewer",
         goal: "Review the refresh patch for races.",
         activity: "No blocking issues. Two naming nits.", startedAgo: 900),
     ]
@@ -55,6 +55,14 @@ extension PreviewData {
     state.header.status = .running
     state.revision += 1
     return state
+  }
+
+  /// The session composer with `state`'s sub-agents in play counted in its tray, as the app
+  /// puts them there.
+  static func composer(counting state: ConversationViewState) -> ComposerViewState {
+    var composer = sessionComposer
+    composer.tray?.indicators.subagents = SubagentGroup(state: state)?.tally ?? []
+    return composer
   }
 
   /// A child's own transcript, opened from the parent: it routes back.

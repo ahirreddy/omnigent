@@ -18,23 +18,6 @@
       openComposer(ComposerScreenModel(state: ComposerViewState(tray: tray)), log.actions)
     }
 
-    private func child(_ id: String, _ status: SubagentStatus) -> SubagentChild {
-      SubagentChild(id: id, title: "Agent \(id)", status: status)
-    }
-
-    @Test("the sub-agent menu opens each child, from anywhere on the chip")
-    func subagents() throws {
-      var tray = ComposerTray()
-      tray.indicators = ComposerTaskIndicators(subagents: [
-        child("a", .running), child("b", .needsYou),
-      ])
-      let screen = self.tray(tray)
-      defer { screen.close() }
-      let menu = try screen.chip(0)
-      try screen.choose("Agent b", in: menu)
-      #expect(log.events == ["subagent:b"])
-    }
-
     @Test("the goal pill opens the goal, with a pause glyph when it can resume")
     func goal() throws {
       for canResume in [false, true] {

@@ -1,13 +1,14 @@
 public import CoreGraphics
 
-/// Where an agent in the spawn tree stands (the core's `AgentActivity`).
-nonisolated public enum AgentTreeActivity: Hashable, Sendable, CaseIterable {
+/// Where an agent stands (the core's `AgentActivity`); the raw value is its key, as a `child-<id>`
+/// section's `state` detail carries it.
+nonisolated public enum AgentTreeActivity: String, Hashable, Sendable, CaseIterable {
   /// Starting up.
   case launching
   /// Working on a task.
   case working
   /// Blocked on an approval or a question.
-  case needsYou
+  case needsYou = "needs_you"
   /// The latest task completed.
   case done
   /// The latest task failed.
@@ -18,6 +19,29 @@ nonisolated public enum AgentTreeActivity: Hashable, Sendable, CaseIterable {
   case idle
   /// Another task status.
   case other
+
+  /// The word for it, where the core gave none.
+  public var title: String {
+    switch self {
+    case .launching: "Launching"
+    case .working: "Working"
+    case .needsYou: "Needs you"
+    case .done: "Done"
+    case .failed: "Failed"
+    case .disconnected: "Disconnected"
+    case .idle: "Idle"
+    case .other: "Other"
+    }
+  }
+
+  /// The composer's sub-agent count lists it (web `SubagentTaskIndicator`): starting, working,
+  /// waiting on the user, disconnected or failed. Finished and idle agents drop out.
+  public var isTallied: Bool {
+    switch self {
+    case .launching, .working, .needsYou, .disconnected, .failed: true
+    case .done, .idle, .other: false
+    }
+  }
 }
 
 /// What a sub-agent does, for its icon (the core's `AgentRole`).

@@ -81,6 +81,21 @@ impl AgentActivity {
     pub const fn is_settled(self) -> bool {
         matches!(self, Self::Done | Self::Idle)
     }
+
+    /// The stable machine value, as a child section's `state` detail carries it.
+    #[must_use]
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Launching => "launching",
+            Self::Working => "working",
+            Self::NeedsYou => "needs_you",
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Disconnected => "disconnected",
+            Self::Idle => "idle",
+            Self::Other => "other",
+        }
+    }
 }
 
 /// What a sub-agent does, by its type, for its icon (web `iconForAgentType`).

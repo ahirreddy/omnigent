@@ -265,12 +265,12 @@
       #expect(try timed.shows("s \u{2022} esc to interrupt)"))
     }
 
-    @Test("The CLI transcript ends with its rows: no line per sub-agent and no agents bar")
+    @Test("Either transcript ends with its rows: no line per sub-agent and no agents bar")
     func noSubagentBlock() throws {
       var state = PreviewData.conversation
       state.sections = [
-        PreviewData.childSection("a", title: "Child a", state: .running),
-        PreviewData.childSection("b", title: "Child b", state: .ready),
+        PreviewData.childSection("a", title: "Child a", state: .working),
+        PreviewData.childSection("b", title: "Child b", state: .done),
       ]
       func screen(_ style: TranscriptStyle) -> OffscreenWindow<AnyView> {
         transcriptScreen(
@@ -283,10 +283,10 @@
       let cli = screen(.cli)
       defer { cli.close() }
       #expect(try !namesAgents(cli))
-      // The chat style keeps its bar while an agent is at work.
+      // The composer's count lists the agents at work instead.
       let chat = screen(.chat)
       defer { chat.close() }
-      #expect(try namesAgents(chat))
+      #expect(try !namesAgents(chat))
     }
   }
 

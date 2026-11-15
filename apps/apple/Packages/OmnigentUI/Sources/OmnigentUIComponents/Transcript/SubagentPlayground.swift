@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Stateful sample sub-agents: answering the blocked child's request from the parent sets it
-/// running again, and opening a child shows its transcript with the route back.
+/// working again, and opening a child from the composer's count shows its transcript with the
+/// route back.
 struct SubagentPlayground: View {
   @State private var parent = PreviewData.subagentConversation
   @State private var child: ConversationViewState?
@@ -24,10 +25,11 @@ struct SubagentPlayground: View {
       respond: { card, response in respond(card, response) },
       validateForm: PreviewData.validate)
     actions.openChild = { id in open(id) }
+    var composerActions = ComposerActions(send: { draft = "" })
+    composerActions.extras.indicators.openSubagent = { id in open(id) }
     return ConversationScreen(
-      state: state, composer: PreviewData.sessionComposer, draft: $draft,
-      showsInspector: $showsInspector, actions: actions,
-      composerActions: ComposerActions(send: { draft = "" }))
+      state: state, composer: PreviewData.composer(counting: state), draft: $draft,
+      showsInspector: $showsInspector, actions: actions, composerActions: composerActions)
   }
 
   private func open(_ id: String) {
@@ -47,7 +49,7 @@ struct SubagentPlayground: View {
     if let index = parent.sections.firstIndex(where: { $0.sessionId == card.targetSessionId }) {
       let section = parent.sections[index]
       parent.sections[index] = PreviewData.childSection(
-        card.targetSessionId, title: section.title, state: .running, agent: "Codex",
+        card.targetSessionId, title: section.title, state: .working, agent: "Codex",
         goal: section.details.first { $0.id == "goal" }?.text,
         activity: "Running the migration check", startedAgo: 150)
     }

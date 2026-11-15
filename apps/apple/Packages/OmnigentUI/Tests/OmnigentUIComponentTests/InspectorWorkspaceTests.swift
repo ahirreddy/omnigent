@@ -216,8 +216,8 @@
           DetailSection(id: "b", title: "b.swift", text: "A"),
         ])
       let children = [
-        EventSection(id: "child-1", title: "One", summary: "Running"),
-        EventSection(id: "child-2", title: "Two", summary: "done"),
+        PreviewData.childSection("1", title: "One", state: .working),
+        PreviewData.childSection("2", title: "Two", state: .done),
       ]
       let pullRequest = PullRequestSummary(
         id: "1", number: 1, title: "T", repo: "r", url: "https://example.test/1", status: .open)

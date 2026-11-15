@@ -158,9 +158,14 @@ struct GalleryFlowTests {
     func model(_ id: String) -> SubagentFlowModel {
       script.model(at: script.steps.firstIndex { $0.id == id } ?? 0, context: context)
     }
-    #expect(SubagentGroup(state: model("running").parent)?.count(.needsYou) == 0)
-    #expect(SubagentGroup(state: model("blocked").parent)?.count(.needsYou) == 1)
-    #expect(SubagentGroup(state: model("answer").parent)?.count(.needsYou) == 0)
+    func waiting(_ id: String) -> Int? {
+      PreviewData.composer(counting: model(id).parent).tray?.indicators.subagents.count {
+        $0.status == .needsYou
+      }
+    }
+    #expect(waiting("running") == 0)
+    #expect(waiting("blocked") == 1)
+    #expect(waiting("answer") == 0)
     #expect(model("open-child").child?.header.id == "sess_c1")
     #expect(model("back").child == nil)
   }

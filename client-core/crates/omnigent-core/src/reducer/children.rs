@@ -1,102 +1,51 @@
-//! Sub-agent (child session) sections for the parent's live group row.
+//! Sub-agent (child session) sections for the parent's composer tally and Agents tab.
 //!
-//! The parent stream reports each child through `session.created` (status `Created`) and
+//! The parent stream reports each child through `session.created` and
 //! `session.child_session.updated`, whose `child` is the server's `ChildSessionSummary`
 //! (`title`, `task_summary`, `tool`, `busy`, `current_task_status`, `last_task_error`,
-//! `last_message_preview`, `pending_elicitations_count`, `created_at`, ...). [`ChildState::of`]
-//! classifies those fields once, so every surface agrees on whether a child is starting, running,
-//! blocked on the user, ready or failed.
+//! `last_message_preview`, `pending_elicitations_count`, `created_at`, ...). The merged fields
+//! are classified by [`ChildSessionRow::status`], the web's `childStatus`, so the stream and the
+//! Agents tab agree on whether a child is launching, working, waiting on the user, done, failed,
+//! disconnected or idle.
 //!
-//! Each child becomes a `child-<id>` section: the summary is the state's title and the details
+//! Each child becomes a `child-<id>` section: the status label is its summary and the details
 //! carry stable ids (`state`, `goal`, `activity`, `agent`, `error`, `pending`, `started`, `id`).
 
 use serde_json::{Map, Value};
 
 use super::presentation::{EventSection, SUMMARY_CHARS, bounded};
 use super::state::DetailSection;
+use crate::agent_tree::{AgentStatus, ChildSessionRow};
 
-/// Where a child session stands, most urgent first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum ChildState {
-    /// Blocked on approvals or input (`pending_elicitations_count > 0`).
-    NeedsYou,
-    /// The child's loop is live, or its latest task is queued or in progress.
-    Running,
-    /// The latest task failed.
-    Failed,
-    /// The latest task finished; the child is ready for review.
-    Ready,
-    /// Created, with no task reported yet.
-    Starting,
-}
-
-impl ChildState {
-    /// Classifies the merged fields the stream reported for one child.
-    #[must_use]
-    pub fn of(fields: &Map<String, Value>) -> Self {
-        if pending_count(fields) > 0 {
-            return Self::NeedsYou;
-        }
-        let task = string(fields, "current_task_status").map(str::to_ascii_lowercase);
-        let status = string(fields, "status").map(str::to_ascii_lowercase);
-        let busy = fields.get("busy").and_then(Value::as_bool) == Some(true);
-        let running = |value: &str| {
-            matches!(
-                value,
-                "running" | "in_progress" | "queued" | "waiting" | "busy"
-            )
-        };
-        if busy || task.as_deref().is_some_and(running) || status.as_deref().is_some_and(running) {
-            return Self::Running;
-        }
-        let failed = |value: &str| matches!(value, "failed" | "error" | "cancelled" | "canceled");
-        if task.as_deref().is_some_and(failed) || status.as_deref().is_some_and(failed) {
-            return Self::Failed;
-        }
-        let finished = |value: &str| matches!(value, "completed" | "idle" | "done" | "ready");
-        if task.as_deref().is_some_and(finished) || status.as_deref().is_some_and(finished) {
-            return Self::Ready;
-        }
-        if error_message(fields).is_some() {
-            return Self::Failed;
-        }
-        Self::Starting
+/// Where the child stands, from the fields the stream merged for it. A child the stream only
+/// announced (`session.created`) has no summary yet and reads idle, as the web's list does.
+#[must_use]
+fn child_status(id: &str, fields: &Map<String, Value>) -> AgentStatus {
+    ChildSessionRow {
+        id: id.to_owned(),
+        current_task_status: string(fields, "current_task_status").map(str::to_owned),
+        last_task_error: task_error(fields),
+        busy: fields.get("busy").and_then(Value::as_bool) == Some(true),
+        pending_elicitations_count: pending_count(fields),
+        ..ChildSessionRow::default()
     }
-
-    /// The machine value of the `state` detail.
-    #[must_use]
-    pub const fn key(self) -> &'static str {
-        match self {
-            Self::NeedsYou => "needs_you",
-            Self::Running => "running",
-            Self::Failed => "failed",
-            Self::Ready => "ready",
-            Self::Starting => "starting",
-        }
-    }
-
-    /// The section summary.
-    #[must_use]
-    pub const fn title(self) -> &'static str {
-        match self {
-            Self::NeedsYou => "Needs you",
-            Self::Running => "Running",
-            Self::Failed => "Failed",
-            Self::Ready => "Ready",
-            Self::Starting => "Starting",
-        }
-    }
+    .status()
 }
 
 /// One `child-<id>` section.
 #[must_use]
 pub(super) fn child_section(id: &str, fields: &Map<String, Value>) -> EventSection {
-    let state = ChildState::of(fields);
+    let status = child_status(id, fields);
     let title = string(fields, "title")
         .or_else(|| string(fields, "session_name"))
         .or_else(|| string(fields, "agent_name"))
         .unwrap_or("Subagent");
-    let mut details = vec![DetailSection::new("state", "State", state.key(), false)];
+    let mut details = vec![DetailSection::new(
+        "state",
+        "State",
+        status.activity.key(),
+        false,
+    )];
     let mut add = |key: &str, label: &str, value: Option<&str>| {
         if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
             details.push(DetailSection::new(
@@ -124,13 +73,13 @@ pub(super) fn child_section(id: &str, fields: &Map<String, Value>) -> EventSecti
         .map(|seconds| seconds.to_string());
     add("started", "Started", started.as_deref());
     details.push(DetailSection::new("id", "Session ID", id, false));
-    let mut section = EventSection::new(&format!("child-{id}"), title, state.title());
+    let mut section = EventSection::new(&format!("child-{id}"), title, status.label);
     section.details = details;
     section.session_id = Some(id.to_owned());
     section
 }
 
-/// Children in the order they started (then by id), so the group never reshuffles.
+/// Children in the order they started (then by id), so the list never reshuffles.
 pub(super) fn ordered<'a>(
     children: impl IntoIterator<Item = (&'a String, &'a Map<String, Value>)>,
 ) -> Vec<(&'a String, &'a Map<String, Value>)> {
@@ -169,17 +118,32 @@ fn error_message(fields: &Map<String, Value>) -> Option<&str> {
     }
 }
 
+/// The latest failure as `(code, message)`; a bare text error has no code.
+fn task_error(fields: &Map<String, Value>) -> Option<(String, String)> {
+    let message = error_message(fields)?;
+    let code = match fields.get("last_task_error") {
+        Some(Value::Object(error)) => error.get("code").and_then(Value::as_str),
+        _ => None,
+    };
+    Some((code.unwrap_or_default().to_owned(), message.to_owned()))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::agent_tree::AgentActivity;
 
     fn fields(value: Value) -> Map<String, Value> {
         match value {
             Value::Object(map) => map,
             _ => Map::new(),
         }
+    }
+
+    fn activity(value: Value) -> AgentActivity {
+        child_status("conv_c", &fields(value)).activity
     }
 
     fn detail<'a>(section: &'a EventSection, id: &str) -> Option<&'a str> {
@@ -192,53 +156,47 @@ mod tests {
 
     #[test]
     fn a_failed_child_reports_it_from_a_text_error_and_ignores_other_shapes() {
-        let failed = ChildState::of(&fields(json!({"last_task_error": "boom"})));
-        assert_eq!(failed, ChildState::Failed);
-        assert_eq!(failed.key(), "failed");
-        assert_eq!(failed.title(), "Failed");
+        let failed = child_status("conv_c", &fields(json!({"last_task_error": "boom"})));
+        assert_eq!(failed.activity, AgentActivity::Failed);
+        assert_eq!(failed.label, "Failed");
+        assert_eq!(failed.detail.as_deref(), Some("boom"));
         assert_eq!(
             error_message(&fields(json!({"last_task_error": "boom"}))),
             Some("boom")
         );
         assert_eq!(error_message(&fields(json!({"last_task_error": 5}))), None);
+        assert_eq!(task_error(&fields(json!({"last_task_error": 5}))), None);
+        assert_eq!(
+            activity(json!({"last_task_error": {"code": "required_terminal_exited"}})),
+            AgentActivity::Failed
+        );
     }
 
     #[test]
-    fn classification_puts_a_pending_request_above_everything() {
-        let blocked = fields(json!({"busy": true, "pending_elicitations_count": 2}));
-        assert_eq!(ChildState::of(&blocked), ChildState::NeedsYou);
-        assert_eq!(
-            ChildState::of(&fields(json!({"busy": true}))),
-            ChildState::Running
-        );
-        assert_eq!(
-            ChildState::of(&fields(json!({"current_task_status": "in_progress"}))),
-            ChildState::Running
-        );
-        assert_eq!(
-            ChildState::of(&fields(json!({"current_task_status": "completed"}))),
-            ChildState::Ready
-        );
-        assert_eq!(
-            ChildState::of(&fields(json!({"current_task_status": "failed"}))),
-            ChildState::Failed
-        );
+    fn classification_follows_the_web() {
+        let blocked = json!({"busy": true, "pending_elicitations_count": 2});
+        assert_eq!(activity(blocked), AgentActivity::NeedsYou);
+        let launching = json!({"busy": false, "current_task_status": "launching"});
+        assert_eq!(activity(launching), AgentActivity::Launching);
+        assert_eq!(activity(json!({"busy": true})), AgentActivity::Working);
+        let completed = json!({"busy": false, "current_task_status": "completed"});
+        assert_eq!(activity(completed), AgentActivity::Done);
+        let failed = json!({"current_task_status": "failed"});
+        assert_eq!(activity(failed), AgentActivity::Failed);
         // A failure from an earlier run does not hide a live retry.
-        let retry = fields(json!({"busy": true, "last_task_error": {"message": "exit 1"}}));
-        assert_eq!(ChildState::of(&retry), ChildState::Running);
-        let errored = fields(json!({"last_task_error": {"code": "required_terminal_exited"}}));
-        assert_eq!(ChildState::of(&errored), ChildState::Failed);
-        // `session.created` reports only `Created`; older fixtures report `status`.
+        let retry = json!({"busy": true, "last_task_error": {"message": "exit 1"}});
+        assert_eq!(activity(retry), AgentActivity::Working);
+        let gone = json!({"last_task_error": {"code": "runner_disconnected", "message": "gone"}});
+        assert_eq!(activity(gone), AgentActivity::Disconnected);
+        let cancelled = child_status("c", &fields(json!({"current_task_status": "cancelled"})));
         assert_eq!(
-            ChildState::of(&fields(json!({"status": "Created"}))),
-            ChildState::Starting
+            (cancelled.activity, cancelled.label.as_str()),
+            (AgentActivity::Other, "cancelled")
         );
-        assert_eq!(
-            ChildState::of(&fields(json!({"status": "idle"}))),
-            ChildState::Ready
-        );
-        assert!(ChildState::NeedsYou < ChildState::Running);
-        assert!(ChildState::Ready < ChildState::Starting);
+        // No task reported, or only announced: idle, never starting.
+        let settled = json!({"busy": false, "current_task_status": null});
+        assert_eq!(activity(settled), AgentActivity::Idle);
+        assert_eq!(activity(json!({"agent_name": "Codex"})), AgentActivity::Idle);
     }
 
     #[test]
@@ -268,7 +226,8 @@ mod tests {
 
         let created = child_section("conv_c2", &fields(json!({"agent_name": "Codex"})));
         assert_eq!(created.title, "Codex");
-        assert_eq!(created.summary, "Starting");
+        assert_eq!(created.summary, "Idle");
+        assert_eq!(detail(&created, "state"), Some("idle"));
         assert_eq!(detail(&created, "goal"), None);
     }
 

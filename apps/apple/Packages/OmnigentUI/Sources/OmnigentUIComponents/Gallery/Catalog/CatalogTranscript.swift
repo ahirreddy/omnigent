@@ -121,18 +121,25 @@ enum TranscriptCatalog {
           },
         ]),
       .component(
-        .transcript, "subagents", "Sub-agent Group",
-        summary: "A parent's children: running, blocked (answerable here), finished and failed.",
+        .transcript, "subagents", "Sub-agents",
+        summary: "The composer's count of sub-agents in play, its list, and a child's route back.",
         systemImage: "arrow.triangle.branch", canvas: .column(width: 820),
-        keywords: ["child", "agents"],
+        keywords: ["child", "agents", "tally"],
         states: [
-          CatalogState("group", "Group", note: "The blocked child's request is answerable here.") {
+          CatalogState("tally", "Counts", note: "Background tasks and sub-agents still in play.") {
             CatalogStack {
-              SubagentGroupView(
-                state: PreviewData.subagentConversation, actions: GalleryActions.conversation)
+              ComposerIndicatorsView(
+                indicators: SubagentTallySample.indicators,
+                actions: ComposerIndicatorActions(openSubagent: { _ in }))
             }
           },
-          CatalogState("rows", "Child rows") { SubagentRowSample() },
+          CatalogState("list", "Sub-agent list", note: "Finished agents drop out of it.") {
+            CatalogStack {
+              SubagentRows(children: SubagentTallySample.indicators.subagents, open: { _ in })
+                .frame(width: 360)
+                .cardSurface(cornerRadius: Theme.Radius.large)
+            }
+          },
           CatalogState("parent", "Route back to the parent") {
             CatalogStack {
               SessionOriginBar(
@@ -319,19 +326,21 @@ private struct DiffSample: View {
   }
 }
 
-private struct SubagentRowSample: View {
-  var body: some View {
-    CatalogStack(spacing: Theme.Spacing.small) {
-      ForEach(SubagentStatus.allCases, id: \.self) { status in
-        SubagentChildRow(
-          child: SubagentChild(
-            id: "child_\(status.rawValue)", title: "Check the \(status.title.lowercased()) path",
-            agent: "Codex", goal: "Verify the migration on a copy of the database",
-            activity: "Running the migration check",
-            error: status == .failed ? "The migration check timed out." : nil, status: status,
-            startedAt: PreviewData.now.addingTimeInterval(-150)),
-          open: { _ in })
+/// The sample parent's counts: a background task and each sub-agent state the list shows.
+private enum SubagentTallySample {
+  static var indicators: ComposerTaskIndicators {
+    let children = [AgentTreeActivity.launching, .working, .needsYou, .disconnected, .failed]
+      .map { status in
+        SubagentChild(
+          id: "child_\(status.rawValue)", title: "general-purpose:\(status.rawValue)",
+          agent: "Check the \(status.title.lowercased()) path",
+          goal: status == .working ? "Verify the migration on a copy of the database" : nil,
+          status: status)
       }
-    }
+    return ComposerTaskIndicators(
+      backgroundTasks: 1,
+      backgroundTaskList: [
+        ComposerBackgroundTask(id: "t1", title: "Dev server", command: "npm run dev")
+      ], subagents: children)
   }
 }

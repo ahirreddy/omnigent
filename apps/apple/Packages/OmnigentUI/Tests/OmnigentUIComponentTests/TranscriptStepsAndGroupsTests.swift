@@ -29,7 +29,7 @@
     }
   }
 
-  @Suite("Worked folds, diffs and sub-agent groups", .serialized)
+  @Suite("Worked folds, diffs and sub-agents", .serialized)
   @MainActor
   struct TranscriptStepsAndGroupsTests {
     private let log = HostLog()
@@ -168,67 +168,15 @@
 
     // MARK: Sub-agents
 
-    private func group(
-      _ children: [EventSection], actions: ConversationActions
-    ) -> OffscreenWindow<AnyView> {
-      var state = ConversationViewState(header: TranscriptFixture.header)
-      state.sections = children
-      return transcriptScreen(SubagentGroupView(state: state, actions: actions))
-    }
-
-    private func child(_ id: String, _ status: SubagentStatus, error: String? = nil) -> EventSection
-    {
-      PreviewData.childSection(id, title: "Child \(id)", state: status, error: error)
-    }
-
-    private var openingActions: ConversationActions {
-      var actions = ConversationActions()
-      let log = self.log
-      actions.openChild = { log.add("open \($0)") }
-      return actions
-    }
-
-    @Test("The header opens and folds the group; a row opens its child")
-    func groupOpens() throws {
-      let screen = group([child("a", .running)], actions: openingActions)
+    @Test("A sub-agent's request shows inline with the parent's own")
+    func subagentRequestInline() throws {
+      let state = PreviewData.subagentConversation
+      let screen = transcriptScreen(
+        TranscriptView(state: state, actions: ConversationActions(respond: { _, _ in })),
+        height: 900)
       defer { screen.close() }
-      let wasOpen = try screen.shows("Child a")
-      try screen.clickControl(at: 0)
-      #expect(try screen.shows("Child a") != wasOpen)
-      if wasOpen { try screen.clickControl(at: 0) }
-      #expect(try screen.shows("Child a"))
-      try screen.clickControl(at: 1)
-      #expect(log.entries == ["open a"])
-    }
-
-    @Test("Finished children fold behind a count while others run")
-    func doneFolds() throws {
-      let screen = group([child("a", .running), child("b", .ready)], actions: openingActions)
-      defer { screen.close() }
-      if try !screen.shows("Child a") { try screen.clickControl(at: 0) }
-      #expect(try screen.shows("1 done"))
-      #expect(try !screen.shows("Child b"))
-      let done = try #require(screen.controlFrames.last)
-      try screen.click(CGPoint(x: done.midX, y: done.midY))
-      #expect(try screen.shows("Child b"))
-      #expect(try screen.shows("Hide 1 done"))
-    }
-
-    @Test("With nothing running, the finished children show directly")
-    func allDone() throws {
-      let screen = group([child("b", .ready)], actions: openingActions)
-      defer { screen.close() }
-      if try !screen.shows("Child b") { try screen.clickControl(at: 0) }
-      #expect(try screen.shows("Child b"))
-      #expect(try !screen.shows("1 done"))
-    }
-
-    @Test("A failed child says why")
-    func failedChild() throws {
-      let screen = group([child("a", .failed, error: "It broke")], actions: openingActions)
-      defer { screen.close() }
-      if try !screen.shows("It broke") { try screen.clickControl(at: 0) }
-      #expect(try screen.shows("It broke"))
+      screen.settle(0.3)
+      #expect(try screen.shows("migrate --check"), "the blocked child's request")
     }
   }
 #endif

@@ -224,5 +224,20 @@ import Testing
         row.updatedAt = Self.time(minutesAgo: minutes)
       }
     }
+
+    /// One sub-agent of `sessionID` in `state` (a core key, such as `working`), as the core's
+    /// next section change reports it.
+    func subagent(_ state: String, in sessionID: String) throws {
+      let store = try conversation(sessionID)
+      let child = OmnigentCoreFFI.EventSection(
+        id: "child-sub", title: "general-purpose:sub", summary: state,
+        details: [
+          OmnigentCoreFFI.DetailSection(id: "state", title: "State", text: state, isCode: false)
+        ],
+        sessionId: "sub")
+      store.apply(
+        revision: store.revision + 1,
+        change: TranscriptChange(rows: [], header: nil, sections: [child]))
+    }
   }
 #endif
