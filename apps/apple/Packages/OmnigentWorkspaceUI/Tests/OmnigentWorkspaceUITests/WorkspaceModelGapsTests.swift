@@ -1,6 +1,7 @@
 #if os(macOS)
   import AppKit
   import Foundation
+  import OmnigentViewTesting
   import Testing
 
   @testable import OmnigentWorkspaceUI
@@ -17,10 +18,7 @@
     }
 
     private func waitUntil(_ condition: () -> Bool) async throws {
-      for _ in 0..<500 where !condition() {
-        try await Task.sleep(for: .milliseconds(5))
-      }
-      #expect(condition(), "waited too long")
+      #expect(await MainLoop.waitUntil(timeout: .seconds(5), condition), "waited too long")
     }
 
     @Test("identities are the path, so a list keeps a row across reloads")

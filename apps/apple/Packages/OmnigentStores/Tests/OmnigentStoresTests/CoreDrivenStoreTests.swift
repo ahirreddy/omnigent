@@ -123,13 +123,16 @@ private func waitUntil(
   }
 }
 
-/// Waits until the store has applied every event the core sent so far.
+/// Waits until the store has applied every event the core sent so far: its count holds over
+/// three checks 15 ms apart.
 @MainActor
 private func settle(_ store: ConnectionStore) async throws {
   var last = -1
   var stable = 0
   while stable < 3 {
-    try await Task.sleep(for: .milliseconds(15))
+    // Yielding keeps the 15 ms; a short Task.sleep can take several times that in a VM.
+    let next = ContinuousClock.now + .milliseconds(15)
+    while ContinuousClock.now < next { await Task.yield() }
     if store.eventsApplied == last {
       stable += 1
     } else {

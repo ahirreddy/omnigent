@@ -171,9 +171,7 @@
       editor.autosaveDelay = .milliseconds(1)
       editor.text = "b"
       editor.text = "c"
-      for _ in 0..<500 where writes.isEmpty {
-        try await Task.sleep(for: .milliseconds(2))
-      }
+      _ = await MainLoop.waitUntil(timeout: .seconds(5)) { !writes.isEmpty }
       #expect(writes == ["c"], "a newer edit replaces the pending save")
       #expect(editor.usesCRLF == false)
     }

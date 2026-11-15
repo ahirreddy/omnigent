@@ -104,12 +104,7 @@
     private func settle<Content: View>(
       _ screen: OffscreenWindow<Content>, until condition: () -> Bool
     ) async throws -> Bool {
-      let deadline = ContinuousClock.now + .seconds(3)
-      while !condition(), ContinuousClock.now < deadline {
-        screen.settle(0.005)
-        try await Task.sleep(for: .milliseconds(5))
-      }
-      return condition()
+      await screen.waitUntil(timeout: .seconds(3), condition)
     }
 
     /// The text fields, top to bottom.
