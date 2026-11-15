@@ -2,6 +2,8 @@ public import SwiftUI
 
 /// How a session row shows the harness that runs it.
 nonisolated public enum HarnessIconStyle: String, Hashable, Sendable, CaseIterable, Codable {
+  /// Brand colors while the session or its sandbox is alive, the text color otherwise.
+  case colorWhileActive = "color-while-active"
   /// The harness's mark in its brand colors, where it has them.
   case color
   /// The mark in the text color.
@@ -10,15 +12,25 @@ nonisolated public enum HarnessIconStyle: String, Hashable, Sendable, CaseIterab
   case hidden
 
   /// The style until one is chosen.
-  public static let `default` = Self.monochrome
+  public static let `default` = Self.colorWhileActive
 
   /// The menu title.
   public var title: String {
     switch self {
-    case .color: "Color"
-    case .monochrome: "Monochrome"
-    case .hidden: "Off"
+    case .colorWhileActive: "Color while active"
+    case .color: "Always color"
+    case .monochrome: "Always monochrome"
+    case .hidden: "No icon"
     }
+  }
+
+  /// The style to draw for a mark whose session is alive or not: Color while active picks color
+  /// or monochrome, and every other style stays as it is.
+  /// - Parameter isActive: The session or its sandbox is alive.
+  /// - Returns: Color, monochrome or hidden.
+  public func resolved(isActive: Bool) -> Self {
+    guard self == .colorWhileActive else { return self }
+    return isActive ? .color : .monochrome
   }
 }
 
@@ -93,6 +105,7 @@ final class HarnessMarkPaths {
 /// without one.
 struct HarnessIcon: View {
   let harness: String?
+  /// A resolved style (``HarnessIconStyle/resolved(isActive:)``); only color draws in color.
   var style = HarnessIconStyle.color
   var size: CGFloat = 16
 

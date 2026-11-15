@@ -41,6 +41,38 @@ enum SandboxAdapter {
     return state
   }
 
+  /// Whether a listed session's own sandbox is launching, waking or up, from what its list row
+  /// carries; `false` without one, and for a child session, which runs under its parent's.
+  /// - Parameters:
+  ///   - session: The session.
+  ///   - isOwned: The viewer owns it.
+  ///   - environments: Where a session on each host runs, as the host list says.
+  /// - Returns: Whether its sandbox is alive.
+  static func isAlive(
+    _ session: OmnigentCoreFFI.SessionSummary, isOwned: Bool,
+    environments: [String: SessionEnvironment]
+  ) -> Bool {
+    guard let configuration = session.configuration, configuration.parentId == nil else {
+      return false
+    }
+    let signals = SandboxSignals(
+      launch: configuration.sandboxLaunch, profile: nil,
+      hostSandbox: hostSandbox(configuration.hostId.flatMap { environments[$0] }),
+      hostId: configuration.hostId, hostOnline: configuration.hostOnline,
+      runnerOnline: configuration.runnerOnline, hostResumable: configuration.hostResumable,
+      turnActive: session.status != .idle, canEdit: !session.isReadOnly && !session.isArchived,
+      isOwner: isOwned)
+    return sandboxState(signals: signals).map { isAlive($0.phase) } ?? false
+  }
+
+  /// Whether a sandbox in `phase` is launching, waking or up (its agent asleep included).
+  static func isAlive(_ phase: SandboxPhase) -> Bool {
+    switch phase {
+    case .launching, .actionRequired, .waking, .running, .agentAsleep: true
+    case .failed, .asleep, .offline, .unknown: false
+    }
+  }
+
   /// The mark a phase shows on the control's icon.
   static func mark(_ phase: SandboxPhase) -> SandboxStatusState.Mark {
     switch phase {
