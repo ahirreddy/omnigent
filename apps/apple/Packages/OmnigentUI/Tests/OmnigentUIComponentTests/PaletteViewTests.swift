@@ -210,22 +210,26 @@
       #expect(spy.performed.isEmpty)
     }
 
-    /// Lets the palette's debounce finish: its wake-up runs on the main actor, so the test yields.
-    private func waitForSearch<V: View>(_ screen: OffscreenWindow<V>) async throws {
-      try await Task.sleep(for: .milliseconds(320))
-      screen.settle(0.02)
+    /// Whether `condition` comes true while the palette runs, checked about every 40 ms for up to
+    /// five seconds. A search answers once typing has paused and the main actor gets to it, which
+    /// a busy machine can put off well past the debounce.
+    private func comesTrue<V: View>(_ screen: OffscreenWindow<V>, _ condition: () throws -> Bool)
+      async throws -> Bool
+    {
+      let deadline = ContinuousClock.now + .seconds(5)
+      while try !condition(), ContinuousClock.now < deadline {
+        // The palette's tasks run on the main actor, so the test suspends rather than spins.
+        try await Task.sleep(for: .milliseconds(20))
+        screen.settle(0.02)
+      }
+      return try condition()
     }
 
-    /// Whether the palette comes to show `text`: an answer arrives as late as the timers run.
+    /// Whether the palette comes to show `text`.
     private func comesToShow<V: View>(_ text: String, _ screen: OffscreenWindow<V>) async throws
       -> Bool
     {
-      var waits = 0
-      while try !screen.shows(text), waits < 15 {
-        try await waitForSearch(screen)
-        waits += 1
-      }
-      return try screen.shows(text)
+      try await comesTrue(screen) { try screen.shows(text) }
     }
 
     @Test("a search asks the server once typing pauses, trimmed, and shows what it found")
@@ -242,9 +246,8 @@
       #expect(spy.searches.isEmpty)
       try screen.type("l")
       #expect(try screen.shows("Searching\u{2026}"))
-      try await waitForSearch(screen)
+      #expect(try await comesToShow("Remote Alpha", screen))
       #expect(spy.searches == ["al 10"])
-      #expect(try screen.shows("Remote Alpha"))
       #expect(try !screen.shows("Searching\u{2026}"))
     }
 
@@ -256,15 +259,13 @@
       defer { screen.close() }
       screen.settle()
       try screen.type("zzq")
-      try await waitForSearch(screen)
-      #expect(try screen.shows("Couldn\u{2019}t load sessions."))
+      try #require(try await comesToShow("Couldn\u{2019}t load sessions.", screen))
       #expect(try screen.shows("Offline"))
       spy.answer = PaletteSearchResults(titles: [entry("far", "zzq found")])
       let retry = try #require(screen.controlFrames.last)
       try screen.click(CGPoint(x: retry.midX, y: retry.midY))
-      try await waitForSearch(screen)
+      #expect(try await comesToShow("zzq found", screen))
       #expect(spy.searches == ["zzq 10", "zzq 10"])
-      #expect(try screen.shows("zzq found"))
     }
 
     @Test("Show more asks for another page")
@@ -276,10 +277,10 @@
       defer { screen.close() }
       screen.settle()
       try screen.type("zzq")
-      try await waitForSearch(screen)
+      try #require(try await comesToShow("zzq found", screen))
       let more = try #require(screen.plainButtons.last)
       try screen.click(more)
-      try await waitForSearch(screen)
+      #expect(try await comesTrue(screen) { spy.searches.count == 2 })
       #expect(spy.searches == ["zzq 10", "zzq 20"])
     }
 
@@ -293,8 +294,7 @@
       try screen.type("zzq")
       #expect(try await comesToShow("zzq found", screen))
       for _ in 0..<3 { try screen.press(keyCode: 51, characters: "\u{7F}") }
-      try await waitForSearch(screen)
-      #expect(try !screen.shows("zzq found"))
+      #expect(try await comesTrue(screen) { try !screen.shows("zzq found") })
     }
   }
 #endif
