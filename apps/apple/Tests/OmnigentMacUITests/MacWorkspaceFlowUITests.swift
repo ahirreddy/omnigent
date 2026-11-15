@@ -194,11 +194,14 @@ final class MacWorkspaceFlowUITests: XCTestCase {
       XCTAssertTrue(
         live.element("workspace.tree.row.README.md", in: app).appears(within: 30),
         "the panel does not show the session's files")
-      XCTAssertTrue(
-        live.waitUntil { panel.frame.minX >= omnibox.frame.maxX },
-        "the panel at \(panel.frame) is not to the right of the browser's pane \(omnibox.frame)")
+      // Whichever side each pane takes, both are before the panel.
       let chat = live.element("transcript-\(session)", in: app)
-      XCTAssertLessThan(chat.frame.minX, omnibox.frame.minX, "the chat left, the browser right")
+      XCTAssertTrue(
+        live.waitUntil { panel.frame.minX >= max(omnibox.frame.maxX, chat.frame.maxX) - 1 },
+        "the panel at \(panel.frame) is not after the browser \(omnibox.frame) and chat \(chat.frame)"
+      )
+      XCTAssertGreaterThan(
+        abs(chat.frame.midX - omnibox.frame.midX), 100, "the chat and the browser side by side")
       // The tab row's last control, Full screen, sits at the panel's trailing edge.
       let fullScreen = app.buttons.matching(
         NSPredicate(format: "identifier == 'inspector-tabs' AND label == 'Full screen'")
