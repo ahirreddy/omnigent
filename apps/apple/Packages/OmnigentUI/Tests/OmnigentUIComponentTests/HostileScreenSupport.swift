@@ -1,5 +1,6 @@
 #if os(macOS)
   import AppKit
+  import OmnigentViewTesting
   import SwiftUI
   import Testing
 
@@ -103,7 +104,7 @@
         if let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
           host.cacheDisplay(in: host.bounds, to: bitmap)
         }
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        MainLoop.settle(limit: 0.05, windows: [window])
       }
       window.contentView = nil
     }
@@ -123,7 +124,7 @@
         if let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
           host.cacheDisplay(in: host.bounds, to: bitmap)
         }
-        try await Task.sleep(for: .milliseconds(50))
+        await MainLoop.settleTasks(limit: .milliseconds(50), windows: [window])
       }
     }
   }
