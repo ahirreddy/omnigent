@@ -10,7 +10,7 @@ fn status(stage: &str) -> SandboxStatus {
     SandboxStatus {
         stage: SandboxStage::parse(stage),
         error: (stage == "failed").then(|| "No capacity".to_owned()),
-        provider: Some("arclet".to_owned()),
+        provider: Some("example".to_owned()),
         details: (stage == "action_required").then(|| "Sign in on your laptop.".to_owned()),
     }
 }
@@ -81,7 +81,7 @@ fn every_launch_stage_has_the_webs_words_and_only_ready_ends_the_launch() {
 fn a_launch_keeps_its_provider_details_and_error_and_survives_saving() {
     let waiting = launch("action_required");
     assert_eq!(waiting.stage, LaunchStage::ActionRequired);
-    assert_eq!(waiting.provider.as_deref(), Some("arclet"));
+    assert_eq!(waiting.provider.as_deref(), Some("example"));
     assert_eq!(waiting.details.as_deref(), Some("Sign in on your laptop."));
     assert_eq!(waiting.error, None);
     let failed = launch("failed");
@@ -157,16 +157,16 @@ fn each_sign_of_a_sandbox_is_enough_and_names_its_provider() {
         launch: Some(launch("provisioning")),
         ..SandboxSignals::default()
     };
-    assert_eq!(state(&launching).title, "Arclet Sandbox");
+    assert_eq!(state(&launching).title, "Example Sandbox");
     let profiled = SandboxSignals {
         profile: Some(SandboxProfileName {
-            provider: "lakebox".to_owned(),
+            provider: "daytona".to_owned(),
             name: "GPU box".to_owned(),
         }),
         ..SandboxSignals::default()
     };
     let shown = state(&profiled);
-    assert_eq!(shown.title, "Databricks Sandbox");
+    assert_eq!(shown.title, "Daytona Sandbox");
     assert_eq!(shown.profile.as_deref(), Some("GPU box"));
     assert_eq!(state(&owned()).title, "Modal Sandbox");
     // The launch names the provider before the profile and the host do.
@@ -175,7 +175,7 @@ fn each_sign_of_a_sandbox_is_enough_and_names_its_provider() {
         profile: profiled.profile,
         ..owned()
     };
-    assert_eq!(state(&all).title, "Arclet Sandbox");
+    assert_eq!(state(&all).title, "Example Sandbox");
     let resumable = SandboxSignals {
         host_sandbox: None,
         host_resumable: Some(true),
@@ -233,7 +233,7 @@ fn a_launch_moves_through_its_stages_then_the_sandbox_runs() {
     let running = state(&signals);
     assert_eq!(running.phase, SandboxPhase::Running);
     assert_eq!(running.stage, None);
-    assert_eq!(running.title, "Arclet Sandbox");
+    assert_eq!(running.title, "Example Sandbox");
     assert_eq!(running.summary, "Running");
     assert_eq!(
         (running.host_online, running.runner_online),

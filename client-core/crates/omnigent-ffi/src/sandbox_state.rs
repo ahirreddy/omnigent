@@ -58,7 +58,7 @@ impl From<SandboxLaunchStage> for core::LaunchStage {
 pub struct SandboxLaunch {
     /// The stage.
     pub stage: SandboxLaunchStage,
-    /// The provider being launched, for example `arclet`.
+    /// The provider being launched, for example `modal`.
     pub provider: Option<String>,
     /// What the user must do, while the launch waits on them.
     pub details: Option<String>,

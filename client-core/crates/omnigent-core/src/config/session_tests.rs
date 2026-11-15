@@ -615,7 +615,7 @@ fn a_session_read_reports_its_sandbox_launch_until_it_ends_or_a_host_arrives() {
     };
     let waiting = summary(
         &with(json!({
-            "stage": "action_required", "provider": "arclet", "details": "Sign in on your laptop."
+            "stage": "action_required", "provider": "example", "details": "Sign in on your laptop."
         })),
         None,
     );
@@ -625,7 +625,7 @@ fn a_session_read_reports_its_sandbox_launch_until_it_ends_or_a_host_arrives() {
         .and_then(|configuration| configuration.sandbox_launch)
         .expect("a launch");
     assert_eq!(launch.stage, LaunchStage::ActionRequired);
-    assert_eq!(launch.provider.as_deref(), Some("arclet"));
+    assert_eq!(launch.provider.as_deref(), Some("example"));
     assert_eq!(launch.details.as_deref(), Some("Sign in on your laptop."));
     // A read that says nothing of the launch leaves the last answer standing.
     assert_eq!(

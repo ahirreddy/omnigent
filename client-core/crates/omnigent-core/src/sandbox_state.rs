@@ -87,7 +87,7 @@ impl LaunchStage {
 pub struct SandboxLaunch {
     /// The stage.
     pub stage: LaunchStage,
-    /// The provider being launched, for example `arclet`.
+    /// The provider being launched, for example `modal`.
     pub provider: Option<String>,
     /// What the user must do, when the stage is [`LaunchStage::ActionRequired`].
     pub details: Option<String>,

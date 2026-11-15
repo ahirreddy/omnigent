@@ -36,7 +36,7 @@ struct SandboxStatusAdapterTests {
   private func launch(
     _ stage: SandboxLaunchStage, details: String? = nil, error: String? = nil
   ) -> SandboxLaunch {
-    SandboxLaunch(stage: stage, provider: "arclet", details: details, error: error)
+    SandboxLaunch(stage: stage, provider: "example", details: details, error: error)
   }
 
   private let listed: @MainActor (String) -> SessionEnvironment? = { id in
@@ -88,7 +88,7 @@ struct SandboxStatusAdapterTests {
     }
     let cloning = try #require(try await state(header(unbound, launch: launch(.cloning))))
     #expect(cloning.mark == .progress)
-    #expect(cloning.title == "Arclet Sandbox")
+    #expect(cloning.title == "Example Sandbox")
     #expect(cloning.statusLine == "Cloning repository\u{2026}")
     #expect(cloning.host == .unreported && cloning.runner == .offline)
 

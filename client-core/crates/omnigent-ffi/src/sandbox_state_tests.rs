@@ -11,7 +11,7 @@ use crate::transcript::SessionHeader;
 fn failed_launch() -> core::SandboxLaunch {
     core::SandboxLaunch {
         stage: core::LaunchStage::Failed,
-        provider: Some("arclet".into()),
+        provider: Some("example".into()),
         details: Some("Sign in on your laptop.".into()),
         error: Some("No capacity".into()),
     }
@@ -103,7 +103,7 @@ fn every_phase_and_operation_converts() {
 fn a_launch_and_a_profile_keep_every_field_both_ways() {
     let launch = SandboxLaunch::from(failed_launch());
     assert_eq!(launch.stage, SandboxLaunchStage::Failed);
-    assert_eq!(launch.provider.as_deref(), Some("arclet"));
+    assert_eq!(launch.provider.as_deref(), Some("example"));
     assert_eq!(launch.details.as_deref(), Some("Sign in on your laptop."));
     assert_eq!(launch.error.as_deref(), Some("No capacity"));
     assert_eq!(core::SandboxLaunch::from(launch), failed_launch());

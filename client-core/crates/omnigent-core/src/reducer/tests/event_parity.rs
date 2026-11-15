@@ -794,7 +794,7 @@ fn the_header_carries_the_sandbox_launch_stage_by_stage_until_ready() {
     let mut harness = Harness::new(SESSION);
     assert_eq!(launch_stage(&harness), None);
     let first = harness.send(sandbox_event(
-        &json!({"stage": "provisioning", "provider": "arclet"}),
+        &json!({"stage": "provisioning", "provider": "example"}),
     ));
     // The session's list row learns the stage from the read this asks for.
     assert!(first.effects.changed && first.effects.reconcile);
@@ -809,11 +809,11 @@ fn the_header_carries_the_sandbox_launch_stage_by_stage_until_ready() {
         assert_eq!(launch_stage(&harness), Some(expected), "{wire}");
     }
     harness.send(sandbox_event(
-        &json!({"stage": "action_required", "provider": "arclet", "details": "Sign in."}),
+        &json!({"stage": "action_required", "provider": "example", "details": "Sign in."}),
     ));
     let waiting = harness.snapshot().header.sandbox_launch.clone().unwrap();
     assert_eq!(waiting.stage, LaunchStage::ActionRequired);
-    assert_eq!(waiting.provider.as_deref(), Some("arclet"));
+    assert_eq!(waiting.provider.as_deref(), Some("example"));
     assert_eq!(waiting.details.as_deref(), Some("Sign in."));
     harness.send(sandbox_event(
         &json!({"stage": "failed", "error": "No capacity"}),
@@ -843,7 +843,7 @@ fn a_header_read_elsewhere_keeps_the_launch_and_a_settled_read_makes_it_ready() 
     harness.reconcile(settled.clone());
     assert_eq!(launch_stage(&harness), None);
     harness.send(sandbox_event(
-        &json!({"stage": "failed", "provider": "arclet", "error": "No capacity"}),
+        &json!({"stage": "failed", "provider": "example", "error": "No capacity"}),
     ));
     // A list row's header knows nothing of the launch and must not end it.
     let changes = harness.reducer.set_header(header(SESSION));
@@ -858,14 +858,14 @@ fn a_header_read_elsewhere_keeps_the_launch_and_a_settled_read_makes_it_ready() 
     assert_eq!(ready.stage, LaunchStage::Ready);
     assert_eq!(
         (ready.provider.as_deref(), ready.error),
-        (Some("arclet"), None)
+        (Some("example"), None)
     );
     // A reducer made from a read that reports a launch shows it at once.
     let mut launching = conversation(SESSION, Vec::new());
     launching.event_state.sandbox = Some(SandboxStatus {
         stage: SandboxStage::Cloning,
         error: None,
-        provider: Some("arclet".to_owned()),
+        provider: Some("example".to_owned()),
         details: None,
     });
     let opened = Harness::from_snapshot(launching.clone());

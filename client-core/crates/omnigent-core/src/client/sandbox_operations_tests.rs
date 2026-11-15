@@ -180,7 +180,7 @@ fn a_conversation_read_tells_the_list_when_the_launch_moved_and_only_then() {
     );
     transport.ok(
         "/v1/sessions/conv_a",
-        session(r#"{"stage":"provisioning","provider":"arclet"}"#),
+        session(r#"{"stage":"provisioning","provider":"example"}"#),
     );
     let core = connected(transport);
     let recorder = record(&core);

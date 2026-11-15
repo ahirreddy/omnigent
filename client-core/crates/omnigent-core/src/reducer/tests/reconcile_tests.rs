@@ -847,7 +847,7 @@ fn sandbox_session(fields: &Value) -> SessionSnapshot {
 #[test]
 fn a_session_read_reports_the_sandbox_profile_and_whether_a_launch_is_under_way() {
     let launching = sandbox_session(&json!({
-        "sandbox_status": {"stage": "cloning", "provider": "arclet"},
+        "sandbox_status": {"stage": "cloning", "provider": "example"},
         "sandbox_profile": {"id": "gpu", "name": "GPU box", "provider": "modal", "revision": "r1"}
     }));
     let state = event_state_from_snapshot(&launching);
