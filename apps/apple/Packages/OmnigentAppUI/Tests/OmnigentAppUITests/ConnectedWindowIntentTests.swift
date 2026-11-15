@@ -102,6 +102,8 @@ extension ConnectedWindowFlowTests {
 
   @Test("Retry in the alert of a refused rename sends the rename again")
   func retryFromTheAlert() async throws {
+    // An alert an earlier test in this process left in the record would be counted here.
+    SystemSideEffects.reset()
     let server = titledServer()
     let first = server.hold("/v1/sessions/conv_b", method: "PATCH")
     server.route(

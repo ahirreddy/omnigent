@@ -55,7 +55,7 @@ func pause<Content: View>(_ screen: OffscreenWindow<Content>, _ time: Duration =
   }
 }
 
-/// The window's controls once they have stopped moving, over three reads in a row: a page that
+/// The window's controls once they have stopped moving, over three reads and 150 ms: a page that
 /// loads, a tab that opens and a banner that arrives lay the window out over several updates,
 /// and a click must land where a control is.
 @MainActor
@@ -64,11 +64,14 @@ func settledControlFrames<Content: View>(_ screen: OffscreenWindow<Content>) asy
 {
   var frames = screen.controlFrames
   var unchangedReads = 0
+  var unchangedSince = ContinuousClock.now
   try await settle(screen, until: "the controls to stop moving") {
     let latest = screen.controlFrames
+    if latest != frames { unchangedSince = .now }
     unchangedReads = latest == frames ? unchangedReads + 1 : 0
     frames = latest
-    return unchangedReads >= 3
+    // On a busy machine three quick reads can all come before the next layout pass.
+    return unchangedReads >= 3 && ContinuousClock.now - unchangedSince >= .milliseconds(150)
   }
   return frames
 }
@@ -191,16 +194,33 @@ func location<Content: View>(
 }
 
 /// The middle of the element identified `identifier`, from the top left of the screen's root
-/// view: where to click a control whose place moves with the layout. SwiftUI builds its
-/// accessibility tree only once an assistive client says it is there, so this says so first.
+/// view, once two reads in a row agree: where to click a control whose place moves with the
+/// layout. SwiftUI builds its accessibility tree only once an assistive client says it is
+/// there, so this says so first.
 @MainActor
 func center<Content: View>(
-  of identifier: String, in screen: OffscreenWindow<Content>
+  of identifier: String, in screen: OffscreenWindow<Content>, timeout: TimeInterval = 2
 ) throws -> CGPoint {
   let setter = NSSelectorFromString("accessibilitySetValue:forAttribute:")
   _ = unsafe NSApp.perform(setter, with: true, with: "AXEnhancedUserInterface")
   defer { _ = unsafe NSApp.perform(setter, with: false, with: "AXEnhancedUserInterface") }
   screen.settle(0.2)
+  let deadline = Date().addingTimeInterval(timeout)
+  var point = try accessibilityCenter(of: identifier, in: screen)
+  while Date() < deadline {
+    screen.settle(0.03)
+    let latest = try accessibilityCenter(of: identifier, in: screen)
+    if latest == point { break }
+    point = latest
+  }
+  return point
+}
+
+/// The middle of the element identified `identifier` in the accessibility tree as it is now.
+@MainActor
+private func accessibilityCenter<Content: View>(
+  of identifier: String, in screen: OffscreenWindow<Content>
+) throws -> CGPoint {
   func attribute(_ name: String, of element: NSObject) -> Any? {
     element.responds(to: NSSelectorFromString(name)) ? element.value(forKey: name) : nil
   }

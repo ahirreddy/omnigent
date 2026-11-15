@@ -9,18 +9,22 @@
   @MainActor
   @Suite("Menu tracking lock", .serialized)
   struct MenuTrackingLockTests {
+    /// A lock file of this test's own: other test processes' clicks hold the shared one.
+    private let file = FileManager.default.temporaryDirectory
+      .appending(path: "menu-lock-\(UUID().uuidString)").path
+
     @Test("the lock runs its body once and is free again after it, also when the body throws")
     func lockRunsAndReleases() throws {
       var runs = 0
-      let value = try MenuTrackingLock.holding {
+      let value = try MenuTrackingLock.holding(at: file) {
         runs += 1
         return "ran"
       }
       #expect(value == "ran" && runs == 1)
       #expect(throws: OffscreenWindowError.eventUnavailable) {
-        try MenuTrackingLock.holding { throw OffscreenWindowError.eventUnavailable }
+        try MenuTrackingLock.holding(at: file) { throw OffscreenWindowError.eventUnavailable }
       }
-      let descriptor = unsafe open(MenuTrackingLock.path, O_RDWR)
+      let descriptor = unsafe open(file, O_RDWR)
       defer { close(descriptor) }
       #expect(flock(descriptor, LOCK_EX | LOCK_NB) == 0)
       flock(descriptor, LOCK_UN)
@@ -32,7 +36,7 @@
       holder.executableURL = URL(filePath: "/usr/bin/perl")
       holder.arguments = [
         "-e",
-        "use Fcntl ':flock'; $| = 1; open(my $f, '>>', '\(MenuTrackingLock.path)') or die;"
+        "use Fcntl ':flock'; $| = 1; open(my $f, '>>', '\(file)') or die;"
           + " flock($f, LOCK_EX) or die; print \"held\\n\"; select(undef, undef, undef, 0.5);",
       ]
       let output = Pipe()
@@ -41,7 +45,7 @@
       // The holder says when it has the lock.
       _ = output.fileHandleForReading.availableData
       let started = Date()
-      try MenuTrackingLock.holding {}
+      try MenuTrackingLock.holding(at: file) {}
       #expect(Date().timeIntervalSince(started) > 0.3)
       holder.waitUntilExit()
       #expect(holder.terminationStatus == 0)
