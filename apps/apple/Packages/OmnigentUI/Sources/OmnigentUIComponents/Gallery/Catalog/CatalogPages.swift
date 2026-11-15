@@ -205,7 +205,7 @@ private struct CatalogDetail: View {
 
   var body: some View {
     switch model.selection {
-    case .newSession, nil:
+    case .newSession, .nestedSession, nil:
       NewSessionPage(
         draft: $model.startDraft, composer: model.startComposer, actions: model.startActions,
         importSessions: model.sidebar.list.sessions.isEmpty ? Self.importSessions : nil)

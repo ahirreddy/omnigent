@@ -58,7 +58,16 @@ struct SessionRowMenu {
     }
   }
 
+  /// Add nested agent: the owner's, on a session that is not archived (the web's gate).
+  var offersNestedAgent: Bool {
+    actions.addNestedAgent != nil && !isShared && !session.isArchived
+  }
+
   @ViewBuilder var items: some View {
+    if offersNestedAgent, let addNestedAgent = actions.addNestedAgent {
+      Button("Add nested agent", systemImage: "plus.square.on.square") { addNestedAgent(session) }
+      Divider()
+    }
     if offersPin {
       Button(
         session.isPinned ? "Unpin" : "Pin", systemImage: session.isPinned ? "pin.slash" : "pin"

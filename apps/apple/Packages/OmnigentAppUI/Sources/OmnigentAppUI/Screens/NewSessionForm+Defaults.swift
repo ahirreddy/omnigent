@@ -118,6 +118,7 @@ extension NewSessionForm {
     guard !isSandbox, folder.isEmpty, !hostID.isEmpty, seededFolderHost != hostID,
       Self.hasRead(list)
     else { return }
+    if seedNestedFolder(creation, hostID: hostID) { return }
     let sessions = filterSessions(
       sessions: Array(list.sessionsByID.values), text: "", filter: .all)
     if let recent = Self.recentFolder(hostID: hostID, sessions: sessions) {

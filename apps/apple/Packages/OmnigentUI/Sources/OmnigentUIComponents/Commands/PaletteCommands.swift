@@ -131,7 +131,9 @@ private struct PalettePresentation: ViewModifier {
           palette = nil
         }
       }
-      .sheet(isPresented: $showsShortcuts) { KeyboardShortcutsSheet() }
+      .sheet(isPresented: $showsShortcuts) {
+        KeyboardShortcutsSheet(nestedAgents: state().offersNestedAgents)
+      }
       .onAppear { if initiallyPresented { open(.all) } }
       .onChange(of: initiallyPresented) { _, presented in if presented { open(.all) } }
   }

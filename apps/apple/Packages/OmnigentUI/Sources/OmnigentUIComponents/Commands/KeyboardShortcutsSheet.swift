@@ -5,15 +5,21 @@ public import SwiftUI
 public struct KeyboardShortcutsSheet: View {
   @Environment(\.dismiss) private var dismiss
   @State private var submitWithCommandReturn = ComposerPreferences.commandReturnSends
+  private let nestedAgents: Bool
 
   /// Creates shortcut help.
-  public init() {}
+  /// - Parameter nestedAgents: The server can add nested agents, so their shortcut is listed.
+  public init(nestedAgents: Bool = false) {
+    self.nestedAgents = nestedAgents
+  }
 
   private var groups: [ShortcutGroup] {
     #if os(macOS)
-      ShortcutGuide.groups(submitWithCommandReturn: submitWithCommandReturn, isMac: true)
+      ShortcutGuide.groups(
+        submitWithCommandReturn: submitWithCommandReturn, isMac: true, nestedAgents: nestedAgents)
     #else
-      ShortcutGuide.groups(submitWithCommandReturn: submitWithCommandReturn, isMac: false)
+      ShortcutGuide.groups(
+        submitWithCommandReturn: submitWithCommandReturn, isMac: false, nestedAgents: nestedAgents)
     #endif
   }
 

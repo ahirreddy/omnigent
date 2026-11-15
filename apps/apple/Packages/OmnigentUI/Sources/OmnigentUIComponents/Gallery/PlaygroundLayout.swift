@@ -75,7 +75,7 @@ public struct PlaygroundView: View {
   @ViewBuilder
   private func detail(_ destination: SidebarDestination?) -> some View {
     switch destination {
-    case .newSession, nil:
+    case .newSession, .nestedSession, nil:
       NewSessionPage(
         draft: $model.startDraft, composer: model.startComposer, actions: model.startActions,
         importSessions: model.sidebar.list.sessions.isEmpty ? importSessions : nil)
@@ -152,7 +152,8 @@ extension PlaygroundModel {
     case .canvas: tab = TabItemState(id: "shell", kind: .canvas, title: "Canvas")
     case .automations: tab = TabItemState(id: "shell", kind: .automations, title: "Automations")
     case .usage: tab = TabItemState(id: "shell", kind: .usage, title: "Usage")
-    case .newSession, nil: tab = TabItemState(id: "shell", kind: .newSession, title: "New Session")
+    case .newSession, .nestedSession, nil:
+      tab = TabItemState(id: "shell", kind: .newSession, title: "New Session")
     }
     return TabsState(tabs: [tab], selectedID: tab.id)
   }

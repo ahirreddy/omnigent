@@ -105,6 +105,8 @@ nonisolated public struct PaletteViewState: Hashable, Sendable {
   public var showsAutomations = false
   /// The server offers Usage, as the sidebar row is shown.
   public var showsUsage = false
+  /// The server can add nested agents, so the shortcut guide lists Option-Command-A.
+  public var offersNestedAgents = false
 
   /// Creates palette data without loading or searching over the network.
   public init(

@@ -14,6 +14,8 @@ nonisolated public enum SidebarDestination: Hashable, Sendable {
   case usage
   /// A session.
   case session(String)
+  /// The new-session page adding a nested agent beside a session ("Add nested agent").
+  case nestedSession(sourceID: String)
 
   /// The selected session id, if a session is selected.
   public var sessionID: String? {

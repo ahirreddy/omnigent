@@ -339,6 +339,7 @@ extension ConversationScreen {
         renaming = summary
       }
     }
+    actions.addNestedAgent = addNestedAgentCommand
     return actions
   }
 

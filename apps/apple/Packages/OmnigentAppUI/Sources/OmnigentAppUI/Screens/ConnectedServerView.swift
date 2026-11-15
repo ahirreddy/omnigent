@@ -241,8 +241,8 @@ public struct ConnectedServerView: View {
       } else {
         ProgressView("Opening the session\u{2026}")
       }
-    case .newSession:
-      NewSessionContainer(connection: connection) { showCreated($0) }
+    case .newSession, .nestedSession:
+      newSessionPage(nestedBeside: destination) { tabFailure = $0 }
     case .inbox:
       InboxTriageAdapter(
         connection: connection, open: { selection = .session($0) },
@@ -318,7 +318,7 @@ extension ConnectedServerView {
     let tabs = session.tabs
     return Group {
       switch tab.content {
-      case .chat, .newSession, .inbox, .canvas, .automations, .usage:
+      case .chat, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage:
         detail(tab.content.destination)
       case .newTab:
         newTabPage(tab, routes: routes)
@@ -379,10 +379,5 @@ extension ConnectedServerView {
   private func pageChanged(_ page: SidebarDestination?) {
     if selection != page { selection = page }
     report()
-  }
-
-  /// A session the new-session form created shows in place of the form.
-  private func showCreated(_ sessionID: String) {
-    selection = .session(sessionID)
   }
 }

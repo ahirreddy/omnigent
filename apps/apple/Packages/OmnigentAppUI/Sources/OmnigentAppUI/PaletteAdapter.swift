@@ -57,6 +57,7 @@ struct PaletteAdapter: ViewModifier {
     // Gated as the sidebar rows are, on what the server offers.
     state.showsAutomations = connection.pages?.offered?.automations == true
     state.showsUsage = connection.pages?.offered?.usage == true
+    state.offersNestedAgents = NestedAgentGate.offered(connection)
     return state
   }
 

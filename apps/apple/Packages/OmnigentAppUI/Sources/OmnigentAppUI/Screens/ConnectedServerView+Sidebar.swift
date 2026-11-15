@@ -215,6 +215,9 @@ extension ConnectedServerView {
     actions.deleteWithBranch = { summary, deleteBranch in
       removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
     }
+    if NestedAgentGate.offered(connection) {
+      actions.addNestedAgent = { selection.wrappedValue = .nestedSession(sourceID: $0.id) }
+    }
     // Split view holds two tabs of one session; another session goes beside it in a window
     // (Open in New Window), so the rows offer no Open in Split View.
     actions.shareUnavailableReason = shareUnavailableReason

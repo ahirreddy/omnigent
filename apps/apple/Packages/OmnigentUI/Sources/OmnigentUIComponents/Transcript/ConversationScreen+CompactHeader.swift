@@ -16,6 +16,16 @@ extension ConversationScreen {
     }
   }
 
+  /// Add Nested Agent (Option-Command-A) for the viewer's own top-level session that is not
+  /// archived; `nil` disables it.
+  var addNestedAgentCommand: (@MainActor () -> Void)? {
+    guard let summary = state.summary, let add = extras.sessionActions.addNestedAgent,
+      !extras.menuContext.isShared, !summary.isArchived, parentSessionID == nil,
+      sideChatSourceID == nil
+    else { return nil }
+    return { add(summary) }
+  }
+
   /// The header's project tag: the viewer's own top-level session.
   var showsProjectTag: Bool {
     state.summary != nil
