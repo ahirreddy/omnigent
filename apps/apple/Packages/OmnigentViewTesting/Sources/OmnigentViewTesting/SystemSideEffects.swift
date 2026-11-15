@@ -79,12 +79,14 @@
     public static var record: Record { state.withLock { $0.record } }
 
     /// Forgets what was recorded, clears the private clipboard and restores default answers.
+    /// Answers set for a window with `answer(alert:panel:for:)` stay with that window.
     public static func reset() {
       state.withLock { $0 = State() }
       pasteboard.clearContents()
     }
 
     /// Sets how alerts and panels answer. Alerts default to their first button, panels to Cancel.
+    /// A sheet's window answers first when a test set its own with `answer(alert:panel:for:)`.
     /// - Parameters:
     ///   - alert: What an alert returns.
     ///   - panel: What an open or save panel returns.
@@ -219,7 +221,7 @@
           unsafe unsafeBitCast(original, to: AlertSheet.self)(alert, selector, window, done)
           return
         }
-        done?(Self.state.withLock { $0.alertResponse.rawValue })
+        done?(Self.alertResponse(for: window).rawValue)
       }
       let present = unsafe method(NSAlert.self, "beginSheetModalForWindow:completionHandler:")
       unsafe originalAlertSheet = method_setImplementation(

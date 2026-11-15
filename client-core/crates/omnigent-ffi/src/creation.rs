@@ -143,6 +143,13 @@ pub struct CreationCatalog {
     /// `smart_routing_enabled` with a router for native Claude Code and Codex panes.
     #[uniffi(default)]
     pub smart_routing: bool,
+    /// `sibling_sessions`: the caller can add nested agents (anything but `true` is off).
+    #[uniffi(default)]
+    pub sibling_sessions: bool,
+    /// `sibling_session_destinations`: where a nested agent may start. The core always sets it;
+    /// `nil` (a record built without it) reads as `.anyHost`, as a server that omits it means.
+    #[uniffi(default)]
+    pub sibling_session_destinations: Option<crate::sessions::SiblingSessionDestinations>,
 }
 
 /// A new sandbox for a session.
@@ -356,6 +363,8 @@ impl From<core::CreationCatalog> for CreationCatalog {
             fork_workspaces: catalog.capabilities.fork_workspaces,
             agent_detail: catalog.capabilities.agent_detail,
             smart_routing: catalog.capabilities.smart_routing,
+            sibling_sessions: catalog.capabilities.sibling_sessions,
+            sibling_session_destinations: Some(catalog.capabilities.sibling_destinations.into()),
         }
     }
 }
@@ -380,6 +389,11 @@ impl From<CreationCatalog> for core::CreationCatalog {
                 custom_agents_settings: catalog.custom_agents_settings,
                 agent_detail: catalog.agent_detail,
                 smart_routing: catalog.smart_routing,
+                sibling_sessions: catalog.sibling_sessions,
+                sibling_destinations: catalog
+                    .sibling_session_destinations
+                    .map(Into::into)
+                    .unwrap_or_default(),
             },
         }
     }
@@ -455,6 +469,18 @@ pub fn creation_unavailable_reason(
     host_id: String,
 ) -> Option<String> {
     core::CreationCatalog::from(catalog).unavailable_reason(&agent_id, &host_id)
+}
+
+/// The warning for `agent_id` on `host_id` in `catalog` when it can be chosen yet may fail to
+/// launch (an SDK harness the host reports as needing sign-in), or `None`.
+#[must_use]
+#[uniffi::export]
+pub fn creation_readiness_warning(
+    catalog: CreationCatalog,
+    agent_id: String,
+    host_id: String,
+) -> Option<String> {
+    core::CreationCatalog::from(catalog).readiness_warning(&agent_id, &host_id)
 }
 
 /// Why `selection` cannot be created with the host's advertised `models`, or `None` when it can:

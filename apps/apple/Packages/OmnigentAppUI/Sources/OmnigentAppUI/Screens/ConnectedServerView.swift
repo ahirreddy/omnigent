@@ -122,6 +122,7 @@ public struct ConnectedServerView: View {
     .modifier(ShownPageReport(tabs: session.tabs) { pageChanged($0) })
     .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
+    .modifier(NestedDraftRetirement(connection: connection))
     .task(id: connection.connectedServer?.baseUrl) {
       if connection.connectedServer != nil { await connection.loadOfferedPages() }
     }
@@ -176,6 +177,9 @@ public struct ConnectedServerView: View {
       sorts: sidebar.groupSorts.sorts(for: groupSortAccount), server: connection.connectedServer,
       servers: serverSwitching?.choices ?? [])
     state.undo = sidebar.undo?.banner
+    state.collapsedFamilies = sidebar.collapsedFamilies
+    state = SidebarNestedDraftRows.applied(
+      to: state, drafts: connection.creationStore?.nestedDrafts ?? [], list: connection.sessionList)
     state.showsAutomations = connection.pages?.offered?.automations == true
     state.showsUsage = connection.pages?.offered?.usage == true
     state.showsCanvas = connection.pages?.offered?.canvas == true
@@ -241,8 +245,8 @@ public struct ConnectedServerView: View {
       } else {
         ProgressView("Opening the session\u{2026}")
       }
-    case .newSession:
-      NewSessionContainer(connection: connection) { showCreated($0) }
+    case .newSession, .nestedSession:
+      newSessionPage(nestedBeside: destination) { tabFailure = $0 }
     case .inbox:
       InboxTriageAdapter(
         connection: connection, open: { selection = .session($0) },
@@ -318,7 +322,7 @@ extension ConnectedServerView {
     let tabs = session.tabs
     return Group {
       switch tab.content {
-      case .chat, .newSession, .inbox, .canvas, .automations, .usage:
+      case .chat, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage:
         detail(tab.content.destination)
       case .newTab:
         newTabPage(tab, routes: routes)
@@ -379,10 +383,5 @@ extension ConnectedServerView {
   private func pageChanged(_ page: SidebarDestination?) {
     if selection != page { selection = page }
     report()
-  }
-
-  /// A session the new-session form created shows in place of the form.
-  private func showCreated(_ sessionID: String) {
-    selection = .session(sessionID)
   }
 }

@@ -9,10 +9,17 @@ import SwiftUI
 /// Custom Agent and Import Bundle), the model, effort, approval and Plan mode, attachments, and
 /// under it the folder, worktree or sandbox repositories and a Set Up notice for a harness that
 /// is not ready. Start creates the session and sends the first message immediately; creation is
-/// never repeated, and an unclear outcome blocks until the user acknowledges it.
+/// never repeated, and an unclear outcome blocks until the user acknowledges it. Beside a source
+/// session it is the Add nested agent composer.
 struct NewSessionContainer: View {
   let connection: ConnectionStore
   let open: @MainActor (String) -> Void
+  /// The session a nested agent starts beside; `nil` for a new session.
+  let nestedSourceID: String?
+  /// Opens a created nested agent whose setup didn't finish, with this notice over it.
+  let openWithNotice: (@MainActor (String, String) -> Void)?
+  /// Leaves a nested composer for a new session's, which takes the draft.
+  let continueInNewSession: (@MainActor () -> Void)?
 
   @State private var draft = ""
   @State private var form: NewSessionForm
@@ -34,16 +41,28 @@ struct NewSessionContainer: View {
 
   init(
     connection: ConnectionStore, form: NewSessionForm = NewSessionForm(),
-    open: @escaping @MainActor (String) -> Void
+    nestedSourceID: String? = nil, open: @escaping @MainActor (String) -> Void,
+    openWithNotice: (@MainActor (String, String) -> Void)? = nil,
+    continueInNewSession: (@MainActor () -> Void)? = nil
   ) {
     self.connection = connection
     self.open = open
+    self.nestedSourceID = nestedSourceID
+    self.openWithNotice = openWithNotice
+    self.continueInNewSession = continueInNewSession
     _form = State(initialValue: form)
   }
 
   var body: some View {
     Group {
-      if let creation {
+      if let creation, let nested = form.nested, nested.source == nil {
+        NewSessionNotice(
+          title: NestedComposer.heading, message: nested.notice,
+          isWaiting: nested.phase == .loading,
+          action: continueAction(creation, nested).map {
+            (title: NestedComposer.continueTitle, run: $0)
+          })
+      } else if let creation {
         page(creation)
       } else if coreMissing {
         ContentUnavailableView(
@@ -64,7 +83,7 @@ struct NewSessionContainer: View {
       customAgents = connection.customAgents()
       launch = connection.launchCompletions()
       form.sandboxes = connection.sandboxes()
-      await form.load(creation)
+      await begin(creation)
     }
   }
 
@@ -75,20 +94,25 @@ struct NewSessionContainer: View {
         creation, connection: connection, launch: launch,
         submitWithCommandReturn: composerPreferences.submitWithCommandReturn),
       actions: actions(creation),
-      // The web's hero: the project's name, else "What should we build?".
-      heading: form.project?.name ?? NewSessionPage.defaultHeading,
+      // The web's hero: a nested agent's, the project's name, else "What should we build?".
+      heading: form.heading, subtitle: form.nested?.subtitle,
       importSessions: importSessions(openURL, openSettingsAt),
       options: form.options(creation, projects: connection.sessionList.projects),
       optionActions: optionActions(creation)
     )
     .modifier(
-      NewSessionLifecycle(form: form, creation: creation, connection: connection) {
-        draft = ""
-        launch?.clearMentions()
-        open($0)
-      }
+      NewSessionLifecycle(
+        form: form, creation: creation, connection: connection,
+        opened: { sessionID in
+          finish(creation)
+          open(sessionID)
+        },
+        openedUnfinished: openUnfinished(creation))
     )
-    .onChange(of: draft) { launch?.draftChanged(draft, target: form.mentionTarget(creation)) }
+    .onChange(of: draft) {
+      launch?.draftChanged(draft, target: form.mentionTarget(creation))
+      keepNestedDraft(creation)
+    }
     .task(id: form.skillsRequest(creation)) {
       let request = form.skillsRequest(creation)
       await launch?.loadSkills(request.target, unavailable: request.unavailable)
@@ -184,15 +208,18 @@ struct NewSessionContainer: View {
     // installs it. A managed sandbox has no create path for an uploaded bundle.
     var createAgent: (@MainActor () -> Void)?
     var importBundle: (@MainActor () -> Void)?
-    if !form.isSandbox {
+    // A nested agent starts on a registered agent; a new one would upload as a custom bundle.
+    if !form.isSandbox, form.nested == nil {
       createAgent = { isCreatingAgent = true }
       if creation.catalog.value?.agentInstall == true {
         importBundle = { isImportingBundle = true }
       }
     }
+    var connectHost: (@MainActor () -> Void)?
+    if offersConnectHost(creation) { connectHost = { isConnectingHost = true } }
     var extras = ComposerExtraActions(
       selectHost: { host in form.chooseHostRow(host.id, creation) },
-      connectHost: { isConnectingHost = true },
+      connectHost: connectHost,
       selectApprovalMode: { option in
         form.selection.approvalMode = option.id
       },
@@ -238,8 +265,9 @@ struct NewSessionContainer: View {
         Task { await harnessSetup?.load() }
         setupTarget = HarnessSetupTarget(harness: harness, hostID: form.selection.hostId)
       })
-    actions.connectHost = { isConnectingHost = true }
+    if offersConnectHost(creation) { actions.connectHost = { isConnectingHost = true } }
     actions.setName = { form.name = $0 }
+    guard form.nested == nil else { return actions }
     actions.selectProject = { name in
       guard let project = name.flatMap({ name in list.projects.first { $0.name == name } }) else {
         form.project = nil
@@ -248,5 +276,59 @@ struct NewSessionContainer: View {
       Task { await form.applyProject(project, creation) }
     }
     return actions
+  }
+}
+
+/// Add nested agent: opening beside the source, the source's draft, and what follows a create.
+extension NewSessionContainer {
+  /// Opens the page: beside its source, with that source's draft, or as a new session with any
+  /// draft handed to it.
+  private func begin(_ creation: CreationStore) async {
+    guard let nestedSourceID else {
+      if let handed = creation.composerDrafts.removeValue(forKey: "") { draft = handed }
+      await form.load(creation)
+      return
+    }
+    form.nested = NestedComposer(sourceID: nestedSourceID)
+    draft = creation.composerDrafts[nestedSourceID] ?? ""
+    await form.loadNested(creation)
+  }
+
+  /// Keeps a nested composer's text under its source, so it comes back with the composer.
+  private func keepNestedDraft(_ creation: CreationStore) {
+    guard let sourceID = form.nested?.sourceID else { return }
+    creation.composerDrafts[sourceID] = draft.isEmpty ? nil : draft
+  }
+
+  /// A created session takes the draft with it.
+  private func finish(_ creation: CreationStore) {
+    if let sourceID = form.nested?.sourceID { creation.composerDrafts[sourceID] = nil }
+    draft = ""
+    launch?.clearMentions()
+  }
+
+  /// A nested agent whose create went through but whose setup didn't opens anyway, saying so.
+  private func openUnfinished(_ creation: CreationStore) -> (@MainActor (String) -> Void)? {
+    guard form.nested != nil, let openWithNotice else { return nil }
+    return { sessionID in
+      finish(creation)
+      openWithNotice(sessionID, NestedComposer.setupNotice)
+    }
+  }
+
+  /// "Continue in a new session" when the source can't be read: the draft goes along.
+  private func continueAction(
+    _ creation: CreationStore, _ nested: NestedComposer
+  ) -> (@MainActor () -> Void)? {
+    guard nested.phase == .sourceUnavailable, let continueInNewSession else { return nil }
+    return {
+      if !draft.isEmpty { creation.composerDrafts[""] = draft }
+      continueInNewSession()
+    }
+  }
+
+  /// Connect a Host, except where a nested agent's policy keeps it to the source's host.
+  private func offersConnectHost(_ creation: CreationStore) -> Bool {
+    form.nestedChoices(creation)?.offersConnectHost ?? (form.nested == nil)
   }
 }

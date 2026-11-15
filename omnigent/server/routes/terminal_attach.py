@@ -71,8 +71,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import Callable
-from typing import Final
+from typing import Any, Final
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, WebSocketException
 from starlette import status
@@ -83,7 +84,11 @@ from omnigent.runtime import (
     get_runner_ws_factory,
     get_terminal_registry,
 )
-from omnigent.server._runner_ws_tunnel import RunnerUnavailableWSError, WrongReplicaWSError
+from omnigent.server._runner_ws_tunnel import (
+    RunnerRuntimeSupportWSError,
+    RunnerUnavailableWSError,
+    WrongReplicaWSError,
+)
 from omnigent.server.auth import LEVEL_OWNER, LEVEL_READ, AuthProvider
 from omnigent.server.routes._auth_helpers import require_access
 from omnigent.stores import ConversationStore
@@ -101,6 +106,8 @@ _WS_CLOSE_TERMINAL_NOT_FOUND: Final[int] = WS_CLOSE_TERMINAL_NOT_FOUND
 _WS_CLOSE_INTERNAL_ERROR: Final[int] = WS_CLOSE_INTERNAL_ERROR
 _WS_CLOSE_WRONG_REPLICA: Final[int] = WS_CLOSE_WRONG_REPLICA
 _WS_CLOSE_TRY_AGAIN_LATER: Final[int] = 1013
+# Poll interval while an await_launch attach waits for a waking runner's tunnel.
+_RUNNER_WS_RETRY_S: Final[float] = 0.1
 
 
 def create_terminal_attach_router(
@@ -136,6 +143,7 @@ def create_terminal_attach_router(
         session_id: str,
         terminal_id: str,
         read_only: bool = Query(default=False),
+        await_launch: bool = Query(default=False),
     ) -> None:
         """
         Attach to a terminal by resource id via WebSocket.
@@ -149,9 +157,12 @@ def create_terminal_attach_router(
         :param terminal_id: Opaque terminal resource id,
             e.g. ``"terminal_bash_s1"``.
         :param read_only: Prevent terminal input when ``True``.
+        :param await_launch: Wait briefly for a terminal whose create request
+            is still in flight instead of closing as not found.
         """
         from omnigent.entities.session_resources import (
             resolve_terminal_entry_by_resource_id,
+            wait_for_terminal_entry_by_resource_id,
         )
 
         user_id = await _authorize_terminal_attach(
@@ -165,6 +176,7 @@ def create_terminal_attach_router(
         # WebSockets bypass the HTTP middleware that attributes debug-log rows
         # to the request's user; this handler task is per-connection.
         set_current_user_id(user_id)
+        attach_started_at = time.monotonic()
         await websocket.accept()
         _logger.info(
             "terminal attach connected for session %s terminal %s",
@@ -183,7 +195,10 @@ def create_terminal_attach_router(
         if ws_factory is not None:
             from urllib.parse import urlencode
 
-            qs = urlencode({"read_only": "true" if read_only else "false"})
+            query = {"read_only": "true" if read_only else "false"}
+            if await_launch:
+                query["await_launch"] = "true"
+            qs = urlencode(query)
             await relay_websocket_to_runner(
                 websocket,
                 ws_factory,
@@ -195,6 +210,10 @@ def create_terminal_attach_router(
                     "terminal.read_only": read_only,
                     "terminal.mode": "runner-proxy",
                 },
+                wait_for_runner=await_launch,
+                on_first_output=lambda: _log_attach_first_output(
+                    session_id, terminal_id, attach_started_at
+                ),
             )
             return
 
@@ -212,6 +231,12 @@ def create_terminal_attach_router(
             terminal_id,
             terminal_registry,
         )
+        if entry is None and await_launch:
+            entry = await wait_for_terminal_entry_by_resource_id(
+                session_id,
+                terminal_id,
+                terminal_registry,
+            )
         if entry is None or not entry.instance.running or not await entry.instance.is_alive():
             await websocket.close(
                 code=_WS_CLOSE_TERMINAL_NOT_FOUND,
@@ -326,20 +351,23 @@ async def _authorize_terminal_attach(
 
 async def relay_websocket_to_runner(
     websocket: WebSocket,
-    ws_factory: Callable[[str], object],
+    ws_factory: Callable[[str], Any],
     runner_path: str,
     *,
     span_name: str,
     span_attributes: dict[str, str | bool],
     client_frame_filter: Callable[[str | bytes], bool] | None = None,
+    wait_for_runner: bool = False,
+    on_first_output: Callable[[], None] | None = None,
 ) -> None:
     """
     Relay an accepted client WebSocket to a runner WS route over the tunnel.
 
     Mirrors the runner's close code to the client. A wrong-replica miss
     closes with 4400 so the client re-dials without its slice key, an
-    unconnected runner with 1013 so it re-dials with backoff; any other
-    factory or relay failure closes with 4500.
+    unconnected runner with 1013 so it re-dials with backoff, and a runtime
+    admission failure with 4500 naming the remedy; any other factory or
+    relay failure closes with 4500.
 
     :param websocket: The accepted client-facing WebSocket.
     :param ws_factory: The installed runner WS factory.
@@ -347,9 +375,18 @@ async def relay_websocket_to_runner(
     :param span_name: Telemetry span, e.g. ``"terminal.attach"``.
     :param span_attributes: Telemetry span attributes.
     :param client_frame_filter: Optional predicate dropping client frames.
+    :param wait_for_runner: Retry an unconnected runner tunnel for a terminal
+        create that may be waking the runner, instead of closing with 1013.
+    :param on_first_output: Called once, after the first binary output frame
+        reaches the client.
     """
     try:
-        runner_cm = ws_factory(runner_path)
+        # Admission may load the agent bundle, so the factory runs off the loop.
+        runner_cm = (
+            await _wait_for_runner_ws(ws_factory, runner_path)
+            if wait_for_runner
+            else await asyncio.to_thread(ws_factory, runner_path)
+        )
     except WrongReplicaWSError:
         # The runner tunnel is bound but homed on another replica: signal 4400
         # so the client re-dials WITHOUT the key and reaches the right one.
@@ -366,6 +403,12 @@ async def relay_websocket_to_runner(
             reason="session runner is not connected",
         )
         return
+    except RunnerRuntimeSupportWSError as exc:
+        await websocket.close(
+            code=_WS_CLOSE_INTERNAL_ERROR,
+            reason=f"{exc.code}: upgrade host/runner or restore the session agent bundle",
+        )
+        return
     except Exception:  # noqa: BLE001
         await websocket.close(
             code=_WS_CLOSE_INTERNAL_ERROR,
@@ -376,9 +419,12 @@ async def relay_websocket_to_runner(
         from omnigent.runtime import telemetry
 
         with telemetry.span(span_name, attributes=span_attributes):
-            async with runner_cm as runner_ws:  # type: ignore[attr-defined]
+            async with runner_cm as runner_ws:
                 await _shuttle_ws_frames(
-                    websocket, runner_ws, client_frame_filter=client_frame_filter
+                    websocket,
+                    runner_ws,
+                    client_frame_filter=client_frame_filter,
+                    on_first_output=on_first_output,
                 )
     except _RunnerWSClosed as closed:
         code = closed.code if closed.code and closed.code >= 1000 else _WS_CLOSE_INTERNAL_ERROR
@@ -395,6 +441,38 @@ async def relay_websocket_to_runner(
             )
 
 
+def _log_attach_first_output(session_id: str, terminal_id: str, started_at: float) -> None:
+    """Log how long an attach took to deliver its first terminal output."""
+    _logger.info(
+        "terminal attach delivered first output",
+        extra=debug_event(
+            "terminal_attach_first_output",
+            session_id=session_id,
+            terminal_id=terminal_id,
+            first_output_ms=round((time.monotonic() - started_at) * 1000),
+        ),
+    )
+
+
+async def _wait_for_runner_ws(ws_factory: Callable[[str], Any], runner_path: str) -> Any:
+    """Open the runner WS once its tunnel connects, for a shell create in flight.
+
+    The create may be waking the session's runner, so an unavailable tunnel
+    is retried until :data:`TERMINAL_LAUNCH_ATTACH_WAIT_S` instead of closing.
+    """
+    from omnigent.entities import session_resources
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + session_resources.TERMINAL_LAUNCH_ATTACH_WAIT_S
+    while True:
+        try:
+            return await asyncio.to_thread(ws_factory, runner_path)
+        except RunnerUnavailableWSError:
+            if loop.time() >= deadline:
+                raise
+            await asyncio.sleep(_RUNNER_WS_RETRY_S)
+
+
 class _RunnerWSClosed(Exception):
     """Carries a runner-side close so the browser side mirrors it."""
 
@@ -409,6 +487,7 @@ async def _shuttle_ws_frames(
     runner_ws: object,
     *,
     client_frame_filter: Callable[[str | bytes], bool] | None = None,
+    on_first_output: Callable[[], None] | None = None,
 ) -> None:
     """
     Forward frames between *browser_ws* (FastAPI) and *runner_ws*
@@ -430,6 +509,8 @@ async def _shuttle_ws_frames(
     :param runner_ws: The runner-facing websockets client.
     :param client_frame_filter: Optional predicate; client frames it
         rejects are dropped instead of forwarded (view-only attaches).
+    :param on_first_output: Called once, after the first terminal output
+        reaches the browser.
     """
     from websockets.exceptions import ConnectionClosed
 
@@ -454,11 +535,18 @@ async def _shuttle_ws_frames(
             return
 
     async def _runner_to_browser() -> None:
+        first_output_callback = on_first_output
         try:
             while True:
                 msg = await runner_ws.recv()  # type: ignore[attr-defined]
                 if isinstance(msg, bytes | bytearray | memoryview):
-                    await browser_ws.send_bytes(bytes(msg))
+                    data = bytes(msg)
+                    await browser_ws.send_bytes(data)
+                    # Binary frames carry pane output; text frames are control
+                    # JSON (e.g. tmux replies sent before any output).
+                    if data and first_output_callback is not None:
+                        first_output_callback()
+                        first_output_callback = None
                 else:
                     await browser_ws.send_text(msg)
         except ConnectionClosed as cc:

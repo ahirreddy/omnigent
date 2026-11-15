@@ -11,6 +11,7 @@ public struct NewSessionPage: View {
   private let composer: ComposerViewState
   private let actions: ComposerActions
   private let heading: String
+  private let subtitle: String?
   private let importSessions: (@MainActor () -> Void)?
   private let showsContextDetails: Bool
   private let options: NewSessionOptions?
@@ -31,13 +32,14 @@ public struct NewSessionPage: View {
   ///   - composer: The composer (purpose `.start`), with its tray, hosts and modes.
   ///   - actions: Composer actions; `send` starts the session.
   ///   - heading: The heading; servers and projects can replace it.
+  ///   - subtitle: A line under the heading, such as the session a nested agent joins.
   ///   - importSessions: "Import your recent sessions", shown when the list is empty.
   ///   - showsContextDetails: Open the execution-context details (playground captures).
   ///   - options: The folder, worktree and repository chips under the composer.
   ///   - optionActions: Their actions.
   public init(
     draft: Binding<String>, composer: ComposerViewState, actions: ComposerActions,
-    heading: String = Self.defaultHeading,
+    heading: String = Self.defaultHeading, subtitle: String? = nil,
     importSessions: (@MainActor () -> Void)? = nil, showsContextDetails: Bool = false,
     options: NewSessionOptions? = nil, optionActions: NewSessionOptionActions = .init()
   ) {
@@ -47,6 +49,7 @@ public struct NewSessionPage: View {
     self.composer = composer
     self.actions = actions
     self.heading = heading
+    self.subtitle = subtitle
     self.importSessions = importSessions
     self.showsContextDetails = showsContextDetails
   }
@@ -132,6 +135,14 @@ public struct NewSessionPage: View {
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityAddTraits(.isHeader)
+      if let subtitle {
+        Text(subtitle)
+          .font(.body)
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("new-session-subtitle")
+      }
       if pinsComposer { importButton }
     }
     .padding(.horizontal, Theme.Spacing.extraLarge)

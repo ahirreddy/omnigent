@@ -49,6 +49,11 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
   public var attention: SessionAttentionState
   /// Stop can end its live process.
   public var canStop: Bool
+  /// A session family member nested under another representative: it is never pinned or moved
+  /// on its own, and takes no pin slot.
+  public var isNestedMember: Bool
+  /// The nested-agent family it belongs to; `nil` for a session on its own or someone else's.
+  public var family: SessionFamilyInfo?
 
   /// Creates a summary.
   /// - Parameters:
@@ -69,13 +74,15 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
   ///   - canArchive: May archive.
   ///   - attention: Attention; `nil` derives it from `status` and `failureMessage`.
   ///   - canStop: Stop can end it.
+  ///   - isNestedMember: Nested under another family representative.
+  ///   - family: Its nested-agent family.
   public init(
     id: String, title: String, preview: String = "", status: SessionListStatus = .idle,
     isReadOnly: Bool = false, updatedAt: Int64 = 0, workspace: String = "",
     agentName: String = "", isPinned: Bool = false, isArchived: Bool = false,
     permissionLevel: Int64? = nil, failureMessage: String? = nil, canRename: Bool = true,
     canPin: Bool = true, canArchive: Bool = true, attention: SessionAttentionState? = nil,
-    canStop: Bool = false
+    canStop: Bool = false, isNestedMember: Bool = false, family: SessionFamilyInfo? = nil
   ) {
     self.id = id
     self.title = title
@@ -94,6 +101,8 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
     self.canArchive = canArchive
     self.attention = attention ?? SessionAttentionState(status: status, failure: failureMessage)
     self.canStop = canStop
+    self.isNestedMember = isNestedMember
+    self.family = family
   }
 
   /// ``updatedAt`` as a date.
@@ -225,6 +234,8 @@ public struct SessionListActions {
   public var webURL: (@MainActor (SessionSummary) -> URL?)?
   /// Start a new session.
   public var newSession: (@MainActor () -> Void)?
+  /// Open the Add nested agent composer beside a session; `nil` where the server can't add one.
+  public var addNestedAgent: (@MainActor (SessionSummary) -> Void)?
   /// Retry after a load failure.
   public var retry: (@MainActor () -> Void)?
 

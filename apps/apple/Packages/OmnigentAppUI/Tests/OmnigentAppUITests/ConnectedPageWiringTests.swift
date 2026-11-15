@@ -40,12 +40,12 @@ extension ConnectedWindowFlowTests {
     }
     let group = mounted.session.tabs.group("conv_a")
     let kept = group.open(.terminal(sessionID: "conv_a", terminalID: "t1"), title: "zsh")
-    SystemSideEffects.answer(alert: .alertSecondButtonReturn)
+    SystemSideEffects.answer(alert: .alertSecondButtonReturn, for: mounted.screen.window)
     group.closingShell = kept.id
     try await settle(mounted.screen, until: "Cancel") { group.closingShell == nil }
     #expect(group.tabs.contains { $0.id == kept.id })
 
-    SystemSideEffects.answer(alert: .alertFirstButtonReturn)
+    SystemSideEffects.answer(alert: .alertFirstButtonReturn, for: mounted.screen.window)
     group.closingShell = kept.id
     try await settle(mounted.screen, until: "Close Shell") {
       !group.tabs.contains { $0.id == kept.id }

@@ -11,20 +11,26 @@ struct NewSessionLifecycle: ViewModifier {
   let connection: ConnectionStore
   /// Opens a created session whose first message went out.
   let opened: @MainActor (String) -> Void
+  /// Opens a created nested agent whose first message didn't go out; `nil` leaves the page up.
+  var openedUnfinished: (@MainActor (String) -> Void)?
 
   func body(content: Content) -> some View {
     content
       .onChange(of: creation.phase) { _, phase in
+        if case .failed = phase { form.nestedCreateFailed(creation) }
         guard case .created(let sessionID, let firstMessageError) = phase else { return }
+        form.nestedCreated(sessionID, creation)
         form.fileInLabelProject(sessionID, list: connection.sessionList)
-        if firstMessageError == nil {
-          creation.reset()
-          form.name = ""
-          opened(sessionID)
-        }
+        guard let open = firstMessageError == nil ? opened : openedUnfinished else { return }
+        creation.reset()
+        form.name = ""
+        open(sessionID)
       }
+      // The server's policy can change while the composer is open.
+      .onChange(of: creation.catalog) { form.enforceNestedPolicy(creation) }
+      .onDisappear { form.closeNestedDraft(creation) }
       .onChange(of: creation.pendingProject, initial: true) { _, next in
-        guard let next else { return }
+        guard let next, form.nested == nil else { return }
         creation.pendingProject = nil
         Task { await form.applyProject(next, creation) }
       }

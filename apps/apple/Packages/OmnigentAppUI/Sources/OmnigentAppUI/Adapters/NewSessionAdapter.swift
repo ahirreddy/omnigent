@@ -111,6 +111,24 @@ enum NewSessionAdapter {
     } + machines
   }
 
+  /// The Host menu of an Add nested agent composer: the new sandbox rows when the policy offers
+  /// them, then the hosts it offers (the source's own sandbox host among them, online when its
+  /// host is).
+  static func nestedHosts(
+    _ catalog: OmnigentCoreFFI.CreationCatalog?, choices: NestedHostChoices
+  ) -> [ComposerHost] {
+    let sandboxes =
+      choices.offersNewSandbox
+      ? hosts(catalog).filter { sandboxProvider(hostID: $0.id) != nil } : []
+    let offered = (catalog?.hosts ?? []).filter { choices.hostIds.contains($0.hostId) }
+    return sandboxes
+      + offered.map { host in
+        ComposerHost(
+          id: host.hostId, name: ExecutionContext.hostDisplayName(host.name) ?? host.hostId,
+          kind: host.sandboxProvider == nil ? .machine : .cloud, isOnline: host.status == "online")
+      }
+  }
+
   /// The approval modes the selected agent can start in, with `selected` (or its default).
   static func approvalModes(
     _ agent: OmnigentCoreFFI.CreationAgent?, selected: String?

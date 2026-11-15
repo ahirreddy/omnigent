@@ -37,14 +37,40 @@ extension NewSessionForm {
       availability: availability(creation), delivery: delivery(creation.phase),
       attachments: attachmentChips(creation), acceptsAttachments: !isSandbox,
       configuration: configuration,
-      placeholder: project.map { "Start a new session in \($0.name)" }
-        ?? "Describe a task to start a new session\u{2026}",
-      hosts: ComposerHosts(hosts: NewSessionAdapter.hosts(catalog), selectedID: hostID),
+      placeholder: placeholder,
+      hosts: ComposerHosts(hosts: hostRows(creation), selectedID: hostID),
       approvalModes: NewSessionAdapter.approvalModes(agent, selected: selection.approvalMode),
       purpose: .start, context: context(creation, connection: connection))
     state.submitWithCommandReturn = submitWithCommandReturn
     applyCompletions(launch, to: &state)
     return state
+  }
+
+  /// The composer's prompt: a nested agent's, the project's, else the web's.
+  private var placeholder: String {
+    if nested != nil { return NestedComposer.placeholder }
+    return project.map { "Start a new session in \($0.name)" }
+      ?? "Describe a task to start a new session\u{2026}"
+  }
+
+  /// The Host menu: what the server's policy offers a nested agent, else every row.
+  private func hostRows(_ creation: CreationStore) -> [ComposerHost] {
+    guard let choices = nestedChoices(creation) else {
+      return NewSessionAdapter.hosts(creation.catalog.value)
+    }
+    return NewSessionAdapter.nestedHosts(creation.catalog.value, choices: choices)
+  }
+
+  /// Why the selected agent can't run on the selected host; a nested agent may reuse its
+  /// source's sandbox host.
+  private func hostProblem(_ catalog: OmnigentCoreFFI.CreationCatalog) -> String? {
+    guard let nested else {
+      return creationUnavailableReason(
+        catalog: catalog, agentId: selection.agentId, hostId: selection.hostId)
+    }
+    return nestedUnavailableReason(
+      catalog: catalog, agentId: selection.agentId, hostId: selection.hostId,
+      sourceHostId: nested.sourceHostID)
   }
 
   /// Smart Routing's toggle, where the server routes the chosen agent's native pane (the web's
@@ -77,12 +103,7 @@ extension NewSessionForm {
         : host.map {
           $0.sandboxProvider.map { "Managed sandbox \u{00B7} \($0)" } ?? "None (runs on the host)"
         },
-      unavailableReason: isSandbox || startsPendingAgent
-        ? nil
-        : catalog.flatMap {
-          creationUnavailableReason(
-            catalog: $0, agentId: selection.agentId, hostId: selection.hostId)
-        })
+      unavailableReason: isSandbox || startsPendingAgent ? nil : catalog.flatMap(hostProblem))
   }
 
   private func availability(_ creation: CreationStore) -> ComposerAvailability {
@@ -106,7 +127,10 @@ extension NewSessionForm {
       if selection.workspace.isEmpty {
         return .unavailable(reason: "Choose the folder the session works in.")
       }
-      return creation.unavailableReason(selection).map { .unavailable(reason: $0) } ?? .available
+      let problem =
+        nested.map { creation.nestedUnavailableReason(selection, sourceHostID: $0.sourceHostID) }
+        ?? creation.unavailableReason(selection)
+      return problem.map { .unavailable(reason: $0) } ?? .available
     }
   }
 

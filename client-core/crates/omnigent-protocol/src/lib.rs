@@ -32,7 +32,8 @@ pub use field::Field;
 pub use items::{ConversationItem, ItemData, ItemStatus, MessageRole};
 pub use manifest::{AuthMode, ManifestAuth, ManifestUi, ServerManifest};
 pub use native_tools::{NativeToolItem, NativeToolKind};
-pub use page::{Page, PageCursorError};
+pub use page::{Page, PageBoundary, PageCursorError};
 pub use sessions::{
-    ItemPage, SessionList, SessionListItem, SessionPermissions, SessionSnapshot, SessionStatus,
+    ItemPage, SessionFamily, SessionList, SessionListItem, SessionPermissions, SessionSnapshot,
+    SessionStatus,
 };

@@ -55,7 +55,8 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   public var worktrees: [NewSessionWorktreeOption]
   /// The worktree choice.
   public var worktree: NewSessionWorktreeChoice
-  /// The selected agent is not ready on the host: `"<agent> isn't ready on <host>."`.
+  /// The selected agent is not ready on the host (`"<agent> isn't ready on <host>."`), or may
+  /// need a sign-in there before it starts.
   public var harnessNotice: String?
   /// The Set Up button's agent name.
   public var setUpName: String?
@@ -82,7 +83,7 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   ///   - offersWorktrees: Git repository.
   ///   - worktrees: Existing worktrees.
   ///   - worktree: Worktree choice.
-  ///   - harnessNotice: The not-ready notice.
+  ///   - harnessNotice: The not-ready or sign-in notice.
   ///   - setUpName: The Set Up button's agent name.
   ///   - isPlanMode: Plan mode is armed.
   ///   - defaultBaseBranch: The base pre-filled for a new branch.

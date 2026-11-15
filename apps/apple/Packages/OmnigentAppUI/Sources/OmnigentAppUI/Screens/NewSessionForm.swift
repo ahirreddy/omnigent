@@ -46,6 +46,8 @@ final class NewSessionForm {
   var attachmentError: String?
   /// The name the user gave the session; empty leaves it to the first message.
   var name = ""
+  /// The source of an Add nested agent composer; `nil` for a new session.
+  var nested: NestedComposer?
 
   /// The selected agent in `creation`'s catalog.
   func selectedAgent(_ creation: CreationStore?) -> OmnigentCoreFFI.CreationAgent? {
@@ -185,16 +187,14 @@ final class NewSessionForm {
 
   /// Creates the session on the chosen host or a new sandbox and sends `text`.
   func start(_ creation: CreationStore, text: String) {
+    if nested != nil {
+      startNested(creation, text: text)
+      return
+    }
     rememberChoices()
-    var selection = selection
+    var selection = startingSelection(creation)
     // A first-class project files the session at creation; a label-only one is moved after.
     selection.projectId = project?.id
-    // Routing stays chosen across agents but goes only with one the server routes.
-    selection.smartRouting = smartRouting(creation.catalog.value) == .enabled
-    // The mode shown is the mode asked for: with none, the harness's own config decides.
-    if selection.approvalMode == nil, let agent = selectedAgent(creation) {
-      selection.approvalMode = creationApprovalModeMenu(agent: agent)?.selected
-    }
     let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
     if isSandbox {
       let target = sandbox.target(creation.catalog.value)
@@ -208,17 +208,20 @@ final class NewSessionForm {
     }
   }
 
-  /// The amber "not ready" notice: the selected agent's harness reports a readiness that is
-  /// not ready on an online host (offline hosts and unknown agents say so in the context row).
+  /// The amber notice: the selected agent isn't ready on an online host or may need a sign-in
+  /// there (offline hosts and unknown agents say so in the context row).
   func harnessNotice(_ creation: CreationStore) -> (text: String, name: String)? {
     guard !isSandbox, !startsPendingAgent, let catalog = creation.catalog.value,
       let agent = selectedAgent(creation),
       let host = catalog.hosts.first(where: { $0.hostId == selection.hostId }),
-      host.status == "online", host.sandboxProvider == nil,
-      creationUnavailableReason(
-        catalog: catalog, agentId: selection.agentId, hostId: selection.hostId) != nil
+      host.status == "online", host.sandboxProvider == nil
     else { return nil }
-    return ("\(agent.name) isn't ready on \(host.name).", agent.name)
+    let (agentID, hostID) = (selection.agentId, selection.hostId)
+    if creationUnavailableReason(catalog: catalog, agentId: agentID, hostId: hostID) != nil {
+      return ("\(agent.name) isn't ready on \(host.name).", agent.name)
+    }
+    return creationReadinessWarning(catalog: catalog, agentId: agentID, hostId: hostID)
+      .map { ($0, agent.name) }
   }
 
   /// Nothing can run yet: no host is online and no managed sandbox is offered.
@@ -318,10 +321,13 @@ final class NewSessionForm {
       profiles: sandbox.profilesState(creation.catalog.value, sandboxes: sandboxes),
       offersWorktrees: !(creation.worktrees.value ?? []).isEmpty, worktrees: worktrees,
       worktree: worktree, harnessNotice: notice?.text, setUpName: notice?.name,
-      isPlanMode: isPlanOn, defaultBaseBranch: worktreeDefaults.base)
+      isPlanMode: isPlanOn,
+      // A nested agent's worktree branches from the source checkout's branch.
+      defaultBaseBranch: nested?.source?.configuration?.gitBranch ?? worktreeDefaults.base)
     options.needsHost = needsHost(creation)
-    options.project = project?.name
-    options.projects = projects.map(\.name)
+    // A nested agent is filed in its source's project, so it offers none.
+    options.project = nested == nil ? project?.name : nil
+    options.projects = nested == nil ? projects.map(\.name) : []
     options.name = name
     return options
   }

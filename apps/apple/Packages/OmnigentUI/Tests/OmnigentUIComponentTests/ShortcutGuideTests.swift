@@ -22,6 +22,7 @@ struct ShortcutGuideTests {
       AppShortcuts.commandPalette, AppShortcuts.findSession, AppShortcuts.keyboardShortcuts,
       AppShortcuts.previousSession, AppShortcuts.nextSession, AppShortcuts.send,
       AppShortcuts.sendAlternative, AppShortcuts.stopAgent, AppShortcuts.renameSession,
+      AppShortcuts.addNestedAgent,
       AppShortcuts.focusComposer, AppShortcuts.jumpToLatest, AppShortcuts.previousMessage,
       AppShortcuts.nextMessage, AppShortcuts.dictate, AppShortcuts.expandEditor,
       AppShortcuts.chooseModel, AppShortcuts.cycleModel, AppShortcuts.cycleEffort,

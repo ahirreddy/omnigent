@@ -6,8 +6,10 @@
 //!
 //! The rules:
 //!
-//! - Only an explicit `true` readiness for the agent's harness allows creation. `false`, an
-//!   unknown value, a missing entry and `"needs-auth"` all block it, the last with a sign-in hint.
+//! - Only an explicit `true` readiness for the agent's harness allows creation, with one
+//!   exception: `"needs-auth"` on an in-process SDK harness only warns, as on the web, since the
+//!   agent may bring its own credentials. `false`, an unknown value, a missing entry and
+//!   `"needs-auth"` on any other harness block it, the last with a sign-in hint.
 //! - Offline hosts and managed-sandbox hosts are unavailable here.
 //! - The workspace must be an absolute path, without NUL, and is never guessed.
 //! - A model must be one the host advertises for the agent's harness, by its wire value, and not
@@ -23,7 +25,7 @@ use crate::client::sessions::SessionSummary;
 use crate::config::approval::{
     CODEX_BYPASS_LABEL, is_codex_bypass, launch_approval_args, launch_approval_mode_menu,
 };
-use crate::config::session::{ModelChoice, canonical_harness, harness_label};
+use crate::config::session::{ModelChoice, canonical_harness, harness_label, is_sdk_harness};
 
 /// What a host reports for one harness in `configured_harnesses`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -49,6 +51,23 @@ impl HarnessReadiness {
             _ => Self::Unknown,
         }
     }
+}
+
+/// What a harness the host reports as `"needs-auth"` blocks with (the web's "Authentication
+/// required"), unless it is an in-process SDK harness.
+pub const AUTHENTICATION_REQUIRED: &str = "Authentication required. Sign in or add credentials on \
+     the selected host before using this harness.";
+
+/// The warning an in-process SDK harness reported as `"needs-auth"` carries instead (the web's
+/// "Authentication may be required"): the agent may supply credentials the host cannot see.
+pub const AUTHENTICATION_MAY_BE_REQUIRED: &str = "Authentication may be required. The selected \
+     host reports no credentials for this harness. Launching may fail unless the agent supplies \
+     its own.";
+
+/// Why `harness`, reported as `"needs-auth"`, cannot be chosen; `None` for an in-process SDK
+/// harness, which stays selectable with [`AUTHENTICATION_MAY_BE_REQUIRED`].
+pub(crate) fn needs_authentication_reason(harness: Option<&str>) -> Option<String> {
+    (!is_sdk_harness(harness)).then(|| AUTHENTICATION_REQUIRED.to_owned())
 }
 
 /// Decodes a `configured_harnesses` object. `Ok(None)` when absent or null.
@@ -107,6 +126,12 @@ impl CreationHost {
         self.configured_harnesses
             .as_ref()
             .and_then(|harnesses| harnesses.get(harness).copied())
+    }
+
+    /// The readiness reported for `agent`'s harness, by its canonical id, else as sent.
+    fn agent_readiness(&self, agent: &CreationAgent) -> Option<HarnessReadiness> {
+        self.readiness(&agent.harness_id())
+            .or_else(|| agent.harness.as_deref().and_then(|raw| self.readiness(raw)))
     }
 }
 
@@ -449,6 +474,10 @@ pub struct CreationCapabilities {
     /// `smart_routing_enabled`, with a router that answers for native Claude Code and Codex
     /// panes (`smart_routing_sources`).
     pub smart_routing: bool,
+    /// `sibling_sessions`: the caller can add nested agents to a session family.
+    pub sibling_sessions: bool,
+    /// `sibling_session_destinations`: where a nested agent may start.
+    pub sibling_destinations: crate::session_families::SiblingDestinations,
 }
 
 impl CreationCapabilities {
@@ -549,6 +578,8 @@ impl CreationCapabilities {
                 let options = crate::slash::SlashOptions::from_info(value)?;
                 options.smart_routing && options.routes_native_panes
             },
+            sibling_sessions: crate::session_families::sibling_sessions_enabled(object),
+            sibling_destinations: crate::session_families::SiblingDestinations::from_info(object),
         })
     }
 }
@@ -645,11 +676,34 @@ impl CreationCatalog {
     /// Why `agent_id` cannot be created on `host_id`, or `None` when it can.
     #[must_use]
     pub fn unavailable_reason(&self, agent_id: &str, host_id: &str) -> Option<String> {
+        self.host_unavailable_reason(agent_id, host_id, None)
+    }
+
+    /// The warning for `agent_id` on `host_id` when it can be chosen yet may fail to launch: an
+    /// in-process SDK harness the host reports as `"needs-auth"`. `None` otherwise.
+    #[must_use]
+    pub fn readiness_warning(&self, agent_id: &str, host_id: &str) -> Option<String> {
+        let agent = self.agent(agent_id)?;
+        let host = self.hosts.iter().find(|host| host.host_id == host_id)?;
+        let warns = is_sdk_harness(agent.harness.as_deref())
+            && host.agent_readiness(agent) == Some(HarnessReadiness::NeedsAuthentication)
+            && self.unavailable_reason(agent_id, host_id).is_none();
+        warns.then(|| AUTHENTICATION_MAY_BE_REQUIRED.to_owned())
+    }
+
+    /// As [`Self::unavailable_reason`], also allowing the sandbox host `reusable_sandbox` (a
+    /// nested agent's source's own).
+    pub(crate) fn host_unavailable_reason(
+        &self,
+        agent_id: &str,
+        host_id: &str,
+        reusable_sandbox: Option<&str>,
+    ) -> Option<String> {
         let reason = |text: &str| Some(text.to_owned());
         let Some(host) = self.hosts.iter().find(|host| host.host_id == host_id) else {
             return reason("Choose an existing host.");
         };
-        if host.sandbox_provider.is_some() {
+        if host.sandbox_provider.is_some() && reusable_sandbox != Some(host_id) {
             return reason("Managed sandbox creation is not available here.");
         }
         if host.status != "online" {
@@ -661,13 +715,10 @@ impl CreationCatalog {
         if !agent.supports_creation() {
             return reason("This agent's harness is not supported for creation in this app.");
         }
-        let readiness = host
-            .readiness(&agent.harness_id())
-            .or_else(|| agent.harness.as_deref().and_then(|raw| host.readiness(raw)));
-        match readiness {
+        match host.agent_readiness(agent) {
             Some(HarnessReadiness::Ready) => None,
             Some(HarnessReadiness::NeedsAuthentication) => {
-                reason("Sign in to this harness on the host first.")
+                needs_authentication_reason(agent.harness.as_deref())
             }
             None => reason("The host has not reported readiness for this harness."),
             Some(HarnessReadiness::NotReady | HarnessReadiness::Unknown) => {
@@ -686,7 +737,19 @@ impl CreationCatalog {
         selection: &CreationSelection,
         models: &[ModelChoice],
     ) -> Result<(), CreationError> {
-        if let Some(reason) = self.unavailable_reason(&selection.agent_id, &selection.host_id) {
+        self.validate_on(selection, models, None)
+    }
+
+    /// As [`Self::validate`], also allowing the sandbox host `reusable_sandbox`.
+    pub(crate) fn validate_on(
+        &self,
+        selection: &CreationSelection,
+        models: &[ModelChoice],
+        reusable_sandbox: Option<&str>,
+    ) -> Result<(), CreationError> {
+        if let Some(reason) =
+            self.host_unavailable_reason(&selection.agent_id, &selection.host_id, reusable_sandbox)
+        {
             return Err(CreationError::Unavailable(reason));
         }
         let path = selection.workspace.trim();
@@ -1204,6 +1267,60 @@ mod tests {
     }
 
     #[test]
+    fn needs_auth_blocks_cli_harnesses_and_only_warns_for_sdk_ones() {
+        let catalog =
+            |harness: &str, reported: &str, readiness: HarnessReadiness| CreationCatalog {
+                hosts: vec![host("online", Some(&[(reported, readiness)]))],
+                agents: vec![agent("ag_codex", Some(harness))],
+                ..CreationCatalog::default()
+            };
+        // Each SDK spelling the app creates, reported by the host as sent or canonical.
+        for (harness, reported) in [
+            ("claude-sdk", "claude-sdk"),
+            ("claude_sdk", "claude_sdk"),
+            ("openai-agents", "openai-agents"),
+            ("openai-agents-sdk", "openai-agents-sdk"),
+            ("agents_sdk", "openai-agents"),
+            ("antigravity", "antigravity"),
+        ] {
+            let sdk = catalog(harness, reported, HarnessReadiness::NeedsAuthentication);
+            assert_eq!(
+                sdk.unavailable_reason("ag_codex", "host_a"),
+                None,
+                "{harness}"
+            );
+            assert_eq!(sdk.validate(&selection(), &[]), Ok(()), "{harness}");
+            assert_eq!(
+                sdk.readiness_warning("ag_codex", "host_a").as_deref(),
+                Some(AUTHENTICATION_MAY_BE_REQUIRED),
+                "{harness}"
+            );
+            let ready = catalog(harness, reported, HarnessReadiness::Ready);
+            assert_eq!(ready.readiness_warning("ag_codex", "host_a"), None);
+        }
+        for harness in ["codex-native", "claude-native", "codex", "pi"] {
+            let cli = catalog(harness, harness, HarnessReadiness::NeedsAuthentication);
+            assert_eq!(
+                cli.unavailable_reason("ag_codex", "host_a").as_deref(),
+                Some(AUTHENTICATION_REQUIRED),
+                "{harness}"
+            );
+            assert!(cli.validate(&selection(), &[]).is_err(), "{harness}");
+            assert_eq!(cli.readiness_warning("ag_codex", "host_a"), None);
+        }
+        // No warning for an agent or host the catalog lacks, nor one that cannot be chosen.
+        let mut sdk = catalog(
+            "openai-agents",
+            "openai-agents",
+            HarnessReadiness::NeedsAuthentication,
+        );
+        assert_eq!(sdk.readiness_warning("ag_missing", "host_a"), None);
+        assert_eq!(sdk.readiness_warning("ag_codex", "no-such-host"), None);
+        sdk.hosts[0].status = "offline".into();
+        assert_eq!(sdk.readiness_warning("ag_codex", "host_a"), None);
+    }
+
+    #[test]
     fn offline_managed_unknown_harness_and_missing_readiness_are_unavailable() {
         let ready = [("codex-native", HarnessReadiness::Ready)];
         let mut managed = host("online", Some(&ready));
@@ -1405,5 +1522,22 @@ mod tests {
         );
         let bad = serde_json::json!({"sandbox_providers": [1]});
         assert!(CreationCapabilities::from_value(&bad).is_err());
+    }
+
+    #[test]
+    fn capabilities_read_nested_agents_and_their_destinations() {
+        use crate::session_families::SiblingDestinations;
+
+        let value = serde_json::json!({"sibling_sessions": true,
+            "sibling_session_destinations": "current_host"});
+        let capabilities = CreationCapabilities::from_value(&value).unwrap();
+        assert!(capabilities.sibling_sessions);
+        assert_eq!(
+            capabilities.sibling_destinations,
+            SiblingDestinations::CurrentHost
+        );
+        let older = CreationCapabilities::from_value(&serde_json::json!({})).unwrap();
+        assert!(!older.sibling_sessions);
+        assert_eq!(older.sibling_destinations, SiblingDestinations::AnyHost);
     }
 }

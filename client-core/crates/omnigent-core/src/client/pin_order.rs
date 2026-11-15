@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use super::sessions::{SessionChange, SessionSummary};
 use super::{ClientCore, SessionError, lock};
 use crate::http::HttpTransport;
+use crate::session_families::pinned_units;
 
 /// The largest integer a JavaScript number holds exactly (`Number.MAX_SAFE_INTEGER`), so the
 /// web reads every key written here.
@@ -230,12 +231,14 @@ fn exact_count(count: usize) -> f64 {
 impl<T: HttpTransport> ClientCore<T> {
     /// Moves `session_id` into `target_id`'s slot of the Pinned section, pinning it there when
     /// it is not pinned yet (the web's drag onto a pinned row). The moved session is written
-    /// first, so a refused pin changes nothing else.
+    /// first, so a refused pin changes nothing else. A pinned family takes one slot, its
+    /// representative's.
     ///
     /// # Errors
     ///
-    /// [`SessionError::ReadOnly`] without view permission; the write errors. Writes made
-    /// before a failure stay.
+    /// [`SessionError::ReadOnly`] without view permission; [`SessionError::InvalidInput`] for a
+    /// nested family member, which moves with its family; the write errors. Writes made before a
+    /// failure stay.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -279,6 +282,12 @@ impl<T: HttpTransport> ClientCore<T> {
         target_id: &str,
         now_ms: u64,
     ) -> Result<(), SessionError> {
+        if self
+            .cached_summary(session_id)
+            .is_some_and(|session| session.is_nested_member())
+        {
+            return Err(super::families::nested_member_refusal());
+        }
         let mut writes = pin_order_writes(&self.shown_pins(), session_id, target_id, now_ms);
         if let Some(index) = writes
             .iter()
@@ -290,13 +299,14 @@ impl<T: HttpTransport> ClientCore<T> {
         self.write_pin_keys(writes).await
     }
 
-    /// The pins in the order the list shows, edits that have not settled included.
+    /// The pins in the order the list shows, edits that have not settled included: standalone
+    /// sessions and family representatives only, since a family moves as one pin.
     fn shown_pins(&self) -> Vec<SessionSummary> {
-        let mut pinned: Vec<SessionSummary> = {
+        let shown: Vec<SessionSummary> = {
             let state = lock(&self.state);
             state.shown_rows(state.summaries.values().cloned().collect())
         };
-        pinned.retain(|session| session.is_pinned && !session.is_archived);
+        let mut pinned: Vec<SessionSummary> = pinned_units(&shown).into_iter().cloned().collect();
         pinned.sort_by(compare);
         pinned
     }

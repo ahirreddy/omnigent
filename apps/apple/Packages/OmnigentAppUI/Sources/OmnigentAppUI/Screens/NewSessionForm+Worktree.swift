@@ -11,9 +11,10 @@ extension NewSessionForm {
   }
 
   /// Starts a git folder on a fresh worktree branch when Settings › Git asks for one, and takes
-  /// that branch back when the setting is turned off.
+  /// that branch back when the setting is turned off. A nested agent reuses its source's
+  /// checkout unless a worktree is chosen by hand.
   func seedWorktree(_ creation: CreationStore) {
-    guard !isSandbox else { return }
+    guard !isSandbox, nested == nil else { return }
     let seeded = NewSessionAdapter.seededWorktree(
       worktree, folder: folder, isRepository: NewSessionAdapter.isRepository(creation.worktrees),
       defaults: worktreeDefaults, previous: worktreeSeed)

@@ -40,6 +40,13 @@ pub struct ServerPages {
     /// The Jira, Slack and GitHub trigger templates.
     #[uniffi(default)]
     pub automation_triggers: bool,
+    /// The caller can add nested agents to a session family (`sibling_sessions`).
+    #[uniffi(default)]
+    pub sibling_sessions: bool,
+    /// Where a nested agent may start (`sibling_session_destinations`). The core always sets
+    /// it; `nil` (a record built without it) reads as `.anyHost`.
+    #[uniffi(default)]
+    pub sibling_session_destinations: Option<crate::sessions::SiblingSessionDestinations>,
 }
 
 /// Whether an automation fires.
@@ -593,6 +600,8 @@ impl ClientCore {
             automation_projects: pages.automation_projects,
             managed_sandboxes: pages.managed_sandboxes,
             automation_triggers: pages.automation_triggers,
+            sibling_sessions: pages.sibling_sessions,
+            sibling_session_destinations: Some(pages.sibling_destinations.into()),
         })
     }
 

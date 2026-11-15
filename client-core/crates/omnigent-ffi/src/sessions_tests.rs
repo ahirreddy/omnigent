@@ -8,8 +8,10 @@ use omnigent_core::sessions::{SessionSummary as CoreSummary, SummaryStatus};
 use serde_json::json as value;
 
 use crate::sessions::{
-    ProjectSummary, SessionChange, SessionFilter, SessionListStatus, SessionSummary,
-    filter_sessions, project_members, session_filter_title, session_is_owned_by,
+    ProjectSummary, SessionChange, SessionFamily, SessionFilter, SessionListStatus, SessionSummary,
+    SiblingSessionDestinations, filter_sessions, pinned_unit_count, project_members,
+    session_filter_title, session_is_nested_member, session_is_owned_by, session_is_pin_unit,
+    session_shows_pinned, sessions_can_move_together,
 };
 use crate::test_support::{Harness, connected, json};
 
@@ -77,6 +79,13 @@ fn a_summary_survives_the_round_trip_through_the_core() {
         session.project_label = Some("Label".into());
         session.comments_count = u64::MAX;
         session.created_by_session_id = Some("parent".into());
+        session.family = Some(omnigent_core::session_families::SessionFamily {
+            id: "lead".into(),
+            representative_id: Some("lead".into()),
+            representative_title: Some("Coordinator".into()),
+            pinned: true,
+            pinned_at: Some("7".into()),
+        });
     });
     assert_eq!(mapped.preview, "Preview");
     assert_eq!(mapped.status, SessionListStatus::Running);
@@ -97,7 +106,68 @@ fn a_summary_survives_the_round_trip_through_the_core() {
     assert_eq!(mapped.project_label.as_deref(), Some("Label"));
     assert_eq!(mapped.comments_count, u64::MAX);
     assert_eq!(mapped.created_by_session_id.as_deref(), Some("parent"));
+    assert_eq!(
+        mapped.family,
+        Some(SessionFamily {
+            id: "lead".into(),
+            representative_id: Some("lead".into()),
+            representative_title: Some("Coordinator".into()),
+            pinned: true,
+            pinned_at: Some("7".into()),
+        })
+    );
     assert_eq!(SessionSummary::from(CoreSummary::from(&mapped)), mapped);
+}
+
+#[test]
+fn family_helpers_read_the_nest_the_pin_and_the_slots() {
+    use omnigent_core::session_families::SiblingDestinations as Core;
+
+    let family = |pinned: bool| {
+        Some(omnigent_core::session_families::SessionFamily {
+            id: "lead".into(),
+            representative_id: Some("lead".into()),
+            representative_title: None,
+            pinned,
+            pinned_at: None,
+        })
+    };
+    let lead = summary("lead", |session| {
+        session.family = family(true);
+        session.is_pinned = true;
+    });
+    let member = summary("peer", |session| session.family = family(false));
+    let solo = summary("solo", |session| session.is_pinned = true);
+    assert!(session_is_nested_member(member.clone()));
+    assert!(!session_is_nested_member(lead.clone()));
+    // A nested member is never offered a pin, whatever its permission.
+    assert!(member.is_nested_member && !member.can_pin);
+    assert!(!lead.is_nested_member && lead.can_pin);
+    assert!(sessions_can_move_together(vec![
+        member.clone(),
+        lead.clone()
+    ]));
+    assert!(!sessions_can_move_together(vec![
+        member.clone(),
+        solo.clone()
+    ]));
+    assert!(session_shows_pinned(member.clone(), Some(lead.clone())));
+    assert!(!session_shows_pinned(member.clone(), None));
+    assert!(session_shows_pinned(solo.clone(), None));
+    assert!(session_is_pin_unit(lead.clone()) && session_is_pin_unit(solo.clone()));
+    assert!(!session_is_pin_unit(member.clone()));
+    assert_eq!(pinned_unit_count(vec![lead, member, solo]), 2);
+    for (on_core, on_ffi) in [
+        (Core::CurrentHost, SiblingSessionDestinations::CurrentHost),
+        (
+            Core::CurrentHostOrNewSandbox,
+            SiblingSessionDestinations::CurrentHostOrNewSandbox,
+        ),
+        (Core::AnyHost, SiblingSessionDestinations::AnyHost),
+    ] {
+        assert_eq!(SiblingSessionDestinations::from(on_core), on_ffi);
+        assert_eq!(Core::from(on_ffi), on_core);
+    }
 }
 
 #[test]

@@ -114,7 +114,8 @@ struct PermissionsCommandTests {
     let modes = try #require(composer.approvalModeMenu).options.count { $0.switchable }
     // The dialog's buttons: one per mode Codex can switch to, then Cancel.
     let cancel = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + modes
-    SystemSideEffects.answer(alert: NSApplication.ModalResponse(rawValue: cancel))
+    SystemSideEffects.answer(
+      alert: NSApplication.ModalResponse(rawValue: cancel), for: screen.window)
     try await sendPermissions(screen, composer)
     try await pause(screen, .milliseconds(300))
     #expect(SystemSideEffects.record.alertMessages.count == 1)

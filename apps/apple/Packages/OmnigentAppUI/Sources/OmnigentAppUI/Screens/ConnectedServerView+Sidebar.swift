@@ -122,6 +122,8 @@ final class SidebarModel {
   /// The session a chat tab's menu is renaming.
   var renamingFromTab: OmnigentUIComponents.SessionSummary?
   var renameText = ""
+  /// Session families collapsed under their head, for this window's life (the web's tab).
+  var collapsedFamilies: Set<String> = []
 
   init(groupSorts: SidebarGroupSortStore = SidebarGroupSortStore()) {
     self.groupSorts = groupSorts
@@ -175,6 +177,20 @@ extension ConnectedServerView {
     actions.setArchivedMany = { sessions, archived in
       requestArchive(sessions.map(\.id), archived: archived)
     }
+    let list = connection.sessionList
+    actions.moveMany = { sessions, project in
+      move(sessions.map(\.id), to: project.map(ProjectSummary.init))
+    }
+    actions.canMoveTogether = { sessions in
+      sessionsCanMoveTogether(sessions: sessions.compactMap { list.session($0.id) })
+    }
+    actions.setFamilyCollapsed = { key, collapsed in
+      if collapsed {
+        model.collapsedFamilies.insert(key)
+      } else {
+        model.collapsedFamilies.remove(key)
+      }
+    }
     actions.dropSession = { session, action in drop(session, action) }
     actions.live = SidebarAdapter.live(connection.sessionList)
     let paging = connection.sessionList.paging
@@ -215,6 +231,9 @@ extension ConnectedServerView {
     actions.deleteWithBranch = { summary, deleteBranch in
       removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
     }
+    if NestedAgentGate.offered(connection) {
+      actions.addNestedAgent = { addNestedAgent(beside: $0.id) }
+    }
     // Split view holds two tabs of one session; another session goes beside it in a window
     // (Open in New Window), so the rows offer no Open in Split View.
     actions.shareUnavailableReason = shareUnavailableReason
@@ -241,6 +260,13 @@ extension ConnectedServerView {
     let model = sidebarModel
     if model.display.show == .archived { setDisplay(model.display.with(show: .all)) }
     connection.sessionList.filter = OmnigentCoreFFI.SessionFilter(filter ?? .all)
+  }
+
+  /// Opens the Add nested agent composer beside `sourceID`, with its family, folder and section
+  /// open in the sidebar so its provisional row shows.
+  func addNestedAgent(beside sourceID: String) {
+    sidebarModel.collapsedFamilies = SidebarNavigationOrder.reveal(sourceID, in: sidebarState)
+    selectionBinding.wrappedValue = .nestedSession(sourceID: sourceID)
   }
 
   /// Previous and Next Session, and the pinned-session shortcuts, show the session's tabs.

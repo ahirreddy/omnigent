@@ -20,6 +20,37 @@ pub struct Page<T> {
     pub last_id: Option<String>,
     /// Whether another page follows.
     pub has_more: bool,
+    /// The last row the page selected, before the members of its session families were
+    /// appended (`GET /v1/sessions` with `expand_families`); `None` when not sent or empty.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_boundary: Option<PageBoundary>,
+}
+
+/// Where a session list page stopped selecting rows (`page_boundary`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageBoundary {
+    /// The row's id.
+    pub id: String,
+    /// Its creation time, Unix seconds.
+    pub created_at: i64,
+    /// Its last activity, Unix seconds.
+    pub updated_at: i64,
+}
+
+impl<T> Page<T> {
+    /// How many leading rows the page selected itself: those up to [`Self::page_boundary`], else
+    /// up to the `last_id` row, else all of them. Rows after it were appended as family members.
+    #[must_use]
+    pub fn selected_rows(&self, id_of: impl Fn(&T) -> &str) -> usize {
+        let boundary = self
+            .page_boundary
+            .as_ref()
+            .map(|boundary| boundary.id.as_str())
+            .or(self.last_id.as_deref());
+        boundary
+            .and_then(|id| self.data.iter().position(|row| id_of(row) == id))
+            .map_or(self.data.len(), |index| index + 1)
+    }
 }
 
 /// A page that claims more rows but gives no usable cursor.
@@ -80,6 +111,8 @@ struct RawPage {
     #[serde(default)]
     last_id: Option<String>,
     has_more: bool,
+    #[serde(default)]
+    page_boundary: Option<PageBoundary>,
 }
 
 impl<T: FromWire> FromWire for Page<T> {
@@ -106,6 +139,7 @@ impl<T: FromWire> FromWire for Page<T> {
             first_id: raw.first_id,
             last_id: raw.last_id,
             has_more: raw.has_more,
+            page_boundary: raw.page_boundary,
         })
     }
 }

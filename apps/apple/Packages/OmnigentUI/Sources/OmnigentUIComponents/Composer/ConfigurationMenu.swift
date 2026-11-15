@@ -132,12 +132,10 @@ struct ConfigurationMenu: View {
     .accessibilityElement(children: .combine)
   }
 
-  /// The Mac's row under the pill: plain text, "Opus 5.5 High".
+  /// The Mac's row under the pill: plain text, "Opus 5.5 High". A new session that shows its
+  /// agent uses `StartConfigurationMenus` instead.
   private var footerLabel: some View {
     HStack(spacing: Theme.Spacing.small) {
-      if showsAgent {
-        Text(configuration.agentTitle).foregroundStyle(.secondary).lineLimit(1)
-      }
       Text(configuration.modelTitle)
         .lineLimit(1)
         .truncationMode(.middle)

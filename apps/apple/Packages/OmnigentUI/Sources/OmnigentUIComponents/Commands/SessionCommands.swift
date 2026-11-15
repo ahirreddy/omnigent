@@ -24,6 +24,8 @@ public struct SessionCommandActions {
   public var openChanges: (@MainActor () -> Void)?
   /// Rename the session (Option-Command-R).
   public var rename: (@MainActor () -> Void)?
+  /// Open the Add nested agent composer beside the session (Option-Command-A).
+  public var addNestedAgent: (@MainActor () -> Void)?
   /// Open the model picker (Control-Shift-M).
   public var chooseModel: (@MainActor () -> Void)?
   /// Switch to the next model (Control-Option-M).
@@ -125,6 +127,9 @@ struct ConversationMenuItems: View {
     Button("Rename Session\u{2026}") { actions?.rename?() }
       .keyboardShortcut(AppShortcuts.renameSession)
       .disabled(actions?.rename == nil)
+    Button("Add Nested Agent") { actions?.addNestedAgent?() }
+      .keyboardShortcut(AppShortcuts.addNestedAgent)
+      .disabled(actions?.addNestedAgent == nil)
     Button("Focus Composer") { actions?.focusComposer?() }
       .keyboardShortcut(AppShortcuts.focusComposer)
       .disabled(actions?.focusComposer == nil)

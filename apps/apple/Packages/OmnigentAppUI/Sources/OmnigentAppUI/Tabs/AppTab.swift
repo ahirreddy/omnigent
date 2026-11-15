@@ -7,6 +7,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   case newTab
   /// The new-session form.
   case newSession
+  /// The new-session form adding a nested agent beside `sourceID`.
+  case nestedSession(sourceID: String)
   /// The Inbox.
   case inbox
   /// The Canvas.
@@ -42,7 +44,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .chat(let id), .harness(let id), .agentBrowser(let id): id
     case .terminal(let id, _), .sideChat(let id, _), .remoteBrowser(let id, _): id
     case .sideChatSession(let id, _), .subagent(let id, _): id
-    case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .browser: nil
+    case .newTab, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .browser:
+      nil
     }
   }
 
@@ -52,8 +55,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .chat(let id): id
     case .sideChatSession(_, let childID): childID
     case .subagent(_, let childID): childID
-    case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .terminal, .harness,
-      .sideChat, .browser, .agentBrowser, .remoteBrowser:
+    case .newTab, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .terminal,
+      .harness, .sideChat, .browser, .agentBrowser, .remoteBrowser:
       nil
     }
   }
@@ -69,7 +72,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   public var kind: TabKind {
     switch self {
     case .newTab: .newTab
-    case .newSession: .newSession
+    case .newSession, .nestedSession: .newSession
     case .inbox: .inbox
     case .canvas: .canvas
     case .automations: .automations
@@ -88,7 +91,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   /// per session, one tab per terminal) rather than adding a tab.
   public var focusesExisting: Bool {
     switch self {
-    case .newTab, .newSession, .browser: false
+    case .newTab, .newSession, .nestedSession, .browser: false
     case .inbox, .canvas, .automations, .usage, .chat, .terminal, .harness, .sideChat,
       .subagent, .agentBrowser, .remoteBrowser:
       true
@@ -114,6 +117,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     switch self {
     case .chat(let id): .session(id)
     case .newSession: .newSession
+    case .nestedSession(let sourceID): .nestedSession(sourceID: sourceID)
     case .inbox: .inbox
     case .canvas: .canvas
     case .automations: .automations
@@ -130,6 +134,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     switch destination {
     case .session(let id): self = .chat(sessionID: id)
     case .newSession: self = .newSession
+    case .nestedSession(let sourceID): self = .nestedSession(sourceID: sourceID)
     case .inbox: self = .inbox
     case .canvas: self = .canvas
     case .automations: self = .automations

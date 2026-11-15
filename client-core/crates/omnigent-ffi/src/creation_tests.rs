@@ -6,8 +6,8 @@ use crate::api_tests::route_creation;
 use crate::creation::{
     AgentPickerSection, CreationAgent, CreationCatalog, CreationGit, CreationSelection,
     FirstMessage, HostEntry, HostWorktree, SandboxTarget, creation_approval_mode_menu,
-    creation_offers_smart_routing, creation_starts_in_plan_mode, is_valid_branch_name,
-    max_session_title_chars,
+    creation_offers_smart_routing, creation_readiness_warning, creation_starts_in_plan_mode,
+    creation_unavailable_reason, is_valid_branch_name, max_session_title_chars,
 };
 use crate::errors::CoreError;
 use crate::sandbox::SandboxProfile;
@@ -41,6 +41,36 @@ fn catalog() -> CreationCatalog {
         smart_routing: true,
         ..CreationCatalog::from(core::CreationCatalog::default())
     }
+}
+
+#[test]
+fn a_catalog_carries_nested_agents_and_reads_a_missing_destination_as_any_host() {
+    let on_core = core::CreationCatalog {
+        capabilities: core::CreationCapabilities {
+            sibling_sessions: true,
+            sibling_destinations:
+                omnigent_core::session_families::SiblingDestinations::CurrentHostOrNewSandbox,
+            ..core::CreationCapabilities::default()
+        },
+        ..core::CreationCatalog::default()
+    };
+    let mapped = CreationCatalog::from(on_core.clone());
+    assert!(mapped.sibling_sessions);
+    assert_eq!(
+        mapped.sibling_session_destinations,
+        Some(crate::sessions::SiblingSessionDestinations::CurrentHostOrNewSandbox)
+    );
+    assert_eq!(core::CreationCatalog::from(mapped.clone()), on_core);
+    let unset = CreationCatalog {
+        sibling_session_destinations: None,
+        ..mapped
+    };
+    assert_eq!(
+        core::CreationCatalog::from(unset)
+            .capabilities
+            .sibling_destinations,
+        omnigent_core::session_families::SiblingDestinations::AnyHost
+    );
 }
 
 #[test]
@@ -107,6 +137,49 @@ fn the_form_rules_read_the_agent_and_catalog() {
         usize::try_from(max_session_title_chars()).unwrap(),
         core::MAX_TITLE_CHARS
     );
+}
+
+#[test]
+fn an_sdk_agent_needing_sign_in_is_choosable_with_a_warning_and_a_cli_one_is_not() {
+    let needs_sign_in = core::CreationCatalog {
+        hosts: vec![core::CreationHost {
+            host_id: "host_a".into(),
+            name: "Mac".into(),
+            status: "online".into(),
+            sandbox_provider: None,
+            configured_harnesses: Some(
+                ["openai-agents", "codex-native"]
+                    .into_iter()
+                    .map(|harness| {
+                        (
+                            harness.to_owned(),
+                            core::HarnessReadiness::NeedsAuthentication,
+                        )
+                    })
+                    .collect(),
+            ),
+        }],
+        agents: vec![
+            core::CreationAgent::from(agent("ag_mock", "openai-agents")),
+            core::CreationAgent::from(agent("ag_codex", "codex-native")),
+        ],
+        ..core::CreationCatalog::default()
+    };
+    let catalog = CreationCatalog::from(needs_sign_in);
+    let reason =
+        |agent: &str| creation_unavailable_reason(catalog.clone(), agent.into(), "host_a".into());
+    let warning =
+        |agent: &str| creation_readiness_warning(catalog.clone(), agent.into(), "host_a".into());
+    assert_eq!(reason("ag_mock"), None);
+    assert_eq!(
+        warning("ag_mock").as_deref(),
+        Some(core::AUTHENTICATION_MAY_BE_REQUIRED)
+    );
+    assert_eq!(
+        reason("ag_codex").as_deref(),
+        Some(core::AUTHENTICATION_REQUIRED)
+    );
+    assert_eq!(warning("ag_codex"), None);
 }
 
 #[test]

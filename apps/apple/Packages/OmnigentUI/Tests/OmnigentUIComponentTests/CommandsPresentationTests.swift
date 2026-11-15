@@ -309,6 +309,7 @@
         actions.chooseModel = entry("choose")
         actions.cycleModel = entry("model")
         actions.cycleEffort = entry("effort")
+        actions.addNestedAgent = entry("nested")
         actions.approveOwnsCommandReturn = true
         return actions
       }
@@ -320,12 +321,12 @@
         forwarded.send, forwarded.interrupt, forwarded.jumpToLatest, forwarded.focusComposer,
         forwarded.toggleInspector, forwarded.previousSession, forwarded.nextSession,
         forwarded.toggleViewMode, forwarded.openChanges, forwarded.rename, forwarded.chooseModel,
-        forwarded.cycleModel, forwarded.cycleEffort,
+        forwarded.cycleModel, forwarded.cycleEffort, forwarded.addNestedAgent,
       ]
       for item in items { item?() }
-      #expect(log.count == 13)
+      #expect(log.count == 14)
       let fromLatest = log.filter { $0.hasPrefix("latest ") }
-      #expect(fromLatest.count == 13)
+      #expect(fromLatest.count == 14)
       #expect(SessionCommandActions().forwarding { latest }.send == nil)
       #expect(SessionCommandActions().menuSignature.allSatisfy { !$0 })
     }

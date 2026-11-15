@@ -81,6 +81,24 @@ struct SandboxFlowTests {
     #expect(choices.target(catalog).profile?.revision == "r1")
   }
 
+  @Test("A new sandbox's form picks a profile by itself and remembers the one it started on")
+  func formPicksAndRemembersAProfile() async throws {
+    let (sandboxes, catalog) = try await stores()
+    let form = NewSessionForm()
+    form.preferences = try #require(UserDefaults(suiteName: "profile-\(UUID().uuidString)"))
+    form.isSandbox = true
+    form.sandboxes = sandboxes
+    let choices = SandboxChoices(provider: "modal")
+    await choices.load(catalog, sandboxes: sandboxes)
+    form.sandbox = choices
+    #expect(form.sandbox.profile == nil)
+
+    form.defaultSandboxProfile(catalog)
+    #expect(form.sandbox.profile?.id == "p1")
+    form.rememberChoices()
+    #expect(form.preferences.string(forKey: NewSessionForm.DefaultsKey.sandboxProfile) == "p1")
+  }
+
   @Test("Profiles that can't load say so and block the start until Retry reads them")
   func aProfileFailure() async throws {
     let server = sandboxFlowServer(profilesFail: true)

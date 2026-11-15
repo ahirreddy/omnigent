@@ -156,6 +156,60 @@ fn a_reload_asks_for_every_loaded_row_within_the_server_limit() {
     assert_eq!(window(4_000).reload_limit(), 1_000);
 }
 
+/// A page of `selected` rows named `prefix0..`, then `appended` family members after its
+/// boundary.
+fn family_page(prefix: &str, selected: usize, appended: usize, has_more: bool) -> String {
+    let row = |id: String, family: Option<&str>| {
+        let mut row = json!({"id": id, "status": "idle", "created_at": 1, "updated_at": 1});
+        if let Some(family) = family {
+            row["family"] = json!({"id": family, "representative_id": family});
+        }
+        row
+    };
+    let mut rows: Vec<Value> = (0..selected)
+        .map(|index| row(format!("{prefix}{index}"), None))
+        .collect();
+    let boundary = format!("{prefix}{}", selected - 1);
+    rows.extend((0..appended).map(|index| row(format!("{prefix}m{index}"), Some(&boundary))));
+    json!({
+        "data": rows,
+        "last_id": boundary,
+        "has_more": has_more,
+        "page_boundary": {"id": boundary, "created_at": 1, "updated_at": 1},
+    })
+    .to_string()
+}
+
+#[test]
+fn a_reload_counts_the_rows_pages_selected_not_their_appended_family_members() {
+    let mut harness = Harness::new(UrlPolicy::Development);
+    harness.local_server();
+    harness
+        .http
+        .route("/v1/sessions", respond(200, &family_page("a", 60, 5, true)));
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move { core.connect("http://127.0.0.1:6767".into(), None).await })
+        .unwrap();
+    assert_eq!(last_reset_rows(&harness.events.take()), Some(65));
+    harness
+        .http
+        .route("/v1/sessions", respond(200, &family_page("b", 3, 2, false)));
+    harness.core.load_more_sessions();
+    harness.pump();
+    harness.core.refresh_sessions();
+    harness.pump();
+    assert_eq!(
+        list_queries(&harness, "limit").last().cloned().flatten(),
+        Some("63".to_owned())
+    );
+    assert!(
+        list_queries(&harness, "expand_families")
+            .iter()
+            .all(|value| value.as_deref() == Some("true"))
+    );
+}
+
 /// How many rows the last list reset carried.
 fn last_reset_rows(events: &[CoreEvent]) -> Option<usize> {
     events.iter().rev().find_map(|event| match event {

@@ -366,7 +366,7 @@ extension PlaygroundModel {
     case .canvas: "Canvas"
     case .automations: "Automations"
     case .usage: "Usage"
-    case .newSession, nil: ""
+    case .newSession, .nestedSession, nil: ""
     }
   }
 }

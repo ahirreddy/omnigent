@@ -52,7 +52,9 @@ enum ComposerSamples {
       HarnessChoice(id: "agent_claude", name: "Claude Code", harness: "claude-native"),
       HarnessChoice(
         id: "agent_pi", name: "Pi", harness: "pi-native",
-        unavailableReason: "Sign in to this harness on the host first."),
+        unavailableReason:
+          "Authentication required. Sign in or add credentials on the selected host before using "
+          + "this harness."),
     ], selectedAgentId: "agent_codex", modelOptions: PreviewData.models, selectedModelId: nil,
     selectedEffort: "high")
 

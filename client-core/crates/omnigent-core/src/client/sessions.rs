@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use omnigent_protocol::sessions::{
-    SandboxStatus, SessionList, SessionListItem, SessionSnapshot, SessionStatus,
+    SandboxStatus, SessionFamily, SessionList, SessionListItem, SessionSnapshot, SessionStatus,
 };
 use omnigent_protocol::{DecodeError, Field, FromWire, ServerStreamEvent};
 use serde_json::{Value, json};
@@ -94,6 +94,11 @@ pub struct SessionSummary {
     pub comments_count: u64,
     /// The session that started this independent worker (`omnigent.created_by_session_id`).
     pub created_by_session_id: Option<String>,
+    /// The token of the nested create that made it (`omnigent.client_create_token`), so the
+    /// create's provisional row knows it before the create answers.
+    pub client_create_token: Option<String>,
+    /// The session family it belongs to; `None` for a standalone session or a shared one.
+    pub family: Option<SessionFamily>,
 }
 
 /// The caller's read state for one session, as the server reports it
@@ -139,7 +144,18 @@ impl SessionSummary {
             project_label: None,
             comments_count: 0,
             created_by_session_id: None,
+            client_create_token: None,
+            family: None,
         }
+    }
+
+    /// Whether it is a family member nested under another representative (the web's
+    /// `isIndentedSibling`): it cannot be pinned or moved on its own.
+    #[must_use]
+    pub fn is_nested_member(&self) -> bool {
+        self.family
+            .as_ref()
+            .is_some_and(|family| family.nests(&self.id))
     }
 
     /// Edit level (2) or above; without a level, the inverse of [`Self::is_read_only`].
@@ -252,6 +268,9 @@ pub struct SessionPage {
     pub sessions: Vec<SessionSummary>,
     /// The `after` cursor for the next page.
     pub next_cursor: Option<String>,
+    /// How many of the server's rows the page selected itself, before the members of their
+    /// session families it appended: what a read of the same window asks for again.
+    pub selected_rows: usize,
 }
 
 /// The fields of a list row or snapshot that a summary is derived from, presence kept.
@@ -294,6 +313,7 @@ pub(crate) struct SessionProjection {
     owner: Field<String>,
     project_id: Field<String>,
     comments_count: Field<u64>,
+    family: Field<SessionFamily>,
 }
 
 impl SessionProjection {
@@ -365,6 +385,11 @@ impl SessionProjection {
             owner: row.owner.clone(),
             project_id: row.project_id.clone(),
             comments_count: row.comments_count.clone(),
+            // A list row omits `family` only when it has none (update rows send `null`).
+            family: match &row.family {
+                Field::Absent => Field::Null,
+                reported => reported.clone(),
+            },
         }
     }
 
@@ -413,6 +438,7 @@ impl SessionProjection {
             owner: Field::Absent,
             project_id: snapshot.project_id.clone(),
             comments_count: Field::Absent,
+            family: snapshot.family.clone(),
         }
     }
 
@@ -554,6 +580,19 @@ impl SessionProjection {
                     .get(CREATED_BY_SESSION_LABEL)
                     .filter(|id| !id.is_empty())
                     .cloned(),
+            },
+            client_create_token: match &self.labels {
+                Field::Absent => previous.and_then(|previous| previous.client_create_token.clone()),
+                Field::Null => None,
+                Field::Present(labels) => labels
+                    .get(crate::nested_creation::CLIENT_CREATE_TOKEN_LABEL)
+                    .filter(|token| !token.is_empty())
+                    .cloned(),
+            },
+            family: match &self.family {
+                Field::Absent => previous.and_then(|previous| previous.family.clone()),
+                Field::Null => None,
+                Field::Present(family) => Some(family.clone()),
             },
         })
     }
@@ -837,7 +876,8 @@ pub(super) struct EditRequest {
 }
 
 /// Checks `change` against the identifier rules and the cached row. Only a cached row can
-/// refuse here; a session without one is the server's to judge.
+/// refuse here; a session without one is the server's to judge. A nested family member is
+/// never pinned or moved on its own: its representative carries the family.
 pub(super) fn edit_request(
     session_id: &str,
     change: SessionChange,
@@ -847,6 +887,13 @@ pub(super) fn edit_request(
     let allowed = |tier: fn(&SessionSummary) -> bool| {
         if cached.is_some_and(|summary| !tier(summary)) {
             Err(SessionError::ReadOnly)
+        } else {
+            Ok(())
+        }
+    };
+    let representative_only = || {
+        if cached.is_some_and(SessionSummary::is_nested_member) {
+            Err(super::families::nested_member_refusal())
         } else {
             Ok(())
         }
@@ -866,12 +913,14 @@ pub(super) fn edit_request(
         }
         SessionChange::Pinned { pinned, at_ms } => {
             allowed(SessionSummary::can_pin)?;
+            representative_only()?;
             let stamp = pinned.then(|| at_ms.to_string());
             let body = json!({"labels": {PINNED_LABEL: stamp.as_deref().unwrap_or_default()}});
             (SessionPatch::Pin(stamp), body)
         }
         SessionChange::PinnedAt(stamp) => {
             allowed(SessionSummary::can_pin)?;
+            representative_only()?;
             (
                 SessionPatch::Pin(Some(stamp.label().to_owned())),
                 json!({"labels": {PINNED_LABEL: stamp.label()}}),
@@ -892,6 +941,7 @@ pub(super) fn edit_request(
         }
         SessionChange::Project(project_id) => {
             allowed(SessionSummary::can_archive)?;
+            representative_only()?;
             if let Some(id) = &project_id {
                 validate_identifier(id)?;
             }
@@ -929,6 +979,10 @@ enum ListScope {
     Canvas,
 }
 
+/// Asks a sidebar read for the members of each session family it lists, appended after its
+/// rows. Never for a search, which the server does not expand.
+pub(super) const EXPAND_FAMILIES: (&str, &str) = ("expand_families", "true");
+
 /// The list query `NativeLab` sent, plus the explicit `visibility` the repo requires.
 fn list_query(
     after: Option<&str>,
@@ -937,6 +991,9 @@ fn list_query(
 ) -> Result<Vec<(&'static str, String)>, SessionError> {
     let mut query = page_query(after, limit)?;
     query.push(("sort_by", "updated_at".to_owned()));
+    if matches!(scope, ListScope::Visible | ListScope::Archived) {
+        query.push((EXPAND_FAMILIES.0, EXPAND_FAMILIES.1.to_owned()));
+    }
     if scope == ListScope::Canvas {
         // The web Canvas's query; rows an older server returns anyway are filtered after.
         query.push(("order", "desc".to_owned()));
@@ -991,14 +1048,11 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<SessionPage, SessionError> {
         let result = self.list_page(after, limit, ListScope::Visible).await;
         self.dispatch();
-        result.map(|(mut sessions, next_cursor)| {
+        result.map(|mut page| {
             if after.is_none() {
-                lock(&self.state).keep_unlisted_creations(&mut sessions);
+                lock(&self.state).keep_unlisted_creations(&mut page.sessions);
             }
-            SessionPage {
-                sessions,
-                next_cursor,
-            }
+            page
         })
     }
 
@@ -1019,12 +1073,9 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<SessionPage, SessionError> {
         let result = self.list_page(after, limit, ListScope::Archived).await;
         self.dispatch();
-        result.map(|(mut sessions, next_cursor)| {
-            sessions.retain(|session| session.is_archived);
-            SessionPage {
-                sessions,
-                next_cursor,
-            }
+        result.map(|mut page| {
+            page.sessions.retain(|session| session.is_archived);
+            page
         })
     }
 
@@ -1077,7 +1128,11 @@ impl<T: HttpTransport> ClientCore<T> {
         let mut cursors = BTreeSet::new();
         let mut after: Option<String> = None;
         loop {
-            let (page, next) = self
+            let SessionPage {
+                sessions: page,
+                next_cursor: next,
+                ..
+            } = self
                 .list_page(after.as_deref(), CANVAS_PAGE_LIMIT, ListScope::Canvas)
                 .await?;
             for summary in page {
@@ -1112,7 +1167,11 @@ impl<T: HttpTransport> ClientCore<T> {
         let mut cursors = BTreeSet::new();
         let mut after: Option<String> = None;
         loop {
-            let (page, next) = self
+            let SessionPage {
+                sessions: page,
+                next_cursor: next,
+                ..
+            } = self
                 .list_page(after.as_deref(), INVENTORY_PAGE_LIMIT, ListScope::Inventory)
                 .await?;
             for summary in page {
@@ -1141,13 +1200,14 @@ impl<T: HttpTransport> ClientCore<T> {
         after: Option<&str>,
         limit: u32,
         scope: ListScope,
-    ) -> Result<(Vec<SessionSummary>, Option<String>), SessionError> {
+    ) -> Result<SessionPage, SessionError> {
         self.read_list(&list_query(after, limit, scope)?, after)
             .await
     }
 
     /// Reads one `GET /v1/sessions` page with `query`, recording its rows; `after` is the
-    /// cursor the query carries. Returns the rows as the list shows them.
+    /// cursor the query carries. Returns the rows as the list shows them. A family member
+    /// appended to an earlier page may come again; the later read is the newer row.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -1156,7 +1216,7 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         query: &[(&'static str, String)],
         after: Option<&str>,
-    ) -> Result<(Vec<SessionSummary>, Option<String>), SessionError> {
+    ) -> Result<SessionPage, SessionError> {
         let prepared = self.prepare("GET", "/v1/sessions", query, None)?;
         let epochs = lock(&self.state).metadata_epochs.clone();
         let response = self.read(prepared).await?;
@@ -1166,6 +1226,7 @@ impl<T: HttpTransport> ClientCore<T> {
             .next_cursor(after)
             .map_err(|_| SessionError::InvalidPagination)?
             .map(str::to_owned);
+        let selected_rows = page.selected_rows(|row| &row.id);
         let mut state = lock(&self.state);
         let mut seen = BTreeSet::new();
         let mut sessions = Vec::new();
@@ -1182,7 +1243,11 @@ impl<T: HttpTransport> ClientCore<T> {
         // The server lists them now, so from here a page without one means it is gone.
         state.unlisted_creations.retain(|id| !seen.contains(id));
         state.routing.resolve_modal();
-        Ok((state.shown_rows(sessions), next))
+        Ok(SessionPage {
+            sessions: state.shown_rows(sessions),
+            next_cursor: next,
+            selected_rows,
+        })
     }
 
     /// `GET /v1/sessions/{id}?include_items=false`, decoded, with the metadata epoch the read
@@ -1243,11 +1308,16 @@ impl<T: HttpTransport> ClientCore<T> {
     /// Edits of one session leave in the order made; one still waiting is replaced by a later
     /// edit of the same field. Returns the row as the list shows it.
     ///
+    /// A session family's representative carries its family: its move shows on the members
+    /// this client holds at once, and after its pin or move (or any member's archive or
+    /// restore) those members are read again.
+    ///
     /// # Errors
     ///
     /// [`SessionError::InvalidIdentifier`] and [`SessionError::InvalidTitle`] before any
     /// write; [`SessionError::ReadOnly`] without the permission, from the cached row or the
-    /// server's `403`; [`SessionError::Offline`] while the live link is down;
+    /// server's `403`; [`SessionError::InvalidInput`] for a pin or move of a nested family
+    /// member; [`SessionError::Offline`] while the live link is down;
     /// [`SessionError::SessionNotFound`] for its `404`; the write errors.
     #[allow(
         clippy::future_not_send,
@@ -1532,6 +1602,10 @@ pub(crate) mod test_support {
             .unwrap()
     }
 }
+
+#[cfg(test)]
+#[path = "sessions_family_tests.rs"]
+mod family_tests;
 
 #[cfg(test)]
 mod tests {

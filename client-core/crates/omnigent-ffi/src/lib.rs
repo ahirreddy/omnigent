@@ -54,6 +54,7 @@ pub mod host;
 pub mod host_switch;
 pub mod http;
 pub mod inbox;
+pub mod nested_creation;
 pub mod policy_registry;
 pub mod pull_request_detail;
 pub mod pull_requests;
@@ -97,6 +98,8 @@ mod driver_tests;
 mod harness_setup_tests;
 #[cfg(test)]
 mod inbox_tests;
+#[cfg(test)]
+mod nested_creation_tests;
 #[cfg(test)]
 mod pull_request_detail_tests;
 #[cfg(test)]

@@ -42,7 +42,9 @@ final class MacTerminalFlowUITests: XCTestCase {
     defer { app.terminate() }
     live.open(session, in: app)
 
-    live.click(live.element("tab-new", in: app), "the + button", timeout: 30)
+    let plus = live.element("tab-new", in: app)
+    waitUntilSettled(plus, live, app)
+    live.click(plus, "the + button", timeout: 30)
     live.clickMenuItem("Terminal", in: app)
     XCTAssertTrue(
       live.tabs("terminal", in: app).firstMatch.appears(within: 30), "no terminal tab")
@@ -74,6 +76,28 @@ final class MacTerminalFlowUITests: XCTestCase {
     app.typeKey("2", modifierFlags: .command)
     live.waitForAttachedShell(surface, in: app)
     typesWithoutAClick(into: shownAgain, live: live, app: app)
+  }
+
+  /// Waits for the session's Chat and Terminal switch, which arrives with its toolbar once it
+  /// loads and pushes the tab strip's buttons aside, then for `element` to stay put for a second.
+  @MainActor
+  private func waitUntilSettled(
+    _ element: XCUIElement, _ live: MacLiveUITestSupport, _ app: XCUIApplication
+  ) {
+    XCTAssertTrue(
+      live.element("session-view-mode", in: app).appears(within: 30),
+      "the session's toolbar never showed its Chat and Terminal switch")
+    var lastFrame = CGRect.null
+    var stillSince = Date()
+    let settled = live.waitUntil(timeout: 15) {
+      let frame = element.exists ? element.frame : .null
+      if frame != lastFrame {
+        lastFrame = frame
+        stillSince = Date()
+      }
+      return !frame.isNull && Date().timeIntervalSince(stillSince) >= 1
+    }
+    XCTAssertTrue(settled, "\(element) kept moving: \(lastFrame)")
   }
 
   /// Types a command that writes `marker` into the shown terminal, and waits for the file.

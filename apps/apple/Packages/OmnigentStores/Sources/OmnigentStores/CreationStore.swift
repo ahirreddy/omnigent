@@ -36,26 +36,6 @@ public enum CreationPhase: Equatable, Sendable {
   case created(sessionID: String, firstMessageError: CoreError?)
 }
 
-/// A file staged on the new-session form, uploaded to the session once it exists.
-public struct PendingAttachment: Identifiable, Equatable, Sendable {
-  /// Stable within the form.
-  public let id: UUID
-  /// File name.
-  public let filename: String
-  /// Declared media type.
-  public let mediaType: String?
-  /// The bytes.
-  public let data: Data
-
-  /// Creates a staged file.
-  public init(filename: String, mediaType: String?, data: Data) {
-    id = UUID()
-    self.filename = filename
-    self.mediaType = mediaType
-    self.data = data
-  }
-}
-
 /// The new-session form: the catalog, the selected host's folders and models, validation by
 /// the core, and one creation at a time that is never repeated.
 @Observable
@@ -75,11 +55,16 @@ public final class CreationStore {
   /// The project the sidebar's "New session in project" chose: the new session is filed there
   /// and the form takes its defaults. The form clears it once read.
   public var pendingProject: ProjectSummary?
+  /// Composer text kept per Add nested agent source, and under `""` a draft handed to the next
+  /// new session's page ("Continue in a new session").
+  public var composerDrafts: [String: String] = [:]
+  /// The provisional sidebar rows of the open Add nested agent composers.
+  public internal(set) var nestedDrafts: [NestedSessionDraft] = []
 
   /// The conversation of a new session, to show its first message as soon as it is sent.
   @ObservationIgnored var conversation: (@MainActor (String) -> ConversationStore?)?
 
-  private let core: ClientCore
+  let core: ClientCore
   private var pendingFirstMessage: String?
   /// Files already added to the created session's draft, so a retry doesn't add them twice.
   private var stagedItems: [UUID: UInt64] = [:]
@@ -222,21 +207,16 @@ public final class CreationStore {
     attachments.removeAll { $0.id == id }
   }
 
-  /// Creates the session, then sends `firstMessage` to it when it is not blank. Creation is
-  /// never retried: an unclear outcome becomes ``CreationPhase/uncertain(_:)``. Staged files
-  /// are uploaded to the new session and sent with the first message.
-  /// - Parameters:
-  ///   - selection: Host, agent, workspace and model.
-  ///   - title: The session name; may be empty.
-  ///   - firstMessage: The first message; may be empty.
-  public func create(_ selection: CreationSelection, title: String, firstMessage: String) async {
+  /// Creates the session with `calls`, then sends `firstMessage` to it when it is not blank.
+  /// Creation is never retried: an unclear outcome becomes ``CreationPhase/uncertain(_:)``.
+  /// Staged files are uploaded to the new session and sent with the first message.
+  func create(firstMessage: String, _ calls: CreationCalls) async {
     guard canCreate else { return }
     phase = .creating
     let text = firstMessage.trimmingCharacters(in: .whitespacesAndNewlines)
     do {
       if !attachments.isEmpty {
-        let receipt = try await core.createSessionForMessage(
-          selection: selection, title: title, text: firstMessage)
+        let receipt = try await calls.forMessage(core)
         pendingFirstMessage = firstMessage
         phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
         do {
@@ -245,12 +225,11 @@ public final class CreationStore {
           phase = .created(sessionID: receipt.sessionId, firstMessageError: coreError(error))
         }
       } else if text.isEmpty {
-        let receipt = try await core.createSession(selection: selection, title: title)
+        let receipt = try await calls.bare(core)
         pendingFirstMessage = nil
         phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
       } else {
-        let created = try await core.createSessionAndSend(
-          selection: selection, title: title, text: firstMessage)
+        let created = try await calls.andSend(core)
         switch created.firstMessage {
         case .sent(let sent):
           pendingFirstMessage = nil

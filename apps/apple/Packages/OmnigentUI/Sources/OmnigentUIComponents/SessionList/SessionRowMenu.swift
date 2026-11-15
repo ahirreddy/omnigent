@@ -58,7 +58,16 @@ struct SessionRowMenu {
     }
   }
 
+  /// Add nested agent: the owner's, on a session that is not archived (the web's gate).
+  var offersNestedAgent: Bool {
+    actions.addNestedAgent != nil && !isShared && !session.isArchived
+  }
+
   @ViewBuilder var items: some View {
+    if offersNestedAgent, let addNestedAgent = actions.addNestedAgent {
+      Button("Add nested agent", systemImage: "plus.square.on.square") { addNestedAgent(session) }
+      Divider()
+    }
     if offersPin {
       Button(
         session.isPinned ? "Unpin" : "Pin", systemImage: session.isPinned ? "pin.slash" : "pin"
@@ -91,8 +100,10 @@ struct SessionRowMenu {
         setUnread(session, !isUnread)
       }
     }
-    // Filing is owner-only, as on the web.
-    if let move = actions.moveToProject, !isShared, !projects.isEmpty || newProject != nil {
+    // Filing is owner-only, as on the web; a nested member moves with its representative.
+    if let move = actions.moveToProject, !isShared, !session.isNestedMember,
+      !projects.isEmpty || newProject != nil
+    {
       // "Add to project" until it is filed, then "Move session", as the web.
       Menu(project == nil ? "Add to project" : "Move session", systemImage: "folder") {
         ForEach(projects) { target in

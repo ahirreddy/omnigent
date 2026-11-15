@@ -11,6 +11,7 @@ use std::task::Poll;
 
 use futures::future::join_all;
 
+use super::families::{BatchRoute, batch_routes, family_changed_by, nested_member_refusal};
 use super::requests::{FailedWrite, acknowledgement, refused_write};
 use super::sessions::{EditRequest, SessionChange, decode_snapshot_value, edit_request};
 use super::{ClientCore, ClientEvent, SessionError, State, lock};
@@ -53,6 +54,11 @@ pub(super) enum Step<'core, T: HttpTransport> {
 pub(super) struct PlannedEdit<'core, T: HttpTransport> {
     request: EditRequest,
     step: Step<'core, T>,
+    /// The session family whose other members the write changes, read again once it is done.
+    family: Option<String>,
+    /// The same change shown on those members while the write is out (a representative's
+    /// move); the server makes it with the write.
+    carried: Vec<Lane<'core, T>>,
 }
 
 impl<T: HttpTransport> Drop for Lane<'_, T> {
@@ -161,6 +167,25 @@ impl<T: HttpTransport> Lane<'_, T> {
         }
         self.core.dispatch();
         true
+    }
+
+    /// Settles a change carried by another session's accepted write: confirmed with the
+    /// member's row read again, else with the row as it shows (the server made the change with
+    /// that write). A carried intent never takes a turn, so a departure is cleared here.
+    fn settle_carried(&mut self, state: &mut State, read: Option<&SessionSummary>) {
+        let shown = read.cloned().or_else(|| {
+            state
+                .summaries
+                .get(&self.session_id)
+                .map(|row| state.intents.overlay(&self.scope, row))
+        });
+        if let Some(row) = shown {
+            self.confirm(state, &row);
+        }
+        self.settled = true;
+        state
+            .intents
+            .abandon(&self.scope, &self.session_id, self.intent);
     }
 
     /// The server accepted the write and answered with `answered`. When that says what was
@@ -311,8 +336,20 @@ impl<T: HttpTransport> ClientCore<T> {
         policy: WritePolicy,
     ) -> Result<Step<'_, T>, SessionError> {
         let scope = state.edit_scope()?;
+        Ok(self.begin_in(state, scope, session_id, patch, policy))
+    }
+
+    /// [`Self::begin`] in a delivery scope already checked.
+    fn begin_in(
+        &self,
+        state: &mut State,
+        scope: String,
+        session_id: &str,
+        patch: SessionPatch,
+        policy: WritePolicy,
+    ) -> Step<'_, T> {
         let base = state.summaries.get(session_id);
-        Ok(match state.intents.begin(&scope, session_id, patch, base) {
+        match state.intents.begin(&scope, session_id, patch, base) {
             Begun::Recorded(intent) => Step::Send(Lane {
                 core: self,
                 scope,
@@ -322,7 +359,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 settled: false,
             }),
             Begun::Unneeded(row) => Step::Unneeded(row),
-        })
+        }
     }
 
     fn plan_edit(
@@ -332,7 +369,9 @@ impl<T: HttpTransport> ClientCore<T> {
         change: SessionChange,
         shown: &mut Vec<SessionSummary>,
     ) -> Result<PlannedEdit<'_, T>, SessionError> {
-        let request = edit_request(session_id, change, state.summaries.get(session_id))?;
+        let cached = state.summaries.get(session_id);
+        let family = family_changed_by(&change, cached);
+        let request = edit_request(session_id, change, cached)?;
         let step = self.begin(
             state,
             session_id,
@@ -340,7 +379,27 @@ impl<T: HttpTransport> ClientCore<T> {
             WritePolicy::Replayable,
         )?;
         shown.extend(state.summaries.get(session_id).cloned());
-        Ok(PlannedEdit { request, step })
+        let mut carried = Vec::new();
+        if let SessionPatch::Project(_) = &request.patch
+            && let Some(family_id) = &family
+            && let Some(scope) = state.scope_id()
+        {
+            for member in state.family_members(family_id, session_id) {
+                let patch = request.patch.clone();
+                let policy = WritePolicy::Replayable;
+                let step = self.begin_in(state, scope.clone(), &member, patch, policy);
+                if let Step::Send(lane) = step {
+                    carried.push(lane);
+                }
+                shown.extend(state.summaries.get(&member).cloned());
+            }
+        }
+        Ok(PlannedEdit {
+            request,
+            step,
+            family,
+            carried,
+        })
     }
 
     /// Validates and records each edit, showing them all in one list change. No request is
@@ -381,7 +440,12 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         planned: PlannedEdit<'_, T>,
     ) -> Result<SessionSummary, SessionError> {
-        let PlannedEdit { request, step } = planned;
+        let PlannedEdit {
+            request,
+            step,
+            family,
+            mut carried,
+        } = planned;
         let mut lane = match step {
             Step::Send(lane) => lane,
             Step::Unneeded(row) => return Ok(*row),
@@ -409,19 +473,32 @@ impl<T: HttpTransport> ClientCore<T> {
                     detail: format!("unreadable {path} acknowledgement: {detail}"),
                 }
             })?;
-        let mut state = lock(&self.state);
-        let updated = state.accept_projection(&decoded.projection, epoch)?;
-        lane.confirm(&mut state, &updated);
-        state.events.push(ClientEvent::SessionsChanged {
-            sessions: vec![updated.clone()],
-        });
-        state.request_rehydration(session_id);
-        Ok(state.intents.overlay(&lane.scope, &updated))
+        let shown = {
+            let mut state = lock(&self.state);
+            let updated = state.accept_projection(&decoded.projection, epoch)?;
+            lane.confirm(&mut state, &updated);
+            state.events.push(ClientEvent::SessionsChanged {
+                sessions: vec![updated.clone()],
+            });
+            state.request_rehydration(session_id);
+            state.intents.overlay(&lane.scope, &updated)
+        };
+        if let Some(family_id) = family {
+            let refreshed = self.refresh_family(&family_id, session_id).await;
+            let mut state = lock(&self.state);
+            for member in &mut carried {
+                let read = refreshed.get(&member.session_id);
+                member.settle_carried(&mut state, read);
+            }
+        }
+        Ok(shown)
     }
 
     /// Edits several sessions at once: the rows all change in one list change, then each
     /// session's `PATCH` runs beside the others. One result per edit, in the order given; a
-    /// refused edit puts its own row back and leaves the others alone.
+    /// refused edit puts its own row back and leaves the others alone. A nested family member's
+    /// move rides on its representative's move in the same batch; when one is moved without its
+    /// representative, every move of the batch is refused before any request.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -430,13 +507,60 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         edits: Vec<(String, SessionChange)>,
     ) -> Vec<Result<SessionSummary, SessionError>> {
-        let planned = self.plan_edits(edits);
-        join_all(planned.into_iter().map(|planned| async move {
+        let routes = {
+            let state = lock(&self.state);
+            batch_routes(&edits, |id| state.summaries.get(id).cloned())
+        };
+        let ids: Vec<String> = edits.iter().map(|(id, _)| id.clone()).collect();
+        let sendable = edits
+            .into_iter()
+            .zip(&routes)
+            .filter(|(_, route)| **route == BatchRoute::Send)
+            .map(|(edit, _)| edit)
+            .collect();
+        let planned = self.plan_edits(sendable);
+        let mut answers = join_all(planned.into_iter().map(|planned| async move {
             let result = self.run_edit(planned?).await;
             self.dispatch();
             result
         }))
         .await
+        .into_iter();
+        let sent: Vec<Option<Result<SessionSummary, SessionError>>> = routes
+            .iter()
+            .map(|route| {
+                (*route == BatchRoute::Send)
+                    .then(|| answers.next())
+                    .flatten()
+            })
+            .collect();
+        routes
+            .iter()
+            .zip(&ids)
+            .zip(&sent)
+            .map(|((route, session_id), answer)| match (route, answer) {
+                (_, Some(answer)) => answer.clone(),
+                // A carried move reports its representative's outcome, with its own row.
+                (BatchRoute::CarriedBy(representative), None) => match sent.get(*representative) {
+                    Some(Some(Err(error))) => Err(error.clone()),
+                    _ => self.shown_row(session_id),
+                },
+                _ => Err(nested_member_refusal()),
+            })
+            .collect()
+    }
+
+    /// The row of `session_id` as the list shows it, pending edits applied.
+    fn shown_row(&self, session_id: &str) -> Result<SessionSummary, SessionError> {
+        let state = lock(&self.state);
+        state
+            .summaries
+            .get(session_id)
+            .cloned()
+            .and_then(|row| state.shown_rows(vec![row]).pop())
+            .ok_or_else(|| SessionError::SessionNotFound {
+                session_id: session_id.to_owned(),
+            })
     }
 
     /// Hides `session_id`'s row at once, ahead of the `DELETE` that removes it for the caller.

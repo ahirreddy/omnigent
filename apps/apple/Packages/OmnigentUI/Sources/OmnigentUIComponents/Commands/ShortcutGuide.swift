@@ -40,10 +40,13 @@ enum ShortcutGuide {
   /// - Parameters:
   ///   - submitWithCommandReturn: Return inserts a newline and Command-Return sends.
   ///   - isMac: The Mac, with its menu-bar-only shortcuts.
+  ///   - nestedAgents: The server can add nested agents, which have a shortcut of their own.
   /// - Returns: The sheet's sections.
-  static func groups(submitWithCommandReturn: Bool, isMac: Bool) -> [ShortcutGroup] {
+  static func groups(
+    submitWithCommandReturn: Bool, isMac: Bool, nestedAgents: Bool = false
+  ) -> [ShortcutGroup] {
     [
-      general,
+      general(nestedAgents: nestedAgents),
       chats(submitWithCommandReturn: submitWithCommandReturn || !isMac),
       ShortcutGroup(
         title: "Navigation",
@@ -76,17 +79,20 @@ enum ShortcutGuide {
     ] + (isMac ? [windows] : [])
   }
 
-  private static var general: ShortcutGroup {
-    ShortcutGroup(
-      title: "General",
-      rows: [
-        row("Start a new session", AppShortcuts.newSession),
-        row("Open command palette", AppShortcuts.commandPalette),
-        row("Find a session by name", AppShortcuts.findSession),
-        row("Rename current session", AppShortcuts.renameSession),
-        row("Open Settings", AppShortcuts.settings),
-        row("Show keyboard shortcuts", AppShortcuts.keyboardShortcuts),
-      ])
+  private static func general(nestedAgents: Bool) -> ShortcutGroup {
+    var rows = [
+      row("Start a new session", AppShortcuts.newSession),
+      row("Open command palette", AppShortcuts.commandPalette),
+      row("Find a session by name", AppShortcuts.findSession),
+      row("Rename current session", AppShortcuts.renameSession),
+      row("Open Settings", AppShortcuts.settings),
+      row("Show keyboard shortcuts", AppShortcuts.keyboardShortcuts),
+    ]
+    if nestedAgents {
+      rows.insert(
+        row("Add a nested agent to the current session", AppShortcuts.addNestedAgent), at: 1)
+    }
+    return ShortcutGroup(title: "General", rows: rows)
   }
 
   /// Return sends unless the preference (or a touch keyboard) moves sending to Command-Return.

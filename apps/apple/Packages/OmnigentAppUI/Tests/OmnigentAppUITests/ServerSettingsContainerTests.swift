@@ -153,8 +153,13 @@ struct ServerSettingsContainerTests {
     // The pane reads the server as it opens; Sign Out is clicked where it rests.
     try await settle(page.screen, untilShowing: "Signed in as", contains: true)
     _ = try await settledControlFrames(page.screen)
+    // Sign Out is the confirmation's first button.
+    SystemSideEffects.answer(alert: .alertFirstButtonReturn, for: page.screen.window)
     try clickInPane(1, on: page)
-    try await settle(page.screen, until: "the sign out") { !page.connection.isSignedIn }
+    // The confirmation and the sign-out request can take seconds on a busy machine.
+    try await settle(page.screen, until: "the sign out", timeout: .seconds(15)) {
+      !page.connection.isSignedIn
+    }
   }
 
   @Test("Harnesses and Custom Agents show over the server's own stores")

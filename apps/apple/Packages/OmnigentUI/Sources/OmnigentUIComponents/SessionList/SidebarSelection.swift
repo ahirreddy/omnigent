@@ -10,10 +10,12 @@ extension View {
   /// (the web's `--sidebar-active`); on macOS the table's own highlight is also turned off.
   /// Selection itself stays the list's: arrow keys, type-select, VoiceOver's "selected", swipe
   /// actions and the Delete command work as before.
-  /// - Parameter isSelected: Whether this row is the list's selection.
+  /// - Parameters:
+  ///   - isSelected: Whether this row is the list's selection.
+  ///   - isNested: A row nested in its session family, whose fill starts at its indent.
   /// - Returns: The row.
-  func sidebarSelection(_ isSelected: Bool) -> some View {
-    modifier(SidebarSelectionModifier(isSelected: isSelected))
+  func sidebarSelection(_ isSelected: Bool, isNested: Bool = false) -> some View {
+    modifier(SidebarSelectionModifier(isSelected: isSelected, isNested: isNested))
   }
 
   /// A sidebar row's icon in the text color. The iOS sidebar style tints icons with the system
@@ -31,6 +33,7 @@ extension View {
 
 private struct SidebarSelectionModifier: ViewModifier {
   let isSelected: Bool
+  let isNested: Bool
   @State private var isHovered = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -48,6 +51,7 @@ private struct SidebarSelectionModifier: ViewModifier {
       #endif
       .listRowBackground(
         SidebarSelectionBackground(isSelected: isSelected, isHovered: isHovered)
+          .padding(.leading, isNested ? SessionFamilyMetrics.nestedIndent : 0)
           .animation(reduceMotion ? nil : Theme.Motion.feedback, value: isHovered))
   }
 }

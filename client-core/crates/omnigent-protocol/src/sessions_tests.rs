@@ -346,3 +346,108 @@ fn a_syntax_error_says_it_is_not_json_and_a_null_field_has_no_value() {
     );
     assert_eq!(Field::<String>::Null.value(), None);
 }
+
+const FAMILY_PAGES: &str =
+    "sessions/SessionFamilies--ExpandedPagesAppendMembersAfterTheirBoundary.jsonl";
+
+#[test]
+fn list_rows_carry_a_family_only_when_they_have_one() {
+    let pages = fixture_lines(FAMILY_PAGES);
+    let first = SessionList::from_value(response(&pages[0])).unwrap();
+    assert_eq!(first.data[0].id, "conv_solo");
+    assert!(first.data[0].family.is_absent());
+    let family = first.data[1].family.value().unwrap();
+    assert_eq!(family.id, "conv_lead");
+    assert_eq!(family.representative_id.as_deref(), Some("conv_lead"));
+    assert_eq!(family.representative_title.as_deref(), Some("Coordinator"));
+    assert!(family.pinned);
+    assert_eq!(family.pinned_at.as_deref(), Some("1731400000000"));
+    assert!(!family.nests("conv_lead"));
+    assert!(family.nests("conv_peer"));
+    assert_eq!(first.data[2].family.value(), Some(family));
+    // A family whose representative is unknown nests nobody.
+    let headless = SessionFamily {
+        representative_id: None,
+        ..family.clone()
+    };
+    assert!(!headless.nests("conv_peer"));
+}
+
+#[test]
+fn update_rows_send_a_null_family_and_snapshots_carry_theirs() {
+    let frames = fixture_lines("sessions/SessionFamilies--UpdatesRowsReportFamilyOrNull.jsonl");
+    let row =
+        |frame: &Value| SessionListItem::from_value(frame["message"]["items"][0].clone()).unwrap();
+    let member = row(&frames[0]);
+    let family = member.family.value().unwrap();
+    assert!(!family.pinned && family.pinned_at.is_none());
+    assert_eq!(row(&frames[1]).family, Field::Null);
+
+    let session = snapshot(response(&fixture(
+        "sessions/SessionFamilies--SnapshotCarriesFamily.json",
+    )));
+    assert_eq!(session.family.value(), Some(family));
+    let standalone =
+        snapshot(json!({"id": "s", "status": "idle", "created_at": 1, "family": null}));
+    assert_eq!(standalone.family, Field::Null);
+    // A null `pinned` reads as unpinned; a family without an id is malformed.
+    let lenient = snapshot(json!({"id": "s", "status": "idle", "created_at": 1,
+                                  "family": {"id": "f", "representative_id": null, "pinned": null}}));
+    assert!(!lenient.family.value().unwrap().pinned);
+    assert!(
+        SessionSnapshot::from_value(json!({"id": "s", "status": "idle", "created_at": 1,
+                                           "family": {"pinned": true}}))
+        .is_err()
+    );
+}
+
+#[test]
+fn a_page_counts_the_rows_it_selected_before_appended_family_members() {
+    let pages = fixture_lines(FAMILY_PAGES);
+    let first = SessionList::from_value(response(&pages[0])).unwrap();
+    assert_eq!(
+        first
+            .page_boundary
+            .as_ref()
+            .map(|boundary| boundary.id.as_str()),
+        Some("conv_lead")
+    );
+    assert_eq!(first.selected_rows(|row| &row.id), 2);
+    let second = SessionList::from_value(response(&pages[1])).unwrap();
+    assert_eq!(second.selected_rows(|row| &row.id), 2);
+    assert_eq!(second.next_cursor(Some("conv_lead")), Ok(None));
+
+    let rows = json!([
+        {"id": "a", "status": "idle", "created_at": 1},
+        {"id": "b", "status": "idle", "created_at": 1},
+        {"id": "c", "status": "idle", "created_at": 1}
+    ]);
+    let page = |extra: Value| {
+        let mut body = json!({"data": rows.clone(), "has_more": true});
+        body.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        SessionList::from_value(body).unwrap()
+    };
+    // An older server sends no boundary: the `last_id` row, else every row.
+    assert_eq!(
+        page(json!({"last_id": "b"})).selected_rows(|row| &row.id),
+        2
+    );
+    assert_eq!(
+        page(json!({"last_id": "gone"})).selected_rows(|row| &row.id),
+        3
+    );
+    assert_eq!(page(json!({})).selected_rows(|row| &row.id), 3);
+    let null_boundary = page(json!({"last_id": "a", "page_boundary": null}));
+    assert_eq!(null_boundary.page_boundary, None);
+    assert_eq!(null_boundary.selected_rows(|row| &row.id), 1);
+    let serialized = serde_json::to_value(page(json!({
+        "page_boundary": {"id": "a", "created_at": 1, "updated_at": 2}
+    })))
+    .unwrap();
+    assert_eq!(
+        serialized["page_boundary"],
+        json!({"id": "a", "created_at": 1, "updated_at": 2})
+    );
+}

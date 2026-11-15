@@ -117,12 +117,12 @@ extension ConnectedWindowFlowTests {
     try await settle(mounted.screen, untilShowing: "Renamed")
     try await settle(mounted.screen, until: "the write") { first.arrivals == 1 }
     let second = server.hold("/v1/sessions/conv_b", method: "PATCH")
-    SystemSideEffects.answer(alert: .alertSecondButtonReturn)
+    SystemSideEffects.answer(alert: .alertSecondButtonReturn, for: mounted.screen.window)
     first.release()
     try await settle(mounted.screen, until: "the rename again") { second.arrivals == 1 }
     #expect(SystemSideEffects.record.alertMessages == ["Could Not Rename the Session"])
 
-    SystemSideEffects.answer(alert: .alertFirstButtonReturn)
+    SystemSideEffects.answer(alert: .alertFirstButtonReturn, for: mounted.screen.window)
     server.route(
       "/v1/sessions/conv_b", method: "PATCH",
       .json(titledRow("conv_b").replacingOccurrences(of: "Beta", with: "Renamed")))

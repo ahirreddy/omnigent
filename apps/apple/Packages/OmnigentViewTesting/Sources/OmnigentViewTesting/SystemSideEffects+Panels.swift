@@ -18,9 +18,9 @@
       }
       replace(NSSavePanel.self, "runModal", with: run)
       replace(NSOpenPanel.self, "runModal", with: run)
-      let sheet: PanelSheet = { _, _, _, done in
+      let sheet: PanelSheet = { _, _, window, done in
         Self.note { $0.panelCount += 1 }
-        done?(Self.state.withLock { $0.panelResponse.rawValue })
+        done?(Self.panelResponse(for: window).rawValue)
       }
       replace(NSSavePanel.self, "beginSheetModalForWindow:completionHandler:", with: sheet)
       let begin: @convention(c) (NSSavePanel, Selector, ResponseHandler?) -> Void = { _, _, done in

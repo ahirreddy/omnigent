@@ -5,6 +5,28 @@ import SwiftUI
 // MARK: Tab pages
 
 extension ConnectedServerView {
+  /// The new-session page, or beside a source session its Add nested agent composer, which opens
+  /// a created session whose setup didn't finish under `notify`'s notice.
+  @ViewBuilder func newSessionPage(
+    nestedBeside destination: SidebarDestination?, notify: @escaping @MainActor (String) -> Void
+  ) -> some View {
+    let selection = selectionBinding
+    let open: @MainActor (String) -> Void = { selection.wrappedValue = .session($0) }
+    if case .nestedSession(let sourceID) = destination {
+      NewSessionContainer(
+        connection: connection, nestedSourceID: sourceID, open: open,
+        openWithNotice: { sessionID, notice in
+          open(sessionID)
+          notify(notice)
+        },
+        continueInNewSession: { selection.wrappedValue = .newSession }
+      )
+      .id(sourceID)
+    } else {
+      NewSessionContainer(connection: connection, open: open)
+    }
+  }
+
   /// The New Tab page; the window reads what it offers (``NewTabOptionsLoading``).
   func newTabPage(_ tab: AppTab, routes: WindowTabs) -> some View {
     NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))

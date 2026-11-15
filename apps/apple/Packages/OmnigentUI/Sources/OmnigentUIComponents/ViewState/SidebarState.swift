@@ -232,6 +232,10 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var account: SignedInAccount?
   /// How Pinned and each project sort their sessions.
   public var groupSorts = SessionGroupSorts()
+  /// The families collapsed under their head, one opaque key per section or folder and family.
+  public var collapsedFamilies: Set<String> = []
+  /// The provisional rows of open Add nested agent composers, by row id: each one's source.
+  public var nestedDrafts: [String: String] = [:]
 
   /// Creates sidebar state.
   /// - Parameters:
@@ -271,8 +275,9 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
     servers.first { $0.id == currentServerID }
   }
 
-  /// Pinned sessions now.
-  public var pinnedCount: Int { list.sessions.count(where: \.isPinned) }
+  /// Pin slots in use: pinned standalone sessions and family representatives. A nested family
+  /// member never takes one, even with a pin of its own.
+  public var pinnedCount: Int { list.sessions.count { $0.isPinned && !$0.isNestedMember } }
 
   /// The sort `group` shows: the one chosen for it, or its default.
   /// - Parameter group: Pinned, or a project.
@@ -311,6 +316,12 @@ public struct SidebarActions {
   public var deleteProject: (@MainActor (SessionProject) -> Void)?
   /// Archive or restore several sessions at once, with one Undo (bulk selection).
   public var setArchivedMany: (@MainActor ([SessionSummary], Bool) -> Void)?
+  /// File several sessions into a project, or out of theirs (`nil`), as one change (bulk
+  /// selection); a nested family member moves with its representative.
+  public var moveMany: (@MainActor ([SessionSummary], SessionProject?) -> Void)?
+  /// Whether sessions can move together: every nested member's representative is among them.
+  public var canMoveTogether: @MainActor ([SessionSummary]) -> Bool = SidebarFamilies
+    .canMoveTogether
   /// Carry out a session drag (pin into a slot, file into or out of a project).
   public var dropSession: (@MainActor (SessionSummary, SidebarDropAction) -> Void)?
   /// Save a new project order (a project dragged onto another, or Move).
@@ -334,6 +345,9 @@ public struct SidebarActions {
   public var loadProjectPage: (@MainActor (SessionProject) -> Void)?
   /// Rows and counts read as they are now; `nil` draws them from the state.
   public var live: SidebarLive?
+  /// Collapse (`true`) or expand a family by its key in ``SidebarViewState/collapsedFamilies``;
+  /// `nil` shows no family chevrons.
+  public var setFamilyCollapsed: (@MainActor (String, Bool) -> Void)?
 
   /// Creates actions.
   /// - Parameters:
