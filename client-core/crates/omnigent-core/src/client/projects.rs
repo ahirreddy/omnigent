@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use omnigent_protocol::FromWire;
-use omnigent_protocol::sessions::SessionList;
+use omnigent_protocol::sessions::{SessionList, SessionListItem};
 use serde_json::{Value, json};
 
 use super::requests::{page_query, validate_identifier};
@@ -20,6 +20,33 @@ use crate::http::HttpTransport;
 
 /// The longest project name the server accepts.
 pub const MAX_PROJECT_NAME_CHARS: usize = 120;
+
+/// Why a nested member of a deleted project is left in place: its representative is not filed
+/// there, or could not leave it.
+pub const REPRESENTATIVE_UNAVAILABLE: &str = "Family representative is unavailable";
+
+/// A session filed under a project, as its member sweep reads it.
+struct ProjectMember {
+    id: String,
+    /// Its session family's id.
+    family: Option<String>,
+    /// Its family's representative.
+    representative: Option<String>,
+    /// Nested under another representative, which moves it.
+    nested: bool,
+}
+
+impl From<&SessionListItem> for ProjectMember {
+    fn from(row: &SessionListItem) -> Self {
+        let family = row.family.value();
+        Self {
+            id: row.id.clone(),
+            family: family.map(|family| family.id.clone()),
+            representative: family.and_then(|family| family.representative_id.clone()),
+            nested: family.is_some_and(|family| family.nests(&row.id)),
+        }
+    }
+}
 
 /// One of the caller's projects.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -196,7 +223,8 @@ impl<T: HttpTransport> ClientCore<T> {
 
     /// Renames a project. A first-class one is renamed in place; a label-only one is promoted
     /// to a first-class project under the new name. Either way every member is re-filed onto
-    /// the project id with its legacy label cleared, as the web's `useRenameProject`.
+    /// the project id with its legacy label cleared, as the web's `useRenameProject`: a session
+    /// family through its representative, which moves the family.
     ///
     /// # Errors
     ///
@@ -243,24 +271,30 @@ impl<T: HttpTransport> ClientCore<T> {
                 detail: "the renamed project has no id".into(),
             });
         };
-        for session_id in self.project_member_ids(&project.name).await? {
-            self.patch_member(
-                &session_id,
-                &json!({"project_id": id, "labels": {PROJECT_LABEL: ""}}),
-            )
-            .await?;
+        let refile = json!({"project_id": id, "labels": {PROJECT_LABEL: ""}});
+        for member in self.project_members(&project.name).await? {
+            if member.nested {
+                continue;
+            }
+            self.patch_member(&member.id, &refile).await?;
+            if let Some(family_id) = &member.family {
+                self.refresh_family(family_id, &member.id).await;
+            }
         }
         Ok(renamed)
     }
 
     /// Deletes a project: every member is archived and removed from it (sessions are never
-    /// deleted), then the first-class project itself, as the web's `useDeleteProject`.
+    /// deleted), then the first-class project itself, as the web's `useDeleteProject`. Each
+    /// session family leaves through its representative first; its nested members are then
+    /// archived, once their representative has left.
     ///
     /// # Errors
     ///
     /// The read and write errors. When a member cannot be changed (for example a shared session
-    /// the caller does not own), the others are still changed, the project is kept, and the
-    /// first failure is returned.
+    /// the caller does not own, or a nested member whose representative is not filed here or
+    /// could not leave), the others are still changed, the project is kept, and the first
+    /// failure is returned.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -276,10 +310,34 @@ impl<T: HttpTransport> ClientCore<T> {
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     async fn delete_project_rows(&self, project: &ProjectSummary) -> Result<(), SessionError> {
-        let body = json!({"archived": true, "project_id": "", "labels": {PROJECT_LABEL: ""}});
+        let unfile = json!({"archived": true, "project_id": "", "labels": {PROJECT_LABEL: ""}});
+        let archive = json!({"archived": true});
+        let members = self.project_members(&project.name).await?;
         let mut first_failure = None;
-        for session_id in self.project_member_ids(&project.name).await? {
-            if let Err(error) = self.patch_member(&session_id, &body).await {
+        let mut left = BTreeSet::new();
+        for member in members.iter().filter(|member| !member.nested) {
+            match self.patch_member(&member.id, &unfile).await {
+                Ok(()) => {
+                    left.insert(member.id.as_str());
+                }
+                Err(error) => {
+                    first_failure.get_or_insert(error);
+                }
+            }
+        }
+        for member in members.iter().filter(|member| member.nested) {
+            let result = if member
+                .representative
+                .as_deref()
+                .is_some_and(|representative| left.contains(representative))
+            {
+                self.patch_member(&member.id, &archive).await
+            } else {
+                Err(SessionError::InvalidInput {
+                    reason: REPRESENTATIVE_UNAVAILABLE.to_owned(),
+                })
+            };
+            if let Err(error) = result {
                 first_failure.get_or_insert(error);
             }
         }
@@ -344,13 +402,14 @@ impl<T: HttpTransport> ClientCore<T> {
         Ok(ordered)
     }
 
-    /// Every session filed under `name` (dual-read `?project=`), archived included.
+    /// Every session filed under `name` (dual-read `?project=`), archived included, with its
+    /// session family.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn project_member_ids(&self, name: &str) -> Result<Vec<String>, SessionError> {
-        let mut ids = Vec::new();
+    async fn project_members(&self, name: &str) -> Result<Vec<ProjectMember>, SessionError> {
+        let mut members = Vec::new();
         let mut cursors = BTreeSet::new();
         let mut after: Option<String> = None;
         loop {
@@ -367,13 +426,13 @@ impl<T: HttpTransport> ClientCore<T> {
                     detail: format!("/v1/sessions?project: {error}"),
                 }
             })?;
-            ids.extend(page.data.iter().map(|row| row.id.clone()));
+            members.extend(page.data.iter().map(ProjectMember::from));
             let next = page
                 .next_cursor(after.as_deref())
                 .map_err(|_| SessionError::InvalidPagination)?
                 .map(str::to_owned);
             match next {
-                None => return Ok(ids),
+                None => return Ok(members),
                 Some(cursor) if !cursors.insert(cursor.clone()) => {
                     return Err(SessionError::InvalidPagination);
                 }

@@ -4,7 +4,7 @@
 use serde_json::json;
 
 use super::requests::{refused_write, validate_identifier};
-use super::{ClientCore, ClientEvent, SessionError, lock};
+use super::{ClientCore, ClientEvent, SessionError, State, lock};
 use crate::auth::pkce::percent_encode;
 use crate::http::HttpTransport;
 
@@ -43,7 +43,8 @@ impl<T: HttpTransport> ClientCore<T> {
 
     /// Deletes the session and its history (owner permission): stops it first when its cached
     /// row shows it can be stopped, as the web does, then `DELETE /v1/sessions/{id}`. The session
-    /// leaves the list at once and comes back if the server refuses.
+    /// leaves the list at once and comes back if the server refuses. The other members of its
+    /// session family are read again, since one of them may now represent it.
     ///
     /// # Errors
     ///
@@ -96,6 +97,10 @@ impl<T: HttpTransport> ClientCore<T> {
         {
             return Err(SessionError::ReadOnly);
         }
+        let family = cached
+            .as_ref()
+            .and_then(|summary| summary.family.as_ref())
+            .map(|family| family.id.clone());
         let hidden = self.hide_row(session_id)?;
         if cached.is_some_and(|summary| summary.is_stoppable()) {
             let path = format!("/v1/sessions/{session_id}/events");
@@ -115,7 +120,11 @@ impl<T: HttpTransport> ClientCore<T> {
         };
         self.remove_hidden(hidden, &path, &query)
             .await
-            .map_err(refused_write(session_id))
+            .map_err(refused_write(session_id))?;
+        if let Some(family_id) = family {
+            self.refresh_family(&family_id, session_id).await;
+        }
+        Ok(())
     }
 
     /// Leaves a session shared with the caller by revoking the caller's own grant
@@ -158,15 +167,21 @@ impl<T: HttpTransport> ClientCore<T> {
 
     /// Drops a session the caller can no longer see and reports it removed.
     pub(super) fn forget(&self, session_id: &str) {
-        let mut state = lock(&self.state);
-        state.bump_metadata_epoch(session_id);
-        state.summaries.remove(session_id);
-        state.drop_intents(session_id);
-        state.live_sessions.remove(session_id);
-        state.events.push(ClientEvent::SessionsRemoved {
+        lock(&self.state).forget_session(session_id);
+    }
+}
+
+impl State {
+    /// Drops a session the caller can no longer see and reports it removed.
+    pub(super) fn forget_session(&mut self, session_id: &str) {
+        self.bump_metadata_epoch(session_id);
+        self.summaries.remove(session_id);
+        self.drop_intents(session_id);
+        self.live_sessions.remove(session_id);
+        self.events.push(ClientEvent::SessionsRemoved {
             ids: vec![session_id.to_owned()],
         });
-        state.events.push(ClientEvent::InventoryInvalidated);
+        self.events.push(ClientEvent::InventoryInvalidated);
     }
 }
 

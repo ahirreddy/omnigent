@@ -125,3 +125,14 @@ fn only_standalone_sessions_and_representatives_take_pin_slots() {
         .collect();
     assert_eq!(ids, ["solo", "lead"]);
 }
+
+#[test]
+fn a_selection_moves_together_only_with_each_nested_members_representative() {
+    let solo = row("solo", None, false);
+    let lead = row("lead", Some(family(Some("lead"), false)), false);
+    let member = row("peer", Some(family(Some("lead"), false)), false);
+    assert!(can_move_together(&[]));
+    assert!(can_move_together(&[solo.clone(), lead.clone()]));
+    assert!(can_move_together(&[member.clone(), lead, solo.clone()]));
+    assert!(!can_move_together(&[member, solo]));
+}
