@@ -112,12 +112,6 @@ nonisolated public struct ApprovalModes: Hashable, Sendable {
 nonisolated public struct ComposerTray: Hashable, Sendable {
   /// The working directory label.
   public var directory: String?
-  /// Recent directories for the directory chip.
-  public var recentDirectories: [String]
-  /// The worktree or branch label ("No worktree" when none).
-  public var worktree: String?
-  /// Existing worktrees offered.
-  public var worktrees: [String]
   /// The branch in a session.
   public var branch: String?
   /// A linked pull request label, for example "#1234".
@@ -136,21 +130,14 @@ nonisolated public struct ComposerTray: Hashable, Sendable {
   /// Creates a tray.
   /// - Parameters:
   ///   - directory: Directory.
-  ///   - recentDirectories: Recents.
-  ///   - worktree: Worktree.
-  ///   - worktrees: Worktrees.
   ///   - branch: Branch.
   ///   - pullRequest: PR label.
   ///   - contextFraction: Context use.
   public init(
-    directory: String? = nil, recentDirectories: [String] = [], worktree: String? = nil,
-    worktrees: [String] = [], branch: String? = nil, pullRequest: String? = nil,
+    directory: String? = nil, branch: String? = nil, pullRequest: String? = nil,
     contextFraction: Double? = nil
   ) {
     self.directory = directory
-    self.recentDirectories = recentDirectories
-    self.worktree = worktree
-    self.worktrees = worktrees
     self.branch = branch
     self.pullRequest = pullRequest
     self.contextFraction = contextFraction
@@ -210,14 +197,6 @@ public struct ComposerExtraActions {
   public var connectHost: (@MainActor () -> Void)?
   /// Choose an approval mode.
   public var selectApprovalMode: (@MainActor (ApprovalModeOption) -> Void)?
-  /// Start dictation (⌘⌥V).
-  public var dictate: (@MainActor () -> Void)?
-  /// Choose a working directory.
-  public var selectDirectory: (@MainActor (String) -> Void)?
-  /// Open a folder (on this Mac).
-  public var openFolder: (@MainActor () -> Void)?
-  /// Choose a worktree (`nil` for none).
-  public var selectWorktree: (@MainActor (String?) -> Void)?
   /// Start a side chat (Add menu).
   public var newSideChat: (@MainActor () -> Void)?
   /// Set a goal (Add menu).
@@ -268,10 +247,6 @@ public struct ComposerExtraActions {
   ///   - selectHost: Choose a host.
   ///   - connectHost: Connect a host.
   ///   - selectApprovalMode: Choose a mode.
-  ///   - dictate: Dictation.
-  ///   - selectDirectory: Choose a directory.
-  ///   - openFolder: Open a folder.
-  ///   - selectWorktree: Choose a worktree.
   ///   - newSideChat: Side chat.
   ///   - setGoal: Goal.
   ///   - togglePlan: Plan mode.
@@ -290,10 +265,6 @@ public struct ComposerExtraActions {
     selectHost: (@MainActor (ComposerHost) -> Void)? = nil,
     connectHost: (@MainActor () -> Void)? = nil,
     selectApprovalMode: (@MainActor (ApprovalModeOption) -> Void)? = nil,
-    dictate: (@MainActor () -> Void)? = nil,
-    selectDirectory: (@MainActor (String) -> Void)? = nil,
-    openFolder: (@MainActor () -> Void)? = nil,
-    selectWorktree: (@MainActor (String?) -> Void)? = nil,
     newSideChat: (@MainActor () -> Void)? = nil, setGoal: (@MainActor () -> Void)? = nil,
     togglePlan: (@MainActor () -> Void)? = nil, isPlanOn: Bool = false,
     editQueued: (@MainActor (QueuedMessage, String) -> Void)? = nil,
@@ -310,10 +281,6 @@ public struct ComposerExtraActions {
     self.selectHost = selectHost
     self.connectHost = connectHost
     self.selectApprovalMode = selectApprovalMode
-    self.dictate = dictate
-    self.selectDirectory = selectDirectory
-    self.openFolder = openFolder
-    self.selectWorktree = selectWorktree
     self.newSideChat = newSideChat
     self.setGoal = setGoal
     self.togglePlan = togglePlan

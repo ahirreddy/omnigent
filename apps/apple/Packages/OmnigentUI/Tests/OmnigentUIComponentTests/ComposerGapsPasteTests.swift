@@ -130,7 +130,7 @@
     }
   }
 
-  /// The Mac's own dictation, for a host without a dictate action.
+  /// The Mac's own dictation, which Mic starts.
   @Suite("Composer: system dictation", .serialized)
   @MainActor
   struct ComposerGapsDictationTests {
@@ -143,8 +143,7 @@
     }
 
     private func composer() -> (OffscreenWindow<ComposerScreen>, ComposerActions) {
-      var actions = log.actions
-      actions.extras.dictate = nil
+      let actions = log.actions
       return (openComposer(ComposerScreenModel(state: ComposerViewState()), actions), actions)
     }
 

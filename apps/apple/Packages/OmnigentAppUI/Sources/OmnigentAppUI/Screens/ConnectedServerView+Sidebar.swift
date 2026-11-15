@@ -211,7 +211,6 @@ extension ConnectedServerView {
       openInWindow = { summary in open(summary.id) }
     }
     var actions = SessionListActions(
-      setFilter: { list.filter = OmnigentCoreFFI.SessionFilter($0) },
       setPinned: { summary, pinned in edit(.pin(summary.id, pinned)) },
       setArchived: { summary, archived in requestArchive([summary.id], archived: archived) },
       rename: { summary, title in rename(summary.id, to: title) },

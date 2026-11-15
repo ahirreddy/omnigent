@@ -129,10 +129,7 @@ extension PreviewData {
         harness: "claude-native", modelOptions: models, selectedModelId: nil, selectedEffort: nil),
       placeholder: "Describe a task to start a new session\u{2026}", hosts: hosts,
       approvalModes: claudeModes,
-      tray: ComposerTray(
-        directory: "/Users/ahir/src/universe",
-        recentDirectories: ["/Users/ahir/src/universe", "/Users/ahir/src/omnigent"],
-        worktree: "No worktree", worktrees: ["auth-refresh", "release-2026.11"]),
+      tray: ComposerTray(directory: "/Users/ahir/src/universe"),
       slashCommands: slashCommands, purpose: .start, context: ComposerSamples.start.context)
   }
 

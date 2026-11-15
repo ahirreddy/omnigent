@@ -30,8 +30,8 @@
       defer { screen.close() }
       #expect(try screen.shows("Auto-approve"))
       #expect(try screen.shows("Claude Code"))
-      // The tray's folder and worktree, then Add and the host.
-      let host = try screen.menu(at: 3)
+      // Add, then the host.
+      let host = try screen.menu(at: 1)
       #expect(menuTitles(host).contains("Connect new host\u{2026}"))
     }
 

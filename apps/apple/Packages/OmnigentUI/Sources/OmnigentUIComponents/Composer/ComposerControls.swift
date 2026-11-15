@@ -127,23 +127,17 @@ struct HostChip: View {
   }
 }
 
-/// The context tray above the card: where the session runs (agent, host, workspace), the folder
-/// and worktree pickers on a new session, the pull request, and context use.
+/// The context tray above the card: where the session runs (agent, host, workspace), the pull
+/// request, and context use.
 struct ComposerTrayView: View {
   let tray: ComposerTray
   let context: ExecutionContext?
   let actions: ComposerExtraActions
   var showsContextDetails = false
 
-  private var canPickDirectory: Bool {
-    actions.selectDirectory != nil || actions.openFolder != nil
-  }
-
   /// Whether anything shows before the context gauge.
   var hasLeadingItems: Bool {
-    context != nil || (tray.directory != nil && (canPickDirectory || context == nil))
-      || tray.worktree != nil || (tray.branch != nil && context?.branch == nil)
-      || tray.pullRequest != nil
+    context != nil || tray.directory != nil || tray.branch != nil || tray.pullRequest != nil
   }
 
   var body: some View {
@@ -172,48 +166,15 @@ struct ComposerTrayView: View {
   var leadingItems: some View {
     HStack(spacing: Theme.Spacing.medium) {
       if let context {
-        // A folder picker already names the workspace.
-        ExecutionContextRow(
-          context: context, includesWorkspace: !(canPickDirectory && tray.directory != nil),
-          isPresented: showsContextDetails)
+        ExecutionContextRow(context: context, isPresented: showsContextDetails)
       }
-      if let directory = tray.directory, canPickDirectory || context == nil {
-        Menu {
-          if !tray.recentDirectories.isEmpty {
-            Section("Recents") {
-              ForEach(tray.recentDirectories, id: \.self) { path in
-                Button(path) { actions.selectDirectory?(path) }
-              }
-            }
-          }
-          if let openFolder = actions.openFolder {
-            Button("Open folder\u{2026}", systemImage: "folder.badge.plus", action: openFolder)
-          }
-        } label: {
-          Label(URL(filePath: directory).lastPathComponent, systemImage: "folder")
-            .contentShape(Rectangle())
-        }
-        .disabled(!canPickDirectory)
-        .help(directory)
-        .accessibilityLabel("Folder, \(URL(filePath: directory).lastPathComponent)")
-        .accessibilityHint("Chooses the folder the session works in")
-        .accessibilityIdentifier("composer-directory")
-      }
-      if let worktree = tray.worktree {
-        Menu {
-          Button("No worktree") { actions.selectWorktree?(nil) }
-          ForEach(tray.worktrees, id: \.self) { name in
-            Button(name) { actions.selectWorktree?(name) }
-          }
-        } label: {
-          Label(worktree, systemImage: "arrow.triangle.branch")
-            .contentShape(Rectangle())
-        }
-        .disabled(actions.selectWorktree == nil)
-        .help("Worktree: \(worktree)")
-        .accessibilityLabel("Worktree, \(worktree)")
-        .accessibilityHint("Chooses whether the session works in a separate git worktree")
-        .accessibilityIdentifier("composer-worktree")
+      // The context line names the workspace; without one the tray names the folder itself.
+      if let directory = tray.directory, context == nil {
+        Label(URL(filePath: directory).lastPathComponent, systemImage: "folder")
+          .foregroundStyle(.secondary)
+          .help(directory)
+          .accessibilityLabel("Folder, \(URL(filePath: directory).lastPathComponent)")
+          .accessibilityIdentifier("composer-directory")
       }
       if let branch = tray.branch, context?.branch == nil {
         Label(branch, systemImage: "arrow.triangle.branch").foregroundStyle(.secondary)

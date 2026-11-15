@@ -30,12 +30,24 @@ struct BusyTabsReport: ViewModifier {
 struct WindowTabOverview: ViewModifier {
   let tabs: WindowTabs
   @Binding var isPresented: Bool
+  /// Asks for a new title for a chat tab's session, as the strip's tab menu does.
+  let renameSession: @MainActor (String) -> Void
 
   func body(content: Content) -> some View {
     let strip = tabs.strip
     return content.tabOverview(
       isPresented: $isPresented, state: strip?.state ?? TabsState(),
-      actions: strip?.actions ?? TabActions())
+      actions: strip.map { renaming($0.actions) } ?? TabActions())
+  }
+
+  /// Rename Session closes the overview first: the title prompt is the window's, under it.
+  private func renaming(_ actions: TabActions) -> TabActions {
+    var actions = actions
+    actions.renameSession = { tabID in
+      isPresented = false
+      renameSession(tabID)
+    }
+    return actions
   }
 }
 

@@ -296,8 +296,6 @@ public struct TabActions {
   public var focusPane: (@MainActor (TabPane) -> Void)?
   /// Set the left pane's share of the width.
   public var setSplitFraction: (@MainActor (Double) -> Void)?
-  /// Go back to one pane.
-  public var closeSplit: (@MainActor () -> Void)?
   /// What the + button's menu offers in the shown session, read when the button draws; `nil`
   /// makes + open the new-tab page (``newTab``), as Command-T does.
   public var newTabMenu: (@MainActor () -> NewTabOptions)?

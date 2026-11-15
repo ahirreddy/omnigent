@@ -326,14 +326,14 @@ enum GalleryActions {
     -> SidebarActions
   {
     SidebarActions(
-      sessions: sessionList(filter: .constant(.all)), setDisplay: setDisplay,
+      sessions: sessionList(), setDisplay: setDisplay,
       setQuickFilter: { _ in },
       switchServer: { _ in }, addServer: {}, openServerSettings: {})
   }
 
-  static func sessionList(filter: Binding<SessionFilter>) -> SessionListActions {
+  static func sessionList() -> SessionListActions {
     SessionListActions(
-      setFilter: { filter.wrappedValue = $0 }, setPinned: { _, _ in }, setArchived: { _, _ in },
+      setPinned: { _, _ in }, setArchived: { _, _ in },
       rename: { _, _ in }, setUnread: { _, _ in }, openInNewWindow: { _ in },
       webURL: { URL(string: "https://omnigent.example.com/c/\($0.id)") }, newSession: {})
   }

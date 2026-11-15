@@ -1,13 +1,14 @@
 #if os(macOS)
   import AppKit
   import OmnigentViewTesting
+  import OmnigentViewTextReading
   import SwiftUI
   import Testing
 
   @testable import OmnigentUIComponents
 
   /// Where the session runs, in the row under the pill, and the context ring.
-  @Suite("Composer: host, folder, worktree and context", .serialized)
+  @Suite("Composer: host, folder and context", .serialized)
   @MainActor
   struct ComposerTrayChipTests {
     private let log = ComposerActionLog()
@@ -44,40 +45,16 @@
       #expect(screen.chips.isEmpty)
     }
 
-    @Test("the folder menu lists recents and opens another; the worktree menu picks or clears")
-    func folderAndWorktree() throws {
+    @Test("a session's folder and branch are labels: they are chosen when it starts")
+    func folderAndBranch() throws {
       let state = ComposerViewState(
-        tray: ComposerTray(
-          directory: "/src/universe", recentDirectories: ["/src/universe", "/src/omnigent"],
-          worktree: "No worktree", worktrees: ["feature"]))
+        tray: ComposerTray(directory: "/src/universe", branch: "dev"))
       let model = ComposerScreenModel(state: state)
       let screen = openComposer(model, log.actions)
       defer { screen.close() }
-      let folder = try screen.chip(0)
-      try screen.choose("/src/omnigent", in: folder)
-      try screen.choose("Open folder\u{2026}", in: folder)
-      let worktree = try screen.chip(1)
-      try screen.choose("feature", in: worktree)
-      try screen.choose("No worktree", in: worktree)
-      #expect(
-        log.events == [
-          "directory:/src/omnigent", "openFolder", "worktree:feature", "worktree:none",
-        ]
-      )
-    }
-
-    @Test("a folder with no way to change it is a label; a worktree without a handler too")
-    func folderAndWorktreeFixed() throws {
-      var actions = log.actions
-      actions.extras.selectDirectory = nil
-      actions.extras.openFolder = nil
-      actions.extras.selectWorktree = nil
-      let state = ComposerViewState(
-        tray: ComposerTray(directory: "/src/universe", worktree: "main", branch: "dev"))
-      let model = ComposerScreenModel(state: state)
-      let screen = openComposer(model, actions)
-      defer { screen.close() }
       #expect(screen.chips.isEmpty)
+      #expect(try screen.shows("universe"))
+      #expect(try screen.shows("dev"))
     }
 
     // MARK: Context ring

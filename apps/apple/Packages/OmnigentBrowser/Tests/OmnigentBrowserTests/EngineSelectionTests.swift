@@ -40,7 +40,7 @@ final class FakeTab: BrowserTab {
   func evaluateJavaScript(_ script: String) throws(BrowserError) -> BrowserScriptValue {
     record(script)
     if let scriptFailure { throw scriptFailure }
-    return .bool(true)
+    return scriptResult
   }
   func takeSnapshotPNG() throws(BrowserError) -> Data { Data() }
   func find(_ text: String, forward: Bool, caseSensitive: Bool) throws(BrowserError)
@@ -62,6 +62,8 @@ final class FakeTab: BrowserTab {
   var failure: BrowserError?
   /// Thrown by scripts.
   var scriptFailure: BrowserError?
+  /// What a script evaluates to.
+  var scriptResult = BrowserScriptValue.bool(true)
   var findResult = BrowserFindResult(matchFound: false, matchCount: nil, activeMatch: nil)
   private(set) var hardReloads = 0
   private(set) var scripts: [String] = []
@@ -98,7 +100,7 @@ final class FakeTab: BrowserTab {
     guard let url = state.url else { throw .tabNotReady }
     return url
   }
-  /// Records scripts; evaluation answers `.bool(true)`.
+  /// Records scripts; evaluation answers `scriptResult`.
   func record(_ script: String) { scripts.append(script) }
 }
 

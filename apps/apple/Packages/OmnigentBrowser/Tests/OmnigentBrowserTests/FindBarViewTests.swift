@@ -117,6 +117,33 @@
       #expect(fixture.model.find.result == nil)
     }
 
+    @Test("Use Selection for Find takes the page's selection as the text Find Next looks for")
+    func useSelection() async throws {
+      let fixture = try TabFixture()
+      let tab = try fixture.tab
+      tab.scriptResult = .string("needle")
+      await fixture.model.useSelectionForFind()
+      #expect(tab.scripts.last == "window.getSelection().toString()")
+      #expect(fixture.model.find.query == "needle")
+      await fixture.model.findNext()
+      #expect(tab.commands.last == "find needle forward false")
+
+      // Nothing selected, or a page that can't say, keeps the text; a failure shows on the tab.
+      for kept in [BrowserScriptValue.string(""), .null] {
+        tab.scriptResult = kept
+        await fixture.model.useSelectionForFind()
+        #expect(fixture.model.find.query == "needle")
+      }
+      tab.scriptFailure = .tabNotReady
+      await fixture.model.useSelectionForFind()
+      #expect(fixture.model.lastError == .tabNotReady)
+      #expect(fixture.model.find.query == "needle")
+
+      let unopened = fixture.environment.makeTab(url: nil)
+      await unopened.useSelectionForFind()
+      #expect(unopened.find.query.isEmpty)
+    }
+
     @Test("asking for the bar again gets the field focused again")
     func focusRequest() async throws {
       let fixture = try TabFixture()

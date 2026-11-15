@@ -112,7 +112,6 @@ struct ComposerRulesTests {
   func contextSummary() {
     let context = ComposerSamples.context
     #expect(context.summary() == "Codex \u{00B7} Mac Studio \u{00B7} omnigent / auth-refresh")
-    #expect(context.summary(includingWorkspace: false) == "Codex \u{00B7} Mac Studio")
     #expect(ExecutionContext().summary() == "Execution context")
     #expect(ExecutionContext(directory: "/").repository == "/")
   }

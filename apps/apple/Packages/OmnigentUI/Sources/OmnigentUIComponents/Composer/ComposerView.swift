@@ -287,7 +287,7 @@ extension ComposerView {
       canAttach: canAttach, layoutWidth: layoutWidth, layout: layout,
       isImporting: $isImporting, isPickingPhotos: $isPickingPhotos, isExpanded: $isExpanded,
       loadProviders: { providers in Task { await loadProviders(providers) } }, perform: perform,
-      pillDictate: actions.extras.dictate ?? startSystemDictation)
+      pillDictate: startSystemDictation)
   }
 
   /// Focuses the editor, then starts the Mac's dictation in it; touch dictates through speech
