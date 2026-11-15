@@ -32,7 +32,13 @@ struct NestedComposer: Equatable {
   /// The token of the next create, which ties the provisional row to the row the server sends.
   var token = CreationStore.newCreateToken()
   /// The key of the composer's provisional sidebar row.
-  let draftKey = "nested-draft-\(UUID().uuidString.lowercased())"
+  let draftKey: String
+
+  /// A composer for a nested agent beside `sourceID`, with a fresh provisional row key.
+  init(sourceID: String) {
+    self.sourceID = sourceID
+    draftKey = "nested-draft-\(UUID().uuidString.lowercased())"
+  }
 
   /// The source, once read.
   var source: OmnigentCoreFFI.SessionSummary? {
