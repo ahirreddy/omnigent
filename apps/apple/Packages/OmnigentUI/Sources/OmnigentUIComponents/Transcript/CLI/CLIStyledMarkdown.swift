@@ -93,7 +93,9 @@ private struct CLIMarkdownBlockView: View {
   var body: some View {
     switch block {
     case .paragraph(let text):
-      Text(withCursor(CLIInline.styled(text.keepingSoftBreaks, palette: palette)))
+      let styled = withCursor(CLIInline.styled(text.keepingSoftBreaks, palette: palette))
+      Text(styled)
+        .linkPointer(LinkGeometry.spans(in: styled))
         .fixedSize(horizontal: false, vertical: true)
     case .heading(let level, let text):
       heading(level: level, text: text)
@@ -134,10 +136,12 @@ private struct CLIMarkdownBlockView: View {
       body[run.range].foregroundColor = color
     }
     marker.append(body)
-    return Text(withCursor(marker))
+    let styled = withCursor(marker)
+    return Text(styled)
       .fontWeight(level <= 3 ? .semibold : .regular)
       .italic(minor)
       .underline(level == 1)
+      .linkPointer(LinkGeometry.spans(in: styled))
       .fixedSize(horizontal: false, vertical: true)
       .accessibilityAddTraits(.isHeader)
   }
@@ -198,7 +202,9 @@ private struct CLITableView: View {
 
   private func cellView(_ text: AttributedString, column: Int, rule: CGFloat) -> some View {
     let alignment = column < table.alignments.count ? table.alignments[column] : .leading
-    return Text(CLIInline.styled(text, palette: palette))
+    let styled = CLIInline.styled(text, palette: palette)
+    return Text(styled)
+      .linkPointer(LinkGeometry.spans(in: styled))
       .padding(.horizontal, size.character)
       .padding(.vertical, size.points * 0.5)
       .frame(maxWidth: .infinity, alignment: frameAlignment(alignment))

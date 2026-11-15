@@ -71,9 +71,13 @@ struct MarkdownParagraphText: View {
   var body: some View {
     let requests = Self.requests(in: text, size: ramp.body)
     if requests.isEmpty {
-      Text(text)
+      Text(text).linkPointer(LinkGeometry.spans(in: text))
     } else {
-      Self.compose(text, size: ramp.body) { drawn[$0] ?? RichBlockRenderer.shared.cached($0) }
+      let typeset = { (request: RichBlockRequest) in
+        drawn[request] ?? RichBlockRenderer.shared.cached(request)
+      }
+      Self.compose(text, size: ramp.body, typeset: typeset)
+        .linkPointer(Self.linkSpans(in: text, size: ramp.body, typeset: typeset))
         .accessibilityLabel(Text(text))
         .task(id: isOpen ? [] : requests) {
           guard !isOpen else { return }
@@ -114,6 +118,17 @@ struct MarkdownParagraphText: View {
       composed = Text("\(composed)\(piece)")
     }
     return composed
+  }
+
+  /// The links in ``compose(_:size:typeset:)``'s text, in which a typeset math span is one
+  /// character: its image.
+  static func linkSpans(
+    in text: AttributedString, size: CGFloat, typeset: (RichBlockRequest) -> RenderedRichBlock?
+  ) -> [LinkSpan] {
+    LinkGeometry.spans(in: text) { run in
+      guard let tex = run[MathSpanAttribute.self] else { return false }
+      return typeset(RichBlockRequest(kind: .math(display: false, size: size), source: tex)) != nil
+    }
   }
 }
 

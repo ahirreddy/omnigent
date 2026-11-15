@@ -68,12 +68,12 @@ struct InlineMarkdownText: View {
   init(_ markdown: String) { self.markdown = markdown }
 
   var body: some View {
+    let attributed = Self.attributed(markdown)
     Text(attributed)
+      .linkPointer(LinkGeometry.spans(in: attributed))
       .textSelection(.enabled)
       .fixedSize(horizontal: false, vertical: true)
   }
-
-  private var attributed: AttributedString { Self.attributed(markdown) }
 
   /// The text with its inline Markdown applied.
   static func attributed(
