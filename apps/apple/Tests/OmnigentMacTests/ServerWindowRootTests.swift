@@ -343,6 +343,9 @@ struct ServerWindowActionsTests {
     #expect(page.find.isVisible)
     find.next()
     find.previous()
+    // The page's own tests cover what the selection does to the search.
+    let useSelection = try #require(find.useSelection, "Use Selection for Find is offered")
+    useSelection()
     #expect(try scratch.services.browserTabs.close(pageID) != nil)
   }
 

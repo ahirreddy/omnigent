@@ -229,7 +229,8 @@ struct ServerWindowRoot: View {
     ServerWindowActions.Find(
       show: { page.showFindBar() },
       next: { Task { await page.findNext(forward: true) } },
-      previous: { Task { await page.findNext(forward: false) } })
+      previous: { Task { await page.findNext(forward: false) } },
+      useSelection: { Task { await page.useSelectionForFind() } })
   }
 
   private static func zoom(_ page: BrowserTabModel) -> ServerWindowActions.Zoom {

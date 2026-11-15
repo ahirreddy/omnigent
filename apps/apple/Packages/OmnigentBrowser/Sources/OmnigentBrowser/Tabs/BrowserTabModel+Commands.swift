@@ -87,6 +87,18 @@ extension BrowserTabModel {
     }
   }
 
+  /// Makes the page's selected text the text to find, for Find Next and Find Previous (Edit >
+  /// Use Selection for Find). A page with nothing selected keeps the text it had.
+  public func useSelectionForFind() async {
+    guard let tab else { return }
+    do {
+      let selection = try await tab.evaluateJavaScript("window.getSelection().toString()")
+      if case .string(let text) = selection, !text.isEmpty { find.query = text }
+    } catch {
+      lastError = error
+    }
+  }
+
   /// Hides the find bar and clears highlights.
   public func hideFindBar() {
     find.isVisible = false
