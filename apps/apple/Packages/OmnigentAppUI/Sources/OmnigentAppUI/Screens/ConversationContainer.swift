@@ -138,8 +138,10 @@ struct ConversationContainer: View {
     #if DEBUG
       .modifier(
         PerfConversationHooks(
-          showPanel: showPanel, openBrowser: tabRoutes?.openBrowser,
-          openSideChat: tabRoutes?.openNewSideChat))
+          showPanel: PerfConversationHooks.showingPanel(
+            window: tabRoutes?.windowPanel?.chrome, ownPanel: showsInspector,
+            ownTab: $inspectorTab),
+          openBrowser: tabRoutes?.openBrowser, openSideChat: tabRoutes?.openNewSideChat))
     #endif
     .modifier(ChangedFilesFollower(revision: changedFilesRevision, workspace: ownPanelWorkspace))
   }
@@ -148,23 +150,6 @@ struct ConversationContainer: View {
   /// session's panel and follows its files itself.
   private var ownPanelWorkspace: WorkspaceBrowserModel? {
     tabRoutes?.windowPanel == nil ? workspace : nil
-  }
-
-  /// Shows the right panel on a tab, or hides it (`nil`): the window's, where it shows one.
-  /// The chat makes no binding to the window's: making one reads it, and the chat would
-  /// render each time the panel changes.
-  private var showPanel: @MainActor (InspectorTab?) -> Void {
-    let windowChrome = tabRoutes?.windowPanel?.chrome
-    let (ownPanel, ownTab) = (showsInspector, $inspectorTab)
-    return { tab in
-      if let windowChrome {
-        if let tab { windowChrome.inspectorTab = tab }
-        windowChrome.panel.isShown = tab != nil
-      } else {
-        if let tab { ownTab.wrappedValue = tab }
-        ownPanel.wrappedValue = tab != nil
-      }
-    }
   }
 
   /// The chat's own panel: whether it shows, by the chat's choice or else the default where

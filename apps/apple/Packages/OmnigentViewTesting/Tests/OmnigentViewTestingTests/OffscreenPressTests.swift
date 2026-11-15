@@ -15,8 +15,11 @@
 
     override func mouseDown(with event: NSEvent) {
       events.append("down")
-      guard downDuration > 0 else { return }
-      RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: downDuration))
+      // Runs the loop for the whole duration: one pass can return early on any other source.
+      let end = Date(timeIntervalSinceNow: downDuration)
+      while Date() < end {
+        RunLoop.current.run(mode: .default, before: end)
+      }
     }
 
     override func mouseUp(with event: NSEvent) {

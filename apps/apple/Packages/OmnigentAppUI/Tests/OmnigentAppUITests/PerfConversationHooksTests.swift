@@ -61,5 +61,35 @@
       #expect(panel.sideChats.map(\.0) == ["", "What does a side chat see?"])
       #expect(panel.sideChats.map(\.1) == [false, true])
     }
+
+    @Test("The panel hooks show and hide the window's panel where it has one, else the chat's own")
+    func panelOwners() {
+      let tab = InspectorTab.allCases[InspectorTab.allCases.count - 1]
+      let window = SessionChromeState(viewChoice: SessionViewChoice()) {}
+      var ownShown = false
+      var ownTab = InspectorTab.allCases[0]
+      let own = (
+        panel: Binding(get: { ownShown }, set: { ownShown = $0 }),
+        tab: Binding(get: { ownTab }, set: { ownTab = $0 })
+      )
+      let showWindows = PerfConversationHooks.showingPanel(
+        window: window, ownPanel: own.panel, ownTab: own.tab)
+      showWindows(tab)
+      #expect(window.panel.isShown)
+      #expect(window.inspectorTab == tab)
+      showWindows(nil)
+      #expect(!window.panel.isShown)
+      #expect(window.inspectorTab == tab, "hiding keeps the tab")
+      #expect(!ownShown && ownTab == InspectorTab.allCases[0], "the chat's own is left alone")
+
+      let showOwn = PerfConversationHooks.showingPanel(
+        window: nil, ownPanel: own.panel, ownTab: own.tab)
+      showOwn(tab)
+      #expect(ownShown)
+      #expect(ownTab == tab)
+      showOwn(nil)
+      #expect(!ownShown)
+      #expect(ownTab == tab)
+    }
   }
 #endif

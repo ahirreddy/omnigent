@@ -24,6 +24,23 @@
       content.perfHooks(Self.names) { if !isHidden { perform($0) } }
     }
 
+    /// Shows the right panel on a tab, or hides it (`nil`): the window's where it shows one, else
+    /// the chat's own. No binding to the window's: making one reads it, so the chat would render
+    /// each time the panel changes.
+    static func showingPanel(
+      window: SessionChromeState?, ownPanel: Binding<Bool>, ownTab: Binding<InspectorTab>
+    ) -> @MainActor (InspectorTab?) -> Void {
+      { tab in
+        if let window {
+          if let tab { window.inspectorTab = tab }
+          window.panel.isShown = tab != nil
+        } else {
+          if let tab { ownTab.wrappedValue = tab }
+          ownPanel.wrappedValue = tab != nil
+        }
+      }
+    }
+
     /// Does what `hook` measures.
     func perform(_ hook: String) {
       switch hook {
