@@ -28,8 +28,8 @@ final class MacNestedSessionFlowUITests: XCTestCase {
     let draft = draftRow(live, app)
     live.shot(app, "nested-composer")
 
-    // Start it on the agent the composer chose: the session opens and nests under the fixture.
-    waitForAgent(live, app)
+    // Start it on the seeded mock agent: the session opens and nests under the fixture.
+    chooseMockAgent(live, app)
     live.send("Plan the next step", in: app)
     let transcript = live.anyTranscript(in: app)
     XCTAssertTrue(transcript.appears(within: 30), "the nested session did not open")
@@ -48,7 +48,6 @@ final class MacNestedSessionFlowUITests: XCTestCase {
     checkMenus(member: memberRow, representative: fixtureRow, live, app)
 
     // Option-Command-A on the open member opens the composer for a peer; leaving drops its row.
-    // The click brings the app back in front of any login page the new agent opened.
     live.clickTitle(of: memberRow, "the member row")
     XCTAssertTrue(transcript.appears(within: 15), "the member is not open")
     app.typeKey("a", modifierFlags: [.command, .option])
@@ -184,14 +183,33 @@ final class MacNestedSessionFlowUITests: XCTestCase {
     return gap >= -1 && gap < member.frame.height
   }
 
-  /// Waits for the agent the composer picks, the first one ready on the source's host: the
-  /// seeded mock agent's harness reports no login there, so its row is disabled.
+  /// Picks the seeded mock agent (`Tools/mock-model.py`) from the custom agents' Other… submenu:
+  /// it answers from the local mock model, where another agent may open a login page instead.
   @MainActor
-  private func waitForAgent(_ live: MacLiveUITestSupport, _ app: XCUIApplication) {
+  private func chooseMockAgent(_ live: MacLiveUITestSupport, _ app: XCUIApplication) {
     let chip = live.element("composer-configuration", in: app)
     XCTAssertTrue(
       live.waitUntil(timeout: 15) {
         chip.exists && chip.isEnabled && chip.label.hasPrefix("Agent, ")
       }, "the composer chose no agent: \(chip.label)")
+    live.click(chip, "the agent picker")
+    let mockAgent = app.menuItems.matching(NSPredicate(format: "title == %@", Self.mockAgentName))
+    let submenus = app.menuItems.matching(
+      NSPredicate(format: "title BEGINSWITH %@", "Other\u{2026}"))
+    // The custom agents' submenu follows the other harnesses' one.
+    for submenu in submenus.allElementsBoundByIndex.reversed()
+    where submenu.isHittable && live.hittable(mockAgent, timeout: 1) == nil {
+      submenu.hover()
+    }
+    guard let item = live.hittable(mockAgent) else {
+      XCTFail("no \(Self.mockAgentName) agent in the picker\n\(app.debugDescription)")
+      return
+    }
+    item.click()
+    let chosen = live.waitUntil { chip.label.contains(Self.mockAgentName) }
+    XCTAssertTrue(chosen, "the composer chose \(chip.label)")
   }
+
+  /// The mock agent's name, as `Tools/mock-model.py` installs it.
+  private static let mockAgentName = "mock-model"
 }
