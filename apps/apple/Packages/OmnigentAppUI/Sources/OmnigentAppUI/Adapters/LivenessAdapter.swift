@@ -2,8 +2,8 @@ import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
 
-/// The session's liveness line under the composer, from the header's runner and host signals
-/// and the runner-offline answers of its terminal reads.
+/// The session's liveness line under the composer, from the header's sandbox launch, its runner
+/// and host signals and the runner-offline answers of its terminal reads.
 enum LivenessAdapter {
   /// The notice, `nil` while the agent is online, unknown, or the session is read-only.
   /// - Parameters:
@@ -15,13 +15,15 @@ enum LivenessAdapter {
       return nil
     }
     let liveness = liveness(header, runnerUnavailable: store.runnerUnavailable != nil)
-    switch liveness {
-    case .online, .unknown: return nil
-    default: break
-    }
-    return SessionLivenessNotice(
+    let launch = SandboxAdapter.launchNote(header.sandboxLaunch)
+    let failedLaunch = launch?.standing == .failed ? launch : nil
+    // A launch that failed is said even before the session reports where it runs.
+    if liveness == .online || (liveness == .unknown && failedLaunch == nil) { return nil }
+    var notice = SessionLivenessNotice(
       liveness: liveness, sessionID: store.sessionID, serverURL: serverURL ?? "",
       wrapper: header.settings?.wrapper, harness: header.settings?.harness)
+    notice.failedLaunch = failedLaunch
+    return notice
   }
 
   /// Whether the viewer can start the session on one of their machines from the app (the web's
@@ -64,6 +66,7 @@ enum LivenessAdapter {
     signals.isTurnActive = header.status == .running
     signals.isSubagent = settings?.parentId != nil
     signals.isOwner = isOwner
+    signals.launch = SandboxAdapter.launchNote(header.sandboxLaunch)
     return SessionLiveness.derive(signals)
   }
 }

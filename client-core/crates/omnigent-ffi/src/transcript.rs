@@ -4,6 +4,7 @@
 use omnigent_core::reducer as core;
 
 use crate::client::ClientCore;
+use crate::sandbox_state::{SandboxLaunch, SandboxProfileName};
 
 /// Who a row belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -280,6 +281,9 @@ pub struct SessionSettings {
     /// Whether the viewer may start side chats here; `None` until the server says.
     #[uniffi(default)]
     pub side_chat_allowed: Option<bool>,
+    /// The profile the session's sandbox launched with.
+    #[uniffi(default)]
+    pub sandbox_profile: Option<SandboxProfileName>,
 }
 
 /// Session metadata shown with the conversation.
@@ -305,6 +309,9 @@ pub struct SessionHeader {
     /// the session as loading, not as an empty read-only session.
     #[uniffi(default)]
     pub is_placeholder: bool,
+    /// The sandbox launch as the stream last reported it, a finished one included.
+    #[uniffi(default)]
+    pub sandbox_launch: Option<SandboxLaunch>,
 }
 
 /// One session-metadata section (usage, plan, children, changed files, ...).
@@ -511,6 +518,7 @@ impl From<core::SessionSettings> for SessionSettings {
             side_chat_source_id: settings.side_chat_source_id,
             routing_mode: settings.routing_mode,
             side_chat_allowed: settings.side_chat_allowed,
+            sandbox_profile: settings.sandbox_profile.map(Into::into),
         }
     }
 }
@@ -527,6 +535,7 @@ impl From<core::SessionHeader> for SessionHeader {
             failure_message: header.failure_message,
             settings: header.settings.map(Into::into),
             is_placeholder: header.metadata_revision.is_none(),
+            sandbox_launch: header.sandbox_launch.map(Into::into),
         }
     }
 }

@@ -47,6 +47,11 @@ struct ConversationToolbar: ToolbarContent {
     }
     ToolbarItemGroup(placement: .primaryAction) {
       let state = items.state
+      #if os(macOS)
+        if let sandbox = state.sandbox {
+          SandboxStatusControl(state: sandbox, actions: items.extras.sandbox)
+        }
+      #endif
       if let presence = state.section("presence"), items.isRegular {
         ViewerStack(viewers: SectionReading.viewers(presence))
       }

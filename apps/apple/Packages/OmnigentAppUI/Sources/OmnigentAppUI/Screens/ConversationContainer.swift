@@ -28,6 +28,8 @@ struct ConversationContainer: View {
   let retry: @MainActor () -> Void
   /// The connected server, for the composer's execution context.
   var server: OmnigentCoreFFI.ConnectedServer?
+  /// Where a session on a host runs, for the titlebar's sandbox status.
+  var hostEnvironment: @MainActor (String) -> SessionEnvironment? = { _ in nil }
   /// Opens the session's terminals and side chats as tabs.
   var tabRoutes: ConversationTabRoutes?
   /// The terminals the agent declares, for New Terminal.
@@ -83,7 +85,7 @@ struct ConversationContainer: View {
       fork: $forkFlow.sheet,
       actions: routed(forkable(actions)), composerActions: composerActions,
       extras: ConversationExtras(
-        sessionActions: forkable(sessionActions), slots: workspaceSlots,
+        sessionActions: forkable(sessionActions), slots: workspaceSlots, sandbox: sandboxActions,
         share: share(over: shareStore), forkActions: forkActions, navigation: navigation,
         menuContext: menuContext, exportTranscript: exportTranscript,
         shareOpened: { [shareStore] in Task { await shareStore?.load() } }),
@@ -155,6 +157,7 @@ struct ConversationContainer: View {
   var state: ConversationViewState {
     var state = ConversationAdapter.screenState(conversation, summary: summary)
     state.shareUnavailableReason = shareUnavailableReason
+    state.sandbox = SandboxAdapter.state(conversation, environment: hostEnvironment)
     if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
     state.agentInfo = conversation.agentInfo.map {
       OmnigentUIComponents.AgentInfo(name: $0.name, tools: $0.tools, policies: $0.policies)
@@ -390,11 +393,5 @@ extension ConversationContainer {
     Task {
       await SessionToolsAdapter.send(conversation, newSession: newSession, routes: routes)
     }
-  }
-
-  /// What the alert reports.
-  var failures: [String] {
-    get { failureList.messages }
-    nonmutating set { failureList.messages = newValue }
   }
 }

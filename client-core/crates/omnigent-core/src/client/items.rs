@@ -12,9 +12,15 @@ use omnigent_protocol::{ConversationItem, FromWire};
 
 use super::requests::{page_query, validate_identifier};
 use super::sessions::{DEFAULT_PAGE_LIMIT, SessionSummary};
-use super::{ClientCore, SessionError, lock};
+use super::{ClientCore, ClientEvent, SessionError, lock};
 use crate::decisions::Decision;
 use crate::http::HttpTransport;
+use crate::sandbox_state::SandboxLaunch;
+
+/// The unfinished sandbox launch a cached summary reports.
+fn launch_of(summary: Option<&SessionSummary>) -> Option<SandboxLaunch> {
+    summary?.configuration.as_ref()?.sandbox_launch.clone()
+}
 
 /// One page of history.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,7 +174,14 @@ impl<T: HttpTransport> ClientCore<T> {
             .map(|request| Decision::from_request(request, session_id))
             .collect();
         let mut state = lock(&self.state);
+        let launch_before = launch_of(state.summaries.get(session_id));
         let summary = state.accept_projection(&decoded.projection, epoch)?;
+        // A sandbox launch moves by stage: the session's row shows the one this read found.
+        if launch_of(Some(&summary)) != launch_before {
+            state.events.push(ClientEvent::SessionsChanged {
+                sessions: vec![summary.clone()],
+            });
+        }
         state.revision = state.revision.wrapping_add(1);
         Ok(ConversationPage {
             revision: state.revision,

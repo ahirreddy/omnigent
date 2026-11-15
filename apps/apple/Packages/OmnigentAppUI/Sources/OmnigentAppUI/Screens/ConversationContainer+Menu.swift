@@ -14,6 +14,14 @@ final class ConversationFailures {
   var messages: [String] = []
 }
 
+extension ConversationContainer {
+  /// What the alert reports.
+  var failures: [String] {
+    get { failureList.messages }
+    nonmutating set { failureList.messages = newValue }
+  }
+}
+
 /// A transcript in the web's `.jsonl` export format, for the save panel.
 struct TranscriptExport: FileDocument {
   static let contentType = contentType(forExtension: "jsonl")

@@ -21,6 +21,12 @@ use super::state::{
     ActivityKind, ConversationSnapshot, Decision, LIVE_PREFIX, ReportedValue, Row, RowRole,
     SessionEventState, SessionHeader, TurnStatus,
 };
+use crate::sandbox_state::SandboxLaunch;
+
+/// The launch the event state reports, as the header carries it.
+fn launch_of(state: &SessionEventState) -> Option<SandboxLaunch> {
+    state.sandbox.as_ref().and_then(SandboxLaunch::of)
+}
 
 /// Response id placeholder for text that streams before any response is known.
 pub(super) const UNIDENTIFIED: &str = "unidentified";
@@ -136,6 +142,7 @@ impl LiveReducer {
             .map(|decision| decision.id.clone())
             .collect();
         let published_sections = sections(&snapshot.event_state);
+        snapshot.header.sandbox_launch = launch_of(&snapshot.event_state);
         Self {
             snap: snapshot,
             response_id: None,
@@ -210,6 +217,7 @@ impl LiveReducer {
             rows,
             ..ChangeSet::default()
         };
+        self.snap.header.sandbox_launch = launch_of(&self.snap.event_state);
         if self.snap.header != checkpoint.header {
             changes.header = Some(self.snap.header.clone());
         }

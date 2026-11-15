@@ -11,9 +11,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use omnigent_protocol::ElicitationRequest;
 use omnigent_protocol::events::{PresenceViewer, Todo};
 use omnigent_protocol::sessions::{
-    BackgroundTaskInfo, McpServerStartup, ModelUsage, NativeModelOption, SandboxStatus,
+    BackgroundTaskInfo, McpServerStartup, ModelUsage, NativeModelOption, SandboxStage,
+    SandboxStatus,
 };
 use serde_json::{Map, Value};
+
+use crate::sandbox_state::{SandboxLaunch, SandboxProfileName};
 
 /// Bound on keyed session records (resources, children, changed-file environments).
 pub const MAX_RECORDS: usize = 500;
@@ -404,6 +407,8 @@ pub struct SessionSettings {
     /// Whether the viewer may start side chats here (`side_chat_allowed`); `None` until a read
     /// says.
     pub side_chat_allowed: Option<bool>,
+    /// The profile the session's sandbox launched with (`sandbox_profile`).
+    pub sandbox_profile: Option<SandboxProfileName>,
 }
 
 /// Session metadata shown with the conversation.
@@ -425,6 +430,9 @@ pub struct SessionHeader {
     pub failure_message: Option<String>,
     /// Harness, model and execution settings, once reported.
     pub settings: Option<SessionSettings>,
+    /// The sandbox launch as last reported, a finished one included. The reducer sets it from
+    /// its event state; a header that has not been through one carries none.
+    pub sandbox_launch: Option<SandboxLaunch>,
     /// The metadata ledger's stamp; newer stamps win (see `reconcile::MetadataLedger`).
     pub metadata_revision: Option<u64>,
 }
@@ -442,6 +450,7 @@ impl SessionHeader {
             permission_level: None,
             failure_message: None,
             settings: None,
+            sandbox_launch: None,
             metadata_revision: None,
         }
     }
@@ -535,6 +544,9 @@ pub struct SessionEventState {
     pub terminal_pending: Option<bool>,
     /// Managed sandbox launch progress.
     pub sandbox: Option<SandboxStatus>,
+    /// A session read said no launch is in flight (`sandbox_status: null`): merging it makes
+    /// a launch that a missed `ready` event left behind ready.
+    pub sandbox_settled: Option<bool>,
     /// Live session resources by id.
     pub resources: Option<BTreeMap<String, Map<String, Value>>>,
     /// Terminals that produced output.
@@ -576,6 +588,13 @@ impl SessionEventState {
         take_newer(&mut self.viewers, newer.viewers.as_ref());
         take_newer(&mut self.mcp_startup, newer.mcp_startup.as_ref());
         take_newer(&mut self.terminal_pending, newer.terminal_pending.as_ref());
+        if newer.sandbox_settled == Some(true)
+            && let Some(sandbox) = &mut self.sandbox
+        {
+            sandbox.stage = SandboxStage::Ready;
+            sandbox.error = None;
+            sandbox.details = None;
+        }
         take_newer(&mut self.sandbox, newer.sandbox.as_ref());
         take_newer(&mut self.resources, newer.resources.as_ref());
         take_newer(

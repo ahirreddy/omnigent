@@ -5,6 +5,9 @@ public import Observation
 /// (the web's `useSessionLiveness`). Each case has one affordance: nothing, a passive
 /// "Connecting…", a quiet asleep line, or a reconnect row with the reconnect sheet.
 nonisolated public enum SessionLiveness: Hashable, Sendable {
+  /// The session's managed sandbox is launching or waits on the user: there is nothing to
+  /// reconnect yet, and the line says where the launch stands.
+  case launching(SandboxLaunchNote)
   /// The runner is connected.
   case online
   /// A just-sent turn is waking the runner or a resumable host.
@@ -35,6 +38,9 @@ nonisolated public enum SessionLiveness: Hashable, Sendable {
     public var isSubagent = false
     /// The viewer owns the session.
     public var isOwner = true
+    /// The sandbox launch that has not finished. Until it fails it speaks before the host and
+    /// the runner; a failed one leaves the session as they report it.
+    public var launch: SandboxLaunchNote?
 
     /// Creates the signals; the rest default to an idle, owned, top-level session.
     /// - Parameters:
@@ -53,6 +59,7 @@ nonisolated public enum SessionLiveness: Hashable, Sendable {
   /// - Parameter signals: What the session reports.
   /// - Returns: The liveness.
   public static func derive(_ signals: Signals) -> Self {
+    if let launch = signals.launch, launch.standing != .failed { return .launching(launch) }
     if signals.runnerOnline == true { return .online }
     let hasHost = !(signals.hostID ?? "").isEmpty
     if hasHost, signals.hostOnline == false {
@@ -75,6 +82,45 @@ nonisolated public enum SessionLiveness: Hashable, Sendable {
   }
 }
 
+/// Where an unfinished sandbox launch stands, for the lines that would otherwise call its
+/// session disconnected.
+nonisolated public struct SandboxLaunchNote: Hashable, Sendable {
+  /// Whether the launch moves, waits or stopped.
+  public enum Standing: Hashable, Sendable {
+    /// A stage is under way.
+    case progress
+    /// The launch waits on the user.
+    case waiting
+    /// The launch failed.
+    case failed
+  }
+
+  /// The stage in words, for example "Cloning repository" or "Sandbox launch failed".
+  public var label: String
+  /// Whether it moves, waits or stopped.
+  public var standing: Standing
+  /// What the user must do, or why it failed.
+  public var note: String?
+
+  /// Creates a note.
+  /// - Parameters:
+  ///   - label: The stage in words.
+  ///   - standing: Whether it moves, waits or stopped.
+  ///   - note: What the user must do, or why it failed.
+  public init(label: String, standing: Standing = .progress, note: String? = nil) {
+    self.label = label
+    self.standing = standing
+    self.note = note
+  }
+
+  /// The label, followed by an ellipsis while it moves or by the note when there is one.
+  public var line: String {
+    if standing == .progress { return "\(label)\u{2026}" }
+    guard let note, !note.isEmpty else { return label }
+    return "\(label): \(note)"
+  }
+}
+
 /// The liveness line under the composer and, for an unreachable session, what the reconnect
 /// sheet shows (the web's `ReconnectSessionDialog`).
 nonisolated public struct SessionLivenessNotice: Hashable, Sendable {
@@ -82,6 +128,8 @@ nonisolated public struct SessionLivenessNotice: Hashable, Sendable {
   public var liveness: SessionLiveness
   /// The command the user runs on the machine, `nil` when they cannot reach it.
   public var command: String?
+  /// The sandbox launch that failed: the title and the line name it instead of a disconnect.
+  public var failedLaunch: SandboxLaunchNote?
 
   /// Creates the notice.
   /// - Parameters:
@@ -107,23 +155,31 @@ nonisolated public struct SessionLivenessNotice: Hashable, Sendable {
     }
   }
 
-  /// The asleep or starting line, `nil` when the session is unreachable or online.
+  /// The launch, asleep or starting line, `nil` when the session is unreachable or online.
   public var line: String? {
-    switch liveness {
+    if let failedLaunch, !liveness.isUnreachable { return failedLaunch.line }
+    return switch liveness {
+    case .launching(let launch): launch.line
     case .starting: "Connecting\u{2026}"
     case .asleep: "Agent is asleep \u{2014} send a message to reconnect"
     default: nil
     }
   }
 
-  /// "Host is offline" or "Agent disconnected", the web's titles.
+  /// "Host is offline" or "Agent disconnected", the web's titles, or the failed launch.
   public var title: String {
+    if let failedLaunch { return failedLaunch.label }
     if case .hostOffline = liveness { return "Host is offline" }
     return "Agent disconnected"
   }
 
-  /// What to do, in the user's terms.
+  /// What to do, in the user's terms, after why the launch failed when it did.
   public var message: String {
+    guard let failedLaunch else { return advice }
+    return "\(failedLaunch.line). \(advice)"
+  }
+
+  private var advice: String {
     switch liveness {
     case .hostOffline(isOwner: true):
       "This session\u{2019}s host is offline. Run the command below from the host machine to reconnect."

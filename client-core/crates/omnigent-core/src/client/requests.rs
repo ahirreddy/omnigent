@@ -143,7 +143,7 @@ pub(crate) fn rejection_message(body: &[u8], status: u16) -> String {
 }
 
 /// The server's `error.code`, when the body is an Omnigent error.
-fn error_code(body: &[u8]) -> Option<String> {
+pub(crate) fn error_code(body: &[u8]) -> Option<String> {
     let parsed: Value = serde_json::from_slice(body).ok()?;
     parsed
         .get("error")?
@@ -545,7 +545,7 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn write_allowing(
+    pub(crate) async fn write_allowing(
         &self,
         prepared: Prepared,
         allowed: Option<u16>,
