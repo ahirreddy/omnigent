@@ -16,21 +16,8 @@
         layout: .regular)
     }
 
-    /// Whether any pixel is strongly colored in `hex`'s hue. Hues survive the display's color
-    /// matching, which shifts exact values.
     private func shows(_ hex: UInt32, in rendered: RenderSupport.Rendered) -> Bool {
-      let image = rendered.image
-      let wanted = NSColor(Color(hex: hex)).usingColorSpace(.deviceRGB)?.hueComponent ?? 0
-      for row in 0..<image.pixelsHigh {
-        for column in 0..<image.pixelsWide {
-          guard let color = image.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB),
-            color.saturationComponent > 0.4, color.brightnessComponent > 0.4
-          else { continue }
-          let distance = abs(color.hueComponent - wanted)
-          if min(distance, 1 - distance) < 0.05 { return true }
-        }
-      }
-      return false
+      RenderSupport.shows(hex, in: rendered)
     }
 
     @Test("Every harness the app names by brand has a mark whose glyph fits its square")
@@ -125,17 +112,9 @@
     @Test("A session row leads with the mark unless the setting turns it off")
     func row() throws {
       func row(_ style: HarnessIconStyle) throws -> RenderSupport.Rendered {
-        let session = SessionSummary(id: "s", title: "Fix the build", updatedAt: 0)
-        let actions = SessionListActions()
-        return try RenderSupport.render(
-          SessionRow(
-            session: session, info: SessionRowInfo(harness: "claude-native"), isUnread: false,
-            attention: 0, details: [], harnessIcon: style, now: Date(timeIntervalSince1970: 60),
-            menu: SessionRowMenu(
-              session: session, isUnread: false, isShared: false, pinLimitReached: false,
-              projects: [], actions: actions, rename: {}, confirmDelete: {}, confirmLeave: {},
-              confirmStop: {})),
-          width: 280, height: 32, scheme: .dark, layout: .regular)
+        try RenderSupport.render(
+          HarnessActivityRow(style: style), width: 280, height: 32, scheme: .dark,
+          layout: .regular)
       }
       #expect(shows(0xD97757, in: try row(.color)))
       #expect(!shows(0xD97757, in: try row(.monochrome)))
@@ -162,10 +141,17 @@
       #expect(!shows(0x00FF00, in: try row(.hidden)))
     }
 
-    @Test("The style is monochrome until chosen, and display options saved with one still load")
+    @Test("The style is Color while active until chosen, a past choice keeps its stored value")
     func setting() throws {
-      #expect(HarnessIconStyle.default == .monochrome)
-      #expect(HarnessIconStyle.allCases.map(\.title) == ["Color", "Monochrome", "Off"])
+      #expect(HarnessIconStyle.default == .colorWhileActive)
+      #expect(
+        HarnessIconStyle.allCases.map(\.title)
+          == ["Color while active", "Always color", "Always monochrome", "No icon"])
+      #expect(HarnessIconStyle(rawValue: "color") == .color)
+      #expect(HarnessIconStyle(rawValue: "monochrome") == .monochrome)
+      #expect(HarnessIconStyle(rawValue: "hidden") == .hidden)
+      #expect(HarnessIconStyle(rawValue: "color-while-active") == .colorWhileActive)
+      // Display options saved with the old style still load.
       let saved = Data(
         (#"{"show":"all","groupBy":"default","sortBy":"updated","#
           + #""details":["repo"],"harnessIcon":"color"}"#).utf8)
@@ -180,11 +166,16 @@
       defer { screen.close() }
       #expect(try screen.shows("Harness icons"))
       let picker = try #require(
-        screen.popUps.first { $0.title == HarnessIconStyle.monochrome.title })
+        screen.popUps.first { $0.title == HarnessIconStyle.colorWhileActive.title })
+      #expect(try screen.titles(inPopUp: picker) == HarnessIconStyle.allCases.map(\.title))
       try screen.choose(HarnessIconStyle.color.title, inPopUp: picker)
       #expect(store.string(forKey: InterfacePreferences.harnessIconKey) == "color")
+      try screen.choose(HarnessIconStyle.monochrome.title, inPopUp: picker)
+      #expect(store.string(forKey: InterfacePreferences.harnessIconKey) == "monochrome")
       try screen.choose(HarnessIconStyle.hidden.title, inPopUp: picker)
       #expect(store.string(forKey: InterfacePreferences.harnessIconKey) == "hidden")
+      try screen.choose(HarnessIconStyle.colorWhileActive.title, inPopUp: picker)
+      #expect(store.string(forKey: InterfacePreferences.harnessIconKey) == "color-while-active")
     }
 
     @Test("The session list draws the mark by the stored style, and follows a change at once")

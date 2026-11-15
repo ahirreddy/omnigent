@@ -77,7 +77,9 @@ public struct InterfaceAppearanceSections: View {
         ForEach(HarnessIconStyle.allCases, id: \.self) { Text($0.title).tag($0) }
       } label: {
         Text("Harness icons")
-        Text("The mark at the start of each session: in its brand colors, in one color, or off.")
+        Text(
+          "The mark at the start of each session and on a new session's agent. Color while "
+            + "active shows a session's brand colors while it runs or its sandbox is up.")
       }
       .accessibilityIdentifier("settings.harness-icon")
     }

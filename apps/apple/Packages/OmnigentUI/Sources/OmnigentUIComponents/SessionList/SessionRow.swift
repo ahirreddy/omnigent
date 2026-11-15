@@ -14,7 +14,7 @@ struct SessionRow: View {
   /// Pending decisions the user can answer, shown in the Needs you capsule when more than one.
   let attention: Int
   let details: Set<SessionRowDetail>
-  /// Whether the harness's mark leads the row, and in which colors.
+  /// Whether the harness's mark leads the row, and in which colors (``isActive(_:info:)``).
   var harnessIcon = HarnessIconStyle.hidden
   /// The time the row's age is counted from; `nil` follows the clock.
   let now: Date?
@@ -58,7 +58,9 @@ struct SessionRow: View {
           .accessibilityHidden(true)
       }
       if harnessIcon != .hidden {
-        HarnessIcon(harness: info.harness, style: harnessIcon)
+        SessionHarnessMark(
+          harness: info.harness,
+          style: harnessIcon.resolved(isActive: Self.isActive(session, info: info)))
       }
       VStack(alignment: .leading, spacing: 1) {
         if let inlineRename {
@@ -137,6 +139,16 @@ struct SessionRow: View {
   /// How the row's parts read: as one element, or each on its own while the title is edited.
   static func accessibilityChildren(isRenaming: Bool) -> AccessibilityChildBehavior {
     isRenaming ? .contain : .combine
+  }
+
+  /// Whether the session is alive for its harness mark: a turn runs or waits on the user, or its
+  /// sandbox is launching or up. An archived session never is.
+  static func isActive(_ session: SessionSummary, info: SessionRowInfo) -> Bool {
+    guard !session.isArchived else { return false }
+    switch session.attention {
+    case .needsYou, .working: return true
+    case .failed, .unread, .idle: return info.hasLiveSandbox
+    }
   }
 
   @ViewBuilder private var trailing: some View {
@@ -230,6 +242,22 @@ struct InlineRename {
   let commit: () -> Void
   /// Abandons the edit.
   let cancel: () -> Void
+}
+
+/// A row's harness mark, crossfading as the session comes and goes between color and one color.
+private struct SessionHarnessMark: View {
+  let harness: String?
+  let style: HarnessIconStyle
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  var body: some View {
+    ZStack {
+      HarnessIcon(harness: harness, style: style)
+        .id(style)
+        .transition(.opacity)
+    }
+    .animation(reduceMotion ? nil : Theme.Motion.feedback, value: style)
+  }
 }
 
 private struct InlineTitleField: View {

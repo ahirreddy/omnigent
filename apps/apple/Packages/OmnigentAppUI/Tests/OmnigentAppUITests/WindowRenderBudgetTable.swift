@@ -132,6 +132,14 @@ import Testing
             text.contains("7") && !text.contains("6m"), "its row counts the requests: \(text)")
         }),
       WindowInteraction(
+        name: "a session that starts running",
+        budget: ["session row": 1],
+        perform: { try $0.change(BudgetWindow.other) { $0.status = .running } },
+        verify: { window in
+          let text = try window.screen.shownText()
+          #expect(text.contains("Gamma") && !text.contains("6m"), "a spinner for its time: \(text)")
+        }),
+      WindowInteraction(
         name: "a session marked unread",
         budget: ["session row": 1],
         perform: { $0.list.unreadIDs.insert(BudgetWindow.other) },

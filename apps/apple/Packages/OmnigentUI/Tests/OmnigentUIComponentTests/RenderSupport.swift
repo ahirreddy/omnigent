@@ -103,6 +103,32 @@
       return samples == 0 ? 0 : total / Double(samples)
     }
 
+    /// Whether any pixel is strongly colored in `hex`'s hue. Hues survive the display's color
+    /// matching, which shifts exact values.
+    static func shows(_ hex: UInt32, in rendered: Rendered) -> Bool {
+      let image = rendered.image
+      let wanted = NSColor(Color(hex: hex)).usingColorSpace(.deviceRGB)?.hueComponent ?? 0
+      for row in 0..<image.pixelsHigh {
+        for column in 0..<image.pixelsWide {
+          guard let color = image.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB),
+            color.saturationComponent > 0.4, color.brightnessComponent > 0.4
+          else { continue }
+          let distance = abs(color.hueComponent - wanted)
+          if min(distance, 1 - distance) < 0.05 { return true }
+        }
+      }
+      return false
+    }
+
+    /// What an offscreen window's view draws now.
+    static func capture(_ host: NSView) throws -> Rendered {
+      guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+        throw RenderError.bitmapUnavailable
+      }
+      host.cacheDisplay(in: host.bounds, to: bitmap)
+      return Rendered(image: bitmap)
+    }
+
     /// The fraction of pixels that differ from the most common color: a cheap "something
     /// rendered" check that catches blank or placeholder output.
     static func inkCoverage(_ rendered: Rendered) -> Double {

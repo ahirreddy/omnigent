@@ -1,9 +1,11 @@
 import SwiftUI
 
 /// A new session's choices on the Mac, each its own menu and in the order they are made: the
-/// agent (led by its harness's mark in color), then that agent's model, then the model's effort.
+/// agent (led by its harness's mark, in color unless the setting says otherwise), then that
+/// agent's model, then the model's effort.
 struct StartConfigurationMenus: View {
   let menu: ConfigurationMenu
+  @AppStorage(InterfacePreferences.harnessIconKey) private var iconStyle = HarnessIconStyle.default
 
   private var configuration: ComposerConfiguration { menu.configuration }
 
@@ -12,9 +14,12 @@ struct StartConfigurationMenus: View {
       chip(identifier: "composer-configuration", name: "Agent", value: configuration.agentTitle) {
         menu.agentChoices
       } label: {
-        HarnessIcon(
-          harness: configuration.harness ?? configuration.selectedAgent?.harness, style: .color,
-          size: 14)
+        // No session runs yet, so Color while active draws it in color.
+        if iconStyle != .hidden {
+          HarnessIcon(
+            harness: configuration.harness ?? configuration.selectedAgent?.harness,
+            style: iconStyle.resolved(isActive: true), size: 14)
+        }
         Text(configuration.agentTitle).lineLimit(1)
       }
       if menu.actions.selectModel != nil, offersModels {

@@ -263,4 +263,12 @@ struct SandboxStatusAdapterTests {
     #expect(info(failed).isDisconnected)
     #expect(info(failed).disconnectedLabel == "Sandbox launch failed: No capacity")
   }
+
+  @Test("A phase is alive while it launches, wakes or is up, and not at rest or failed")
+  func alivePhases() {
+    let alive: [SandboxPhase] = [.launching, .actionRequired, .waking, .running, .agentAsleep]
+    let resting: [SandboxPhase] = [.failed, .asleep, .offline, .unknown]
+    for phase in alive { #expect(SandboxAdapter.isAlive(phase), "\(phase)") }
+    for phase in resting { #expect(!SandboxAdapter.isAlive(phase), "\(phase)") }
+  }
 }

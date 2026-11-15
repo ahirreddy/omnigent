@@ -177,6 +177,8 @@ enum SidebarAdapter {
         ?? false)
     info.createdBy = isOwned ? (session.owner == nil ? nil : "You") : session.owner
     info.runsOnHost = configuration?.hostId != nil
+    info.hasLiveSandbox = SandboxAdapter.isAlive(
+      session, isOwned: isOwned, environments: environments)
     if let launch = SandboxAdapter.launchNote(configuration?.sandboxLaunch) {
       // A sandbox on its way, or one that never came up, is neither local nor just disconnected.
       info.environment = launch.label

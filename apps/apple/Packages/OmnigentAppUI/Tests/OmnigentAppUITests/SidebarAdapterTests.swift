@@ -130,6 +130,68 @@ struct SidebarAdapterTests {
         .map(\.environment) == [.remote])
   }
 
+  /// Whether the row of a session on host `sbx`, its runner connected, says its sandbox is
+  /// alive once `adjust` changes it. `environments` is the host list, empty until it is read.
+  private func hasLiveSandbox(
+    status: OmnigentCoreFFI.SessionListStatus = .idle,
+    environments: [String: SessionEnvironment] = [
+      "sbx": .sandbox(label: "Modal Sandbox"), "mac": .thisMachine,
+    ],
+    _ adjust: (inout OmnigentCoreFFI.SessionConfiguration) -> Void = { _ in }
+  ) -> Bool {
+    var configuration = ConversationFixtures.configuration(harness: "codex-native")
+    configuration.hostId = "sbx"
+    adjust(&configuration)
+    return SidebarAdapter.rowInfo(
+      ConversationFixtures.summary("conv", status: status, configuration: configuration),
+      isOwned: true, environments: environments
+    ).hasLiveSandbox
+  }
+
+  /// Unbound, as before the sandbox's host is up, with a launch at `stage`.
+  private func launched(_ stage: SandboxLaunchStage) -> (
+    inout OmnigentCoreFFI.SessionConfiguration
+  ) -> Void {
+    { configuration in
+      configuration.hostId = nil
+      configuration.hostOnline = nil
+      configuration.runnerOnline = false
+      configuration.sandboxLaunch = SandboxLaunch(
+        stage: stage, provider: "example", details: nil, error: nil)
+    }
+  }
+
+  @Test("Row info says whether the session's own sandbox is alive, from the list alone")
+  func rowSandboxLiveness() {
+    // Its runner connected, or the sandbox up with its agent asleep.
+    let agentAsleep = hasLiveSandbox { $0.runnerOnline = false }
+    #expect(hasLiveSandbox())
+    #expect(agentAsleep)
+    // Stopped or not reported, it rests; a turn under way wakes it.
+    let stopped: (inout OmnigentCoreFFI.SessionConfiguration) -> Void = {
+      $0.hostOnline = false
+      $0.runnerOnline = false
+    }
+    #expect(!hasLiveSandbox(stopped))
+    #expect(hasLiveSandbox(status: .running, stopped))
+    let unreported = hasLiveSandbox {
+      $0.hostOnline = nil
+      $0.runnerOnline = nil
+    }
+    #expect(!unreported)
+    // A launch under way or waiting on the user is alive; a failed one is not.
+    #expect(hasLiveSandbox(launched(.provisioning)))
+    #expect(hasLiveSandbox(launched(.actionRequired)))
+    #expect(!hasLiveSandbox(launched(.failed)))
+    // A machine, a child session, an unread host list and no configuration have none.
+    let onMachine = hasLiveSandbox { $0.hostId = "mac" }
+    let child = hasLiveSandbox { $0.parentId = "conv_parent" }
+    #expect(!onMachine)
+    #expect(!child)
+    #expect(!hasLiveSandbox(environments: [:]))
+    #expect(!SidebarAdapter.rowInfo(session("s"), isOwned: true).hasLiveSandbox)
+  }
+
   @Test("Display options persist and bad data falls back to the defaults")
   func displayDefaults() throws {
     let defaults = try #require(UserDefaults(suiteName: "SidebarAdapterTests"))
