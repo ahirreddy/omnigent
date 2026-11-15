@@ -249,7 +249,7 @@ extension AutomationsScreenTests {
     // Each press is with no field focused, so the key goes to the sheet's default button.
     _ = screen.activeWindow.makeFirstResponder(nil)
     try screen.press(keyCode: 36, characters: "\r")
-    try await pause(screen, .milliseconds(100))
+    try await Task.sleep(for: .milliseconds(100))
     #expect(server.requests("POST", "/v1/scheduled-tasks").isEmpty, "nothing to save yet")
     try typeAFullDraft(screen)
     _ = screen.activeWindow.makeFirstResponder(nil)

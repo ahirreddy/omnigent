@@ -73,7 +73,7 @@ struct ConnectedWindowFlowTests {
     try await settle(mounted.screen, until: "the reload") {
       server.requests("GET", "/v1/sessions").count > reads
     }
-    try await pause(mounted.screen, .milliseconds(300))
+    try await Task.sleep(for: .milliseconds(300))
     #expect(mounted.selection.page == .session("conv_new"))
     #expect(list.sessionsByID["conv_new"]?.title == "hello")
   }
@@ -137,7 +137,7 @@ struct ConnectedWindowFlowTests {
     try await settle(mounted.screen, until: "the request") {
       !server.requests("POST", "/v1/sessions/conv_a/fork").isEmpty
     }
-    try await pause(mounted.screen)
+    try await Task.sleep(for: .milliseconds(60))
     #expect(mounted.view.sidebarForkPresented.wrappedValue)
   }
 

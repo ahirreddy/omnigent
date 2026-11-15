@@ -112,7 +112,7 @@ struct NewSessionContainerTests {
     try await settle(screen, untilShowing: "Create Custom Agent")
     #expect(try screen.shows("Cancel"))
     _ = try pressShortcut(screen, keyCode: 53, characters: "\u{1b}", modifiers: [])
-    try await pause(screen)
+    try await Task.sleep(for: .milliseconds(60))
     #expect(server.requests("POST", "/v1/agents").isEmpty)
   }
 

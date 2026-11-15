@@ -48,7 +48,7 @@ extension ConnectedWindowFlowTests {
     }
     // The third place has no pin: the key is taken, and the window stays where it is.
     #expect(try pressPinned("3", keyCode: 20, in: mounted))
-    try await pause(mounted.screen, .milliseconds(100))
+    try await Task.sleep(for: .milliseconds(100))
     #expect(mounted.selection.page == .session(pinned[0]))
   }
 }

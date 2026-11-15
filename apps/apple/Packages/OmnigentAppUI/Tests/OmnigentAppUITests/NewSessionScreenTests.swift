@@ -110,7 +110,7 @@ struct NewSessionScreenTests {
     UserDefaults.standard.set(saved, forKey: key)
     screen.settle(0.2)
     #expect(withSetting == ["hello\n"], "Return adds a line while Command-Return sends")
-    try await pause(screen, .milliseconds(150))
+    try await Task.sleep(for: .milliseconds(150))
     #expect(server.requests("POST", "/v1/sessions").isEmpty, "and starts nothing")
 
     try screen.press(keyCode: 36, characters: "\r")
@@ -163,14 +163,14 @@ struct NewSessionScreenTests {
     let (screen, _) = try await page(server)
     defer { screen.close() }
     try screen.choose("box", in: try await menu(screen, at: Self.hostMenu, onceOffering: "box"))
-    try await pause(screen, .milliseconds(120))
+    try await Task.sleep(for: .milliseconds(120))
     let shown = try screen.shownText()
     #expect(shown.contains { $0.contains("box") }, "\(shown)")
     #expect(!shown.contains { $0.contains("recent") }, "\(shown)")
     #expect(!server.requests("GET", "/v1/hosts/box/filesystem").isEmpty)
     try screen.type("hello")
     try screen.press(keyCode: 36, characters: "\r")
-    try await pause(screen)
+    try await Task.sleep(for: .milliseconds(60))
     let body = try #require(try server.posted("/v1/sessions").first)
     #expect(body["host_id"] as? String == "box")
     #expect(body["workspace"] as? String != "/work/recent", "that path belongs to the other host")
@@ -223,9 +223,9 @@ struct NewSessionScreenTests {
     let (screen, opened) = try await page(server)
     defer { screen.close() }
     _ = try await typeAndStart(screen, server)
-    try await pause(screen, .milliseconds(150))
+    try await Task.sleep(for: .milliseconds(150))
     try screen.press(keyCode: 36, characters: "\r")
-    try await pause(screen)
+    try await Task.sleep(for: .milliseconds(60))
     #expect(server.requests("POST", "/v1/sessions").count == 1, "creation is never repeated")
     #expect(opened.sessions.isEmpty)
   }
@@ -244,7 +244,7 @@ struct NewSessionScreenTests {
     }
     try screen.type("hello")
     try screen.press(keyCode: 36, characters: "\r")
-    try await pause(screen)
+    try await Task.sleep(for: .milliseconds(60))
     #expect(server.requests("POST", "/v1/sessions").isEmpty)
     let shown = try screen.shownText()
     #expect(shown.contains { $0.contains("host") || $0.contains("Connect") }, "\(shown)")

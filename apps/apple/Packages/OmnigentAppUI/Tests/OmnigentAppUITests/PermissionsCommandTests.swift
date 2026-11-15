@@ -119,7 +119,7 @@ struct PermissionsCommandTests {
     SystemSideEffects.answer(
       alert: NSApplication.ModalResponse(rawValue: cancel), for: screen.window)
     try await sendPermissions(screen, composer)
-    try await pause(screen, .milliseconds(300))
+    try await Task.sleep(for: .milliseconds(300))
     #expect(SystemSideEffects.record.alertMessages.count == 1)
     #expect(server.requests("PATCH", Self.path).isEmpty)
   }

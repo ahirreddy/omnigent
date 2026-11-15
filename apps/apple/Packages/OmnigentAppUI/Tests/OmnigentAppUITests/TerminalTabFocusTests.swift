@@ -53,7 +53,7 @@ struct TerminalTabFocusTests {
       terminalHasKeyboard(screen)
     }
     tabs.select(chat.id)
-    try await pause(screen, .milliseconds(300))
+    try await Task.sleep(for: .milliseconds(300))
     #expect(!terminalHasKeyboard(screen))
     tabs.select(shell.id)
     try await settle(screen, until: "the terminal to take the keyboard back") {
@@ -70,7 +70,7 @@ struct TerminalTabFocusTests {
     tabs.open(terminal)
     try await pause(screen, .milliseconds(30))
     tabs.select(chat.id)
-    try await pause(screen, .milliseconds(400))
+    try await Task.sleep(for: .milliseconds(400))
     #expect(tabs.selected?.id == chat.id)
     #expect(!terminalHasKeyboard(screen))
   }
