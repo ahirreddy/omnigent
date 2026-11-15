@@ -4,7 +4,7 @@ import SwiftUI
   import AppKit
 #endif
 
-/// The Mac's own dictation (Edit › Start Dictation), for a host without its own dictate action.
+/// The Mac's own dictation (Edit › Start Dictation), which Mic starts.
 enum SystemDictation {
   /// Starts dictation into the focused text view.
   /// - Returns: Whether a responder took the request.

@@ -116,17 +116,19 @@
       #expect(log.events == ["stop"])
     }
 
-    @Test("Mic runs the host's dictation; Option-Command-V is its shortcut")
-    func dictation() throws {
+    @Test("Mic starts the Mac's dictation; Option-Command-V is its shortcut")
+    func dictation() async throws {
       let model = ComposerScreenModel(state: bare())
       let screen = openComposer(model, log.actions)
       defer { screen.close() }
+      DictationStub.count = 0
       try screen.tapButton(0)
-      #expect(log.events == ["dictate"])
+      #expect(try await screen.eventually { DictationStub.count == 1 })
       let handled = try screen.pressShortcut(
         keyCode: 9, characters: "v", modifiers: [.command, .option])
       #expect(handled)
-      #expect(log.events == ["dictate", "dictate"])
+      #expect(try await screen.eventually { DictationStub.count == 2 })
+      #expect(log.events.isEmpty)
     }
 
     @Test("Mic is disabled where the composer takes no input")
@@ -135,8 +137,10 @@
       let model = ComposerScreenModel(state: state)
       let screen = openComposer(model, log.actions)
       defer { screen.close() }
+      let started = DictationStub.count
       try screen.tapButton(0)
-      #expect(!log.events.contains("dictate"))
+      screen.settle()
+      #expect(DictationStub.count == started)
     }
 
     @Test("Shift-Command-E expands the editor and again collapses it")
@@ -196,15 +200,13 @@
 
     @Test("Add leaves out what the host can't do, and hides itself when that's everything")
     func addMenuReducesToNothing() throws {
-      var actions = ComposerActions(send: {})
-      actions.extras.dictate = {}
+      let actions = ComposerActions(send: {})
       let model = ComposerScreenModel(state: bare { $0.acceptsAttachments = false })
       let screen = openComposer(model, actions)
       defer { screen.close() }
       #expect(screen.menus.isEmpty)
 
-      var noExtras = ComposerActions(send: {}, addAttachments: { _ in })
-      noExtras.extras.dictate = {}
+      let noExtras = ComposerActions(send: {}, addAttachments: { _ in })
       let other = ComposerScreenModel(state: bare())
       let otherScreen = openComposer(other, noExtras)
       defer { otherScreen.close() }

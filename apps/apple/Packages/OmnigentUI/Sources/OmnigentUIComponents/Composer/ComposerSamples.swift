@@ -115,10 +115,7 @@ enum ComposerSamples {
           ModelOption(id: "sonnet", displayName: "Claude Sonnet 5"),
         ]),
       placeholder: "Describe a task to start a new session\u{2026}", hosts: PreviewData.hosts,
-      tray: ComposerTray(
-        directory: "/Users/ahir/src/universe",
-        recentDirectories: ["/Users/ahir/src/universe", "/Users/ahir/src/omnigent"],
-        worktree: "No worktree", worktrees: ["auth-refresh", "release-2026.11"]),
+      tray: ComposerTray(directory: "/Users/ahir/src/universe"),
       slashCommands: PreviewData.slashCommands, purpose: .start,
       context: ExecutionContext(
         agent: "Claude Code", harness: "claude-native", host: "Ahir's MacBook Pro",

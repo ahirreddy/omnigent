@@ -41,7 +41,6 @@ extension PlaygroundModel {
         selectHost: { [weak self] host in self?.composer.hosts?.selectedID = host.id },
         selectApprovalMode: { [weak self] mode in self?.composer.approvalModes?.selectedID = mode.id
         },
-        dictate: {},
         sendQueuedNow: { [weak self] message in
           self?.composer.queue.removeAll { $0.id == message.id }
         },
@@ -62,12 +61,6 @@ extension PlaygroundModel {
         selectHost: { [weak self] host in self?.startComposer.hosts?.selectedID = host.id },
         selectApprovalMode: { [weak self] mode in
           self?.startComposer.approvalModes?.selectedID = mode.id
-        },
-        dictate: {},
-        selectDirectory: { [weak self] path in self?.startComposer.tray?.directory = path },
-        openFolder: {},
-        selectWorktree: { [weak self] name in
-          self?.startComposer.tray?.worktree = name ?? "No worktree"
         },
         newSideChat: {}, setGoal: {}, togglePlan: {}))
   }

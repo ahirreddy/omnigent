@@ -28,6 +28,11 @@
     /// Earlier prompts, oldest first; `nil` until a test wires them through `history`.
     var prompts: [String] = []
 
+    init() {
+      // Mic starts the Mac's own dictation: a click on it must never reach the real one.
+      DictationStub.install()
+    }
+
     private func recorder(_ name: String) -> @MainActor () -> Void {
       { [self] in events.append(name) }
     }
@@ -42,10 +47,6 @@
         selectHost: { [self] in events.append("host:\($0.id)") },
         connectHost: recorder("connectHost"),
         selectApprovalMode: { [self] in events.append("mode:\($0.id)") },
-        dictate: recorder("dictate"),
-        selectDirectory: recorder("directory"),
-        openFolder: recorder("openFolder"),
-        selectWorktree: { [self] in events.append("worktree:\($0 ?? "none")") },
         newSideChat: recorder("sideChat"),
         setGoal: recorder("goal"),
         togglePlan: recorder("plan"),

@@ -76,11 +76,9 @@ nonisolated public struct ExecutionContext: Hashable, Sendable {
   }
 
   /// `agent · host · repository / branch`, skipping what is unknown.
-  /// - Parameter includingWorkspace: Include the workspace (off where a folder picker shows it).
   /// - Returns: The line.
-  public func summary(includingWorkspace: Bool = true) -> String {
-    let parts = [Self.nonEmpty(agent), Self.nonEmpty(host), includingWorkspace ? workspace : nil]
-      .compactMap(\.self)
+  public func summary() -> String {
+    let parts = [Self.nonEmpty(agent), Self.nonEmpty(host), workspace].compactMap(\.self)
     return parts.isEmpty ? "Execution context" : parts.joined(separator: " \u{00B7} ")
   }
 

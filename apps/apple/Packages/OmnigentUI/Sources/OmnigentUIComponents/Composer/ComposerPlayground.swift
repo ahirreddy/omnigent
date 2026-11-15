@@ -138,8 +138,7 @@ struct ComposerPlayground: View {
         selectHost: { host in
           start = host.isOnline ? ComposerSamples.start : ComposerSamples.startUnavailable
           start.hosts?.selectedID = host.id
-        },
-        selectDirectory: { start.tray?.directory = $0 }, openFolder: {}))
+        }))
   }
 }
 

@@ -5,22 +5,19 @@ import SwiftUI
 /// sandbox and directory.
 struct ExecutionContextRow: View {
   let context: ExecutionContext
-  var includesWorkspace = true
 
   @State private var isPresented: Bool
 
   /// Creates the row.
   /// - Parameters:
   ///   - context: What to show.
-  ///   - includesWorkspace: Show the workspace in the line (off when a folder picker shows it).
   ///   - isPresented: Start with the details open (playground captures).
-  init(context: ExecutionContext, includesWorkspace: Bool = true, isPresented: Bool = false) {
+  init(context: ExecutionContext, isPresented: Bool = false) {
     self.context = context
-    self.includesWorkspace = includesWorkspace
     _isPresented = State(initialValue: isPresented)
   }
 
-  private var summary: String { context.summary(includingWorkspace: includesWorkspace) }
+  private var summary: String { context.summary() }
 
   var body: some View {
     Button {
