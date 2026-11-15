@@ -36,8 +36,7 @@
       await screen.catchUp()
       // The row's content is only as wide as its text.
       let row = CGPoint(x: 60, y: try #require(screen.rowPoints.last).y)
-      try screen.click(row, clickCount: 1)
-      try screen.click(row, clickCount: 2)
+      try screen.doubleClick(row)
       await screen.catchUp()
       #expect(opened.pages.first?.url == url)
       #expect(opened.pages.first?.newTab == false)

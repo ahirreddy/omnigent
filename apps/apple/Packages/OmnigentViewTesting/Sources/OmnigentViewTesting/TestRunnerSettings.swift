@@ -16,11 +16,16 @@
   /// `@AppStorage` saves to the test runner's own settings on disk, so a value one run leaves
   /// behind would decide what the next run's views show. Each run starts with none.
   enum TestRunnerSettings {
-    /// The settings a process may clear: a test runner's own, and never an app's.
+    /// The settings a process may clear: a test runner's own, and never an app's. A runner that
+    /// splits a run over processes starts each under the runner's name and a `-` suffix, so
+    /// each has settings of its own.
     /// - Parameter processName: The process's name.
     /// - Returns: The domain to clear, or `nil` for anything that isn't a test runner.
     static func domainToClear(processName: String) -> String? {
-      ["swiftpm-testing-helper", "xctest"].contains(processName) ? processName : nil
+      let isRunner = ["swiftpm-testing-helper", "xctest"].contains {
+        processName == $0 || (processName.hasPrefix("\($0)-") && processName.count > $0.count + 1)
+      }
+      return isRunner ? processName : nil
     }
 
     /// Clears what an earlier run saved, when this process is a test runner.

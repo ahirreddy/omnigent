@@ -128,7 +128,7 @@ The inspector's **Export PNGs** does the same from the app for this entry, the
 search results or everything, at the inspector's theme and accessibility settings.
 On iOS it writes to `Documents/GallerySnapshots`.
 
-The render test writes the whole catalog too:
+The render test writes the whole catalog too, in eight parts (`/tmp/ui/gallery/part-1` and on):
 
 ```sh
 OMNIGENT_UI_RENDER_DIR=/tmp/ui swift test --filter GalleryCatalogRenderTests
@@ -213,4 +213,5 @@ instead). Register it with `.flow(area, name, title, summary:, script:, live:)`;
   Duo's displays and crease, framed and bare layouts, and the device and frame launch options.
 - `GalleryCatalogRenderTests`: every entry and state in light and dark through the
   exporter (framed pages on Mac and iPhone), one framed page per device and posture, and a
-  contrast check. It takes about thirteen minutes, mostly CoreGraphics rasterizing blurs.
+  contrast check. The catalog renders in eight parts so a runner can spread them over
+  processes; together they take about five minutes, mostly CoreGraphics rasterizing blurs.
