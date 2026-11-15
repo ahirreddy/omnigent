@@ -14,7 +14,6 @@ extension TabsPlaygroundModel {
     actions.showInPane = { self.show($0, in: $1) }
     actions.focusPane = { self.focus($0) }
     actions.setSplitFraction = { fraction in self.split?.fraction = TabSplitState.clamp(fraction) }
-    actions.closeSplit = { self.closeSplit() }
   }
 
   func addSplit(to commands: inout TabCommandActions) {

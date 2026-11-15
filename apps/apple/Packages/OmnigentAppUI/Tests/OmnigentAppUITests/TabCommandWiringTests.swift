@@ -101,8 +101,6 @@ struct TabCommandWiringTests {
     moveBack()
     #expect(store.pane(of: shell.id) == .trailing)
     #expect(store.splitState?.leadingID != nil)
-    actions.closeSplit?()
-    #expect(store.split == nil)
   }
 
   @Test("The strip's New Tab opens the New Tab page")

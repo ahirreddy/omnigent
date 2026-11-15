@@ -197,8 +197,6 @@ nonisolated public struct SessionListViewState: Hashable, Sendable {
 
 /// Session list actions. `nil` hides or disables the matching control.
 public struct SessionListActions {
-  /// Change the filter; the host re-queries the core.
-  public var setFilter: (@MainActor (SessionFilter) -> Void)?
   /// Pin or unpin.
   public var setPinned: (@MainActor (SessionSummary, Bool) -> Void)?
   /// Archive or restore.
@@ -241,7 +239,6 @@ public struct SessionListActions {
 
   /// Creates actions.
   /// - Parameters:
-  ///   - setFilter: Change filter.
   ///   - setPinned: Pin or unpin.
   ///   - setArchived: Archive or restore.
   ///   - rename: Rename.
@@ -257,7 +254,6 @@ public struct SessionListActions {
   ///   - newSession: New session.
   ///   - retry: Retry loading.
   public init(
-    setFilter: (@MainActor (SessionFilter) -> Void)? = nil,
     setPinned: (@MainActor (SessionSummary, Bool) -> Void)? = nil,
     setArchived: (@MainActor (SessionSummary, Bool) -> Void)? = nil,
     rename: (@MainActor (SessionSummary, String) -> Void)? = nil,
@@ -273,7 +269,6 @@ public struct SessionListActions {
     newSession: (@MainActor () -> Void)? = nil,
     retry: (@MainActor () -> Void)? = nil
   ) {
-    self.setFilter = setFilter
     self.setPinned = setPinned
     self.setArchived = setArchived
     self.rename = rename

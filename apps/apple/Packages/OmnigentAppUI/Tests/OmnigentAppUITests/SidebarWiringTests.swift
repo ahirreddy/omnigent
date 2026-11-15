@@ -30,8 +30,6 @@ struct SidebarWiringTests {
     #expect(list.filter == .all)
     actions.setQuickFilter?(.running)
     #expect(list.filter == .running)
-    actions.sessions.setFilter?(.needsResponse)
-    #expect(list.filter == .needsResponse)
   }
 
   @Test("New Session and Retry in the list go where they say")

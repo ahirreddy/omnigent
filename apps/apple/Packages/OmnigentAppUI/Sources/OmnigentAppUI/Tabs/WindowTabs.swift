@@ -84,7 +84,6 @@ struct WindowTabs {
       actions.showInPane = { store.show($0, in: $1) }
       actions.focusPane = { store.focus($0) }
       actions.setSplitFraction = { store.setSplitFraction($0) }
-      actions.closeSplit = { store.closeSplit() }
     }
     // What the New Tab page offers, each in a new tab; read when + draws, not with the strip.
     actions.newTabMenu = {
