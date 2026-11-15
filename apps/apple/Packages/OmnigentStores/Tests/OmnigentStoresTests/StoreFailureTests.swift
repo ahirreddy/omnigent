@@ -108,6 +108,7 @@ struct StoreFailureTests {
     server.fail("/v1/sessions/p1", method: "PATCH", status: 400)
     #expect(await !store.sessionList.setPinOrder(["p1", "p0"]))
     #expect(store.sessionList.editError != nil)
+    #expect(store.sessionList.visible.map(\.id) == ["p0", "p1"], "the refused move is put back")
 
     server.route("/v1/sessions/p1", method: "PATCH", .json(row("p1", "999")))
     #expect(await store.sessionList.setPinOrder(["p1", "p0"]))
