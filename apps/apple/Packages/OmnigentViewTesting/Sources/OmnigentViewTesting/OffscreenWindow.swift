@@ -144,22 +144,10 @@
       try MenuTrackingLock.holding {
         let down = try mouseEvent(.leftMouseDown, point, clickCount, modifiers)
         let mouseUp = try mouseEvent(.leftMouseUp, point, clickCount, modifiers, delay: 0.03)
-        // A control tracks the mouse inside its mouse down until it sees the up. Post only inside
-        // that tracking: stopping the runner's own loop would end the process with a false pass.
-        nonisolated(unsafe) let trackedUp = mouseUp
-        let release = Timer(timeInterval: 0.03, repeats: false) { _ in
-          MainActor.assumeIsolated { NSApp.postEvent(unsafe trackedUp, atStart: false) }
-        }
-        RunLoop.main.add(release, forMode: .common)
         let target = activeWindow
         // A destructive button ignores a first mouse; keying an inactive app's window steals nothing.
         target.makeKey()
-        deliver(down, to: target)
-        if release.isValid {
-          release.invalidate()
-          RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
-          deliver(mouseUp, to: target)
-        }
+        press(down, releasedBy: mouseUp, in: target) { unsafe opened != nil }
         // Tracking that ended early, as a closing menu's does, leaves the posted up queued. A
         // later button's tracking would end on it, and that button's action would never run.
         NSApp.discardEvents(matching: .leftMouseUp, before: nil)
@@ -237,17 +225,6 @@
     public func endHover() throws {
       host.mouseExited(with: try mouseEvent(.mouseMoved, .zero, 0, []))
       settle()
-    }
-
-    /// Sends an event from a run loop of its own. AppKit can stop the current loop while handling
-    /// one, such as a list row with a drag source, and a test body's loop is the test runner's.
-    private func deliver(_ event: NSEvent, to target: NSWindow) {
-      nonisolated(unsafe) let sent = event
-      CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue) {
-        MainActor.assumeIsolated { target.sendEvent(unsafe sent) }
-        CFRunLoopStop(CFRunLoopGetMain())
-      }
-      _ = CFRunLoopRunInMode(.defaultMode, .greatestFiniteMagnitude, false)
     }
 
     /// The window events go to: a presented sheet or dialog, or else the main window.
