@@ -60,10 +60,15 @@
       var idle = 0
       SettleTrace.begin()
       while idle < idleTurns, CFAbsoluteTimeGetCurrent() < deadline {
+        let turnStart = CFAbsoluteTimeGetCurrent()
         var activity = runTurn(until: deadline, windows: windows)
         await Task.yield()
         if SleepTracker.hasSleep(endingBefore: deadline) { activity.insert(.sleep) }
         SettleTrace.note(activity)
+        // Time spent only because a task sleeps: what shorter product delays would save.
+        if activity == .sleep {
+          WaitStats.record("settleTasks on a sleep", since: turnStart, reachedLimit: false)
+        }
         idle = activity.isEmpty ? idle + 1 : 0
       }
       WaitStats.record("settleTasks", since: start, reachedLimit: idle < idleTurns)
