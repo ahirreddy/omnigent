@@ -75,8 +75,7 @@
           state: state, liveRows: source.reader, actions: ConversationActions(),
           scrollToLatestRequest: 0))
       defer { window.close() }
-      try await letTasksRun(window, milliseconds: 200)
-      #expect(try window.shows("From the live rows"))
+      #expect(try await waitUntil(window) { try window.shows("From the live rows") })
       #expect(try !window.shows("From the state"))
     }
 
@@ -113,9 +112,8 @@
       rows.prepend(TranscriptFixture.turns(1, startingAt: 2))
       conversation.state.hasMoreHistory = false
       conversation.state.historyReads += 1
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await waitUntil(window) { viewport.offset < 30 })
       #expect(log.entries.count == 2)
-      #expect(viewport.offset < 30)
       #expect(try window.shows("Question 2"))
     }
 
@@ -272,8 +270,7 @@
           Text("the terminal surface")
         }, width: 900, height: 600)
       defer { window.close() }
-      try await letTasksRun(window, milliseconds: 150)
-      #expect(try window.shows("the terminal surface"))
+      #expect(try await waitUntil(window) { try window.shows("the terminal surface") })
       #expect(try window.shows("Allow it?"))
       #expect(!window.allViews.contains { $0 is NSTextView })
     }
@@ -295,11 +292,11 @@
       let window = transcriptScreen(
         TranscriptView(state: state, actions: actions, scrollToLatestRequest: 0), width: 900)
       defer { window.close() }
-      try await letTasksRun(window, milliseconds: 200)
-      let link = try #require(window.controlFrames.first { $0.width > 120 && $0.width < 240 })
+      let isLink = { (frame: CGRect) in frame.width > 120 && frame.width < 240 }
+      #expect(try await waitUntil(window) { window.controlFrames.contains(where: isLink) })
+      let link = try #require(window.controlFrames.first(where: isLink))
       try window.click(CGPoint(x: link.midX, y: link.midY))
-      try await letTasksRun(window)
-      #expect(try window.shows("Copy Code ABCD-1234"))
+      #expect(try await waitUntil(window) { try window.shows("Copy Code ABCD-1234") })
       let copy = try #require(
         window.controlFrames.first { $0.minX >= link.maxX && abs($0.midY - link.midY) < 4 })
       try window.click(CGPoint(x: copy.midX, y: copy.midY))

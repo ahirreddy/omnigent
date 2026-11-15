@@ -95,8 +95,7 @@
       conversation.state.rows.insert(contentsOf: TranscriptFixture.turns(3), at: 0)
       conversation.state.revision += 1
       conversation.state.isLoadingHistory = false
-      try await letTasksRun(window, milliseconds: 300)
-      #expect(viewport.offset > 200)
+      #expect(try await waitUntil(window) { viewport.offset > 200 })
       #expect(try window.shows("Question 10"))
     }
 
@@ -124,8 +123,7 @@
       viewport.move(to: viewport.offset - 50)
       try window.hover(CGPoint(x: Self.width / 2, y: 40))
       try window.click(top)
-      try await letTasksRun(window, milliseconds: 400)
-      #expect(viewport.offset < 30)
+      #expect(try await waitUntil(window) { viewport.offset < 30 })
     }
 
     @Test("Jump to top keeps paging in history until there's none, then goes there")
@@ -155,9 +153,8 @@
       conversation.state.revision += 1
       conversation.state.hasMoreHistory = false
       conversation.state.isLoadingHistory = false
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await waitUntil(window) { viewport.offset < 30 })
       #expect(log.entries.count == 2)
-      #expect(viewport.offset < 30)
     }
 
     @Test("A page that brings nothing stops Jump to top where it is")
@@ -173,8 +170,8 @@
       conversation.state.isLoadingHistory = true
       try await letTasksRun(window)
       conversation.state.isLoadingHistory = false
-      try await letTasksRun(window, milliseconds: 300)
-      #expect(viewport.offset < 30)
+      #expect(try await waitUntil(window) { viewport.offset < 30 })
+      try await letTasksRun(window)
       // Arriving at the top may ask once more, as any reader reaching the top does.
       #expect(log.entries.count <= 2)
     }
@@ -224,9 +221,8 @@
       focus.focus("u11", in: TranscriptFixture.header.id)
       let (window, viewport) = try await screen(session(), focus: focus)
       defer { window.close() }
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await waitUntil(window) { focus.flashedRowID == "u11" })
       #expect(focus.messageID(in: TranscriptFixture.header.id) == nil)
-      #expect(focus.flashedRowID == "u11")
       #expect(viewport.offset > 0)
       #expect(try window.shows("Question 11"))
     }
@@ -238,16 +234,14 @@
       let conversation = session(hasMore: true)
       let (window, _) = try await screen(conversation, actions: pagingActions, focus: focus)
       defer { window.close() }
-      try await letTasksRun(window, milliseconds: 300)
-      #expect(log.entries.first == "older")
+      #expect(try await waitUntil(window) { log.entries.first == "older" })
       #expect(focus.messageID(in: TranscriptFixture.header.id) == "u1")
 
       conversation.state.rows.insert(contentsOf: TranscriptFixture.turns(2), at: 0)
       conversation.state.revision += 1
       conversation.state.hasMoreHistory = false
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await waitUntil(window) { focus.flashedRowID == "u1" })
       #expect(focus.messageID(in: TranscriptFixture.header.id) == nil)
-      #expect(focus.flashedRowID == "u1")
     }
 
     @Test("A link to a message that doesn't exist gives up and stays at the latest")
@@ -256,8 +250,8 @@
       focus.focus("gone", in: TranscriptFixture.header.id)
       let (window, _) = try await screen(session(), focus: focus)
       defer { window.close() }
-      try await letTasksRun(window, milliseconds: 300)
-      #expect(focus.messageID(in: TranscriptFixture.header.id) == nil)
+      #expect(
+        try await waitUntil(window) { focus.messageID(in: TranscriptFixture.header.id) == nil })
       #expect(focus.flashedRowID == nil)
     }
 
@@ -271,8 +265,7 @@
       try await letTasksRun(window, milliseconds: 300)
       #expect(focus.messageID(in: TranscriptFixture.header.id) == "u10")
       conversation.append(contentsOf: TranscriptFixture.turns(1, startingAt: 10))
-      try await letTasksRun(window, milliseconds: 200)
-      #expect(focus.flashedRowID == "u10")
+      #expect(try await waitUntil(window) { focus.flashedRowID == "u10" })
     }
 
     // MARK: The turn rail
@@ -292,9 +285,8 @@
       defer { window.close() }
       let start = viewport.offset
       try window.click(tick(1, of: 6))
-      try await letTasksRun(window, milliseconds: 300)
-      #expect(focus.flashedRowID == "u11")
-      #expect(viewport.offset < start)
+      #expect(try await waitUntil(window) { focus.flashedRowID == "u11" })
+      #expect(try await waitUntil(window) { viewport.offset < start })
       #expect(try window.shows("Jump to latest"))
     }
 

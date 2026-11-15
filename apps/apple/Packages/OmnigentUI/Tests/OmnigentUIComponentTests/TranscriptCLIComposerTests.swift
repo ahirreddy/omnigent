@@ -99,8 +99,7 @@
       let screen = try composer(ComposerViewState(placeholder: "Ask anything"))
       defer { screen.close() }
       #expect(try screen.shows("Ask anything"))
-      try await letTasksRun(screen, milliseconds: 200)
-      #expect(screen.window.firstResponder is NSTextView)
+      #expect(try await waitUntil(screen) { screen.window.firstResponder is NSTextView })
       try screen.press(keyCode: 36, characters: "\r")
       #expect(log.entries.isEmpty)
       try screen.type("hello")
@@ -114,7 +113,7 @@
     func plainTab() async throws {
       let screen = try composer(draft: "a")
       defer { screen.close() }
-      try await letTasksRun(screen, milliseconds: 200)
+      _ = try await waitUntil(screen) { screen.window.firstResponder is NSTextView }
       try screen.press(keyCode: 48, characters: "\t")
       #expect(log.entries.isEmpty)
     }
@@ -127,7 +126,7 @@
       let screen = try composer(actions: actions, draft: "ready")
       defer { screen.close() }
       // Focus shows the control too: the keyboard is given up to count the idle band.
-      try await letTasksRun(screen, milliseconds: 200)
+      _ = try await waitUntil(screen) { screen.window.firstResponder is NSTextView }
       _ = screen.window.makeFirstResponder(nil)
       screen.settle()
       let idle = screen.controlFrames.count
@@ -187,8 +186,7 @@
       let screen = try composer()
       defer { screen.close() }
       #expect(!(screen.window.firstResponder is NSTextView))
-      try await letTasksRun(screen, milliseconds: 200)
-      #expect(screen.window.firstResponder is NSTextView)
+      #expect(try await waitUntil(screen) { screen.window.firstResponder is NSTextView })
     }
 
     @Test("A composer in a hidden tab or an inactive pane leaves the keyboard alone")
@@ -222,8 +220,7 @@
       let requests = FocusRequests()
       let screen = transcriptScreen(FocusRequestHost(requests: requests))
       defer { screen.close() }
-      try await letTasksRun(screen, milliseconds: 200)
-      #expect(screen.window.firstResponder is NSTextView)
+      #expect(try await waitUntil(screen) { screen.window.firstResponder is NSTextView })
       requests.isHidden = true
       try await letTasksRun(screen)
       #expect(!(screen.window.firstResponder is NSTextView))
