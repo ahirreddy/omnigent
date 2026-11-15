@@ -10,11 +10,16 @@ enum FamilyFixture {
   static let family = SessionFamilyInfo(
     id: familyID, representativeID: "coord", representativeTitle: "Coordinator")
 
+  /// A member of `family`, nested unless it is the representative, as the core reports it: a
+  /// nested member can't be pinned on its own.
   static func member(
     _ id: String, _ title: String, updatedAt: Int64, family: SessionFamilyInfo = family,
-    isPinned: Bool = false
+    isPinned: Bool = false, attention: SessionAttentionState? = nil
   ) -> SessionSummary {
-    SessionSummary(id: id, title: title, updatedAt: updatedAt, isPinned: isPinned, family: family)
+    let isNested = family.representativeID.map { $0 != id } ?? false
+    return SessionSummary(
+      id: id, title: title, updatedAt: updatedAt, isPinned: isPinned, canPin: !isNested,
+      attention: attention, isNestedMember: isNested, family: family)
   }
 
   static var coordinator: SessionSummary { member("coord", "Coordinator", updatedAt: 500) }

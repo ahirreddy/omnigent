@@ -97,7 +97,7 @@ struct PaletteAdapter: ViewModifier {
   private func breadcrumb(
     _ summary: OmnigentUIComponents.SessionSummary, core: OmnigentCoreFFI.SessionSummary
   ) -> PaletteBreadcrumb? {
-    guard summary.isNestedFamilyMember else { return nil }
+    guard summary.isNestedMember else { return nil }
     let list = session.connection.sessionList
     let project = zip(list.projects, list.members(of: [core])).first { !$0.1.isEmpty }?.0.name
     return .nested(

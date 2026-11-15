@@ -314,6 +314,12 @@ public struct SidebarActions {
   public var deleteProject: (@MainActor (SessionProject) -> Void)?
   /// Archive or restore several sessions at once, with one Undo (bulk selection).
   public var setArchivedMany: (@MainActor ([SessionSummary], Bool) -> Void)?
+  /// File several sessions into a project, or out of theirs (`nil`), as one change (bulk
+  /// selection); a nested family member moves with its representative.
+  public var moveMany: (@MainActor ([SessionSummary], SessionProject?) -> Void)?
+  /// Whether sessions can move together: every nested member's representative is among them.
+  public var canMoveTogether: @MainActor ([SessionSummary]) -> Bool = SidebarFamilies
+    .canMoveTogether
   /// Carry out a session drag (pin into a slot, file into or out of a project).
   public var dropSession: (@MainActor (SessionSummary, SidebarDropAction) -> Void)?
   /// Save a new project order (a project dragged onto another, or Move).

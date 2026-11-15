@@ -103,22 +103,19 @@ struct SidebarFamiliesTests {
       ])
   }
 
-  @Test("A bulk move needs each nested member's representative and sends only representatives")
-  func bulkMoveTargets() {
-    #expect(!SidebarFamilies.canBulkMove([FamilyFixture.implementation, FamilyFixture.solo]))
+  @Test("Sessions move together only with each nested member's representative among them")
+  func moveTogether() {
+    #expect(!SidebarFamilies.canMoveTogether([FamilyFixture.implementation, FamilyFixture.solo]))
     let whole = [FamilyFixture.coordinator, FamilyFixture.implementation, FamilyFixture.solo]
-    #expect(SidebarFamilies.canBulkMove(whole))
-    #expect(ids(SidebarFamilies.bulkMoveTargets(whole)) == ["coord", "solo"])
+    #expect(SidebarFamilies.canMoveTogether(whole))
+    #expect(SidebarActions(sessions: SessionListActions()).canMoveTogether(whole))
   }
 
-  @Test("Only a member under another session is nested")
+  @Test("A nested member hangs under its representative; no other session does")
   func nesting() {
     #expect(FamilyFixture.implementation.nestedUnder == "coord")
-    #expect(FamilyFixture.implementation.isNestedFamilyMember)
-    #expect(!FamilyFixture.coordinator.isNestedFamilyMember)
-    #expect(!FamilyFixture.solo.isNestedFamilyMember)
-    let unclaimed = SessionSummary(id: "a", title: "A", family: SessionFamilyInfo(id: "a"))
-    #expect(!unclaimed.isNestedFamilyMember)
+    #expect(FamilyFixture.coordinator.nestedUnder == nil)
+    #expect(FamilyFixture.solo.nestedUnder == nil)
   }
 
   @Test("A search row's breadcrumb names its project and the session it's nested under")

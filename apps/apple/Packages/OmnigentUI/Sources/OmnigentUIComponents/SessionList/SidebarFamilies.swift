@@ -82,14 +82,9 @@ nonisolated enum SidebarFamilies {
   private static func isShownPinned(
     _ session: SessionSummary, loaded: [String: SessionSummary]
   ) -> Bool {
-    guard let representative = session.nestedUnder else { return session.isPinned }
-    return loaded[representative]?.isPinned ?? (session.family?.isPinned == true)
-  }
-
-  /// The pin slots taken (the core's `pinned_unit_count`): pinned, kept sessions on their own
-  /// and pinned representatives; members never take one.
-  static func pinUnits(_ sessions: [SessionSummary]) -> Int {
-    sessions.count { $0.isPinned && !$0.isArchived && $0.isPinUnit }
+    guard session.isNestedMember else { return session.isPinned }
+    let representative = session.nestedUnder.flatMap { loaded[$0] }
+    return representative?.isPinned ?? (session.family?.isPinned == true)
   }
 
   /// Each session's group by id, with every family moved into one group by `rule`.
@@ -119,16 +114,11 @@ nonisolated enum SidebarFamilies {
       uniquingKeysWith: { first, _ in first })
   }
 
-  /// Whether `selected` can move together: each nested member's representative is among them,
-  /// since only that moves its family.
-  static func canBulkMove(_ selected: [SessionSummary]) -> Bool {
+  /// Whether `selected` can move together (the core's `sessions_can_move_together`): each
+  /// nested member's representative is among them, since only that moves its family.
+  static func canMoveTogether(_ selected: [SessionSummary]) -> Bool {
     let ids = Set(selected.map(\.id))
     return selected.allSatisfy { session in session.nestedUnder.map(ids.contains) ?? true }
-  }
-
-  /// What a bulk move of `selected` sends: the representatives and the other sessions.
-  static func bulkMoveTargets(_ selected: [SessionSummary]) -> [SessionSummary] {
-    selected.filter { !$0.isNestedFamilyMember }
   }
 }
 
@@ -183,7 +173,7 @@ nonisolated extension SidebarSections {
   /// pin is its representative's), a project's order each family by its id.
   static func orderIDs(_ rows: [SessionSummary], in group: SessionGroup) -> [String] {
     switch group {
-    case .pinned: rows.filter { !$0.isNestedFamilyMember }.map(\.id)
+    case .pinned: rows.filter { !$0.isNestedMember }.map(\.id)
     case .project: rows.map(\.orderKey)
     }
   }

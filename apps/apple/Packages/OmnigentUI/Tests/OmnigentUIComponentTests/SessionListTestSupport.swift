@@ -189,6 +189,9 @@
       actions.setArchivedMany = { [self] in
         calls.append("archive many \($0.map(\.id).joined(separator: ",")) \($1)")
       }
+      actions.moveMany = { [self] in
+        calls.append("move many \($0.map(\.id).joined(separator: ",")) \($1?.id ?? "none")")
+      }
       actions.dropSession = { [self] in calls.append("drop \($0.id) \($1)") }
       actions.reorderProjects = { [self] in
         calls.append("reorder \($0.map(\.id).joined(separator: ","))")

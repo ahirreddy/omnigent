@@ -18,7 +18,7 @@ enum SessionRowFamily {
   /// Whether `session`'s row pins and moves only with its family: nested here, or nested under
   /// another representative on the server.
   func movesWithFamily(_ session: SessionSummary) -> Bool {
-    isNested || session.isNestedFamilyMember
+    isNested || session.isNestedMember
   }
 }
 

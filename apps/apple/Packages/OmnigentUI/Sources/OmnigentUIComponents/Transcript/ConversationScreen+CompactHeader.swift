@@ -19,7 +19,7 @@ extension ConversationScreen {
   /// The header's project tag: the viewer's own top-level session, but a nested member, whose
   /// project is its representative's.
   var showsProjectTag: Bool {
-    state.summary != nil && state.summary?.isNestedFamilyMember != true
+    state.summary != nil && state.summary?.isNestedMember != true
       && HeaderProjectTag.applies(
         extras.menuContext, isSubagent: parentSessionID != nil,
         canMove: extras.sessionActions.moveToProject != nil)

@@ -90,9 +90,7 @@ struct SidebarFamilySectionsTests {
 
   @Test("Status puts a family where its most urgent member goes, nested there")
   func statusKeepsAFamily() {
-    let waiting = SessionSummary(
-      id: "review", title: "Review", updatedAt: 300, attention: .needsYou,
-      family: FamilyFixture.family)
+    let waiting = FamilyFixture.member("review", "Review", updatedAt: 300, attention: .needsYou)
     var state = FamilyFixture.state([
       FamilyFixture.implementation, FamilyFixture.solo, FamilyFixture.coordinator, waiting,
     ])

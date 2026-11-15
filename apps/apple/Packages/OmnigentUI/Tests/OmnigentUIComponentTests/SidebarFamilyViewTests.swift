@@ -170,7 +170,7 @@
       #expect(spy.calls == ["drop coord \(SidebarDropAction.move(to: home, unpin: false))"])
     }
 
-    @Test("Bulk move waits for a member's representative, then sends the representative alone")
+    @Test("Bulk move waits for a member's representative, then moves the selection as one")
     func bulkMove() throws {
       var state = FamilyFixture.state()
       state.projects = [home]
@@ -190,7 +190,59 @@
         width: 320, height: 60)
       defer { whole.close() }
       try whole.choose("Home", in: try whole.openMenu(try #require(whole.popUps.first)))
-      #expect(spy.calls == ["move coord home", "move solo home", "exit"])
+      #expect(spy.calls == ["move many coord,impl,solo home", "exit"])
+    }
+
+    @Test("An open folder nests its family and collapses it apart from the other sections")
+    func folderNestsItsFamily() throws {
+      var state = FamilyFixture.state()
+      state.projects = [
+        SessionProject(id: "work", name: "Work", sessionIds: ["impl", "coord", "review"])
+      ]
+      let spy = SidebarSpy(state)
+      UserDefaults.standard.set("work", forKey: SidebarNavigationOrder.expandedProjectsKey)
+      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 320, height: 700)
+      defer { screen.close() }
+      let leading = try rowFrame("solo", screen).minX
+      let chevron = SessionFamilyMetrics.chevronWidth + SessionFamilyMetrics.chevronSpacing
+      #expect(abs(try rowFrame("coord", screen).minX - leading - chevron) < 1)
+      try screen.clickListElement("session-family-toggle-coord")
+      screen.settle(0.2)
+      #expect(
+        spy.state.collapsedFamilies == [SidebarFamilyScope.project("work").key(family: "coord")])
+      #expect(try !screen.shows("Implementation") && screen.shows("Coordinator"))
+      #expect(try screen.shows("Solo"), "the Sessions list keeps its own rows")
+    }
+
+    @Test("A nested session's search row reads its project, then the session it's under")
+    func paletteBreadcrumb() throws {
+      let nested = PaletteEntry(
+        id: "found-impl", title: "Implementation", detail: "Ready", symbol: "bubble.left",
+        target: .session("impl"),
+        breadcrumb: PaletteBreadcrumb(project: "Work", parent: "Coordinator"))
+      let lone = PaletteEntry(
+        id: "found-solo", title: "Solo", detail: "Ready", symbol: "bubble.left",
+        target: .session("solo"))
+      let state = PaletteViewState(scope: "Studio", sessions: [nested, lone])
+      let screen = OffscreenWindow(
+        CommandPalette(state: state, commands: []) { _ in }, width: 640, height: 520)
+      defer { screen.close() }
+      #expect(try screen.shows("Work") && screen.shows("Coordinator"))
+      try screen.withAccessibilityTree {
+        let row = try screen.listElement("palette-result-found-impl")
+        let label = attribute("accessibilityLabel", of: row) ?? ""
+        #expect(label.contains("Project: Work") && label.contains("Nested under: Coordinator"))
+        let other = attribute(
+          "accessibilityLabel", of: try screen.listElement("palette-result-found-solo"))
+        #expect(other?.contains("Nested under") == false)
+      }
+    }
+
+    @Test("A row's title anchor keeps the first title it meets")
+    func titleAnchor() {
+      var value: Anchor<CGRect>?
+      SessionTitleAnchor.reduce(value: &value) { nil }
+      #expect(value == nil)
     }
   }
 

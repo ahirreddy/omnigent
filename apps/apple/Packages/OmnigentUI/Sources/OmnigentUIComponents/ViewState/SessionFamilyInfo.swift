@@ -35,17 +35,9 @@ nonisolated extension SessionSummary {
   /// The representative a nested member hangs under; `nil` for a representative or any other
   /// session. A nested member's pin, project and drag are its representative's.
   public var nestedUnder: String? {
-    guard let representative = family?.representativeID, representative != id else { return nil }
-    return representative
+    isNestedMember ? family?.representativeID : nil
   }
-
-  /// A nested member of a family whose representative is another session.
-  public var isNestedFamilyMember: Bool { nestedUnder != nil }
 
   /// The key a saved order places it by: its family's, so the family moves as one.
   var orderKey: String { family?.id ?? id }
-
-  /// Takes a pin slot when pinned (the core's `session_is_pin_unit`): a session on its own, or
-  /// its family's representative.
-  var isPinUnit: Bool { family.map { $0.representativeID == id } ?? true }
 }

@@ -80,6 +80,17 @@ extension ConnectedServerView {
     }
   }
 
+  /// Files several sessions into `project`, or out of theirs, as one change (the bulk bar); a
+  /// nested family member moves with its representative. A refusal offers the move again.
+  func move(_ sessionIDs: [String], to project: ProjectSummary?) {
+    let list = connection.sessionList
+    Task {
+      if await !list.move(sessionIDs, to: project).isEmpty {
+        list.offerRetry("Could Not Move the Sessions") { move(sessionIDs, to: project) }
+      }
+    }
+  }
+
   /// Pins or archives through the session list and offers Undo for the change, both at once:
   /// the row and the Undo bar change before the server answers, and a refusal takes both back
   /// and shows in the list's alert, which offers the change again. Archiving also removes the

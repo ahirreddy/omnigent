@@ -171,20 +171,19 @@ struct BulkActionBar: View {
   }
 
   @ViewBuilder private var moveMenu: some View {
-    if let move = actions.sessions.moveToProject, !owned.isEmpty, !state.projects.isEmpty {
+    if let move = actions.moveMany, !owned.isEmpty, !state.projects.isEmpty {
       // Only a representative moves its family, so a nested member needs it selected too.
-      let canMove = SidebarFamilies.canBulkMove(owned)
-      let targets = SidebarFamilies.bulkMoveTargets(owned)
+      let canMove = actions.canMoveTogether(owned)
       Menu {
         ForEach(state.projects) { project in
           Button(project.name) {
-            for session in targets { move(session, project) }
+            move(owned, project)
             exit()
           }
         }
         Divider()
         Button("Remove from project") {
-          for session in targets { move(session, nil) }
+          move(owned, nil)
           exit()
         }
       } label: {

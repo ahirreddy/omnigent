@@ -109,10 +109,10 @@
       let menu = try screen.openMenu(try #require(screen.popUps.first))
       #expect(menu.titles == ["Work", "Remove from project"])
       try screen.choose("Work", in: menu)
-      #expect(spy.calls == ["move one p", "move two p", "exit"])
+      #expect(spy.calls == ["move many one,two p", "exit"])
       spy.calls = []
       try screen.choose("Remove from project", in: menu)
-      #expect(spy.calls == ["move one none", "move two none", "exit"])
+      #expect(spy.calls == ["move many one,two none", "exit"])
     }
 
     @Test("no actions, no buttons beyond Exit")

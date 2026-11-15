@@ -177,6 +177,13 @@ extension ConnectedServerView {
     actions.setArchivedMany = { sessions, archived in
       requestArchive(sessions.map(\.id), archived: archived)
     }
+    let list = connection.sessionList
+    actions.moveMany = { sessions, project in
+      move(sessions.map(\.id), to: project.map(ProjectSummary.init))
+    }
+    actions.canMoveTogether = { sessions in
+      sessionsCanMoveTogether(sessions: sessions.compactMap { list.session($0.id) })
+    }
     actions.setFamilyCollapsed = { key, collapsed in
       if collapsed {
         model.collapsedFamilies.insert(key)

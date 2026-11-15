@@ -33,8 +33,39 @@ struct SidebarFamiliesWiringTests {
     server.route(
       "/v1/sessions", method: "GET",
       .json(#"{"object":"list","data":[\#(rows.joined(separator: ","))],"has_more":false}"#))
+    for (id, row) in zip(["conv_b", "conv_c", "conv_a"], rows) {
+      server.route("/v1/sessions/\(id)", .json(row))
+    }
     server.route("/v1/sessions/projects", .json(#"[{"id":"p1","name":"Alpha"}]"#))
     return server
+  }
+
+  @Test("Bulk move files a family through its representative, and refuses a member alone")
+  func bulkMove() async throws {
+    let server = familyServer()
+    let session = try await signedInSession(server)
+    try await eventually("the projects") { !session.connection.sessionList.projects.isEmpty }
+    let view = connectedView(session, WindowSelection())
+    let rows = Dictionary(
+      uniqueKeysWithValues: view.sidebarState.list.sessions.map { ($0.id, $0) })
+    let lead = try #require(rows["conv_a"])
+    let member = try #require(rows["conv_b"])
+    let loose = try #require(rows["conv_c"])
+    let actions = view.sidebarActions
+    #expect(!actions.canMoveTogether([member, loose]))
+    #expect(actions.canMoveTogether([lead, member, loose]))
+
+    let alpha = SessionProject(id: "p1", name: "Alpha", sessionIds: [], projectID: "p1")
+    actions.moveMany?([member, loose], alpha)
+    let list = session.connection.sessionList
+    try await eventually("the refusal") { list.editRetry != nil }
+    #expect(try server.patched("/v1/sessions/conv_c").isEmpty, "refused before any request")
+    list.dismissEditError()
+
+    actions.moveMany?([lead, member], alpha)
+    try await eventually("the move") { !server.requests("PATCH", "/v1/sessions/conv_a").isEmpty }
+    #expect(try server.patched("/v1/sessions/conv_a").last?["project_id"] as? String == "p1")
+    #expect(try server.patched("/v1/sessions/conv_b").isEmpty, "it moves with its representative")
   }
 
   @Test("Rows carry their family, and a pinned family shows whole in Pinned, out of its folder")

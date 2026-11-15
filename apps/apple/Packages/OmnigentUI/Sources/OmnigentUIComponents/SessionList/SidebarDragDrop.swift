@@ -159,7 +159,7 @@ struct SidebarDropHandler {
       // A nested member pins, moves and orders with its representative.
       guard let dropSession = actions.dropSession,
         let session = state.list.sessions.first(where: { $0.id == id }),
-        !session.isNestedFamilyMember
+        !session.isNestedMember
       else { return false }
       if let reorder = actions.reorderGroup, let order = reordering(session, onto: target) {
         reorder(order.group, order.ids)
