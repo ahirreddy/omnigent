@@ -58,6 +58,8 @@ public final class CreationStore {
   /// Composer text kept per Add nested agent source, and under `""` a draft handed to the next
   /// new session's page ("Continue in a new session").
   public var composerDrafts: [String: String] = [:]
+  /// The provisional sidebar rows of the open Add nested agent composers.
+  public internal(set) var nestedDrafts: [NestedSessionDraft] = []
 
   /// The conversation of a new session, to show its first message as soon as it is sent.
   @ObservationIgnored var conversation: (@MainActor (String) -> ConversationStore?)?

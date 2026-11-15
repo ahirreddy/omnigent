@@ -93,6 +93,9 @@ pub struct SessionSummary {
     pub comments_count: u64,
     /// The session that started this independent worker (`omnigent.created_by_session_id`).
     pub created_by_session_id: Option<String>,
+    /// The token of the nested create that made it (`omnigent.client_create_token`), so the
+    /// create's provisional row knows it before the create answers.
+    pub client_create_token: Option<String>,
     /// The session family it belongs to; `None` for a standalone session or a shared one.
     pub family: Option<SessionFamily>,
 }
@@ -140,6 +143,7 @@ impl SessionSummary {
             project_label: None,
             comments_count: 0,
             created_by_session_id: None,
+            client_create_token: None,
             family: None,
         }
     }
@@ -574,6 +578,14 @@ impl SessionProjection {
                 Field::Present(labels) => labels
                     .get(CREATED_BY_SESSION_LABEL)
                     .filter(|id| !id.is_empty())
+                    .cloned(),
+            },
+            client_create_token: match &self.labels {
+                Field::Absent => previous.and_then(|previous| previous.client_create_token.clone()),
+                Field::Null => None,
+                Field::Present(labels) => labels
+                    .get(crate::nested_creation::CLIENT_CREATE_TOKEN_LABEL)
+                    .filter(|token| !token.is_empty())
                     .cloned(),
             },
             family: match &self.family {

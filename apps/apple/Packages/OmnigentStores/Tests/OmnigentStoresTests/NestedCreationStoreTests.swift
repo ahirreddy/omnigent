@@ -162,4 +162,44 @@ struct NestedCreationStoreTests {
     #expect(first.allSatisfy { $0.isHexDigit && !$0.isUppercase })
     #expect(first != CreationStore.newCreateToken())
   }
+
+  @Test("A provisional row opens, takes a new token, stands for its session, then retires")
+  func provisionalRows() async throws {
+    let creation = try await loadedCreation(try nestedRoutes())
+    let source = try await creation.nestedSource("conv_source").get()
+    creation.openNestedDraft(key: "draft", source: source, token: "first")
+    creation.openNestedDraft(key: "draft", source: source, token: "second")
+    #expect(creation.nestedDrafts.map(\.token) == ["second"])
+    #expect(creation.nestedDrafts.first?.id == "draft")
+    var pushed = source
+    pushed.id = "conv_created"
+    #expect(creation.nestedDrafts.first?.isReplaced(by: pushed) == false)
+    pushed.clientCreateToken = "second"
+    #expect(creation.nestedDrafts.first?.isReplaced(by: pushed) == true, "by its token")
+
+    creation.nestedDraftCreated(key: "elsewhere", sessionID: "conv_other")
+    creation.nestedDraftCreated(key: "draft", sessionID: "conv_created")
+    #expect(creation.nestedDrafts.first?.id == "conv_created")
+    creation.closeNestedDraft(key: "draft")
+    var created = pushed
+    created.clientCreateToken = nil
+    creation.retireNestedDrafts { $0 == "conv_created" ? created : nil }
+    #expect(creation.nestedDrafts.count == 1, "kept until the row has its family")
+    created.family = SessionFamily(
+      id: "conv_source", representativeId: "conv_source", representativeTitle: nil,
+      pinned: false, pinnedAt: nil)
+    creation.retireNestedDrafts { $0 == "conv_created" ? created : nil }
+    #expect(creation.nestedDrafts.isEmpty)
+
+    creation.openNestedDraft(key: "next", source: source, token: "third")
+    creation.retireNestedDrafts { _ in nil }
+    #expect(creation.nestedDrafts.count == 1)
+    var archived = source
+    archived.isArchived = true
+    creation.retireNestedDrafts { $0 == "conv_source" ? archived : nil }
+    #expect(creation.nestedDrafts.isEmpty, "its source was archived before a create")
+    creation.openNestedDraft(key: "last", source: source, token: "fourth")
+    creation.closeNestedDraft(key: "last")
+    #expect(creation.nestedDrafts.isEmpty, "a row with no session leaves with its composer")
+  }
 }

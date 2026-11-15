@@ -234,6 +234,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var groupSorts = SessionGroupSorts()
   /// The families collapsed under their head, one opaque key per section or folder and family.
   public var collapsedFamilies: Set<String> = []
+  /// The provisional rows of open Add nested agent composers, by row id: each one's source.
+  public var nestedDrafts: [String: String] = [:]
 
   /// Creates sidebar state.
   /// - Parameters:

@@ -147,12 +147,33 @@ struct NestedAgentFormTests {
     #expect(body["project_id"] == nil)
   }
 
-  @Test("A refused create sends the next one under a new token")
+  @Test("The provisional row follows the composer: shown, renewed on a refusal, created, closed")
   func refusalRenewsTheToken() async throws {
-    let form = try await loadedNestedForm(nestedServer()).form
-    let first = try #require(form.nested?.token)
-    form.nestedCreateFailed()
-    #expect(form.nested?.token != first)
+    let loaded = try await loadedNestedForm(nestedServer())
+    let form = loaded.form
+    let creation = loaded.creation
+    let draft = try #require(creation.nestedDrafts.first)
+    #expect(creation.nestedDrafts.count == 1)
+    #expect(draft.source.id == "conv_src")
+    #expect(draft.id == form.nested?.draftKey)
+    #expect(draft.token == form.nested?.token)
+    form.nestedCreateFailed(creation)
+    #expect(form.nested?.token != draft.token)
+    #expect(creation.nestedDrafts.first?.token == form.nested?.token, "the row takes it too")
+    #expect(creation.nestedDrafts.count == 1)
+
+    form.nestedCreated("conv_new", creation)
+    #expect(creation.nestedDrafts.first?.id == "conv_new", "the row stands for the session")
+    form.closeNestedDraft(creation)
+    #expect(creation.nestedDrafts.count == 1, "a created row waits for the server's")
+    let other = try await loadedNestedForm(nestedServer())
+    other.form.closeNestedDraft(other.creation)
+    #expect(other.creation.nestedDrafts.isEmpty, "a row with no session leaves with its composer")
+    let plain = try isolatedForm()
+    plain.nestedCreated("x", creation)
+    plain.closeNestedDraft(creation)
+    plain.showNestedDraft(creation)
+    #expect(creation.nestedDrafts.count == 1, "a new session's form has no row")
   }
 
   @Test("A missing source and a server without nested agents say so")

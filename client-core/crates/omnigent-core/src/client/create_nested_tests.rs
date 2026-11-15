@@ -11,6 +11,31 @@ use crate::nested_creation::{CLIENT_CREATE_TOKEN_LABEL, NESTED_AGENTS_UNAVAILABL
 
 const TOKEN: &str = "0123456789abcdef0123456789abcdef";
 
+#[test]
+fn a_row_carries_its_create_token_until_its_labels_drop_it() {
+    use crate::client::sessions::test_support::summary_of;
+    let created = summary_of(
+        &serde_json::json!({"labels": {CLIENT_CREATE_TOKEN_LABEL: TOKEN}}),
+        None,
+        true,
+    );
+    assert_eq!(created.client_create_token.as_deref(), Some(TOKEN));
+    let kept = summary_of(&serde_json::json!({}), Some(&created), true);
+    assert_eq!(kept.client_create_token.as_deref(), Some(TOKEN));
+    for labels in [
+        serde_json::json!({}),
+        serde_json::json!({CLIENT_CREATE_TOKEN_LABEL: ""}),
+        serde_json::Value::Null,
+    ] {
+        let cleared = summary_of(
+            &serde_json::json!({ "labels": labels }),
+            Some(&created),
+            true,
+        );
+        assert_eq!(cleared.client_create_token, None);
+    }
+}
+
 /// A server with two machines and a sandbox host, Codex on each, nested agents under `policy`
 /// and a 201 for the create.
 fn server(policy: &str) -> RouteTransport {

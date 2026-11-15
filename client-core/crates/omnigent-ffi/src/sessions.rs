@@ -97,6 +97,9 @@ pub struct SessionSummary {
     /// The session that started this independent worker, when one did.
     #[uniffi(default)]
     pub created_by_session_id: Option<String>,
+    /// The token of the nested create that made it, which its provisional row carries.
+    #[uniffi(default)]
+    pub client_create_token: Option<String>,
     /// The session family it belongs to; `None` for a standalone session or a shared one.
     #[uniffi(default)]
     pub family: Option<SessionFamily>,
@@ -328,6 +331,7 @@ impl From<CoreSummary> for SessionSummary {
             project_label: summary.project_label,
             comments_count: summary.comments_count,
             created_by_session_id: summary.created_by_session_id,
+            client_create_token: summary.client_create_token,
             family: summary.family.map(Into::into),
         }
     }
@@ -355,6 +359,7 @@ impl From<&SessionSummary> for CoreSummary {
             project_label: summary.project_label.clone(),
             comments_count: summary.comments_count,
             created_by_session_id: summary.created_by_session_id.clone(),
+            client_create_token: summary.client_create_token.clone(),
             family: summary.family.clone().map(Into::into),
             ..Self::new(
                 summary.id.clone(),

@@ -77,6 +77,16 @@ fn the_token_label_is_the_webs() {
 }
 
 #[test]
+fn a_summary_keeps_its_create_token_both_ways() {
+    let mut core_summary = omnigent_core::sessions::SessionSummary::new("conv_new", "", "");
+    core_summary.client_create_token = Some(TOKEN.into());
+    let mapped = crate::sessions::SessionSummary::from(core_summary);
+    assert_eq!(mapped.client_create_token.as_deref(), Some(TOKEN));
+    let back = omnigent_core::sessions::SessionSummary::from(&mapped);
+    assert_eq!(back.client_create_token.as_deref(), Some(TOKEN));
+}
+
+#[test]
 fn the_composer_hosts_follow_the_policy_and_a_missing_one_reads_as_any_host() {
     let any = nested_host_choices(catalog(None), Some("sbx".into()));
     assert_eq!(any.host_ids, ["mac", "box", "sbx"]);

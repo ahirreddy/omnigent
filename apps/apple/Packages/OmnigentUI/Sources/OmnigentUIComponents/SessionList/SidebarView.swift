@@ -313,13 +313,14 @@ extension SidebarView {
   private func row(
     _ session: SessionSummary, target: SidebarDropTarget?, family: SessionRowFamily
   ) -> some View {
-    let isOpen = selection == .session(session.id)
+    let destination = state.destination(of: session)
+    let isOpen = selection == destination
     return SidebarLiveRow(
       snapshot: state.rowContent(session), live: actions.live, showsDraft: !isOpen
     ) { row in
       sessionRow(row, reorder: dropHandler.move(in: target?.group), family: family)
     }
-    .tag(SidebarDestination.session(session.id))
+    .tag(destination)
     .sidebarSelection(
       bulk.isActive ? bulk.ids.contains(session.id) : isOpen, isNested: family.isNested
     )
@@ -334,7 +335,7 @@ extension SidebarView {
     _ row: SidebarRowContent, reorder: SessionRowMove?, family: SessionRowFamily
   ) -> some View {
     let session = row.session
-    var sessionActions = actions.sessions
+    var sessionActions = state.rowActions(session, actions.sessions)
     if let move = sessionActions.moveToProject {
       // The session shows in the folder it moved to, not hidden in a collapsed one.
       sessionActions.moveToProject = { session, project in

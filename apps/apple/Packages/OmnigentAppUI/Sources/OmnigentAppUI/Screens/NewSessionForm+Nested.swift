@@ -31,6 +31,8 @@ struct NestedComposer: Equatable {
   var phase = Phase.loading
   /// The token of the next create, which ties the provisional row to the row the server sends.
   var token = CreationStore.newCreateToken()
+  /// The key of the composer's provisional sidebar row.
+  let draftKey = "nested-draft-\(UUID().uuidString.lowercased())"
 
   /// The source, once read.
   var source: OmnigentCoreFFI.SessionSummary? {
@@ -96,6 +98,7 @@ extension NewSessionForm {
     case .success(let source):
       guard nested?.sourceID == sourceID else { return }
       nested?.phase = .ready(source)
+      showNestedDraft(creation)
       snapToSource(creation)
       if let catalog = creation.catalog.value { applyDefaults(catalog) }
       await reloadChoices(creation, selection)
@@ -180,7 +183,26 @@ extension NewSessionForm {
   }
 
   /// A refused create: the next one goes out under a new token.
-  func nestedCreateFailed() {
+  func nestedCreateFailed(_ creation: CreationStore) {
     nested?.token = CreationStore.newCreateToken()
+    showNestedDraft(creation)
+  }
+
+  /// The composer's provisional row, beside its source, under the token of the next create.
+  func showNestedDraft(_ creation: CreationStore) {
+    guard let nested, let source = nested.source else { return }
+    creation.openNestedDraft(key: nested.draftKey, source: source, token: nested.token)
+  }
+
+  /// A created nested agent's row stands for the session until the server's row arrives.
+  func nestedCreated(_ sessionID: String, _ creation: CreationStore) {
+    guard let nested else { return }
+    creation.nestedDraftCreated(key: nested.draftKey, sessionID: sessionID)
+  }
+
+  /// The composer left: a row with no session goes too.
+  func closeNestedDraft(_ creation: CreationStore) {
+    guard let nested else { return }
+    creation.closeNestedDraft(key: nested.draftKey)
   }
 }

@@ -67,6 +67,18 @@ struct NestedAgentEntryTests {
     #expect(try screen.shows("Add nested agent"))
   }
 
+  @Test("Choosing it opens the source's collapsed family, so the composer's row shows")
+  func revealsTheFamily() async throws {
+    let session = try await signedInSession(nestedServer())
+    let selection = WindowSelection()
+    let view = connectedView(session, selection)
+    let collapsed = SidebarFamilyScope.section("Sessions").key(family: "conv_src")
+    view.sidebarModel.collapsedFamilies = [collapsed, "elsewhere"]
+    view.addNestedAgent(beside: "conv_src")
+    #expect(view.sidebarModel.collapsedFamilies == ["elsewhere"])
+    #expect(selection.page == .nestedSession(sourceID: "conv_src"))
+  }
+
   @Test("A server without nested agents doesn't offer it")
   func capabilityOff() async throws {
     let (screen, mounted) = try await window(nestedServer(siblings: false))

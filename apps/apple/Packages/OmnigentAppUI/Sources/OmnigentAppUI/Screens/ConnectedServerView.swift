@@ -122,6 +122,7 @@ public struct ConnectedServerView: View {
     .modifier(ShownPageReport(tabs: session.tabs) { pageChanged($0) })
     .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
+    .modifier(NestedDraftRetirement(connection: connection))
     .task(id: connection.connectedServer?.baseUrl) {
       if connection.connectedServer != nil { await connection.loadOfferedPages() }
     }
@@ -177,6 +178,8 @@ public struct ConnectedServerView: View {
       servers: serverSwitching?.choices ?? [])
     state.undo = sidebar.undo?.banner
     state.collapsedFamilies = sidebar.collapsedFamilies
+    state = SidebarNestedDraftRows.applied(
+      to: state, drafts: connection.creationStore?.nestedDrafts ?? [], list: connection.sessionList)
     state.showsAutomations = connection.pages?.offered?.automations == true
     state.showsUsage = connection.pages?.offered?.usage == true
     state.showsCanvas = connection.pages?.offered?.canvas == true

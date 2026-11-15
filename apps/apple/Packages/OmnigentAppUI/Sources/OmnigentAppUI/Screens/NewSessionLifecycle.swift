@@ -17,8 +17,9 @@ struct NewSessionLifecycle: ViewModifier {
   func body(content: Content) -> some View {
     content
       .onChange(of: creation.phase) { _, phase in
-        if case .failed = phase { form.nestedCreateFailed() }
+        if case .failed = phase { form.nestedCreateFailed(creation) }
         guard case .created(let sessionID, let firstMessageError) = phase else { return }
+        form.nestedCreated(sessionID, creation)
         form.fileInLabelProject(sessionID, list: connection.sessionList)
         guard let open = firstMessageError == nil ? opened : openedUnfinished else { return }
         creation.reset()
@@ -27,6 +28,7 @@ struct NewSessionLifecycle: ViewModifier {
       }
       // The server's policy can change while the composer is open.
       .onChange(of: creation.catalog) { form.enforceNestedPolicy(creation) }
+      .onDisappear { form.closeNestedDraft(creation) }
       .onChange(of: creation.pendingProject, initial: true) { _, next in
         guard let next, form.nested == nil else { return }
         creation.pendingProject = nil

@@ -232,7 +232,7 @@ extension ConnectedServerView {
       removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
     }
     if NestedAgentGate.offered(connection) {
-      actions.addNestedAgent = { selection.wrappedValue = .nestedSession(sourceID: $0.id) }
+      actions.addNestedAgent = { addNestedAgent(beside: $0.id) }
     }
     // Split view holds two tabs of one session; another session goes beside it in a window
     // (Open in New Window), so the rows offer no Open in Split View.
@@ -260,6 +260,13 @@ extension ConnectedServerView {
     let model = sidebarModel
     if model.display.show == .archived { setDisplay(model.display.with(show: .all)) }
     connection.sessionList.filter = OmnigentCoreFFI.SessionFilter(filter ?? .all)
+  }
+
+  /// Opens the Add nested agent composer beside `sourceID`, with its family, folder and section
+  /// open in the sidebar so its provisional row shows.
+  func addNestedAgent(beside sourceID: String) {
+    sidebarModel.collapsedFamilies = SidebarNavigationOrder.reveal(sourceID, in: sidebarState)
+    selectionBinding.wrappedValue = .nestedSession(sourceID: sourceID)
   }
 
   /// Previous and Next Session, and the pinned-session shortcuts, show the session's tabs.
