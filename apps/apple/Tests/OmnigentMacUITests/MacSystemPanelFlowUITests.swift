@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 /// The panels macOS itself draws over the app, on the offline demo server: the save panel an
@@ -125,11 +126,16 @@ final class MacSystemPanelFlowUITests: XCTestCase {
     live.clickMenuItem("Photos", in: app)
     let picker = app.sheets.firstMatch
     XCTAssertTrue(picker.appears(within: 15), "no photo picker\n\(app.debugDescription)")
-    // The picker fills in after it shows, and a click before then is lost: choose again.
+    // The picker fills in after it shows, and a click before then is lost: choose again. Until
+    // it has, it shows No Photos or Videos with Cancel where Add goes, so Add is clicked only
+    // once it shows enabled.
     for _ in 0..<4 where picker.exists {
-      let corner = picker.coordinate(withNormalizedOffset: .zero)
-      corner.withOffset(CGVector(dx: 96, dy: 224)).click()
-      corner.withOffset(CGVector(dx: 254, dy: 130)).click()
+      if !addIsEnabled(picker) {
+        let corner = picker.coordinate(withNormalizedOffset: .zero)
+        corner.withOffset(CGVector(dx: 96, dy: 224)).click()
+        corner.withOffset(CGVector(dx: 254, dy: 130)).click()
+      }
+      guard live.waitUntil(timeout: 4, { addIsEnabled(picker) }) else { continue }
       pickerButton(picker, fromTrailingEdge: 50).click()
       _ = picker.disappears(within: 6)
     }
@@ -145,6 +151,29 @@ final class MacSystemPanelFlowUITests: XCTestCase {
       live.elements(prefix: "draft-attachment-", in: app).firstMatch.appears(within: 15),
       "the chosen photo is not attached")
     live.assertRunning(app, "after choosing a photo")
+  }
+
+  /// Whether the picker's Add button is enabled: drawn in the accent color, which it takes once
+  /// a photo is chosen. Cancel, where Add goes while the picker is empty, is not.
+  @MainActor
+  private func addIsEnabled(_ picker: XCUIElement) -> Bool {
+    guard picker.exists else { return false }
+    let image = picker.screenshot().image
+    guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+      return false
+    }
+    let bitmap = NSBitmapImageRep(cgImage: cgImage)
+    let scale = CGFloat(bitmap.pixelsWide) / max(image.size.width, 1)
+    let row = Int((image.size.height - 28) * scale)
+    // Across the button, beside its title: the accent fill shows on either side of the word.
+    let tinted = stride(from: -20.0, through: 20.0, by: 2.0).filter { offset in
+      let column = Int((image.size.width - 50 + offset) * scale)
+      guard let color = bitmap.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB) else {
+        return false
+      }
+      return color.saturationComponent > 0.5 && color.brightnessComponent > 0.4
+    }
+    return tinted.count >= 4
   }
 
   /// A button of the picker's bottom bar, by how far its middle is from the trailing edge.
