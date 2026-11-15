@@ -5,6 +5,7 @@ import Testing
 
 #if os(macOS)
   import AppKit
+  import OmnigentViewTesting
 #endif
 
 /// Text on the composer's tinted glass, over the bare canvas and over dense transcript text, for
@@ -63,6 +64,38 @@ struct GlassContrastTests {
         #expect(abs(pixel.greenComponent - CGFloat(surface.green)) < 0.05, "\(scheme)")
         #expect(abs(pixel.blueComponent - CGFloat(surface.blue)) < 0.05, "\(scheme)")
       }
+    }
+
+    /// The ways a surface draws its outline over its content.
+    enum Outline: String, CaseIterable {
+      case flattened, reduceTransparency, increaseContrast
+    }
+
+    @Test(
+      "The outline over a surface takes no clicks: a button under it answers on its edge",
+      arguments: Outline.allCases)
+    @MainActor
+    func outlineTakesNoClicks(outline: Outline) throws {
+      var clicks = 0
+      let button = Button {
+        clicks += 1
+      } label: {
+        Color.clear.frame(width: 120, height: 40).contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .glassSurface(in: RoundedRectangle(cornerRadius: 8), isInteractive: true)
+      .environment(\.flattensGlass, outline == .flattened)
+      .environment(\._accessibilityReduceTransparency, outline == .reduceTransparency)
+      .environment(\._colorSchemeContrast, outline == .increaseContrast ? .increased : .standard)
+      let screen = OffscreenWindow(button.padding(20), width: 160, height: 80)
+      defer { screen.close() }
+      let frame = try #require(screen.controlFrames.first)
+      // Points on the outline's stroke, along the top and the leading side.
+      let edges = [
+        CGPoint(x: frame.midX, y: frame.minY + 0.25), CGPoint(x: frame.minX + 0.25, y: frame.midY),
+      ]
+      for point in edges { try screen.click(point) }
+      #expect(clicks == edges.count, "\(outline): \(clicks) of \(edges.count) clicks landed")
     }
   }
 #endif

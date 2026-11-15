@@ -31,7 +31,7 @@ public struct GlassSurface<SurfaceShape: InsettableShape>: ViewModifier {
     if reduceTransparency {
       content
         .background(ThemeColor.surface, in: shape)
-        .overlay { shape.strokeBorder(ThemeColor.border, lineWidth: increased ? 1.5 : 0.5) }
+        .overlay { border(lineWidth: increased ? 1.5 : 0.5) }
     } else if flattensGlass {
       content
         .background {
@@ -41,14 +41,20 @@ public struct GlassSurface<SurfaceShape: InsettableShape>: ViewModifier {
             shape.fill(ThemeColor.surface.opacity(tint))
           }
         }
-        .overlay { shape.strokeBorder(ThemeColor.border, lineWidth: increased ? 1.5 : 0.5) }
+        .overlay { border(lineWidth: increased ? 1.5 : 0.5) }
     } else {
       content
         .glassEffect(GlassStyle.glass(in: environment, isInteractive: isInteractive), in: shape)
         .overlay {
-          if increased { shape.strokeBorder(ThemeColor.border, lineWidth: 1.5) }
+          if increased { border(lineWidth: 1.5) }
         }
     }
+  }
+
+  /// The outline drawn over the content. It takes no clicks: on a 1x display a capsule's stroke
+  /// hit-tests along its middle line, which swallowed clicks on the controls beneath.
+  private func border(lineWidth: CGFloat) -> some View {
+    shape.strokeBorder(ThemeColor.border, lineWidth: lineWidth).allowsHitTesting(false)
   }
 }
 
