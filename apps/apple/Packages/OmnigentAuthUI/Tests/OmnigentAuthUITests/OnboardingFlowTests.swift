@@ -29,6 +29,14 @@
   extension OffscreenWindow {
     /// The landing's full-width buttons, top to bottom.
     var landingButtons: [CGRect] { controlFrames.filter { $0.width > 300 } }
+
+    /// The landing's first row, left to right: the organization's server and, with more than
+    /// one, the menu of them all.
+    var presetRow: [CGRect] {
+      let frames = controlFrames
+      guard let first = frames.first else { return [] }
+      return frames.filter { abs($0.midY - first.midY) < 8 }
+    }
   }
 
   /// A first run, clicked through: landing, local setup, joining a team.
@@ -156,10 +164,13 @@
       #expect(spy.log.isEmpty, "the intro starts nothing yet")
     }
 
-    @Test("with an organization server, Return joins it: that button is the prominent one")
-    func returnJoinsOrganization() async throws {
+    @Test(
+      "with organization servers, Return joins the first: that button is the prominent one",
+      arguments: [1, 2])
+    func returnJoinsOrganization(serverCount: Int) async throws {
       let spy = AuthSpy()
-      let organization = ServerDirectory(managed: Array(AuthSamples.directory.managed.prefix(1)))
+      let organization = ServerDirectory(
+        managed: Array(AuthSamples.directory.managed.prefix(serverCount)))
       let screen = OnboardingFixture.hosted(directory: organization, spy: spy)
       defer { screen.close() }
       #expect(try screen.allText().contains("Join your team (Acme Agents)"))
