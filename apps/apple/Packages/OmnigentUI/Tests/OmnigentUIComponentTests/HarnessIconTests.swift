@@ -118,8 +118,8 @@
       }
       #expect(shows(0xD97757, in: try row(.color)))
       #expect(!shows(0xD97757, in: try row(.monochrome)))
-      let withMark = RenderSupport.inkCoverage(try row(.monochrome))
-      #expect(withMark > RenderSupport.inkCoverage(try row(.hidden)))
+      let withMark = RenderSupport.inkedWidth(try row(.monochrome))
+      #expect(withMark > RenderSupport.inkedWidth(try row(.hidden)))
     }
 
     @Test("In a sidebar list row the one-color mark is drawn in the row's text color")
