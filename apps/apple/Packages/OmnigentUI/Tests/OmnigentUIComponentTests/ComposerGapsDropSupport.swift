@@ -54,14 +54,7 @@
     /// Whether `condition` comes true within ten seconds, for work a view does in its own tasks:
     /// a dropped item arrives from NSItemProvider however long the machine lets it.
     func eventually(_ condition: @MainActor () throws -> Bool) async throws -> Bool {
-      let clock = ContinuousClock()
-      let deadline = clock.now.advanced(by: .seconds(10))
-      while clock.now < deadline {
-        if try condition() { return true }
-        try await Task.sleep(for: .milliseconds(20))
-        settle(0.01)
-      }
-      return try condition()
+      try await waitUntil(timeout: .seconds(10), condition)
     }
 
     /// The middle of the editor, where a drop or a click lands on the composer.

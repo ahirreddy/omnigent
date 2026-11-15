@@ -9,6 +9,17 @@ public enum WorkspaceTheme {
   /// Row height for one code line.
   public static var lineHeight: CGFloat { (17 * CodeTypography.shared.scale).rounded() }
 
+  /// Whether the workspace views animate: off when launched with
+  /// `-OmnigentDisableAnimations YES`, as test processes are, so views change at once.
+  static var animates = !UserDefaults.standard.bool(forKey: "OmnigentDisableAnimations")
+
+  /// `animation`, or none while animations are off.
+  /// - Parameter animation: The animation to use when views animate.
+  /// - Returns: The animation, or `nil`.
+  static func motion(_ animation: Animation) -> Animation? {
+    animates ? animation : nil
+  }
+
   /// Background of added lines.
   /// - Parameter scheme: The color scheme.
   /// - Returns: The color.

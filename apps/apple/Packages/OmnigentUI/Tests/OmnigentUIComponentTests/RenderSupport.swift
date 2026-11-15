@@ -1,6 +1,7 @@
 #if os(macOS)
   import AppKit
   import Foundation
+  import OmnigentViewTesting
   import SwiftUI
 
   @testable import OmnigentUIComponents
@@ -64,7 +65,7 @@
       window.contentView = host
       host.frame = CGRect(origin: .zero, size: size)
       host.layoutSubtreeIfNeeded()
-      RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+      MainLoop.settle(limit: 0.15, windows: [window])
       host.layoutSubtreeIfNeeded()
       guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
         throw RenderError.bitmapUnavailable

@@ -24,7 +24,7 @@ struct ComposerExpandShortcut: View {
 
   var body: some View {
     Button(isExpanded ? "Collapse Editor" : "Expand Editor") {
-      withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
+      withAnimation(reduceMotion ? nil : Theme.Motion.animation(.snappy)) { isExpanded.toggle() }
     }
     .keyboardShortcut(AppShortcuts.expandEditor)
     .buttonStyle(.plain)
@@ -71,7 +71,7 @@ struct ComposerEditorButtons: View {
     }
     if showsExpand {
       Button {
-        withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
+        withAnimation(reduceMotion ? nil : Theme.Motion.animation(.snappy)) { isExpanded.toggle() }
       } label: {
         Label(
           isExpanded ? "Collapse Editor" : "Expand Editor",

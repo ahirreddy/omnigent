@@ -64,6 +64,30 @@
       #expect(seconds < 0.4, "\(seconds)")
     }
 
+    @Test("a repeating timer, such as a poll, is no work to wait for")
+    func ignoresRepeatingTimers() async {
+      let poll = Timer(timeInterval: 0.02, repeats: true) { _ in }
+      RunLoop.main.add(poll, forMode: .common)
+      defer { poll.invalidate() }
+      let seconds = await elapsed { MainLoop.settle(limit: 0.5) }
+      #expect(seconds < 0.4, "\(seconds)")
+    }
+
+    @Test("only valid one-shot timers are read from a run loop's description")
+    func readsOneShotTimers() {
+      let listed = """
+        <CFRunLoopTimer 0x1 [0x2]>{valid = Yes, firing = No, interval = 0.05, tolerance = 0, \
+        next fire date = 816476870 (0.0487 @ 586), callout = (NSTimer) poll}
+        <CFRunLoopTimer 0x3 [0x2]>{valid = Yes, firing = No, interval = 0, tolerance = 0, \
+        next fire date = 816476871 (0.2986 @ 586), callout = (NSTimer) once}
+        <CFRunLoopTimer 0x4 [0x2]>{valid = No, firing = No, interval = 0, tolerance = 0, \
+        next fire date = 816476871 (-1.5 @ 586), callout = (NSTimer) gone}
+        """
+      let dates = TimerQueue.oneShotFireDates(in: listed, now: 100)
+      #expect(dates.count == 1)
+      #expect(abs((dates.first ?? 0) - 100.2986) < 1e-9)
+    }
+
     @Test("a task's sleep ending before the limit is waited for, and its work runs")
     func waitsForSleepingTask() async {
       let done = Flag()

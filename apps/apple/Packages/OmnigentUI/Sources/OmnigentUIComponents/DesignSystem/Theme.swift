@@ -72,9 +72,24 @@ enum Theme {
     static let compactDockHeight: CGFloat = 240
   }
 
+  /// The views' animations. All of them pass through ``animation(_:)``, so one switch turns them
+  /// off: launched with `-OmnigentDisableAnimations YES`, as test processes are, views change at
+  /// once.
   enum Motion {
-    static let feedback = Animation.easeOut(duration: 0.16)
-    static let disclosure = Animation.easeInOut(duration: 0.2)
+    /// The launch setting that turns animations off.
+    static let disabledKey = "OmnigentDisableAnimations"
+    /// Whether views animate. A test that needs a real animation turns it on for its duration.
+    static var isEnabled = !UserDefaults.standard.bool(forKey: disabledKey)
+
+    static var feedback: Animation? { animation(.easeOut(duration: 0.16)) }
+    static var disclosure: Animation? { animation(.easeInOut(duration: 0.2)) }
+
+    /// `animation`, or none while animations are off.
+    /// - Parameter animation: The animation to use when views animate.
+    /// - Returns: The animation, or `nil`.
+    static func animation(_ animation: Animation) -> Animation? {
+      isEnabled ? animation : nil
+    }
   }
 
   static var codeFont: Font { Typography.code }

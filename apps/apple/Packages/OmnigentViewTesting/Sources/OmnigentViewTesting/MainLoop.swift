@@ -31,10 +31,14 @@
         return
       }
       var idle = 0
+      SettleTrace.begin()
       while idle < idleTurns, CFAbsoluteTimeGetCurrent() < deadline {
-        idle = runTurn(until: deadline, windows: windows) ? 0 : idle + 1
+        let activity = runTurn(until: deadline, windows: windows)
+        SettleTrace.note(activity)
+        idle = activity.isEmpty ? idle + 1 : 0
       }
       WaitStats.record("settle", since: start, reachedLimit: idle < idleTurns)
+      SettleTrace.end("settle", limit: limit, reachedLimit: idle < idleTurns)
     }
 
     /// Settles as ``settle(limit:windows:)`` does, suspending between turns so main actor tasks,
@@ -54,13 +58,16 @@
         return
       }
       var idle = 0
+      SettleTrace.begin()
       while idle < idleTurns, CFAbsoluteTimeGetCurrent() < deadline {
-        let busy = runTurn(until: deadline, windows: windows)
+        var activity = runTurn(until: deadline, windows: windows)
         await Task.yield()
-        let sleeping = SleepTracker.hasSleep(endingBefore: deadline)
-        idle = busy || sleeping ? 0 : idle + 1
+        if SleepTracker.hasSleep(endingBefore: deadline) { activity.insert(.sleep) }
+        SettleTrace.note(activity)
+        idle = activity.isEmpty ? idle + 1 : 0
       }
       WaitStats.record("settleTasks", since: start, reachedLimit: idle < idleTurns)
+      SettleTrace.end("settleTasks", limit: limit.seconds, reachedLimit: idle < idleTurns)
     }
 
     /// Runs the loop and suspends until `condition` holds, checking it after every turn.
@@ -116,51 +123,6 @@
 
     private static func spin(_ seconds: TimeInterval) {
       RunLoop.main.run(until: Date(timeIntervalSinceNow: seconds))
-    }
-
-    /// Runs one turn of the loop, then finishes the windows' pending layout and drawing.
-    /// - Parameters:
-    ///   - deadline: The wait's end, as an absolute time.
-    ///   - windows: Windows to check besides every shown one.
-    /// - Returns: Whether anything happened or is still due before `deadline`.
-    static func runTurn(until deadline: CFAbsoluteTime, windows: [NSWindow]) -> Bool {
-      let slice = min(turn, max(0, deadline - CFAbsoluteTimeGetCurrent()))
-      var busy = CFRunLoopRunInMode(.defaultMode, slice, true) == .handledSource
-      // Zero means no timer is scheduled.
-      let nextTimer = CFRunLoopGetNextTimerFireDate(CFRunLoopGetMain(), .defaultMode)
-      if nextTimer > 0, nextTimer < deadline { busy = true }
-      let shown = NSApp.windows.filter(\.isVisible)
-      for window in shown + windows.filter({ !$0.isVisible }) where finishPendingWork(window) {
-        busy = true
-      }
-      return busy
-    }
-
-    /// Lays out and draws what a window has pending.
-    /// - Parameter window: The window.
-    /// - Returns: Whether it had anything pending.
-    static func finishPendingWork(_ window: NSWindow) -> Bool {
-      guard let content = window.contentView else { return false }
-      // A window never shown never draws, so its drawing flag never clears.
-      let needsDrawing = window.isVisible && window.viewsNeedDisplay
-      guard needsDrawing || hasPendingLayout(content) else { return false }
-      content.updateConstraintsForSubtreeIfNeeded()
-      content.layoutSubtreeIfNeeded()
-      if window.isVisible { window.displayIfNeeded() }
-      return true
-    }
-
-    /// Whether a view, or a shown one under it, needs its constraints updated or a layout.
-    /// - Parameter root: The view.
-    /// - Returns: Whether any of them does.
-    static func hasPendingLayout(_ root: NSView) -> Bool {
-      var pending: [NSView] = [root]
-      while let view = pending.popLast() {
-        if view.isHidden { continue }
-        if view.needsLayout || view.needsUpdateConstraints { return true }
-        pending.append(contentsOf: view.subviews)
-      }
-      return false
     }
   }
 
