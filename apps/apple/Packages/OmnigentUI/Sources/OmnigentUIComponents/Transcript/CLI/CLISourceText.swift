@@ -192,7 +192,17 @@ final class SourceTintMemo {
 
   private var key: Key?
   private var attributed = AttributedString()
+  private var links: [LinkSpan] = []
+  private var linksAreFound = false
   private var stream = MarkdownStream(convert: SourceTinting.spans)
+
+  /// The current string's links, found once per string.
+  var linkSpans: [LinkSpan] {
+    if linksAreFound { return links }
+    links = LinkGeometry.spans(in: attributed)
+    linksAreFound = true
+    return links
+  }
 
   func attributed(
     _ text: String, palette: CLIPalette, isStreaming: Bool, tintsMarkdown: Bool
@@ -203,6 +213,7 @@ final class SourceTintMemo {
       !tintsMarkdown
       ? [] : isStreaming ? stream.elements(for: text) : SourceTintCache.shared.spans(for: text)
     attributed = SourceTinting.attributed(text, spans: spans, palette: palette, cursor: isStreaming)
+    linksAreFound = false
     self.key = key
     return attributed
   }
@@ -234,6 +245,7 @@ struct CLISourceText: View {
       memo.attributed(
         text, palette: palette, isStreaming: isStreaming, tintsMarkdown: tintsMarkdown)
     )
+    .linkPointer(memo.linkSpans)
     .foregroundStyle(palette[keyPath: color].color)
     .cliFont()
     .textSelection(.enabled)

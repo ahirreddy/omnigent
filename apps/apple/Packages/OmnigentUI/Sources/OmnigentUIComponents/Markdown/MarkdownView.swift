@@ -103,9 +103,12 @@ private struct MarkdownBlockView: View {
       .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
     case .heading(let level, let text):
       let size = ramp.heading(level)
-      Text(ramp.sizingCode(in: linked(text), size: (size * TypeRamp.codeScale).rounded(.down)))
+      let sized = ramp.sizingCode(
+        in: linked(text), size: (size * TypeRamp.codeScale).rounded(.down))
+      Text(sized)
         .font(.system(size: size, weight: .semibold))
         .lineHeight(.exact(points: ramp.headingLineHeight(level)))
+        .linkPointer(LinkGeometry.spans(in: sized))
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityAddTraits(.isHeader)
@@ -225,7 +228,9 @@ struct MarkdownTableView: View {
 
   private func cellView(_ text: AttributedString, column: Int) -> some View {
     let alignment = column < table.alignments.count ? table.alignments[column] : .leading
-    return Text(links?.linking(text) ?? text)
+    let linked = links?.linking(text) ?? text
+    return Text(linked)
+      .linkPointer(LinkGeometry.spans(in: linked))
       .textSelection(.enabled)
       .multilineTextAlignment(textAlignment(alignment))
       .frame(minWidth: 60, maxWidth: 360, alignment: frameAlignment(alignment))
