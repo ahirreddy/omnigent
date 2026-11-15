@@ -26,7 +26,13 @@
       let watched = withSheetsAndChildren(windows)
       let drawingBefore = watched.map { $0.isVisible && $0.viewsNeedDisplay }
       var activity: Activity = []
-      if poll(until: min(start + turn, deadline)) { activity.insert(.source) }
+      let end = min(start + turn, deadline)
+      if WaitStats.sleepingTurns {
+        let result = CFRunLoopRunInMode(.defaultMode, max(0, end - start), true)
+        if result == .handledSource { activity.insert(.source) }
+      } else if poll(until: end) {
+        activity.insert(.source)
+      }
       for (window, neededDrawing) in zip(watched, drawingBefore) {
         // The loop's own display pass draws a window; a flag that never clears is no work, as
         // with a transparent window off every display.
