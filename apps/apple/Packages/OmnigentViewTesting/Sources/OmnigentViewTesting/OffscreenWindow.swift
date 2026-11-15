@@ -93,14 +93,6 @@
       RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
     }
 
-    /// Runs the main run loop, so state changes, tasks and animations proceed.
-    /// - Parameter seconds: How long to run.
-    public func settle(_ seconds: TimeInterval = 0.1) {
-      host.layoutSubtreeIfNeeded()
-      RunLoop.main.run(until: Date(timeIntervalSinceNow: seconds))
-      host.layoutSubtreeIfNeeded()
-    }
-
     /// Clicks a point with a real mouse down and up.
     /// - Parameters:
     ///   - point: The point, from the top left of the view.
@@ -126,6 +118,7 @@
     ) throws -> (menu: NSMenu, wasClosed: Bool)? {
       nonisolated(unsafe) var opened: NSMenu?
       nonisolated(unsafe) var wasClosed = false
+      nonisolated(unsafe) var closers: [Timer] = []
       let center = NotificationCenter.default
       let observer = center.addObserver(
         forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil
@@ -139,8 +132,13 @@
           menu.cancelTrackingWithoutAnimation()
         }
         RunLoop.main.add(close, forMode: .common)
+        unsafe closers.append(close)
       }
-      defer { center.removeObserver(observer) }
+      defer {
+        center.removeObserver(observer)
+        // A menu that closed by itself leaves its closer scheduled; a settle would wait for it.
+        for closer in unsafe closers { closer.invalidate() }
+      }
       try MenuTrackingLock.holding {
         let down = try mouseEvent(.leftMouseDown, point, clickCount, modifiers)
         let mouseUp = try mouseEvent(.leftMouseUp, point, clickCount, modifiers, delay: 0.03)
