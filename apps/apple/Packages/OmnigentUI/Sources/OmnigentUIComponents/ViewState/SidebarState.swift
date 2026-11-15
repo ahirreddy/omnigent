@@ -163,6 +163,8 @@ nonisolated public struct SessionRowInfo: Hashable, Sendable {
   public var hasDraft: Bool
   /// The runner or host is disconnected.
   public var isDisconnected: Bool
+  /// What the disconnected mark says: "Disconnected", or why a sandbox launch failed.
+  public var disconnectedLabel = "Disconnected"
   /// Who created it ("You" for the viewer), for the hover tooltip.
   public var createdBy: String?
   /// It runs on a host, whose runner Stop session also stops.

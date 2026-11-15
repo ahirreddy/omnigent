@@ -1,6 +1,7 @@
 #if os(macOS)
   import AppKit
   import OmnigentViewTesting
+  import OmnigentViewTextReading
   import SwiftUI
   import Testing
 
@@ -139,6 +140,27 @@
       try screen.choose("Delete\u{2026}", in: menu)
       try screen.choose("Stop session", in: menu)
       #expect(spy.calls == ["rename prompt", "delete prompt", "stop prompt"])
+    }
+
+    @Test("A row whose sandbox failed to launch says why where another says Disconnected")
+    func launchFailureMark() throws {
+      let plain = OffscreenWindow(
+        RowHost(spy: spy, session: session, info: SessionRowInfo(isDisconnected: true)),
+        width: 280, height: 32)
+      defer { plain.close() }
+      let disconnected = try plain.words(of: "session-row-s").joined(separator: " | ")
+      #expect(disconnected.contains("Fix the build, Disconnected,"), "\(disconnected)")
+
+      var info = SessionRowInfo(environment: "Sandbox launch failed", isDisconnected: true)
+      info.disconnectedLabel = "Sandbox launch failed: No capacity"
+      let failed = OffscreenWindow(
+        RowHost(spy: spy, session: session, info: info, details: [.environment]),
+        width: 280, height: 32)
+      defer { failed.close() }
+      let label = try failed.words(of: "session-row-s").joined(separator: " | ")
+      #expect(label.contains("Sandbox launch failed: No capacity"), "\(label)")
+      #expect(!label.contains("Disconnected"), "\(label)")
+      #expect(try failed.shows("Sandbox launch failed"))
     }
 
     @Test("every attention and quiet state draws differently")

@@ -12,25 +12,50 @@ struct SessionLivenessRow: View {
 
   private var sheets: SessionLivenessSheets { actions.sheets ?? localSheets }
 
+  private enum Mark {
+    case spinner
+    case symbol(String, AnyShapeStyle)
+  }
+
+  /// What leads the line: a spinner while something is on its way, else a symbol.
+  private var mark: Mark {
+    if notice.failedLaunch != nil {
+      return .symbol("exclamationmark.triangle.fill", AnyShapeStyle(Theme.failure))
+    }
+    switch notice.liveness {
+    case .starting: return .spinner
+    case .launching(let launch) where launch.standing == .progress: return .spinner
+    case .launching: return .symbol("exclamationmark.circle", AnyShapeStyle(Theme.attention))
+    default: return .symbol("moon.zzz", AnyShapeStyle(.secondary))
+    }
+  }
+
+  private var lineStyle: AnyShapeStyle {
+    notice.failedLaunch == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Theme.failure)
+  }
+
   var body: some View {
     Group {
       if let line = notice.line {
         HStack(spacing: Theme.Spacing.small) {
-          if notice.liveness == .starting {
-            ProgressView().controlSize(.small)
-          } else {
-            Image(systemName: "moon.zzz").foregroundStyle(.secondary).accessibilityHidden(true)
+          switch mark {
+          case .spinner: ProgressView().controlSize(.small)
+          case .symbol(let name, let style):
+            Image(systemName: name).foregroundStyle(style).accessibilityHidden(true)
           }
-          Text(line).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+          Text(line).font(.footnote).foregroundStyle(lineStyle).lineLimit(2)
         }
         .accessibilityElement(children: .combine)
       } else if notice.liveness.isUnreachable {
         Button {
           sheets.shown = .reconnect
         } label: {
-          Label("\(notice.title) \u{2014} reconnect\u{2026}", systemImage: "wifi.slash")
+          // A failed sandbox launch says why, where another session says it is disconnected.
+          let title = notice.failedLaunch?.line ?? notice.title
+          Label("\(title) \u{2014} reconnect\u{2026}", systemImage: "wifi.slash")
             .font(.callout)
             .foregroundStyle(Theme.failure)
+            .lineLimit(2)
         }
         .buttonStyle(.borderless)
         .help("How to reconnect this session")

@@ -60,6 +60,8 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   public var approvalModeTitle: String?
   /// The effort the composer's chip names, for the inspector to match.
   public var effortTitle: String?
+  /// The session's managed sandbox, for the titlebar's status control; `nil` without one.
+  public var sandbox: SandboxStatusState?
 
   /// Creates conversation state.
   /// - Parameters:

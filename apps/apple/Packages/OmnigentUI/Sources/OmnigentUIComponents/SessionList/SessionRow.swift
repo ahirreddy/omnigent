@@ -170,8 +170,8 @@ struct SessionRow: View {
       Image(systemName: "bolt.horizontal.circle")
         .font(.caption)
         .foregroundStyle(.secondary)
-        .help("Disconnected")
-        .accessibilityLabel("Disconnected")
+        .help(info.disconnectedLabel)
+        .accessibilityLabel(info.disconnectedLabel)
     } else if session.attention == .unread {
       Circle().fill(Theme.unread).frame(width: 6, height: 6)
         .help("Unread")
@@ -214,7 +214,7 @@ struct SessionRow: View {
     case .failed, .working, .unread: parts.append(session.attention.label)
     case .idle: break
     }
-    if info.isDisconnected { parts.append("Disconnected") }
+    if info.isDisconnected { parts.append(info.disconnectedLabel) }
     if session.isPinned { parts.append("Pinned") }
     if info.isShared { parts.append("Shared") }
     parts.append("updated \(RelativeTime.short(session.updatedDate, now: now ?? Date())) ago")

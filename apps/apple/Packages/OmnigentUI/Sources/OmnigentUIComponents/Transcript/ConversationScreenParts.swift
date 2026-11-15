@@ -18,11 +18,14 @@ public struct ConversationExtras {
   public var exportTranscript: (@MainActor () -> Void)?
   /// The Share sheet opened: read the current grants.
   public var shareOpened: (@MainActor () -> Void)?
+  /// What the sandbox status panel's buttons ask the server for.
+  public var sandbox: SandboxStatusActions
 
   /// Creates extras.
   /// - Parameters:
   ///   - sessionActions: Title-menu actions.
   ///   - slots: Right-panel content.
+  ///   - sandbox: The sandbox panel's operations.
   ///   - share: Share sheet.
   ///   - forkActions: Fork dialog actions.
   ///   - navigation: Session navigation commands.
@@ -32,6 +35,7 @@ public struct ConversationExtras {
   public init(
     sessionActions: SessionListActions = SessionListActions(),
     slots: WorkspaceSlots = WorkspaceSlots(),
+    sandbox: SandboxStatusActions = SandboxStatusActions(),
     share: (state: ShareViewState, actions: ShareActions)? = nil, forkActions: ForkActions? = nil,
     navigation: SessionCommandActions = SessionCommandActions(),
     menuContext: SessionMenuContext = SessionMenuContext(),
@@ -46,6 +50,7 @@ public struct ConversationExtras {
     self.menuContext = menuContext
     self.exportTranscript = exportTranscript
     self.shareOpened = shareOpened
+    self.sandbox = sandbox
   }
 }
 
