@@ -9,6 +9,9 @@ public struct DesktopCommandActions {
   public var helpURL: URL?
   /// Omnigent > Check for Updates...; hidden when `nil`. Bind to Sparkle's updater.
   public var checkForUpdates: (() -> Void)?
+  /// Omnigent > Settings... (Command-comma) for an app that shows Settings in its windows;
+  /// `nil` leaves the item to a `Settings` scene.
+  public var showSettings: (() -> Void)?
   /// Adds the local server and host items to the Server menu; hidden when `nil` or when the
   /// edition cannot spawn processes. Normally `desktop.localServer`.
   public var localServer: LocalServerManager?
@@ -18,23 +21,27 @@ public struct DesktopCommandActions {
   ///   - defaultServerURL: Server for new windows.
   ///   - helpURL: Documentation URL.
   ///   - checkForUpdates: Update check.
+  ///   - showSettings: Shows Settings in the front window.
   ///   - localServer: The local server manager for the Server menu.
   public init(
     defaultServerURL: @escaping () -> URL?,
     helpURL: URL? = nil,
     checkForUpdates: (() -> Void)? = nil,
+    showSettings: (() -> Void)? = nil,
     localServer: LocalServerManager? = nil
   ) {
     self.defaultServerURL = defaultServerURL
     self.helpURL = helpURL
     self.checkForUpdates = checkForUpdates
+    self.showSettings = showSettings
     self.localServer = localServer
   }
 }
 
 /// The Omnigent menu bar, mirroring the Electron app's menus with native placement.
 ///
-/// - Omnigent: About, Check for Updates..., Settings... (from the `Settings` scene).
+/// - Omnigent: About, Check for Updates..., Settings... (the front window's Settings page with
+///   `actions.showSettings`, else a `Settings` scene's).
 /// - File: New Session, New Window, New Window on Different Server..., then the standard Close
 ///   and Close All. Electron has no File menu and lists these under Server; on macOS they stay
 ///   in File so Close Window keeps its place and Command-W.
@@ -72,6 +79,11 @@ public struct OmnigentDesktopCommands: Commands {
     CommandGroup(after: .appInfo) {
       UpdateMenuItems(actions: actions)
     }
+    if let showSettings = actions.showSettings {
+      CommandGroup(replacing: .appSettings) {
+        SettingsMenuItem(showSettings: showSettings)
+      }
+    }
     CommandGroup(after: .pasteboard) {
       Divider()
       FindMenu(find: focused?.actions.find)
@@ -98,6 +110,16 @@ struct UpdateMenuItems: View {
     if let checkForUpdates = actions.checkForUpdates {
       Button("Check for Updates\u{2026}", action: checkForUpdates)
     }
+  }
+}
+
+/// Omnigent > Settings.
+struct SettingsMenuItem: View {
+  let showSettings: () -> Void
+
+  var body: some View {
+    Button("Settings\u{2026}", action: showSettings)
+      .keyboardShortcut(",", modifiers: .command)
   }
 }
 

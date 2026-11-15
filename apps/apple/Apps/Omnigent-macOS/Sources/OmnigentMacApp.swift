@@ -4,7 +4,6 @@ import OmnigentAppUI
 import OmnigentAuthUI
 import OmnigentBrowser
 import OmnigentDesktop
-import OmnigentTerminalUI
 import OmnigentUIComponents
 import OmnigentWorkspaceUI
 import SwiftUI
@@ -51,19 +50,45 @@ struct OmnigentMacApp: App {
     { newWindowServerURL(demo: OmnigentMacAppDelegate.demoServerURL, desktop: desktop) }
   }
 
+  /// Settings, a page of the front window: Omnigent > Settings (Command-comma) shows it or
+  /// goes back from it, and the menu bar's Settings shows it.
+  /// - Parameters:
+  ///   - desktop: The launch's desktop.
+  ///   - toggling: Whether a window already on Settings goes back to its content.
+  /// - Returns: Shows Settings.
+  static func showSettings(desktop: DesktopController, toggling: Bool) -> () -> Void {
+    { desktop.router.showSettings(toggling: toggling) }
+  }
+
+  /// A server window's root. Its Settings has Updates in the edition that updates itself.
+  /// - Parameters:
+  ///   - id: The window's binding.
+  ///   - delegate: The launch's delegate.
+  /// - Returns: The root view.
+  static func windowRoot(_ id: Binding<ServerWindowID>, delegate: OmnigentMacAppDelegate)
+    -> ServerWindowRoot
+  {
+    #if OMNIGENT_CHROMIUM
+      ServerWindowRoot(id: id, services: delegate.services, updater: delegate.updater)
+    #else
+      ServerWindowRoot(id: id, services: delegate.services)
+    #endif
+  }
+
   var body: some Scene {
     let services = appDelegate.services
     let desktop = services.desktop
     let defaultServerURL = Self.newWindowServerURL(desktop: desktop)
     ServerWindowScene(
       defaultServerURL: defaultServerURL,
-      content: { id in ServerWindowRoot(id: id, services: services) }
+      content: { id in Self.windowRoot(id, delegate: appDelegate) }
     )
     .commands {
       OmnigentDesktopCommands(
         actions: DesktopCommandActions(
           defaultServerURL: defaultServerURL,
           helpURL: Self.helpURL, checkForUpdates: appDelegate.checkForUpdates,
+          showSettings: Self.showSettings(desktop: desktop, toggling: true),
           localServer: desktop.localServer))
       BrowserCommands()
       // The focused browser tab's menu. Edit > Find and View > Zoom already route to the page.
@@ -80,19 +105,9 @@ struct OmnigentMacApp: App {
 
     LocalServerLogsWindow(manager: desktop.localServer, router: desktop.router)
 
-    OmnigentMenuBarExtra(desktop: desktop, sessions: services.menuBar)
-
-    Settings {
-      #if OMNIGENT_CHROMIUM
-        AppSettingsView(services: services, updater: appDelegate.updater)
-          .omnigentTheme(services.theme.theme, appearance: services.theme.mode)
-      #else
-        AppSettingsView(services: services)
-          .omnigentTheme(services.theme.theme, appearance: services.theme.mode)
-      #endif
-    }
-    // Each tab sets its size, so a saved smaller frame never clips a pane.
-    .windowResizability(.contentSize)
+    OmnigentMenuBarExtra(
+      desktop: desktop, sessions: services.menuBar,
+      showSettings: Self.showSettings(desktop: desktop, toggling: false))
   }
 }
 
@@ -290,83 +305,4 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       services.logger.error("\(message, privacy: .public)")
     }
   #endif
-}
-
-/// Settings: the desktop tabs, plus Appearance (theme, under the web's keys), Terminal, Phone and
-/// Servers, with the composer's send shortcut and this edition's browser engines on General.
-struct AppSettingsView: View {
-  let services: AppServices
-  #if OMNIGENT_CHROMIUM
-    /// Backs General › Updates.
-    let updater: SparkleUpdater
-  #endif
-  /// Other windows open Settings at a tab or server pane through it.
-  private var navigator: SettingsNavigator { .shared }
-
-  var body: some View {
-    OmnigentSettingsView(
-      desktop: services.desktop, recentServers: services.recentServers.urls,
-      extraTabs: [
-        SettingsTabItem(SettingsNavigator.appearanceTab, systemImage: "paintpalette") {
-          Form {
-            ThemeSettingsView(preferences: services.theme)
-            SettingsDataSection(theme: services.theme)
-          }
-          .formStyle(.grouped)
-          .environment(\.pickerVisibilitySource, PickerVisibilityAdapter.source())
-        },
-        SettingsTabItem(SettingsNavigator.terminalTab, systemImage: "apple.terminal") {
-          TerminalSettingsView()
-        },
-        SettingsTabItem("Phone", systemImage: "iphone") {
-          PairingSettingsView(servers: services.pairingServers())
-        },
-        // Each signed-in server's settings, as the web's /settings server sections.
-        SettingsTabItem(SettingsNavigator.serversTab, systemImage: "network", isWide: true) {
-          ServerSettingsContainer(openSession: services.openSession)
-        },
-      ],
-      selection: Bindable(navigator).tab
-    ) {
-      ComposerSettingsSection()
-      SessionSettingsSection()
-      LinksAndSessionsSettingsSection()
-      BrowserEngineSettingsView(
-        preferences: services.browserPreferences, provider: services.browserProvider)
-      BrowserSettingsView(environment: services.browser)
-      Section("Downloads") {
-        BrowserDownloadSettingsView(settings: BrowserPromptPresenter.shared.downloadSettings)
-      }
-      #if OMNIGENT_CHROMIUM
-        UpdateSettingsSection(updater: updater, issue: services.updaterIssue)
-      #endif
-    }
-    // A link that moves to a wide tab rebuilds the toolbar with the old tab highlighted.
-    .onChange(of: navigator.tab, initial: true) { _, tab in
-      Task { @MainActor in
-        SettingsToolbarHighlight.select(tab)
-        try? await Task.sleep(for: .milliseconds(150))
-        SettingsToolbarHighlight.select(tab)
-      }
-    }
-  }
-}
-
-/// Keeps the Settings toolbar's highlighted item on the shown tab.
-enum SettingsToolbarHighlight {
-  /// Highlights the toolbar item titled `tab` in the window that shows the Settings tabs.
-  @MainActor static func select(_ tab: String) {
-    for window in NSApp.windows where window.isVisible {
-      if let toolbar = window.toolbar { select(tab, in: toolbar) }
-    }
-  }
-
-  /// Highlights the item titled `tab` when `toolbar` is the Settings one, which has a General item.
-  @MainActor static func select(_ tab: String, in toolbar: NSToolbar) {
-    guard toolbar.items.contains(where: { $0.label == SettingsNavigator.generalTab }),
-      let item = toolbar.items.first(where: { $0.label == tab }),
-      toolbar.selectedItemIdentifier != item.itemIdentifier
-    else { return }
-    toolbar.selectedItemIdentifier = item.itemIdentifier
-  }
 }

@@ -36,15 +36,20 @@
       #expect(spy.calls == ["server org", "add server", "server settings", "sign out"])
     }
 
-    @Test("the Omnigent wordmark starts a new session; Search opens the palette")
+    @Test(
+      "the Omnigent wordmark starts a new session; Search opens the palette; the gear opens Settings"
+    )
     func headerButtons() throws {
       let spy = spyWithServers()
-      var opened = 0
+      var opened: [String] = []
       let presenter = PalettePresenter()
-      presenter.open = { opened += 1 }
+      presenter.open = { opened.append("palette") }
+      let settings = SettingsScreenPresenter()
+      settings.open = { opened.append("settings") }
       let screen = OffscreenWindow(
         SidebarHeader(state: spy.state, actions: spy.actions)
-          .environment(\.openCommandPalette, OpenCommandPaletteAction(presenter: presenter)),
+          .environment(\.openCommandPalette, OpenCommandPaletteAction(presenter: presenter))
+          .environment(\.openSettingsPage, OpenSettingsScreenAction(presenter: settings)),
         width: 300, height: 60)
       defer { screen.close() }
       // Wordmark, server menu, Search, Settings.
@@ -52,18 +57,28 @@
       try screen.clickControl(at: 0)
       #expect(spy.calls == ["new session"])
       try screen.clickControl(at: 2)
-      #expect(opened == 1)
+      #expect(opened == ["palette"])
+      try screen.clickControl(at: 3)
+      #expect(opened == ["palette", "settings"])
     }
 
-    @Test("without actions the header is just its wordmark and Settings")
+    @Test("without actions the header is just its wordmark and Settings, where a window has it")
     func bareHeader() throws {
       let spy = SidebarSpy(SidebarFixture.state)
+      let actions = SidebarActions(sessions: SessionListActions())
       let screen = OffscreenWindow(
-        SidebarHeader(
-          state: spy.state, actions: SidebarActions(sessions: SessionListActions())),
+        SidebarHeader(state: spy.state, actions: actions)
+          .environment(
+            \.openSettingsPage, OpenSettingsScreenAction(presenter: SettingsScreenPresenter())),
         width: 300, height: 60)
       defer { screen.close() }
       #expect(screen.controlFrames.count == 1)
+
+      // No Settings page to open (a preview, the gallery): no gear.
+      let plain = OffscreenWindow(
+        SidebarHeader(state: spy.state, actions: actions), width: 300, height: 60)
+      defer { plain.close() }
+      #expect(plain.controlFrames.isEmpty)
     }
 
     @Test("the display menu's pickers and row details each write their one option")

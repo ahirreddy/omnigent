@@ -32,6 +32,8 @@ public final class ServerWindowRegistry {
   @ObservationIgnored private let reportIssue: DesktopIssueReporter
   @ObservationIgnored private var lastUnreadTotal = 0
   @ObservationIgnored private var routeHandlers: [UUID: (DeepLinkRoute) -> Void] = [:]
+  /// The windows' Settings pages, for Omnigent > Settings and the menu bar.
+  @ObservationIgnored let settingsPages = WindowSettingsPages()
 
   /// Creates an empty registry.
   /// - Parameter reportIssue: Receives windows bound to invalid server URLs.
@@ -85,8 +87,18 @@ public final class ServerWindowRegistry {
     entries.removeAll { $0.id.instance == instance }
     pendingRoutes[instance] = nil
     routeHandlers[instance] = nil
+    settingsPages.remove(instance)
     if keyWindow == instance { keyWindow = nil }
     publishUnreadTotal()
+  }
+
+  /// Registers a window's Settings page. Settings asked for while no window was open shows in
+  /// this one at once.
+  /// - Parameters:
+  ///   - instance: The window's instance.
+  ///   - page: The window's Settings page.
+  public func setSettingsPage(for instance: UUID, _ page: WindowSettingsPage) {
+    settingsPages.register(page, for: instance)
   }
 
   /// Records whether a window is key.
@@ -96,6 +108,7 @@ public final class ServerWindowRegistry {
   public func setKey(_ instance: UUID, isKey: Bool) {
     if isKey {
       keyWindow = instance
+      settingsPages.becameKey(instance)
     } else if keyWindow == instance {
       keyWindow = nil
     }

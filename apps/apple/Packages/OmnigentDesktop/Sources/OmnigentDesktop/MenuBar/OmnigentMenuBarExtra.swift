@@ -11,6 +11,7 @@ public import SwiftUI
 public struct OmnigentMenuBarExtra: Scene {
   private let desktop: DesktopController
   private let sessions: (any MenuBarSessionSource)?
+  private let showSettings: (() -> Void)?
   /// The icon's state, republished after window layout rather than during it.
   @State private var label: DeferredObservedValue<MenuBarLabelState>
 
@@ -18,9 +19,15 @@ public struct OmnigentMenuBarExtra: Scene {
   /// - Parameters:
   ///   - desktop: The shell services.
   ///   - sessions: Sessions that need attention; `nil` hides that section.
-  public init(desktop: DesktopController, sessions: (any MenuBarSessionSource)? = nil) {
+  ///   - showSettings: The panel's Settings, for an app that shows Settings in its windows;
+  ///     `nil` opens a `Settings` scene.
+  public init(
+    desktop: DesktopController, sessions: (any MenuBarSessionSource)? = nil,
+    showSettings: (() -> Void)? = nil
+  ) {
     self.desktop = desktop
     self.sessions = sessions
+    self.showSettings = showSettings
     let manager = desktop.localServer
     _label = State(
       initialValue: DeferredObservedValue {
@@ -33,7 +40,7 @@ public struct OmnigentMenuBarExtra: Scene {
   /// The extra.
   public var body: some Scene {
     MenuBarExtra(isInserted: Self.isInserted(desktop.localServerPreferences)) {
-      OmnigentMenuBarContent(desktop: desktop, sessions: sessions)
+      OmnigentMenuBarContent(desktop: desktop, sessions: sessions, showSettings: showSettings)
     } label: {
       OmnigentMenuBarLabel(state: label.value)
     }
@@ -102,6 +109,7 @@ struct OmnigentMenuBarLabel: View {
 public struct OmnigentMenuBarContent: View {
   private let desktop: DesktopController
   private let sessions: (any MenuBarSessionSource)?
+  private let showSettings: (() -> Void)?
   @Environment(\.openWindow) private var openWindow
   @Environment(\.openSettings) private var openSettings
   /// The app's windows; Open Omnigent brings one forward, or opens one when none is showing.
@@ -111,9 +119,14 @@ public struct OmnigentMenuBarContent: View {
   /// - Parameters:
   ///   - desktop: The shell services.
   ///   - sessions: Sessions that need attention.
-  public init(desktop: DesktopController, sessions: (any MenuBarSessionSource)?) {
+  ///   - showSettings: Shows Settings in a window; `nil` opens a `Settings` scene.
+  public init(
+    desktop: DesktopController, sessions: (any MenuBarSessionSource)?,
+    showSettings: (() -> Void)? = nil
+  ) {
     self.desktop = desktop
     self.sessions = sessions
+    self.showSettings = showSettings
   }
 
   private var manager: LocalServerManager { desktop.localServer }
@@ -189,7 +202,7 @@ public struct OmnigentMenuBarContent: View {
       }
       MenuRowButton("Settings\u{2026}", systemImage: "gearshape") {
         activate()
-        openSettings()
+        if let showSettings { showSettings() } else { openSettings() }
       }
       Divider().padding(.vertical, 4)
       MenuRowButton("Quit Omnigent", systemImage: "power") {

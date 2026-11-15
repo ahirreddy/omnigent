@@ -143,6 +143,7 @@ struct LocalServerSettingsTab: View {
   private var menuBarSection: some View {
     Section {
       Toggle("Show Omnigent in the menu bar", isOn: $preferences.showsMenuBarExtra)
+        .accessibilityIdentifier("settings.local-server.menu-bar")
     } header: {
       Text("Menu Bar")
     }

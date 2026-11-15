@@ -89,13 +89,33 @@
       _ = TranscriptCommands().body
     }
 
-    @Test("On the Mac, opening Appearance goes to the Settings window, not a sheet")
+    @Test("On the Mac, opening Appearance goes to the window's Settings page, not a sheet")
     func openSettingsOnMac() throws {
       let suite = "cli-gaps-\(UUID().uuidString)"
       let preferences = ThemePreferences(defaults: try #require(UserDefaults(suiteName: suite)))
       var open: OpenAppearanceSettingsAction?
+      var opened = 0
+      let page = SettingsScreenPresenter()
+      page.open = { opened += 1 }
       let screen = transcriptScreen(
-        OpenProbe { open = $0 }.appearanceSettings(preferences))
+        OpenProbe { open = $0 }.appearanceSettings(preferences)
+          .environment(\.openSettingsPage, OpenSettingsScreenAction(presenter: page)))
+      defer { screen.close() }
+      screen.settle()
+      let openSettings = try #require(open)
+      openSettings()
+      screen.settle()
+      #expect(opened == 1)
+      #expect(screen.window.attachedSheet == nil)
+      #expect(SystemSideEffects.record.shownWindowTitles.isEmpty)
+    }
+
+    @Test("On the Mac, a window with no Settings page opens nothing for Appearance")
+    func openSettingsWithoutAPage() throws {
+      let suite = "cli-gaps-\(UUID().uuidString)"
+      let preferences = ThemePreferences(defaults: try #require(UserDefaults(suiteName: suite)))
+      var open: OpenAppearanceSettingsAction?
+      let screen = transcriptScreen(OpenProbe { open = $0 }.appearanceSettings(preferences))
       defer { screen.close() }
       screen.settle()
       let openSettings = try #require(open)

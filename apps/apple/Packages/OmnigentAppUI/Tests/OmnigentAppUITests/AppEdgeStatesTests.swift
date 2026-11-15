@@ -15,16 +15,6 @@ import Testing
 @testable import OmnigentStores
 @testable import OmnigentUIComponents
 
-/// Hands the view's `openSettings` to the test.
-private struct OpenSettingsProbe: View {
-  @Environment(\.openSettings) private var openSettings
-  let found: (OpenSettingsAction) -> Void
-
-  var body: some View {
-    Color.clear.onAppear { found(openSettings) }
-  }
-}
-
 /// Hands the attachment previews a page's messages read to the test.
 private struct AttachmentPreviewsProbe: View {
   @Environment(\.attachmentPreviews) private var previews
@@ -49,18 +39,13 @@ private final class PanelChoice {
 @MainActor
 @Suite("App edge states", .serialized, .timeLimit(.minutes(1)))
 struct AppEdgeStatesTests {
-  @Test("Opening Settings at a destination moves the navigator, then opens the window")
+  @Test("Opening Settings at a destination moves the navigator, then shows the window's page")
   func openingSettings() throws {
-    final class Found { var action: OpenSettingsAction? }
-    let found = Found()
-    let screen = OffscreenWindow(
-      OpenSettingsProbe { found.action = $0 }, width: 100, height: 100)
-    defer { screen.close() }
-    let openSettings = try #require(found.action)
     let navigator = SettingsNavigator()
-    let open = OpenSettingsDestinationAction.settingsWindow(navigator, openSettings: openSettings)
+    let open = OpenSettingsDestinationAction.settingsPage(navigator)
     open(.tab(SettingsNavigator.appearanceTab))
     #expect(navigator.tab == SettingsNavigator.appearanceTab)
+    #expect(navigator.isPresented)
     open(.server(url: "https://a.test", pane: nil))
     #expect(navigator.tab == SettingsNavigator.serversTab)
     #expect(navigator.takeServerRequest()?.url == "https://a.test")

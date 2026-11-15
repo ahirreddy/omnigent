@@ -34,9 +34,6 @@ public struct ServerSettingsRequest: Hashable, Sendable {
 @MainActor
 @Observable
 public final class SettingsNavigator {
-  /// The Settings window's navigator.
-  public static let shared = SettingsNavigator()
-
   /// General (the built-in tab's title).
   public static let generalTab = "General"
   /// Appearance.
@@ -128,20 +125,6 @@ extension EnvironmentValues {
     /// - Returns: The action.
     @MainActor public static func settingsPage(_ navigator: SettingsNavigator) -> Self {
       Self { destination in navigator.open(destination) }
-    }
-
-    /// Moves `navigator` to the destination, then opens (or fronts) the Settings scene.
-    /// - Parameters:
-    ///   - navigator: The Settings window's navigator.
-    ///   - openSettings: The scene's `openSettings` action.
-    /// - Returns: The action.
-    @MainActor public static func settingsWindow(
-      _ navigator: SettingsNavigator = .shared, openSettings: OpenSettingsAction
-    ) -> Self {
-      Self { destination in
-        navigator.show(destination)
-        openSettings()
-      }
     }
   }
 #endif

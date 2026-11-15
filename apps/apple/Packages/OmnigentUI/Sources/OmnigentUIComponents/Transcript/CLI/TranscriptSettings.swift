@@ -234,7 +234,7 @@ public struct AppearanceSettingsView: View {
   }
 }
 
-/// Opens Settings › Appearance: a sheet on iPhone and iPad, the Settings window on the Mac.
+/// Opens Settings › Appearance: a sheet on iPhone and iPad, the window's Settings page on the Mac.
 /// Like ``TranscriptWindowControls`` it holds no closure, so it stays equal across updates.
 public struct OpenAppearanceSettingsAction: Equatable {
   let presenter: AppearanceSettingsPresenter
@@ -285,7 +285,7 @@ private struct AppearanceSettingsHost: ViewModifier {
   let preferences: ThemePreferences
   @State private var presenter = AppearanceSettingsPresenter()
   #if os(macOS)
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openSettingsPage) private var openSettingsPage
   #else
     @State private var isPresented = false
   #endif
@@ -306,7 +306,7 @@ private struct AppearanceSettingsHost: ViewModifier {
 
   private var open: @MainActor () -> Void {
     #if os(macOS)
-      { openSettings() }
+      { openSettingsPage?() }
     #else
       { isPresented = true }
     #endif

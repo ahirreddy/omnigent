@@ -9,6 +9,10 @@ import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
 
+#if OMNIGENT_CHROMIUM
+  import OmnigentDesktopUpdate
+#endif
+
 /// One server window: its own ``ServerSession`` (a core-backed `ConnectionStore` and its
 /// sign-in), bound to the server in its `ServerWindowID`.
 ///
@@ -18,12 +22,17 @@ import SwiftUI
 struct ServerWindowRoot: View {
   @Binding var id: ServerWindowID
   let services: AppServices
+  #if OMNIGENT_CHROMIUM
+    /// Backs Settings › General › Updates.
+    var updater: SparkleUpdater?
+  #endif
 
   @State private var session: ServerSession?
   @State private var selection: SidebarDestination?
   @State private var showsCoreDebug = false
+  /// The window's Settings page: whether it shows, and at which category.
+  @State private var settings = SettingsNavigator()
   @Environment(\.openWindow) private var openWindow
-  @Environment(\.openSettings) private var openSettings
   @Environment(\.appearsActive) private var appearsActive
 
   private var desktop: DesktopController { services.desktop }
@@ -54,18 +63,20 @@ struct ServerWindowRoot: View {
   private func window(_ session: ServerSession) -> some View {
     let isReady = Self.isReady(session, boundTo: id.serverURL)
     return ServerRootView(
-      session: session, selection: $selection, isWindowFocused: appearsActive,
+      session: session, selection: $selection,
+      // Under Settings nobody is reading the chat, so its turns notify.
+      isWindowFocused: appearsActive && !settings.isPresented,
       openInNewWindow: { sessionID in openNewWindow(on: sessionID) },
       tabContext: TabWindowContext(
         window: id.instance, persistence: services.tabPersistence, browser: services.browserTabs),
-      serverSwitching: serverSwitching(session, openSettingsAt: settingsWindow)
+      serverSwitching: serverSwitching(session, openSettingsAt: .settingsPage(settings))
     )
-    // First, so only the window's content keeps the look: the modifiers below it still read
-    // the window's real state (the key-window registry does).
-    .keepsActiveLook()
     .environment(\.useThisMachine, useThisMachine)
-    .environment(\.openSettingsAt, settingsWindow)
     .navigationTitle(Self.title(session, boundTo: id.serverURL))
+    .modifier(settingsHost)
+    // Before the rest, so only the window's content and its Settings keep the look: the
+    // modifiers below still read the window's real state (the key-window registry does).
+    .keepsActiveLook()
     .sheet(isPresented: $showsCoreDebug) {
       CoreDebugView()
         .environment(session.connection)
@@ -82,7 +93,7 @@ struct ServerWindowRoot: View {
     .serverWindow(
       $id, desktop: desktop, selection: $selection,
       status: { shown in status(session, showing: shown) },
-      onRoute: { route in apply(route, in: session, openSettingsAt: settingsWindow) }
+      onRoute: { route in follow(route, in: session, settings: settings) }
     )
     .desktopAttention(session.connection, serverURL: id.serverURL, desktop: desktop)
     .menuBarSessions(
@@ -98,11 +109,6 @@ struct ServerWindowRoot: View {
       if url == nil { session.signIn.directory = services.serverDirectory() }
     }
     .task { await reconnectOnSystemTriggers(session) }
-  }
-
-  /// The app's Settings window.
-  private var settingsWindow: OpenSettingsDestinationAction {
-    .settingsWindow(openSettings: openSettings)
   }
 
   /// Creates the window's session once and binds its sign-in to the window.
@@ -334,9 +340,19 @@ extension ServerWindowRoot {
     _ session: ServerSession, showing selection: SidebarDestination?
   ) -> ServerWindowStatus {
     let isReady = Self.isReady(session, boundTo: id.serverURL)
+    let isViewing = isReady && !settings.isPresented
     return ServerWindowStatus(
-      isReady: isReady, viewedSessionID: isReady ? selection?.sessionID : nil,
+      isReady: isReady, viewedSessionID: isViewing ? selection?.sessionID : nil,
       unreadCount: isReady ? session.connection.notifications?.badgeCount ?? 0 : 0,
       actions: actions(session))
+  }
+}
+
+extension ServerWindowRoot {
+  /// Puts the Settings page over the window's content.
+  private var settingsHost: some ViewModifier {
+    WindowSettingsHost(
+      settings: settings, selection: $selection, window: id.instance, desktop: desktop,
+      page: settingsPage(settings))
   }
 }

@@ -99,6 +99,20 @@ public final class DesktopRouter {
     drain()
   }
 
+  /// Shows Settings in the front server window, bringing it forward; with no window open, opens
+  /// one that shows Settings.
+  /// - Parameter toggling: Goes back to the window's content when it already shows Settings, as
+  ///   Command-comma does.
+  public func showSettings(toggling: Bool = false) {
+    guard let front = registry.settingsPages.front else {
+      registry.settingsPages.showInNextWindow()
+      requestWindow()
+      return
+    }
+    front.page.setShown(toggling ? !front.page.isShown() : true)
+    if let entry = registry.entry(front.instance) { openWindow?(entry.id) }
+  }
+
   private func drain() {
     guard drainTask == nil, !queue.isEmpty else { return }
     guard openWindow != nil else {

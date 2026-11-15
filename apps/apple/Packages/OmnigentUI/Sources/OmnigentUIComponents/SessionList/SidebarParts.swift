@@ -27,7 +27,7 @@ struct SidebarHeader: View {
   let actions: SidebarActions
   @Environment(\.openCommandPalette) private var openPalette
   #if os(macOS)
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openSettingsPage) private var openSettingsPage
   #endif
 
   var body: some View {
@@ -43,9 +43,11 @@ struct SidebarHeader: View {
             .accessibilityIdentifier("sidebar-search")
         }
         #if os(macOS)
-          Button("Settings", systemImage: "gearshape") { openSettings() }
-            .help("Settings (\u{2318},)")
-            .accessibilityIdentifier("sidebar-settings")
+          if let openSettingsPage {
+            Button("Settings", systemImage: "gearshape") { openSettingsPage() }
+              .help("Settings (\u{2318},)")
+              .accessibilityIdentifier("sidebar-settings")
+          }
         #endif
       }
       .labelStyle(.iconOnly)

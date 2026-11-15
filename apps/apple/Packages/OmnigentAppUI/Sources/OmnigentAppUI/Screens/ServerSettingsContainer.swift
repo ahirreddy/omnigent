@@ -5,8 +5,8 @@ import OmnigentUIComponents
 public import SwiftUI
 
 /// Settings > Servers: the server settings of each signed-in server, with a server picker. Each
-/// server's ``ServerSettingsStore`` lives while the Settings window (or the iPhone and iPad
-/// Settings screen) shows it. Other windows pick the server and pane through
+/// server's ``ServerSettingsStore`` lives while the Mac's Settings page (or the iPhone and iPad
+/// Settings screen) shows it. Links and menus pick the server and pane through
 /// ``SettingsNavigator``.
 public struct ServerSettingsContainer: View {
   private let connections: @MainActor () -> [ConnectionStore]
@@ -22,16 +22,16 @@ public struct ServerSettingsContainer: View {
 
   /// Creates the settings.
   /// - Parameters:
-  ///   - connections: The signed-in connections, read when the window appears.
+  ///   - connections: The signed-in connections, read when the settings appear.
   ///   - opener: Opens the server's web settings for browser-only sign-ins.
-  ///   - navigator: Where other windows ask for a server and pane.
+  ///   - navigator: Where links and menus ask for a server and pane.
   ///   - openSession: Opens a session of a server in a window (after Unarchive).
   ///   - leadingSections: The app's own rows above the server panes (iPhone and iPad).
   public init(
     connections: @escaping @MainActor () -> [ConnectionStore] = {
       SupervisionConnections.shared.connections
     },
-    opener: ExternalURLOpener = .system, navigator: SettingsNavigator = .shared,
+    opener: ExternalURLOpener = .system, navigator: SettingsNavigator = SettingsNavigator(),
     openSession: (@MainActor (URL, String) -> Void)? = nil, leadingSections: AnyView? = nil
   ) {
     self.connections = connections
