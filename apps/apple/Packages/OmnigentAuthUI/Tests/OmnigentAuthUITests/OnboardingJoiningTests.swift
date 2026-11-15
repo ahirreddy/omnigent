@@ -95,7 +95,7 @@
       #expect(spy.log.isEmpty)
     }
 
-    @Test("the organization's server leads the landing and joins by name")
+    @Test("the organization's first server leads the landing, its row as tall and wide as below")
     func organizationPreset() async throws {
       let spy = AuthSpy()
       let directory = ServerDirectory(managed: AuthSamples.directory.managed)
@@ -104,26 +104,56 @@
       let text = try screen.allText()
       #expect(text.contains("Join your team (Acme Agents)"))
       #expect(text.contains("Other server\u{2026}"))
-      try screen.click(screen.landingButtons[0])
+      let row = screen.presetRow
+      let below = try #require(screen.landingButtons.last)
+      #expect(row.count == 2, "the join button and its menu: \(row)")
+      #expect(row.first?.minX.rounded() == below.minX.rounded(), "\(row), \(below)")
+      #expect(row.last?.maxX.rounded() == below.maxX.rounded(), "\(row), \(below)")
+      #expect(Set((row + [below]).map { $0.height.rounded() }).count == 1, "\(row), \(below)")
+      try screen.click(try #require(row.first))
       await flush(screen)
       let question = try screen.allText()
       #expect(question.contains("Where do you work today?"))
       #expect(question.contains("Join Acme Agents"), "the server's own name, not its host")
     }
 
-    @Test("the chooser beside the preset lists the organization's servers")
+    @Test("the chevron beside the preset lists every organization server, and choosing one joins")
     func organizationChooser() async throws {
       let spy = AuthSpy()
       let directory = ServerDirectory(managed: AuthSamples.directory.managed)
       let screen = OnboardingFixture.hosted(directory: directory, local: nil, spy: spy)
       defer { screen.close() }
-      let chooser = try #require(
-        screen.controlFrames.first { $0.width < 100 && $0.minY < 400 })
-      let menu = try screen.openMenu(CGPoint(x: chooser.midX, y: chooser.midY))
-      #expect(menu.items.map(\.title).contains("Acme Agents"))
-      try screen.choose("staging.omnigent.corp.example.com", in: menu)
+      SystemSideEffects.reset()
+      defer { SystemSideEffects.reset() }
+      let chooser = try #require(screen.presetRow.last)
+      try screen.click(chooser)
+      #expect(SystemSideEffects.record.poppedUpMenuCount == 1)
+      #expect(spy.log.isEmpty, "a menu closed with no choice joins nothing")
+      for server in ["Acme Agents", "staging.omnigent.corp.example.com"] {
+        SystemSideEffects.chooseFromMenus(server)
+        try screen.click(chooser)
+        await flush(screen)
+      }
+      #expect(
+        spy.log == [
+          "connect https://omnigent.corp.example.com",
+          "connect https://staging.omnigent.corp.example.com",
+        ])
+    }
+
+    @Test("a single organization server is one full-width button, with no menu")
+    func singleOrganizationServer() async throws {
+      let spy = AuthSpy()
+      let directory = ServerDirectory(managed: Array(AuthSamples.directory.managed.prefix(1)))
+      let screen = OnboardingFixture.hosted(directory: directory, local: nil, spy: spy)
+      defer { screen.close() }
+      let row = screen.presetRow
+      #expect(row.count == 1, "\(row)")
+      #expect(row.first?.width.rounded() == screen.landingButtons.last?.width.rounded())
+      let preset = try #require(row.first)
+      try screen.click(CGPoint(x: preset.maxX - 8, y: preset.midY))
       await flush(screen)
-      #expect(spy.log == ["connect https://staging.omnigent.corp.example.com"])
+      #expect(spy.log == ["connect https://omnigent.corp.example.com"])
     }
 
     @Test("a failed connect opens on the server list with the failure")

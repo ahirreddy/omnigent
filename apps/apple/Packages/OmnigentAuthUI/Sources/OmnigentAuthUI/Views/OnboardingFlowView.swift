@@ -179,22 +179,7 @@ struct LandingView: View {
         title: joinTitle(preset), systemImage: "person.2.fill", prominent: true,
         identifier: "auth.join-preset", action: { join(preset.url) })
       if directory.managed.count > 1 {
-        Menu {
-          ForEach(directory.managed) { server in
-            Button(ServerText.escaped(server.displayName, limit: 80)) { join(server.url) }
-          }
-        } label: {
-          Image(systemName: "chevron.down")
-            .accessibilityHidden(true)
-        }
-        .menuStyle(.button)
-        .menuIndicator(.hidden)
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
-        .fixedSize()
-        .help("Choose another organization server")
-        .accessibilityLabel("Choose organization server")
-        .accessibilityIdentifier("auth.choose-preset")
+        OrganizationServerMenu(servers: directory.managed, join: join)
       }
     }
   }
