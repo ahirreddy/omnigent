@@ -1,19 +1,23 @@
 #if os(macOS)
   public import AppKit
+  import OmnigentViewTestingBootstrap
 
   /// Waits that end as soon as the main thread has nothing left to do, instead of after a fixed
   /// time. A duration passed to them is only a limit, reached when work keeps coming.
   ///
-  /// At rest means, for a few short run loop turns in a row: no source or event was handled, no
-  /// shown window has layout or drawing pending, no run loop timer is due before the limit and,
-  /// for the async waits, no `Task.sleep` ends before it. `OMNIGENT_FIXED_WAITS=1` makes every
-  /// wait take its whole limit again, to tell a flaky wait from a flaky test.
+  /// At rest means a few short run loop turns in a row did no work: no source or event was
+  /// handled, no main actor job was queued, the given windows had no layout pending and drew
+  /// nothing, and, for the async waits, no `Task.sleep` ends before the limit. A timer scheduled
+  /// for later is not work. `OMNIGENT_FIXED_WAITS=1` makes every wait take its whole limit again,
+  /// to tell a flaky wait from a flaky test.
   @MainActor
   public enum MainLoop {
     /// One turn: short, so a wait ends within a few milliseconds of the work running out.
     static let turn: TimeInterval = 0.002
     /// Idle turns in a row that count as at rest.
     static let idleTurns = 3
+    /// The fewest main actor jobs a turn and its yield were seen to queue: the yield's own.
+    static var ownYieldJobs = Int.max
 
     /// Runs the main run loop until it is at rest, or until `limit` passes.
     ///
@@ -21,7 +25,7 @@
     /// suspend; ``settleTasks(limit:windows:)`` lets them run too.
     /// - Parameters:
     ///   - limit: The longest wait, in seconds.
-    ///   - windows: Windows never shown whose layout counts too, as every shown window's does.
+    ///   - windows: The windows whose layout and drawing count, with their sheets and children.
     public static func settle(limit: TimeInterval = 0.1, windows: [NSWindow] = []) {
       let start = CFAbsoluteTimeGetCurrent()
       let deadline = start + limit
@@ -45,7 +49,7 @@
     /// and what they wait for, run too. A `Task.sleep` ending before `limit` is waited for.
     /// - Parameters:
     ///   - limit: The longest wait.
-    ///   - windows: Windows never shown whose layout counts too, as every shown window's does.
+    ///   - windows: The windows whose layout and drawing count, with their sheets and children.
     public static func settleTasks(
       limit: Duration = .milliseconds(100), windows: [NSWindow] = []
     ) async {
@@ -61,8 +65,13 @@
       SettleTrace.begin()
       while idle < idleTurns, CFAbsoluteTimeGetCurrent() < deadline {
         let turnStart = CFAbsoluteTimeGetCurrent()
+        let queued = omnigent_view_testing_main_actor_jobs()
         var activity = runTurn(until: deadline, windows: windows)
         await Task.yield()
+        // The yield queues one job of its own; more were queued by the work it let run.
+        let jobs = Int(omnigent_view_testing_main_actor_jobs() &- queued)
+        ownYieldJobs = min(ownYieldJobs, jobs)
+        if jobs > ownYieldJobs { activity.insert(.mainActorWork) }
         if SleepTracker.hasSleep(endingBefore: deadline) { activity.insert(.sleep) }
         SettleTrace.note(activity)
         // Time spent only because a task sleeps: what shorter product delays would save.

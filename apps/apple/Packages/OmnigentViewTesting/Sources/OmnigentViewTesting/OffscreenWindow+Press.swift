@@ -39,7 +39,7 @@
       deliver(down, to: target)
       if release.isValid {
         release.invalidate()
-        MainLoop.settle(limit: 0.03)
+        MainLoop.settle(limit: 0.03, windows: [target])
         deliver(mouseUp, to: target)
       } else if unsafe postedUntracked, !isMenuOpen(),
         let waiting = NSApp.nextEvent(

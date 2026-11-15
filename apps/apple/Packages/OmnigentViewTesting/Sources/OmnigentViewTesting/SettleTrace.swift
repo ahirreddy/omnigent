@@ -43,7 +43,8 @@
     static func note(_ activity: MainLoop.Activity) {
       guard isOn else { return }
       let names: [(MainLoop.Activity, String)] = [
-        (.source, "source"), (.timer, "timer"), (.layout, "layout"), (.drawing, "drawing"),
+        (.source, "source"), (.mainActorWork, "main actor work"), (.layout, "layout"),
+        (.drawing, "drawing"),
         (.sleep, "sleep"),
       ]
       for (bit, name) in names where activity.contains(bit) { counts[name, default: 0] += 1 }
