@@ -696,7 +696,8 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
-    /// Renames a project (promoting a label-only one) and re-files its members.
+    /// Renames a project (promoting a label-only one) and re-files its members; it answers once
+    /// the re-filed rows are published.
     ///
     /// # Errors
     ///
@@ -706,24 +707,25 @@ impl ClientCore {
         project: ProjectSummary,
         name: String,
     ) -> Result<ProjectSummary, CoreError> {
-        self.sessions()
+        let renamed = self
+            .sessions()
             .rename_project(&project.into(), &name)
-            .await
-            .map(Into::into)
-            .map_err(CoreError::from)
+            .await;
+        self.events_published().await;
+        renamed.map(Into::into).map_err(CoreError::from)
     }
 
-    /// Deletes a project after archiving and unfiling its members (never deleting them).
+    /// Deletes a project after archiving and unfiling its members (never deleting them); it
+    /// answers once the members' rows are published.
     ///
     /// # Errors
     ///
     /// [`CoreError::Session`]: the read and write errors; the first member failure, with the
     /// project kept.
     pub async fn delete_project(&self, project: ProjectSummary) -> Result<(), CoreError> {
-        self.sessions()
-            .delete_project(&project.into())
-            .await
-            .map_err(CoreError::from)
+        let deleted = self.sessions().delete_project(&project.into()).await;
+        self.events_published().await;
+        deleted.map_err(CoreError::from)
     }
 
     /// Up to `limit` sessions whose title (or, with `in_messages`, message content) matches

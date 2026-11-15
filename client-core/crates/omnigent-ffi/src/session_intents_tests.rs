@@ -342,6 +342,17 @@ fn published_at_the_answer<T: 'static>(
     harness: &mut Harness,
     call: impl Future<Output = T> + 'static,
 ) -> Vec<Option<(String, bool)>> {
+    rows_published_at_the_answer(harness, call)
+        .into_iter()
+        .map(|row| row.map(|row| (row.id, row.is_archived)))
+        .collect()
+}
+
+/// The rows published by the time `call` answers; `None` for a removal.
+fn rows_published_at_the_answer<T: 'static>(
+    harness: &mut Harness,
+    call: impl Future<Output = T> + 'static,
+) -> Vec<Option<SessionSummary>> {
     harness.events.take();
     let events = std::sync::Arc::clone(&harness.events);
     let answered = harness.run(async move {
@@ -351,13 +362,85 @@ fn published_at_the_answer<T: 'static>(
     list_changes(&answered)
         .into_iter()
         .flat_map(|change| match change {
-            Ok(rows) => rows
-                .into_iter()
-                .map(|row| Some((row.id, row.is_archived)))
-                .collect(),
+            Ok(rows) => rows.into_iter().map(Some).collect(),
             Err(ids) => vec![None; ids.len()],
         })
         .collect()
+}
+
+#[test]
+fn a_pin_or_project_edit_answers_after_the_rows_it_changed_are_published() {
+    let mut harness = connected();
+    for (id, stamp) in [(FIRST, "1000"), (SECOND, "2000")] {
+        answers(
+            &harness,
+            id,
+            &format!(r#","labels":{{"omnigent.pinned":"{stamp}"}}"#),
+        );
+        harness
+            .call(|core| async move {
+                core.edit_session(id.into(), SessionChange::Pinned { pinned: true })
+                    .await
+            })
+            .unwrap();
+    }
+    let pins = |rows: Vec<Option<SessionSummary>>| -> Vec<(String, Option<String>)> {
+        rows.into_iter()
+            .map(|row| row.expect("an upsert"))
+            .map(|row| (row.id, row.pin_stamp))
+            .collect()
+    };
+
+    // A refused order: the move shows, then is put back, before the error.
+    harness
+        .http
+        .route_method("PATCH", &path(SECOND), json(403, r#"{"detail":"no"}"#));
+    let core = harness.core.clone();
+    let order = vec![SECOND.to_owned(), FIRST.to_owned()];
+    let rows = pins(rows_published_at_the_answer(&mut harness, async move {
+        core.set_pin_order(order).await.unwrap_err()
+    }));
+    let put_back = (SECOND.to_owned(), Some("2000".to_owned()));
+    assert!(rows.first().is_some_and(|row| *row != put_back), "{rows:?}");
+    assert_eq!(rows.last(), Some(&put_back), "{rows:?}");
+
+    // An accepted move: the new key is out before the answer.
+    answers(&harness, SECOND, r#","labels":{"omnigent.pinned":"999"}"#);
+    let core = harness.core.clone();
+    let rows = pins(rows_published_at_the_answer(&mut harness, async move {
+        core.move_pin(SECOND.into(), FIRST.into()).await.unwrap();
+    }));
+    assert_eq!(
+        rows.last(),
+        Some(&(SECOND.to_owned(), Some("999".to_owned()))),
+        "{rows:?}"
+    );
+
+    // A deleted project: its member is archived and unfiled before the answer.
+    harness.http.route(
+        "/v1/sessions",
+        json(
+            200,
+            &format!(
+                r#"{{"data":[{}],"has_more":false}}"#,
+                row(FIRST, r#","project_id":"p1""#)
+            ),
+        ),
+    );
+    answers(&harness, FIRST, r#","archived":true"#);
+    harness
+        .http
+        .route_method("DELETE", "/v1/projects/p1", json(204, ""));
+    let project = crate::sessions::ProjectSummary {
+        id: Some("p1".into()),
+        name: "Alpha".into(),
+        icon: None,
+    };
+    let core = harness.core.clone();
+    let rows = published_at_the_answer(&mut harness, async move {
+        core.delete_project(project).await.unwrap();
+    });
+    assert_eq!(rows.last(), Some(&Some((FIRST.to_owned(), true))), "{rows:?}");
 }
 
 #[test]

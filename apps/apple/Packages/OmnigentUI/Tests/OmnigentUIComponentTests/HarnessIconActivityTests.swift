@@ -128,7 +128,7 @@
       #expect(!RenderSupport.shows(orange, in: mono))
       let hidden = try agent(.hidden)
       #expect(!RenderSupport.shows(orange, in: hidden))
-      #expect(RenderSupport.inkCoverage(hidden) < RenderSupport.inkCoverage(mono))
+      #expect(RenderSupport.inkedWidth(hidden) < RenderSupport.inkedWidth(mono))
     }
   }
 #endif

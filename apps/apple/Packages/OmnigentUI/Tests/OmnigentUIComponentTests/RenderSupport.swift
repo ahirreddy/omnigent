@@ -138,18 +138,47 @@
       var samples = 0
       for row in stride(from: 0, to: image.pixelsHigh, by: step) {
         for column in stride(from: 0, to: image.pixelsWide, by: step) {
-          guard let color = image.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB) else {
-            continue
-          }
-          let key =
-            UInt32(color.redComponent * 31) << 10 | UInt32(color.greenComponent * 31) << 5
-            | UInt32(color.blueComponent * 31)
+          guard let key = colorKey(image, column, row) else { continue }
           counts[key, default: 0] += 1
           samples += 1
         }
       }
       guard samples > 0, let background = counts.values.max() else { return 0 }
       return Double(samples - background) / Double(samples)
+    }
+
+    /// How wide, in points, the drawing spans: from the first column with a pixel off the most
+    /// common color to the last. Unlike ``inkCoverage(_:)``'s sparse grid, it sees a mark of a
+    /// few pixels at any backing scale, wherever the text beside it lands on the pixel grid.
+    static func inkedWidth(_ rendered: Rendered) -> CGFloat {
+      let image = rendered.image
+      var counts: [UInt32: Int] = [:]
+      for row in stride(from: 0, to: image.pixelsHigh, by: 2) {
+        for column in stride(from: 0, to: image.pixelsWide, by: 2) {
+          if let key = colorKey(image, column, row) { counts[key, default: 0] += 1 }
+        }
+      }
+      guard let background = counts.max(by: { $0.value < $1.value })?.key else { return 0 }
+      let inked = { (column: Int) in
+        (0..<image.pixelsHigh).contains { row in
+          colorKey(image, column, row).map { $0 != background } ?? false
+        }
+      }
+      let columns = 0..<image.pixelsWide
+      guard let first = columns.first(where: inked), let last = columns.last(where: inked) else {
+        return 0
+      }
+      let pointsPerPixel = image.size.width / CGFloat(image.pixelsWide)
+      return CGFloat(last - first + 1) * pointsPerPixel
+    }
+
+    /// A pixel's color in 5 bits a channel, so near-equal colors count as one.
+    private static func colorKey(_ image: NSBitmapImageRep, _ column: Int, _ row: Int) -> UInt32? {
+      guard let color = image.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB) else {
+        return nil
+      }
+      return UInt32(color.redComponent * 31) << 10 | UInt32(color.greenComponent * 31) << 5
+        | UInt32(color.blueComponent * 31)
     }
   }
 #endif

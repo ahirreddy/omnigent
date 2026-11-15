@@ -79,8 +79,8 @@ import Testing
       let tabs = session.tabs.group(shown)
       let chat = try #require(tabs.tabs.first)
       tabs.open(.sideChatSession(parentID: shown, childID: hidden))
-      try await settle(screen, until: "the side chat") {
-        session.connection.conversations[hidden] != nil
+      try await settle(screen, until: "both chats to open") {
+        [shown, hidden].allSatisfy { session.connection.conversations[$0]?.hasOpened == true }
       }
       let sideChat = try #require(tabs.selectedID)
       tabs.select(chat.id)
@@ -192,7 +192,9 @@ import Testing
 
     /// What the window draws once `reply` arrives in `sessionID`'s transcript.
     func text(afterReply reply: String, in sessionID: String) async throws -> [String] {
-      if try conversation(sessionID).rows.isEmpty {
+      let store = try conversation(sessionID)
+      try await settle(screen, until: "\(sessionID) to open") { store.hasOpened }
+      if store.rows.isEmpty {
         try feed(sessionID, reply: reply, streaming: false)
       } else {
         try stream(reply, in: sessionID, streaming: false)
@@ -239,5 +241,11 @@ import Testing
         revision: store.revision + 1,
         change: TranscriptChange(rows: [], header: nil, sections: [child]))
     }
+  }
+
+  extension ConversationStore {
+    /// The core has opened the chat. It sends an empty transcript before its stream starts, so
+    /// rows a test adds before this are wiped when that transcript arrives.
+    var hasOpened: Bool { link != .idle }
   }
 #endif

@@ -227,33 +227,39 @@ impl ClientCore {
     }
 
     /// Moves `session_id` into `target_id`'s slot of the Pinned section, pinning it when it is
-    /// not pinned yet (the web's drag onto a pinned row).
+    /// not pinned yet (the web's drag onto a pinned row). It answers once the rows it changed,
+    /// or put back, are published.
     ///
     /// # Errors
     ///
     /// [`CoreError::Session`]: `ReadOnly` without view permission; the read and write errors.
     pub async fn move_pin(&self, session_id: String, target_id: String) -> Result<(), CoreError> {
-        self.sessions()
+        let moved = self
+            .sessions()
             .move_pin(&session_id, &target_id, self.unix_ms())
-            .await
-            .map_err(CoreError::from)
+            .await;
+        self.events_published().await;
+        moved.map_err(CoreError::from)
     }
 
     /// Puts the pinned sessions named in `session_ids` into that order, in the slots they hold
-    /// now; pins that are not named keep their place.
+    /// now; pins that are not named keep their place. It answers once the rows it changed, or
+    /// put back, are published.
     ///
     /// # Errors
     ///
     /// [`CoreError::Session`]: `ReadOnly` without view permission; the write errors.
     pub async fn set_pin_order(&self, session_ids: Vec<String>) -> Result<(), CoreError> {
-        self.sessions()
+        let ordered = self
+            .sessions()
             .set_pin_order(&session_ids, self.unix_ms())
-            .await
-            .map_err(CoreError::from)
+            .await;
+        self.events_published().await;
+        ordered.map_err(CoreError::from)
     }
 
     /// Saves `projects` as the caller's project order, promoting label-only ones; returns them
-    /// with their ids.
+    /// with their ids. It answers once the rows a promotion re-filed are published.
     ///
     /// # Errors
     ///
@@ -263,9 +269,9 @@ impl ClientCore {
         projects: Vec<ProjectSummary>,
     ) -> Result<Vec<ProjectSummary>, CoreError> {
         let projects: Vec<_> = projects.into_iter().map(Into::into).collect();
-        self.sessions()
-            .save_project_order(&projects)
-            .await
+        let saved = self.sessions().save_project_order(&projects).await;
+        self.events_published().await;
+        saved
             .map(|saved| saved.into_iter().map(Into::into).collect())
             .map_err(CoreError::from)
     }
