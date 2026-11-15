@@ -12,13 +12,15 @@
       arguments: [
         "Omnigent Native", "Omnigent", "OmnigentMac", "ai.omnigent.mac.lab",
         "ai.omnigent.test-host",
-        "", "swiftpm-testing-helper2", "XCTEST",
+        "", "swiftpm-testing-helper2", "XCTEST", "swiftpm-testing-helper-", "Omnigent-xctest",
       ])
     func appsAreLeftAlone(processName: String) {
       #expect(TestRunnerSettings.domainToClear(processName: processName) == nil)
     }
 
-    @Test("a test runner clears its own domain", arguments: ["swiftpm-testing-helper", "xctest"])
+    @Test(
+      "a test runner clears its own domain, and so does each process of a split run",
+      arguments: ["swiftpm-testing-helper", "xctest", "swiftpm-testing-helper-fast3"])
     func runnersClearTheirOwn(processName: String) {
       #expect(TestRunnerSettings.domainToClear(processName: processName) == processName)
     }
