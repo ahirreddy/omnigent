@@ -10,10 +10,24 @@ use super::*;
 use crate::auth::SecretString;
 use crate::auth::databricks::config::OAuthConfiguration;
 use crate::auth::databricks::issuer::OAuthIssuer;
+use crate::auth::testing::WORKSPACE_DOMAIN;
 
 const NOW: u64 = 1_700_000_000_000;
-const WORKSPACE: &str = "https://workspace.cloud.databricks.com";
-const SHARED: &str = "https://shared.cloud.databricks.com";
+
+/// `<label>.cloud.<workspace domain>`.
+fn host(label: &str) -> String {
+    format!("{label}.cloud.{WORKSPACE_DOMAIN}")
+}
+
+/// The workspace the tests sign in to.
+fn workspace() -> String {
+    format!("https://{}", host("workspace"))
+}
+
+/// The shared host the workspace redirects session creation to.
+fn shared() -> String {
+    format!("https://{}", host("shared"))
+}
 
 type Handler = Box<dyn Fn(&HttpRequest) -> HttpResponse>;
 
@@ -135,7 +149,7 @@ fn session_create_sends_bearer_then_cookie_only() {
         assert_eq!(header(request, "Cookie"), Some("DBAUTH=synthetic-session"));
         response(200, &[])
     });
-    let context = context(&format!("{WORKSPACE}/omnigent/c/abc?o=123#message"));
+    let context = context(&format!("{}/omnigent/c/abc?o=123#message", workspace()));
     let session = create(&server, &context, &tokens(None)).unwrap();
     assert_eq!(&session.page_url, context.page_url());
     let cookie = &session.cookies[0];
@@ -149,10 +163,13 @@ fn session_create_sends_bearer_then_cookie_only() {
 fn session_redirect_canonical_to_shared_host_keeps_context() {
     let server = Server::new(|request| {
         let url = url_of(request);
-        if url.host_str() == Some("workspace.cloud.databricks.com") {
+        if url.host_str() == Some(host("workspace").as_str()) {
             assert_eq!(url.path(), "/auth/session/create");
             assert_eq!(header(request, "Authorization"), Some("Bearer test-access"));
-            return response(302, &[("Location", &format!("{SHARED}/omnigent?o=123"))]);
+            return response(
+                302,
+                &[("Location", &format!("{}/omnigent?o=123", shared()))],
+            );
         }
         assert_eq!(header(request, "Authorization"), None);
         assert_eq!(header(request, "Cookie"), None);
@@ -160,28 +177,24 @@ fn session_redirect_canonical_to_shared_host_keeps_context() {
             200,
             &[(
                 "Set-Cookie",
-                &session_cookie(
-                    Some("shared.cloud.databricks.com"),
-                    "/",
-                    "synthetic-session",
-                ),
+                &session_cookie(Some(host("shared").as_str()), "/", "synthetic-session"),
             )],
         )
     });
-    let context = context(&format!("{WORKSPACE}/omnigent/c/abc#message"));
+    let context = context(&format!("{}/omnigent/c/abc#message", workspace()));
     let session = create(
         &server,
         &context,
-        &tokens(Some(&format!("{WORKSPACE}/oidc"))),
+        &tokens(Some(&format!("{}/oidc", workspace()))),
     )
     .unwrap();
     assert_eq!(
         session.page_url.as_str(),
-        format!("{SHARED}/omnigent/c/abc?o=123#message")
+        format!("{}/omnigent/c/abc?o=123#message", shared())
     );
     assert_eq!(session.workspace_id.as_deref(), Some("123"));
-    assert_eq!(session.cookies[0].domain, ".shared.cloud.databricks.com");
-    assert_eq!(context.scope().workspace_origin(), WORKSPACE);
+    assert_eq!(session.cookies[0].domain, format!(".{}", host("shared")));
+    assert_eq!(context.scope().workspace_origin(), workspace());
     assert!(session.navigation_url(context.page_url()).is_some());
 }
 
@@ -189,37 +202,41 @@ fn session_redirect_canonical_to_shared_host_keeps_context() {
 fn session_issuer_origin_choice_workspace_vs_account() {
     let server = Server::new(|request| {
         let url = url_of(request);
-        if url.host_str() == Some("issuer.cloud.databricks.com") {
+        if url.host_str() == Some(host("issuer").as_str()) {
             assert_eq!(url.path(), "/auth/session/create");
-            return response(302, &[("Location", &format!("{SHARED}/omnigent?o=123"))]);
+            return response(
+                302,
+                &[("Location", &format!("{}/omnigent?o=123", shared()))],
+            );
         }
         response(200, &[("Set-Cookie", &default_cookie())])
     });
-    let context = context(&format!("{SHARED}/omnigent?o=123"));
+    let context = context(&format!("{}/omnigent?o=123", shared()));
     let workspace = create(
         &server,
         &context,
-        &tokens(Some("https://issuer.cloud.databricks.com/oidc")),
+        &tokens(Some(&format!("https://{}/oidc", host("issuer")))),
     )
     .unwrap();
     assert_eq!(&workspace.page_url, context.page_url());
     assert_eq!(
         url_of(&server.requests.borrow()[0]).host_str(),
-        Some("issuer.cloud.databricks.com")
+        Some(host("issuer").as_str())
     );
     server.requests.borrow_mut().clear();
     let account = create(
         &server,
         &context,
-        &tokens(Some(
-            "https://issuer.cloud.databricks.com/oidc/accounts/test-account",
-        )),
+        &tokens(Some(&format!(
+            "https://{}/oidc/accounts/test-account",
+            host("issuer")
+        ))),
     )
     .unwrap();
     assert_eq!(&account.page_url, context.page_url());
     assert_eq!(
         url_of(&server.requests.borrow()[0]).host_str(),
-        Some("shared.cloud.databricks.com")
+        Some(host("shared").as_str())
     );
 }
 
@@ -229,7 +246,7 @@ fn session_account_grant_requires_workspace_context() {
     assert_eq!(
         create(
             &server,
-            &context(WORKSPACE),
+            &context(&workspace()),
             &tokens(Some(
                 "https://accounts.cloud.databricks.com/oidc/accounts/test-account"
             )),
@@ -242,24 +259,28 @@ fn session_account_grant_requires_workspace_context() {
 fn session_blocks_unsafe_redirects_and_workspace_changes() {
     for (location, expected) in [
         (
-            "https://example.org/omnigent",
+            "https://example.org/omnigent".to_owned(),
             DatabricksError::UnsafeRedirect,
         ),
         (
-            "http://workspace.databricks.com/omnigent",
+            format!("http://workspace.{WORKSPACE_DOMAIN}/omnigent"),
             DatabricksError::UnsafeRedirect,
         ),
-        ("/omnigent?o=456", DatabricksError::WorkspaceChanged),
         (
-            "//user@workspace.databricks.com/omnigent",
+            "/omnigent?o=456".to_owned(),
+            DatabricksError::WorkspaceChanged,
+        ),
+        (
+            format!("//user@workspace.{WORKSPACE_DOMAIN}/omnigent"),
             DatabricksError::UnsafeRedirect,
         ),
     ] {
-        let server = Server::new(move |_| response(302, &[("Location", location)]));
+        let reply = location.clone();
+        let server = Server::new(move |_| response(302, &[("Location", reply.as_str())]));
         assert_eq!(
             create(
                 &server,
-                &context(&format!("{WORKSPACE}/omnigent?o=123")),
+                &context(&format!("{}/omnigent?o=123", workspace())),
                 &tokens(None)
             ),
             Err(expected),
@@ -272,7 +293,7 @@ fn session_blocks_unsafe_redirects_and_workspace_changes() {
 fn session_redirect_loop_bounded_at_nine_requests() {
     let server = Server::new(|_| response(302, &[("Location", "/again")]));
     assert_eq!(
-        create(&server, &context(WORKSPACE), &tokens(None)),
+        create(&server, &context(&workspace()), &tokens(None)),
         Err(DatabricksError::UnsafeRedirect)
     );
     assert_eq!(server.requests.borrow().len(), 9);
@@ -297,7 +318,7 @@ fn session_missing_expired_insecure_cookie_fails_closed() {
                 |cookie| response(200, &[("Set-Cookie", cookie)]),
             )
         });
-        let result = create(&server, &context(WORKSPACE), &tokens(None));
+        let result = create(&server, &context(&workspace()), &tokens(None));
         assert!(
             matches!(
                 result,
@@ -322,7 +343,7 @@ fn session_expired_deletion_cookie_precedes_fresh() {
         }
         response(200, &[("Set-Cookie", &default_cookie())])
     });
-    let session = create(&server, &context(WORKSPACE), &tokens(None)).unwrap();
+    let session = create(&server, &context(&workspace()), &tokens(None)).unwrap();
     let values: Vec<&str> = session
         .cookies
         .iter()
@@ -334,16 +355,16 @@ fn session_expired_deletion_cookie_precedes_fresh() {
 
 #[test]
 fn session_cookie_domain_widening_rejected_and_path_match() {
-    let url = Url::parse(&format!("{WORKSPACE}/omnigent")).unwrap();
+    let url = Url::parse(&format!("{}/omnigent", workspace())).unwrap();
     for domain in [
-        "example.org",
-        "sibling.cloud.databricks.com",
-        ".com",
-        "databricks.com.example.org",
+        "example.org".to_owned(),
+        host("sibling"),
+        ".com".to_owned(),
+        "databricks.com.example.org".to_owned(),
     ] {
         let reply = response(
             200,
-            &[("Set-Cookie", &session_cookie(Some(domain), "/", "v"))],
+            &[("Set-Cookie", &session_cookie(Some(&domain), "/", "v"))],
         );
         assert_eq!(
             response_cookies(&reply, &url, NOW),
@@ -357,10 +378,10 @@ fn session_cookie_domain_widening_rejected_and_path_match() {
     );
     let cookie = response_cookies(&reply, &url, NOW).unwrap().remove(0);
     let at = |raw: &str| Url::parse(raw).unwrap();
-    assert!(cookie.applies_to(&at(&format!("{WORKSPACE}/omnigent/c/abc")), NOW));
-    assert!(!cookie.applies_to(&at(&format!("{WORKSPACE}/omnigent-other")), NOW));
-    assert!(!cookie.applies_to(&at("https://sibling.cloud.databricks.com/omnigent"), NOW));
-    let http = Url::parse("http://workspace.cloud.databricks.com/omnigent").unwrap();
+    assert!(cookie.applies_to(&at(&format!("{}/omnigent/c/abc", workspace())), NOW));
+    assert!(!cookie.applies_to(&at(&format!("{}/omnigent-other", workspace())), NOW));
+    assert!(!cookie.applies_to(&at(&format!("https://{}/omnigent", host("sibling"))), NOW));
+    let http = Url::parse(&format!("http://{}/omnigent", host("workspace"))).unwrap();
     assert_eq!(
         response_cookies(&reply, &http, NOW),
         Err(DatabricksError::InvalidSessionResponse)
@@ -372,7 +393,7 @@ fn session_error_status_and_login_landing_not_success() {
     for status in [401, 403, 500] {
         let server = Server::new(move |_| response(status, &[]));
         assert_eq!(
-            create(&server, &context(WORKSPACE), &tokens(None)),
+            create(&server, &context(&workspace()), &tokens(None)),
             Err(DatabricksError::Rejected { status })
         );
     }
@@ -383,7 +404,7 @@ fn session_error_status_and_login_landing_not_success() {
         response(200, &[("Set-Cookie", &default_cookie())])
     });
     assert_eq!(
-        create(&server, &context(WORKSPACE), &tokens(None)),
+        create(&server, &context(&workspace()), &tokens(None)),
         Err(DatabricksError::UnexpectedLanding)
     );
 }
@@ -410,7 +431,7 @@ fn http_dates_parse_and_transport_failures_keep_their_kind() {
     assert_eq!(
         block_on(create_workspace_session(
             &Failing(offline.clone()),
-            &context(WORKSPACE),
+            &context(&workspace()),
             &tokens(None),
             NOW
         )),
@@ -419,7 +440,7 @@ fn http_dates_parse_and_transport_failures_keep_their_kind() {
     assert_eq!(
         block_on(create_workspace_session(
             &Failing(TransportError::Cancelled),
-            &context(WORKSPACE),
+            &context(&workspace()),
             &tokens(None),
             NOW
         )),
@@ -472,7 +493,7 @@ fn unusable_tokens_never_reach_the_server() {
     let mut bad = tokens(None);
     bad.access_token = SecretString::new("has space");
     assert_eq!(
-        create(&server, &context(WORKSPACE), &bad).unwrap_err(),
+        create(&server, &context(&workspace()), &bad).unwrap_err(),
         DatabricksError::InvalidSessionResponse
     );
 }
@@ -488,7 +509,7 @@ fn a_set_cookie_header_that_is_no_pair_is_skipped() {
             &[("Set-Cookie", "no-pair"), ("Set-Cookie", &default_cookie())],
         )
     });
-    let context = context(&format!("{WORKSPACE}/omnigent/c/abc?o=123"));
+    let context = context(&format!("{}/omnigent/c/abc?o=123", workspace()));
     let session = create(&server, &context, &tokens(None)).unwrap();
     assert_eq!(session.cookies.len(), 1);
 }

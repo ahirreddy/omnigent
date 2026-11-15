@@ -92,7 +92,7 @@ mod tests {
     use futures::executor::block_on;
 
     use super::*;
-    use crate::auth::testing::ScriptedTransport;
+    use crate::auth::testing::{APPS_DOMAIN, ScriptedTransport};
     use crate::http::HttpHeader;
 
     #[allow(
@@ -154,12 +154,12 @@ mod tests {
     fn probe_skipped_for_apps_hosts() {
         let transport = ScriptedTransport::new();
         for raw in [
-            "https://my-app-123.aws.databricksapps.com",
-            "https://databricksapps.com",
-            "https://MY-APP.AZURE.DATABRICKSAPPS.COM",
+            format!("https://my-app-123.aws.{APPS_DOMAIN}"),
+            "https://databricksapps.com".to_owned(),
+            format!("https://MY-APP.AZURE.{}", APPS_DOMAIN.to_ascii_uppercase()),
         ] {
-            let expanded = expand(&transport, raw);
-            assert_eq!(expanded, Url::parse(raw).unwrap().to_string());
+            let expanded = expand(&transport, &raw);
+            assert_eq!(expanded, Url::parse(&raw).unwrap().to_string());
         }
         assert_eq!(transport.take().len(), 0);
     }

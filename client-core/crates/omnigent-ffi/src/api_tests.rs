@@ -88,7 +88,7 @@ fn creation_creates_once_and_reports_a_failed_first_message_without_recreating()
     assert_eq!(models[0].value, "provider-model");
     // A new sandbox has no host to ask: its provider's preview for the agent is read.
     harness.http.route(
-        "/v1/sandbox-providers/arclet/harnesses/codex-native/model-options",
+        "/v1/sandbox-providers/daytona/harnesses/codex-native/model-options",
         json(
             200,
             r#"{"configured":true,"models":[{"id":"cloud","model":"cloud-model"}]}"#,
@@ -97,7 +97,7 @@ fn creation_creates_once_and_reports_a_failed_first_message_without_recreating()
     let core = Arc::clone(&harness.core);
     let sandbox_models = harness
         .run(async move {
-            core.sandbox_creation_models("ag_codex".into(), "arclet".into())
+            core.sandbox_creation_models("ag_codex".into(), "daytona".into())
                 .await
         })
         .unwrap();
@@ -106,7 +106,7 @@ fn creation_creates_once_and_reports_a_failed_first_message_without_recreating()
     assert!(
         harness
             .run(async move {
-                core.sandbox_creation_models("ag_missing".into(), "arclet".into())
+                core.sandbox_creation_models("ag_missing".into(), "daytona".into())
                     .await
             })
             .is_err()
@@ -499,7 +499,13 @@ fn changed_files_invalidation_is_reported_as_an_event() {
     assert_eq!(files[0].path, "src/a.rs");
 }
 
-pub(crate) const WORKSPACE_HOST: &str = "https://dbc-1.cloud.databricks.com";
+/// The domain the core classifies as a Databricks workspace.
+const WORKSPACE_DOMAIN: &str = "databricks.com";
+
+/// The workspace these tests connect to.
+pub(crate) fn workspace_host() -> String {
+    format!("https://dbc-1.cloud.{WORKSPACE_DOMAIN}")
+}
 
 pub(crate) fn databricks() -> Harness {
     Harness::with_databricks(
@@ -517,8 +523,8 @@ pub(crate) fn route_databricks(harness: &Harness, access: &str, expires_in: u64)
         json(
             200,
             &serde_json::json!({
-                "issuer": format!("{WORKSPACE_HOST}/oidc"),
-                "token_endpoint": format!("{WORKSPACE_HOST}/oidc/v1/token"),
+                "issuer": format!("{}/oidc", workspace_host()),
+                "token_endpoint": format!("{}/oidc/v1/token", workspace_host()),
             })
             .to_string(),
         ),
@@ -569,7 +575,10 @@ fn databricks_workspaces_sign_in_natively_and_rotate_the_token_in_place() {
     route_databricks(&harness, "access-1", 3_600);
     let core = Arc::clone(&harness.core);
     let phase = harness
-        .run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
+        .run(async move {
+            core.connect(format!("{}/?o=42", workspace_host()), None)
+                .await
+        })
         .unwrap();
     let ConnectionPhase::SignInRequired {
         methods, base_url, ..
@@ -577,11 +586,14 @@ fn databricks_workspaces_sign_in_natively_and_rotate_the_token_in_place() {
     else {
         panic!("{phase:?}");
     };
-    assert_eq!(base_url, format!("{WORKSPACE_HOST}/api/2.0/omnigent?o=42"));
+    assert_eq!(
+        base_url,
+        format!("{}/api/2.0/omnigent?o=42", workspace_host())
+    );
     assert_eq!(
         methods,
         vec![SignInMethod::DatabricksWorkspace {
-            workspace_host: WORKSPACE_HOST.trim_start_matches("https://").into(),
+            workspace_host: workspace_host().trim_start_matches("https://").into(),
             loopback: false,
             callback_host: "login.databricks.com".into(),
             callback_path: "/mobile-redirect".into(),
@@ -666,7 +678,10 @@ fn databricks_workspaces_sign_in_natively_and_rotate_the_token_in_place() {
     // A fresh connect reuses the saved, refreshed grant.
     let core = Arc::clone(&harness.core);
     let phase = harness
-        .run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
+        .run(async move {
+            core.connect(format!("{}/?o=42", workspace_host()), None)
+                .await
+        })
         .unwrap();
     assert!(
         matches!(phase, ConnectionPhase::Connected { .. }),
@@ -693,7 +708,10 @@ fn databricks_loopback_sign_in_binds_the_listeners_port() {
     route_databricks(&harness, "access-1", 3_600);
     let core = Arc::clone(&harness.core);
     let phase = harness
-        .run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
+        .run(async move {
+            core.connect(format!("{}/?o=42", workspace_host()), None)
+                .await
+        })
         .unwrap();
     let ConnectionPhase::SignInRequired { methods, .. } = phase else {
         panic!("{phase:?}");
@@ -701,7 +719,7 @@ fn databricks_loopback_sign_in_binds_the_listeners_port() {
     assert_eq!(
         methods,
         vec![SignInMethod::DatabricksWorkspace {
-            workspace_host: "dbc-1.cloud.databricks.com".into(),
+            workspace_host: workspace_host().trim_start_matches("https://").into(),
             loopback: true,
             callback_host: "localhost".into(),
             callback_path: "/".into(),
@@ -758,7 +776,10 @@ fn databricks_loopback_callbacks_on_another_port_are_refused() {
     route_databricks(&harness, "access-1", 3_600);
     let core = Arc::clone(&harness.core);
     harness
-        .run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
+        .run(async move {
+            core.connect(format!("{}/?o=42", workspace_host()), None)
+                .await
+        })
         .unwrap();
     let challenge = harness.core.begin_databricks_sign_in(Some(49_152)).unwrap();
     let state = url::Url::parse(&challenge.authorize_url)
@@ -790,7 +811,10 @@ fn databricks_callbacks_that_do_not_match_are_refused_without_a_token_request() 
     route_databricks(&harness, "access-1", 3_600);
     let core = Arc::clone(&harness.core);
     harness
-        .run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
+        .run(async move {
+            core.connect(format!("{}/?o=42", workspace_host()), None)
+                .await
+        })
         .unwrap();
     let challenge = harness.core.begin_databricks_sign_in(None).unwrap();
     let core = Arc::clone(&harness.core);
@@ -834,7 +858,10 @@ fn databricks_without_a_build_client_offers_no_method_and_fails_clearly() {
     let mut harness = Harness::new(UrlPolicy::Release);
     let core = Arc::clone(&harness.core);
     let error = harness
-        .run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
+        .run(async move {
+            core.connect(format!("{}/?o=42", workspace_host()), None)
+                .await
+        })
         .unwrap_err();
     assert!(matches!(
         error,

@@ -174,3 +174,16 @@ public final class InMemorySettingsStorage: SettingsStorage, Sendable {
     values.withLock { $0[key] = value }
   }
 }
+
+/// A Databricks workspace for sign-in tests, on the domain the core classifies as a workspace.
+public enum TestWorkspace {
+  /// The domain the core treats as a Databricks workspace.
+  public static let domain = "databricks.com"
+  /// The workspace host.
+  public static let host = "dbc-1.cloud.\(domain)"
+  /// The workspace URL a person types, with its `?o=` workspace selector.
+  public static let url = "https://\(host)/?o=42"
+  /// The workspace's OIDC discovery document.
+  public static let discovery =
+    #"{"issuer":"https://\#(host)/oidc","token_endpoint":"https://\#(host)/oidc/v1/token"}"#
+}

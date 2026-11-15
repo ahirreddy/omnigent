@@ -441,7 +441,7 @@ fn the_plan_says_why_a_start_is_unavailable() {
             "Connect this host",
         ),
         (
-            fork_plan(&source(), Some(&catalog("online", Some("arclet")))).start_unavailable_reason,
+            fork_plan(&source(), Some(&catalog("online", Some("modal")))).start_unavailable_reason,
             "managed sandbox",
         ),
     ];

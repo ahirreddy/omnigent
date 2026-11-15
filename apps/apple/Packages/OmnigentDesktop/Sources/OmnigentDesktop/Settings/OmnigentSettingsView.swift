@@ -302,7 +302,7 @@ struct AdvancedSettingsTab: View {
         case .failure(let error):
           Text("Ignored: \(error.localizedSummary)").foregroundStyle(.red)
         }
-        LabeledContent("Databricks internal features", value: internalFeaturesLabel)
+        LabeledContent("Internal features", value: internalFeaturesLabel)
       } header: {
         Text("Managed by your organization")
       } footer: {
@@ -339,7 +339,7 @@ struct AdvancedSettingsTab: View {
   private func read() {
     snapshot = Result { () throws(ManagedPreferencesError) in try managed.servers() }
     internalFeatures = Result { () throws(ManagedPreferencesError) in
-      try managed.databricksInternalFeaturesEnabled()
+      try managed.internalFeaturesEnabled()
     }
   }
 }

@@ -199,7 +199,7 @@ fn not_installable_or_sandboxed_hosts_cannot_fix_from_the_app() {
 }
 
 #[test]
-fn gateway_credential_reads_as_isaac() {
+fn gateway_credential_reads_as_the_gateway_label() {
     let host = host(&json!({
         "configured_harnesses": {"claude-native": true},
         "gateway_inference": {"claude-native": true}

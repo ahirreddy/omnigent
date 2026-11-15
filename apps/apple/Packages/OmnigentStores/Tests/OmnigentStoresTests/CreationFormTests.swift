@@ -57,10 +57,10 @@ struct CreationFormTests {
   func sandboxSelection() async throws {
     let server = try creationRoutes()
     server.route(
-      "/v1/sandbox-providers/arclet/harnesses/codex-native/model-options",
+      "/v1/sandbox-providers/daytona/harnesses/codex-native/model-options",
       .json(#"{"configured":true,"models":[{"id":"cloud","model":"cloud-model"}]}"#))
     let creation = try await loadedCreation(server)
-    await creation.selectionChanged(selection, sandbox: NewSandboxChoice(provider: "arclet"))
+    await creation.selectionChanged(selection, sandbox: NewSandboxChoice(provider: "daytona"))
     #expect(creation.workspaces.value?.isEmpty == true)
     #expect(creation.models.value?.map(\.value) == ["cloud-model"])
 

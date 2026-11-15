@@ -15,6 +15,7 @@ use super::ledger::MAX_RETIRED_IDS;
 use super::*;
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
+use crate::auth::testing::WORKSPACE_DOMAIN;
 use crate::http::{HttpResponse, TransportError};
 
 fn fixture_text(path: &str) -> String {
@@ -957,16 +958,13 @@ fn approval_event_route_carries_the_id_and_mounted_headers() {
         "parent",
     );
     let resolve = card.resolve_request(&DecisionResponse::Approve).unwrap();
-    let endpoint =
-        ServerEndpoint::new("https://example.cloud.databricks.com/api/2.0/omnigent?o=123").unwrap();
+    let root = format!("https://example.cloud.{WORKSPACE_DOMAIN}/api/2.0/omnigent");
+    let endpoint = ServerEndpoint::new(&format!("{root}?o=123")).unwrap();
     let bearer = SecretString::new("fixture-token");
     let http = resolve
         .http_request(&endpoint, Some(&bearer), ResolveRoute::ApprovalEvent)
         .unwrap();
-    assert_eq!(
-        http.url,
-        "https://example.cloud.databricks.com/api/2.0/omnigent/v1/sessions/child/events"
-    );
+    assert_eq!(http.url, format!("{root}/v1/sessions/child/events"));
     let header = |name: &str| {
         http.headers
             .iter()

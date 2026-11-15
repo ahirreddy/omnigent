@@ -137,7 +137,7 @@ struct SignInSheetTests {
     #expect(reason(controller) == "Use the password form to sign in.")
   }
 
-  private let workspaceURL = "https://dbc-1.cloud.databricks.com/?o=42"
+  private let workspaceURL = TestWorkspace.url
   private let httpsSettings = DatabricksOAuthSettings(
     clientId: "omnigent", redirectUrl: "https://app.example/oauth/databricks")
 
@@ -145,9 +145,7 @@ struct SignInSheetTests {
     let server = AppServer()
     server.route(
       "/oidc/.well-known/openid-configuration",
-      .json(
-        #"{"issuer":"https://dbc-1.cloud.databricks.com/oidc","token_endpoint":"https://dbc-1.cloud.databricks.com/oidc/v1/token"}"#
-      ))
+      .json(TestWorkspace.discovery))
     server.route(
       "/oidc/v1/token",
       .json(
@@ -165,7 +163,7 @@ struct SignInSheetTests {
       if case .signInRequired = controller.store.phase { true } else { false }
     }
     controller.actions.startBrowserSignIn(
-      .databricksWorkspace(workspaceHost: "dbc-1.cloud.databricks.com"))
+      .databricksWorkspace(workspaceHost: TestWorkspace.host))
   }
 
   @Test("A workspace without a loopback client signs in through the sheet's HTTPS callback")

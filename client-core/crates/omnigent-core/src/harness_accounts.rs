@@ -452,8 +452,8 @@ fn provider_details(account: &HarnessAccount) -> String {
         .join(" \u{b7} ")
 }
 
-/// The account a ready harness uses, for its status line: `Isaac`, the providers, or
-/// `email · plan`.
+/// The account a ready harness uses, for its status line: the gateway credential label, the
+/// providers, or `email · plan`.
 #[must_use]
 pub fn configured_account_label(host: &SetupHost, harness: &str) -> Option<String> {
     if host.gateway(harness) == Some(true) {

@@ -687,6 +687,7 @@ mod tests {
         ACCOUNT_ISSUER, TokenHarness, scope, scope_for_client, tokens,
     };
     use crate::auth::databricks::tokens::APPLE_REFERENCE_DATE_UNIX_MS;
+    use crate::auth::testing::{AZURE_WORKSPACE_DOMAIN, WORKSPACE_DOMAIN};
 
     const NOW: u64 = 1_000_000;
 
@@ -695,7 +696,7 @@ mod tests {
     }
 
     fn default_scope() -> CredentialScope {
-        scope("https://dbc-123.cloud.databricks.com")
+        scope(&format!("https://dbc-123.cloud.{WORKSPACE_DOMAIN}"))
     }
 
     /// `DatabricksTokenManagerTests::testMissingAndUsableCredentialsNeverRefresh`.
@@ -781,7 +782,7 @@ mod tests {
     fn token_manager_scopes_do_not_share_refresh() {
         let mut harness = TokenHarness::new(NOW);
         let first_scope = default_scope();
-        let second_scope = scope("https://adb-123.azuredatabricks.net");
+        let second_scope = scope(&format!("https://adb-123.{AZURE_WORKSPACE_DOMAIN}"));
         harness.put(&first_scope, &tokens("a", "first", 900_000, None));
         harness.put(&second_scope, &tokens("a", "second", 900_000, None));
         let first = harness.begin(&first_scope);
@@ -819,7 +820,8 @@ mod tests {
     fn token_manager_invalid_grant_clears_only_matching_scope() {
         let mut harness = TokenHarness::new(NOW);
         let scope = default_scope();
-        let other = scope_for_client("https://dbc-123.cloud.databricks.com", "other-client");
+        let origin = format!("https://dbc-123.cloud.{WORKSPACE_DOMAIN}");
+        let other = scope_for_client(&origin, "other-client");
         let saved = tokens("a", "r", 900_000, None);
         harness.put(&scope, &saved);
         harness.put(&other, &saved);
@@ -913,7 +915,9 @@ mod tests {
             "a",
             "r",
             900_000,
-            Some(issuer("https://workspace.cloud.databricks.com/oidc")),
+            Some(issuer(&format!(
+                "https://workspace.cloud.{WORKSPACE_DOMAIN}/oidc"
+            ))),
         );
         harness.put(&scope, &saved);
         harness.auto_refresh = Some(Ok(tokens("test-access", "test-refresh", 3_000_000, None)));
@@ -928,8 +932,12 @@ mod tests {
     #[test]
     fn token_manager_same_origin_workspaces_keep_own_tokens() {
         let mut harness = TokenHarness::new(NOW);
-        let first = scope("https://workspace.databricks.com/omnigent?o=123");
-        let second = scope("https://workspace.databricks.com/omnigent?o=456");
+        let first = scope(&format!(
+            "https://workspace.{WORKSPACE_DOMAIN}/omnigent?o=123"
+        ));
+        let second = scope(&format!(
+            "https://workspace.{WORKSPACE_DOMAIN}/omnigent?o=456"
+        ));
         let first_tokens = tokens("first", "r", 3_000_000, None);
         let second_tokens = tokens("second", "r", 3_000_000, None);
         harness.save(&first, &first_tokens).unwrap();

@@ -414,6 +414,17 @@ impl WorkspaceSession {
 mod tests {
     use super::*;
     use crate::auth::databricks::test_support::{config, config_with, url};
+    use crate::auth::testing::{APPS_DOMAIN, WORKSPACE_DOMAIN};
+
+    /// The workspace host most of these tests use.
+    fn host() -> String {
+        format!("workspace.{WORKSPACE_DOMAIN}")
+    }
+
+    /// `https://<host><path>`.
+    fn workspace(path: &str) -> String {
+        format!("https://{}{path}", host())
+    }
 
     fn web_context(raw: &str) -> WebContext {
         WebContext::new(&url(raw), &config()).unwrap()
@@ -422,7 +433,7 @@ mod tests {
     /// `DatabricksWebContextTests::testStableStoreIdentitySeparatesWorkspacesAndClients`.
     #[test]
     fn a_store_identifier_exposes_its_bytes_and_cookies_refuse_hostless_urls() {
-        let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+        let context = web_context(&workspace("/omnigent?o=123"));
         assert_eq!(
             context.store_identifier().bytes(),
             context.store_identifier().0
@@ -430,22 +441,23 @@ mod tests {
         let cookie = SessionCookie {
             name: "n".to_owned(),
             value: "v".to_owned(),
-            domain: "workspace.databricks.com".to_owned(),
+            domain: host(),
             path: "/".to_owned(),
             secure: false,
             http_only: false,
             expires_at_ms: None,
         };
         assert!(!cookie.applies_to(&url("data:text/plain,x"), 0));
-        assert!(cookie.applies_to(&url("http://workspace.databricks.com/any"), 0));
+        assert!(cookie.applies_to(&url(&format!("http://{}/any", host())), 0));
     }
 
     #[test]
     fn web_context_store_identity_separates_workspace_and_client() {
-        let first = web_context("https://workspace.databricks.com/omnigent?o=123");
-        let same = web_context(
-            "https://WORKSPACE.DATABRICKS.COM:443/omnigent/c/abc?o=123&view=chat#message",
-        );
+        let first = web_context(&workspace("/omnigent?o=123"));
+        let same = web_context(&format!(
+            "https://{}:443/omnigent/c/abc?o=123&view=chat#message",
+            host().to_ascii_uppercase()
+        ));
         assert_eq!(first.store_identifier(), same.store_identifier());
         // Byte-compatible with the identifier the Swift app gave its persistent WebKit store.
         assert_eq!(
@@ -454,19 +466,17 @@ mod tests {
         );
         assert_ne!(
             first.store_identifier(),
-            web_context("https://workspace.databricks.com/omnigent?o=456").store_identifier()
+            web_context(&workspace("/omnigent?o=456")).store_identifier()
         );
         let other_client = WebContext::new(
-            &url("https://workspace.databricks.com/omnigent?o=123"),
+            &url(&workspace("/omnigent?o=123")),
             &config_with("another-client"),
         )
         .unwrap();
         assert_ne!(first.store_identifier(), other_client.store_identifier());
         assert_eq!(
-            web_context("https://workspace.databricks.com?o=123")
-                .page_url()
-                .as_str(),
-            "https://workspace.databricks.com/omnigent?o=123"
+            web_context(&workspace("?o=123")).page_url().as_str(),
+            workspace("/omnigent?o=123")
         );
     }
 
@@ -476,9 +486,12 @@ mod tests {
         let never_loaded = || -> Result<OAuthConfiguration, DatabricksError> {
             Err(DatabricksError::InvalidClientId)
         };
-        for raw in ["https://app.databricksapps.com", "https://example.com"] {
+        for raw in [
+            format!("https://app.{APPS_DOMAIN}"),
+            "https://example.com".to_owned(),
+        ] {
             assert_eq!(
-                WebContext::resolve(&url(raw), never_loaded),
+                WebContext::resolve(&url(&raw), never_loaded),
                 Ok(None),
                 "{raw}"
             );
@@ -493,27 +506,28 @@ mod tests {
             Err(DatabricksError::InvalidWorkspace)
         );
         assert_eq!(
-            WebContext::new(
-                &url("https://workspace.databricks.com/oidc/v1/authorize"),
-                &config()
-            ),
+            WebContext::new(&url(&workspace("/oidc/v1/authorize")), &config()),
             Err(DatabricksError::InvalidWorkspace)
         );
         // A workspace host needs the configuration, and its failure is reported.
-        let workspace = url("https://workspace.databricks.com/omnigent");
-        let resolved = WebContext::resolve(&workspace, never_loaded);
+        let workspace_url = url(&workspace("/omnigent"));
+        let resolved = WebContext::resolve(&workspace_url, never_loaded);
         assert_eq!(resolved, Err(DatabricksError::InvalidClientId));
-        assert!(context_identity(&workspace, &resolved).starts_with("invalid-workspace:"));
-        let resolved = WebContext::resolve(&workspace, || Ok(config()));
+        assert!(context_identity(&workspace_url, &resolved).starts_with("invalid-workspace:"));
+        let resolved = WebContext::resolve(&workspace_url, || Ok(config()));
         let context = resolved.clone().unwrap().unwrap();
         assert_eq!(
-            view_identity(&workspace, &resolved),
-            format!("{}:{}", context.store_identifier(), fingerprint(&workspace))
+            view_identity(&workspace_url, &resolved),
+            format!(
+                "{}:{}",
+                context.store_identifier(),
+                fingerprint(&workspace_url)
+            )
         );
-        let selected = url("https://workspace.databricks.com/omnigent?o=123");
+        let selected = url(&workspace("/omnigent?o=123"));
         assert_eq!(
             server_label(&selected, Some(&web_context(selected.as_str()))),
-            "workspace.databricks.com · 123"
+            format!("{} · 123", host())
         );
         assert_eq!(server_label(&generic, None), "example.com");
     }
@@ -521,35 +535,36 @@ mod tests {
     /// `DatabricksWebContextTests::testNavigationBindingRejectsOtherWorkspacesAndLoginDestinations`.
     #[test]
     fn web_session_navigation_binds_to_workspace() {
-        let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+        let context = web_context(&workspace("/omnigent?o=123"));
         let session = WorkspaceSession::for_context(&context, Vec::new());
         assert_eq!(
             session
-                .navigation_url(&url("https://workspace.databricks.com/omnigent/c/abc"))
+                .navigation_url(&url(&workspace("/omnigent/c/abc")))
                 .map(|u| u.to_string()),
-            Some("https://workspace.databricks.com/omnigent/c/abc?o=123".to_owned())
+            Some(workspace("/omnigent/c/abc?o=123"))
         );
         for raw in [
-            "https://workspace.databricks.com/omnigent?o=456",
-            "https://different.databricks.com/omnigent?o=123",
-            "https://workspace.databricks.com/login",
-            "http://workspace.databricks.com/omnigent?o=123",
+            workspace("/omnigent?o=456"),
+            format!("https://different.{WORKSPACE_DOMAIN}/omnigent?o=123"),
+            workspace("/login"),
+            format!("http://{}/omnigent?o=123", host()),
         ] {
-            assert_eq!(session.navigation_url(&url(raw)), None, "{raw}");
+            assert_eq!(session.navigation_url(&url(&raw)), None, "{raw}");
         }
     }
 
     /// `DatabricksLifecycleTests::testRecoveryPageKeepsStoreIdentityAndRejectsAnotherWorkspace`.
     #[test]
     fn web_context_navigating_keeps_store_rejects_other_workspace() {
-        let context = web_context("https://workspace.cloud.databricks.com/omnigent?o=123");
-        let target = url("https://workspace.databricks.com/omnigent/c/abc?o=123#message");
+        let cloud = format!("https://workspace.cloud.{WORKSPACE_DOMAIN}/omnigent?o=123");
+        let context = web_context(&cloud);
+        let target = url(&workspace("/omnigent/c/abc?o=123#message"));
         let navigation = context.navigating(&target).unwrap();
         assert_eq!(navigation.scope(), context.scope());
         assert_eq!(navigation.store_identifier(), context.store_identifier());
         assert_eq!(navigation.page_url(), &target);
         assert_eq!(
-            context.navigating(&url("https://workspace.databricks.com/omnigent?o=456")),
+            context.navigating(&url(&workspace("/omnigent?o=456"))),
             Err(DatabricksError::WorkspaceChanged)
         );
     }
@@ -557,28 +572,27 @@ mod tests {
     /// `DatabricksLifecycleTests::testLogoutURLsAreDistinctFromExpiredLoginAndOtherContexts`.
     #[test]
     fn logout_urls_distinct_from_login_and_other_contexts() {
-        let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+        let context = web_context(&workspace("/omnigent?o=123"));
         let session = WorkspaceSession::for_context(&context, Vec::new());
         for path in ["/auth/logout", "/logout", "/login.html?logout=1"] {
             let target = url(&format!("{}{path}", context.scope().workspace_origin()));
             assert!(session.is_sign_out_url(&target), "{path}");
         }
-        assert!(
-            !session.is_sign_out_url(&url("https://workspace.databricks.com/auth/logout?o=456"))
-        );
-        assert!(!session.is_sign_out_url(&url("https://other.databricks.com/auth/logout")));
-        assert!(!session.is_sign_out_url(&url("https://workspace.databricks.com/login.html")));
-        assert!(session.is_authentication_url(&url("https://workspace.databricks.com/login.html")));
-        assert!(!session.is_authentication_url(&url("https://workspace.databricks.com/omnigent")));
+        assert!(!session.is_sign_out_url(&url(&workspace("/auth/logout?o=456"))));
+        let other = format!("https://other.{WORKSPACE_DOMAIN}/auth/logout");
+        assert!(!session.is_sign_out_url(&url(&other)));
+        assert!(!session.is_sign_out_url(&url(&workspace("/login.html"))));
+        assert!(session.is_authentication_url(&url(&workspace("/login.html"))));
+        assert!(!session.is_authentication_url(&url(&workspace("/omnigent"))));
     }
 
     #[test]
     fn cookie_matching_respects_domain_path_and_security() {
-        let page = url("https://workspace.databricks.com/omnigent/c/abc");
+        let page = url(&workspace("/omnigent/c/abc"));
         let cookie = SessionCookie {
             name: SESSION_COOKIE_NAME.into(),
             value: "secret-session".into(),
-            domain: "workspace.databricks.com".into(),
+            domain: host(),
             path: "/omnigent".into(),
             secure: true,
             http_only: true,
@@ -586,9 +600,10 @@ mod tests {
         };
         assert!(cookie.applies_to(&page, 1_000));
         assert!(!cookie.applies_to(&page, 2_000), "expired");
-        assert!(!cookie.applies_to(&url("https://workspace.databricks.com/omnigents"), 0));
-        assert!(!cookie.applies_to(&url("http://workspace.databricks.com/omnigent"), 0));
-        assert!(!cookie.applies_to(&url("https://sub.workspace.databricks.com/omnigent"), 0));
+        assert!(!cookie.applies_to(&url(&workspace("/omnigents")), 0));
+        assert!(!cookie.applies_to(&url(&format!("http://{}/omnigent", host())), 0));
+        let sub = format!("https://sub.{}/omnigent", host());
+        assert!(!cookie.applies_to(&url(&sub), 0));
         let wide = SessionCookie {
             domain: ".databricks.com".into(),
             ..cookie.clone()
@@ -602,12 +617,12 @@ mod tests {
         let cookie = SessionCookie {
             name: "n".to_owned(),
             value: "v".to_owned(),
-            domain: "workspace.databricks.com".to_owned(),
+            domain: host(),
             path: "/".to_owned(),
             secure: false,
             http_only: false,
             expires_at_ms: None,
         };
-        assert!(cookie.applies_to(&url("custom://workspace.databricks.com"), 0));
+        assert!(cookie.applies_to(&url(&format!("custom://{}", host())), 0));
     }
 }

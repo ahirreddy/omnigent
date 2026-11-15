@@ -230,12 +230,20 @@ mod tests {
     use crate::auth::databricks::test_support::{
         ACCOUNT_ISSUER, REDIRECT, attempt_for, config, config_with, form_fields, url,
     };
-    use crate::auth::testing::{FixedEntropy, header};
+    use crate::auth::testing::{
+        APPS_DOMAIN, AZURE_WORKSPACE_DOMAIN, FixedEntropy, WORKSPACE_DOMAIN, header,
+    };
+
+    /// The workspace most of these tests sign in to.
+    fn workspace() -> String {
+        format!("https://dbc-123.cloud.{WORKSPACE_DOMAIN}")
+    }
 
     #[test]
     fn an_attempt_reports_its_configuration_and_hides_the_code() {
         let entropy = FixedEntropy::counting();
-        let attempt = attempt_for("https://test-workspace.cloud.databricks.com", &entropy);
+        let workspace = format!("https://test-workspace.cloud.{WORKSPACE_DOMAIN}");
+        let attempt = attempt_for(&workspace, &entropy);
         assert_eq!(attempt.configuration(), &config());
         let debug = format!(
             "{:?}",
@@ -255,7 +263,7 @@ mod tests {
         assert!(!unbound.is_usable());
         assert_eq!(
             OAuthAttempt::new(
-                &url("https://test-workspace.cloud.databricks.com"),
+                &url(&format!("https://test-workspace.cloud.{WORKSPACE_DOMAIN}")),
                 &unbound,
                 &FixedEntropy::counting()
             )
@@ -282,14 +290,19 @@ mod tests {
     fn databricks_authorize_url_uses_workspace_and_pkce() {
         let config = config_with("client+&value");
         let attempt = OAuthAttempt::new(
-            &url("https://DBC-123.cloud.databricks.com/omnigent/c/abc?o=123&view=chat#view"),
+            &url(&format!(
+                "https://DBC-123.cloud.{WORKSPACE_DOMAIN}/omnigent/c/abc?o=123&view=chat#view"
+            )),
             &config,
             &FixedEntropy::counting(),
         )
         .unwrap();
         let authorize = attempt.authorization_url();
         let parsed = Url::parse(&authorize).unwrap();
-        assert_eq!(parsed.host_str(), Some("dbc-123.cloud.databricks.com"));
+        assert_eq!(
+            parsed.host_str(),
+            Some(format!("dbc-123.cloud.{WORKSPACE_DOMAIN}").as_str())
+        );
         assert_eq!(parsed.path(), "/oidc/v1/authorize");
         let query = query_map(&authorize);
         assert_eq!(query["client_id"], "client+&value");
@@ -322,8 +335,8 @@ mod tests {
     #[test]
     fn databricks_attempt_state_and_verifier_are_fresh() {
         let entropy = FixedEntropy::counting();
-        let first = attempt_for("https://dbc-123.cloud.databricks.com", &entropy);
-        let second = attempt_for("https://dbc-123.cloud.databricks.com", &entropy);
+        let first = attempt_for(&workspace(), &entropy);
+        let second = attempt_for(&workspace(), &entropy);
         assert_ne!(first.state(), second.state());
         assert_ne!(first.verifier(), second.verifier());
         assert_ne!(first.state(), first.verifier());
@@ -345,11 +358,7 @@ mod tests {
         assert!(!debug.contains(first.state().expose()));
         assert!(!debug.contains(first.verifier().expose()));
         assert!(matches!(
-            OAuthAttempt::new(
-                &url("https://dbc-123.cloud.databricks.com"),
-                &config(),
-                &FixedEntropy::failing()
-            ),
+            OAuthAttempt::new(&url(&workspace()), &config(), &FixedEntropy::failing()),
             Err(DatabricksError::RandomGenerationFailed(_))
         ));
     }
@@ -358,15 +367,15 @@ mod tests {
     #[test]
     fn databricks_attempt_rejects_non_workspace_issuers() {
         for raw in [
-            "http://dbc-123.cloud.databricks.com",
-            "https://my-app.databricksapps.com",
-            "https://example.com",
-            "https://databricks.com.example.org",
-            "https://user@dbc-123.cloud.databricks.com",
-            "https://dbc-123.cloud.databricks.com:8443",
+            format!("http://dbc-123.cloud.{WORKSPACE_DOMAIN}"),
+            format!("https://my-app.{APPS_DOMAIN}"),
+            "https://example.com".to_owned(),
+            "https://databricks.com.example.org".to_owned(),
+            format!("https://user@dbc-123.cloud.{WORKSPACE_DOMAIN}"),
+            format!("https://dbc-123.cloud.{WORKSPACE_DOMAIN}:8443"),
         ] {
             assert_eq!(
-                OAuthAttempt::new(&url(raw), &config(), &FixedEntropy::counting()),
+                OAuthAttempt::new(&url(&raw), &config(), &FixedEntropy::counting()),
                 Err(DatabricksError::InvalidWorkspace),
                 "{raw}"
             );
@@ -376,10 +385,7 @@ mod tests {
     /// `DatabricksOAuthAttemptTests::testValidatesConfiguredCallbackAndState`.
     #[test]
     fn databricks_callback_validates_redirect_and_state() {
-        let attempt = attempt_for(
-            "https://dbc-123.cloud.databricks.com",
-            &FixedEntropy::counting(),
-        );
+        let attempt = attempt_for(&workspace(), &FixedEntropy::counting());
         let state = attempt.state().expose().to_owned();
         let response = attempt
             .authorization_response(&callback(&format!("state={state}&code=code%2Bvalue")))
@@ -407,10 +413,7 @@ mod tests {
     /// `DatabricksOAuthAttemptTests::testRejectsMissingDuplicateAndMixedCallbackParameters`.
     #[test]
     fn databricks_callback_rejects_missing_duplicate_mixed_params() {
-        let attempt = attempt_for(
-            "https://dbc-123.cloud.databricks.com",
-            &FixedEntropy::counting(),
-        );
+        let attempt = attempt_for(&workspace(), &FixedEntropy::counting());
         let state = attempt.state().expose().to_owned();
         for query in [
             "code=value".to_owned(),
@@ -434,10 +437,7 @@ mod tests {
     /// `DatabricksOAuthAttemptTests::testProviderErrorsAreSanitizedAndStillRequireState`.
     #[test]
     fn databricks_provider_errors_sanitized_and_need_state() {
-        let attempt = attempt_for(
-            "https://dbc-123.cloud.databricks.com",
-            &FixedEntropy::counting(),
-        );
+        let attempt = attempt_for(&workspace(), &FixedEntropy::counting());
         let state = attempt.state().expose().to_owned();
         for (error, expected) in [
             ("access_denied", DatabricksError::AuthorizationDenied),
@@ -458,10 +458,7 @@ mod tests {
     /// `DatabricksOAuthIssuerTests::testCallbackIssuerIsValidatedAlongsideState`.
     #[test]
     fn databricks_callback_issuer_validated_with_state() {
-        let attempt = attempt_for(
-            "https://dbc-123.cloud.databricks.com",
-            &FixedEntropy::counting(),
-        );
+        let attempt = attempt_for(&workspace(), &FixedEntropy::counting());
         let state = attempt.state().expose().to_owned();
         let with_issuer = |issuer: &str| {
             callback(&format!(
@@ -474,17 +471,11 @@ mod tests {
             .unwrap();
         assert_eq!(response.code.expose(), "test-code");
         assert_eq!(response.issuer.as_str(), ACCOUNT_ISSUER);
-        assert_eq!(
-            attempt.scope().workspace_origin(),
-            "https://dbc-123.cloud.databricks.com"
-        );
+        assert_eq!(attempt.scope().workspace_origin(), workspace());
         let fallback = attempt
             .authorization_response(&callback(&format!("code=test-code&state={state}")))
             .unwrap();
-        assert_eq!(
-            fallback.issuer.as_str(),
-            "https://dbc-123.cloud.databricks.com/oidc"
-        );
+        assert_eq!(fallback.issuer.as_str(), format!("{}/oidc", workspace()));
         for issuer in [
             "",
             "https://example.com/oidc",
@@ -515,7 +506,9 @@ mod tests {
     #[test]
     fn databricks_token_form_percent_encodes_opaque_values() {
         let attempt = OAuthAttempt::new(
-            &url("https://adb-123.azuredatabricks.net/omnigent"),
+            &url(&format!(
+                "https://adb-123.{AZURE_WORKSPACE_DOMAIN}/omnigent"
+            )),
             &config_with("client+&value"),
             &FixedEntropy::counting(),
         )
@@ -523,7 +516,7 @@ mod tests {
         let request = attempt.token_request(&SecretString::new("code+/=& value"), None);
         assert_eq!(
             request.url,
-            "https://adb-123.azuredatabricks.net/oidc/v1/token"
+            format!("https://adb-123.{AZURE_WORKSPACE_DOMAIN}/oidc/v1/token")
         );
         assert_eq!(request.method, "POST");
         assert_eq!(

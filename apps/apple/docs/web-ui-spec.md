@@ -747,7 +747,7 @@ working directory, worktree, MCP, or repository and sandbox profile.
 | Retry in progress | "Retrying {source} · attempt a/m · waiting N.Ns" | `.caption` row | Present ("Retrying model call") |
 | Policy denied | "Blocked by policy · {phase}" | Present | Present |
 | Page errors | "Page not found"; "Unable to display {name}." with "Try again"; "Unable to load this page" with "Refresh page" | `ContentUnavailableView` | n/a |
-| Banners | DBCert ("Refresh dbcert"), Arca shutdown ("Extend", "Not now"), Update ("Restart to update"), stream budget | Mac: window banners via `safeAreaInset(edge: .top)`. The desktop updater already exists (Sparkle "Check for Updates…"). | Partial (desktop commands) |
+| Banners | Sandbox certificate refresh, remote runner shutdown ("Extend", "Not now"), Update ("Restart to update"), stream budget | Mac: window banners via `safeAreaInset(edge: .top)`. The desktop updater already exists (Sparkle "Check for Updates…"). | Partial (desktop commands) |
 
 ### 4.14 Settings
 

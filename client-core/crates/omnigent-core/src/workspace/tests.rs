@@ -13,6 +13,7 @@ use super::*;
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
 use crate::auth::hosted::HostedConnection;
+use crate::auth::testing::AZURE_WORKSPACE_DOMAIN;
 use crate::client::SessionError;
 use crate::client::test_support::{
     Envelope, LOCAL, MOUNT, Reply, RouteTransport, TOKEN, connected, connected_hosted, envelopes,
@@ -256,16 +257,14 @@ fn special_characters_are_one_encoded_segment_each() {
 
 #[test]
 fn hosted_requests_carry_mount_org_and_bearer() {
-    let endpoint =
-        ServerEndpoint::new("https://adb-1.2.azuredatabricks.net/api/2.0/omnigent?o=42").unwrap();
+    let root = format!("https://adb-1.2.{AZURE_WORKSPACE_DOMAIN}/api/2.0/omnigent");
+    let endpoint = ServerEndpoint::new(&format!("{root}?o=42")).unwrap();
     let http = request(WorkspaceOperation::ListChanges)
         .build_for_endpoint(&endpoint, Some(&SecretString::new(TOKEN)))
         .unwrap();
     assert_eq!(
         http.url,
-        format!(
-            "https://adb-1.2.azuredatabricks.net/api/2.0/omnigent/v1/sessions/{SESSION}/resources/environments/default/changes"
-        )
+        format!("{root}/v1/sessions/{SESSION}/resources/environments/default/changes")
     );
     assert_eq!(header(&http, "X-Databricks-Org-Id"), Some("42"));
     assert_eq!(

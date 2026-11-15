@@ -39,18 +39,18 @@ remote browser package tests with a live host (50), the OmnigentAppUI tests (68)
 tests on both editions, and on iPhone 17 Pro and iPad Pro 11 the four remote browser and two
 glass UI tests. The Mac suite takes about 80 s without UI automation (it took 16 minutes).
 
-5. **Databricks workspace sign-in on the Mac.** Workspace-hosted servers (for example
-   `isaac.databricks.com`) need a Databricks OAuth bearer, even for discovery. The iOS HTTPS
-   redirect cannot work on the Mac: `login.databricks.com`'s association file authorizes only
-   the iOS app. The Mac apps now use the published `omnigent` client's loopback redirect
-   (`http://localhost`, ephemeral port, system browser), as the Electron app does; the core binds
-   each attempt to the listener's port. The App Store edition gained `network.server` for the
-   listener. Covered by core, FFI and controller tests; the live sign-in needs a person.
-6. **Replica routing for host-sharded servers.** isaac answers `400 wrong_replica` unless a
-   request carries its session's host as `X-Databricks-Omnigent-Slice-Key` (the WebSocket takes
-   `omnigent_slice_key`). `client-core/.../client/routing.rs` learns hosts from snapshots
-   (walking sub-agent parents), keys sessions, terminals and remote browsers, retries keyless
-   on a refusal, and freezes the modal host after the first list. `routing_tests.rs`.
+5. **Databricks workspace sign-in on the Mac.** Workspace-hosted servers need a Databricks OAuth
+   bearer, even for discovery. The iOS HTTPS redirect cannot work on the Mac:
+   `login.databricks.com`'s association file authorizes only the iOS app. The Mac apps now use the
+   published `omnigent` client's loopback redirect (`http://localhost`, ephemeral port, system
+   browser), as the Electron app does; the core binds each attempt to the listener's port. The App
+   Store edition gained `network.server` for the listener. Covered by core, FFI and controller
+   tests; the live sign-in needs a person.
+6. **Replica routing for host-sharded servers.** A sharded server answers `400 wrong_replica` unless
+   a request carries its session's host as `X-Databricks-Omnigent-Slice-Key` (the WebSocket takes
+   `omnigent_slice_key`). `client-core/.../client/routing.rs` learns hosts from snapshots (walking
+   sub-agent parents), keys sessions, terminals and remote browsers, retries keyless on a refusal,
+   and freezes the modal host after the first list. `routing_tests.rs`.
 7. **Sign-ins that survive rebuilds.** A Mac build without an Apple team ID (Debug, or the local
    Release below) is refused the data-protection keychain, and the login keychain ties items to
    the exact build. Such builds keep credentials in 0600 files (`CredentialFileStore`, chosen by
@@ -87,7 +87,7 @@ Claude Code session in the private repo `ahirreddy/omnigent-native-handoff` (its
 puts both back). Mac UI tests take over the mouse and keyboard; run them only on an idle machine,
 and the user asked for background priority (`taskpolicy -b`, two jobs) while they use the Mac.
 
-isaac is a multi-workspace host: use `https://isaac.databricks.com/?o=1965859176160743`.
+A multi-workspace host needs its workspace selector in the server URL (`?o=<org id>`).
 Where crates.io is unreachable, cargo needs the Databricks crates proxy as a source replacement.
 
 ## Where things are documented

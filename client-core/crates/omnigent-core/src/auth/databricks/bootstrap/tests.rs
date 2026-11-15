@@ -10,12 +10,17 @@ use crate::auth::databricks::test_support::{TOKEN_BODY, TokenHarness, config, to
 use crate::auth::databricks::token_manager::{LookupMode, is_usable};
 use crate::auth::databricks::tokens::encode_record;
 use crate::auth::databricks::web_context::SESSION_COOKIE_NAME;
-use crate::auth::testing::ScriptedTransport;
+use crate::auth::testing::{ScriptedTransport, WORKSPACE_DOMAIN};
 
 const NOW: u64 = 1_000_000;
 
 fn web_context(raw: &str) -> WebContext {
     WebContext::new(&url(raw), &config()).unwrap()
+}
+
+/// `https://workspace.<workspace domain><path>`.
+fn workspace(path: &str) -> String {
+    format!("https://workspace.{WORKSPACE_DOMAIN}{path}")
 }
 
 fn saved_tokens() -> DatabricksTokens {
@@ -291,7 +296,7 @@ impl Env {
 /// `testCachedGrantSkipsBrowserAndWaitsForCookieInstallation`.
 #[test]
 fn bootstrap_cached_grant_skips_login() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     let mut web = FakeWebStore::new(context.store_identifier());
@@ -323,10 +328,10 @@ fn bootstrap_cached_grant_skips_login() {
 /// `testInteractiveLoginClearsOnlySelectedWebStore`.
 #[test]
 fn bootstrap_interactive_login_clears_only_selected_store() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     let mut web = FakeWebStore::new(context.store_identifier());
-    let other_context = web_context("https://workspace.databricks.com/omnigent?o=456");
+    let other_context = web_context(&workspace("/omnigent?o=456"));
     let mut other = FakeWebStore::new(other_context.store_identifier());
     other.cookies = vec![session_cookie(context.page_url(), "other-context")];
     env.prepare(&context, &mut web, ConnectionIntent::Connect, None)
@@ -341,7 +346,7 @@ fn bootstrap_interactive_login_clears_only_selected_store() {
 /// `testFailedCookieBootstrapCannotLeaveOldAccountDataForTheNextAttempt`.
 #[test]
 fn bootstrap_failed_session_leaves_no_old_store_data() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     env.session_failure = Some(DatabricksError::Rejected { status: 500 });
     let mut web = FakeWebStore::new(context.store_identifier());
@@ -362,7 +367,7 @@ fn bootstrap_failed_session_leaves_no_old_store_data() {
 /// `testStorageAndSessionErrorsDoNotTriggerBrowserFallbackOrInstallCookies`.
 #[test]
 fn bootstrap_storage_and_session_errors_no_browser_fallback() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     let mut web = FakeWebStore::new(context.store_identifier());
     env.tokens.store.fail_get.set(true);
@@ -387,7 +392,7 @@ fn bootstrap_storage_and_session_errors_no_browser_fallback() {
 /// `testCancellationDuringSessionRequestDiscardsLateResult`.
 #[test]
 fn bootstrap_cancel_discards_late_session_result() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     let mut web = FakeWebStore::new(context.store_identifier());
@@ -404,8 +409,8 @@ fn bootstrap_cancel_discards_late_session_result() {
 /// `testWrongStoreCannotReceiveWorkspaceCookies`.
 #[test]
 fn bootstrap_wrong_store_identifier_rejected() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
-    let other = web_context("https://workspace.databricks.com/omnigent?o=456");
+    let context = web_context(&workspace("/omnigent?o=123"));
+    let other = web_context(&workspace("/omnigent?o=456"));
     let mut env = Env::new();
     let mut web = FakeWebStore::new(other.store_identifier());
     assert_eq!(
@@ -418,7 +423,7 @@ fn bootstrap_wrong_store_identifier_rejected() {
 /// `testClearedGrantCannotInstallACompletedCookieExchange`.
 #[test]
 fn bootstrap_cleared_grant_rejects_completed_exchange() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     let mut web = FakeWebStore::new(context.store_identifier());
@@ -435,7 +440,7 @@ fn bootstrap_cleared_grant_rejects_completed_exchange() {
 /// `testSilentRecoveryDoesNotPresentBrowserWhenGrantIsMissing`.
 #[test]
 fn bootstrap_recover_without_grant_requires_reauth() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     let mut web = FakeWebStore::new(context.store_identifier());
     assert_eq!(
@@ -449,8 +454,10 @@ fn bootstrap_recover_without_grant_requires_reauth() {
 /// `testRecoveryPreservesCurrentPageWithoutChangingCredentialContext`.
 #[test]
 fn bootstrap_recovery_preserves_page_url() {
-    let context = web_context("https://workspace.cloud.databricks.com/omnigent");
-    let page = url("https://workspace.databricks.com/omnigent/c/abc?o=123#message");
+    let context = web_context(&format!(
+        "https://workspace.cloud.{WORKSPACE_DOMAIN}/omnigent"
+    ));
+    let page = url(&workspace("/omnigent/c/abc?o=123#message"));
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     let mut web = FakeWebStore::new(context.store_identifier());
@@ -467,7 +474,8 @@ fn bootstrap_recovery_preserves_page_url() {
 /// `testSession401RefreshesOnceThenRetriesWithoutBrowser`.
 #[test]
 fn bootstrap_session_401_refreshes_once_then_retries() {
-    let context = web_context("https://test-workspace.cloud.databricks.com/omnigent?o=123");
+    let selected = format!("https://test-workspace.cloud.{WORKSPACE_DOMAIN}/omnigent?o=123");
+    let context = web_context(&selected);
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     env.transport.json(200, TOKEN_BODY);
@@ -494,7 +502,8 @@ fn bootstrap_session_401_refreshes_once_then_retries() {
 /// `testRepeated401DoesNotLoopOrEraseAValidRefreshGrant`.
 #[test]
 fn bootstrap_repeated_401_bounded_keeps_grant() {
-    let context = web_context("https://test-workspace.cloud.databricks.com/omnigent?o=123");
+    let selected = format!("https://test-workspace.cloud.{WORKSPACE_DOMAIN}/omnigent?o=123");
+    let context = web_context(&selected);
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     env.transport.json(200, TOKEN_BODY);
@@ -514,7 +523,7 @@ fn bootstrap_repeated_401_bounded_keeps_grant() {
 /// `testDebugTokenFaultsKeepTheRefreshGrantUntilItIsTheChosenFault`.
 #[test]
 fn bootstrap_debug_token_faults_touch_only_chosen_field() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     let mut web = FakeWebStore::new(context.store_identifier());
@@ -562,14 +571,14 @@ fn bootstrap_debug_token_faults_touch_only_chosen_field() {
 /// `testDebugFaultNeedsSavedCredentialsAndTheSelectedStore`.
 #[test]
 fn bootstrap_debug_fault_needs_credentials_and_store() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     let mut web = FakeWebStore::new(context.store_identifier());
     assert_eq!(
         env.inject(DebugFault::AccessToken, &context, &mut web),
         Ok(false)
     );
-    let other = web_context("https://workspace.databricks.com/omnigent?o=456");
+    let other = web_context(&workspace("/omnigent?o=456"));
     let mut wrong = FakeWebStore::new(other.store_identifier());
     assert_eq!(
         env.inject(DebugFault::SessionCookie, &context, &mut wrong),
@@ -580,7 +589,8 @@ fn bootstrap_debug_fault_needs_credentials_and_store() {
 /// `testInjectedAccessTokenFaultRecoversWithoutBrowserSignIn`.
 #[test]
 fn bootstrap_injected_access_fault_recovers_without_login() {
-    let context = web_context("https://test-workspace.cloud.databricks.com/omnigent?o=123");
+    let selected = format!("https://test-workspace.cloud.{WORKSPACE_DOMAIN}/omnigent?o=123");
+    let context = web_context(&selected);
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     env.transport.json(200, TOKEN_BODY);
@@ -606,7 +616,8 @@ fn bootstrap_injected_access_fault_recovers_without_login() {
 /// `testInjectedRefreshFaultAsksForSignInInsteadOfOpeningTheBrowser`.
 #[test]
 fn bootstrap_injected_refresh_fault_requires_reauth() {
-    let context = web_context("https://test-workspace.cloud.databricks.com/omnigent?o=123");
+    let selected = format!("https://test-workspace.cloud.{WORKSPACE_DOMAIN}/omnigent?o=123");
+    let context = web_context(&selected);
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     env.transport.json(400, r#"{"error":"invalid_grant"}"#);
@@ -639,8 +650,8 @@ fn recovery_policy_requires_ready_and_cooldown() {
 /// `DatabricksLifecycleTests::testSignOutClearsOnlyItsContextAndSuppressesAutoOpen`.
 #[test]
 fn sign_out_clears_only_its_context_and_suppresses_auto_open() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
-    let other = web_context("https://workspace.databricks.com/omnigent?o=456");
+    let context = web_context(&workspace("/omnigent?o=123"));
+    let other = web_context(&workspace("/omnigent?o=456"));
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     env.tokens.put(
@@ -681,7 +692,7 @@ fn sign_out_clears_only_its_context_and_suppresses_auto_open() {
 /// `DatabricksLifecycleTests::testFailedSignOutIsRetriedAfterManagerRecreationBeforeNewLogin`.
 #[test]
 fn sign_out_failed_retried_before_new_login() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     let mut web = FakeWebStore::new(context.store_identifier());
@@ -708,7 +719,7 @@ fn sign_out_failed_retried_before_new_login() {
 /// `DatabricksLifecycleTests::testPendingSignOutRejectsLateCookieBootstrap`.
 #[test]
 fn sign_out_pending_rejects_late_bootstrap() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     let mut web = FakeWebStore::new(context.store_identifier());
@@ -733,7 +744,7 @@ fn sign_out_pending_rejects_late_bootstrap() {
 /// `DatabricksLifecycleTests::testCompletedSignOutRejectsLateBootstrapEvenIfCredentialsReappear`.
 #[test]
 fn sign_out_completed_generation_rejects_late_bootstrap() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     let original = saved_tokens();
     env.tokens.put(context.scope(), &original);
@@ -772,7 +783,7 @@ fn workspace_http_status_401_recovers_403_fails() {
 
 #[test]
 fn installed_cookie_must_be_the_issued_secure_session_cookie() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     let mut web = FakeWebStore::new(context.store_identifier());
@@ -792,7 +803,7 @@ fn installed_cookie_must_be_the_issued_secure_session_cookie() {
 
 #[test]
 fn a_cancelled_flow_refuses_every_later_check() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let context = web_context(&workspace("/omnigent?o=123"));
     let mut env = Env::new();
     env.tokens.put(context.scope(), &saved_tokens());
     let mut web = FakeWebStore::new(context.store_identifier());
@@ -814,8 +825,8 @@ fn a_cancelled_flow_refuses_every_later_check() {
 
 #[test]
 fn signing_out_of_another_contexts_store_is_refused() {
-    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
-    let other = web_context("https://workspace.databricks.com/omnigent?o=456");
+    let context = web_context(&workspace("/omnigent?o=123"));
+    let other = web_context(&workspace("/omnigent?o=456"));
     let mut env = Env::new();
     assert!(matches!(
         env.sign_outs.begin(&context, other.store_identifier()),

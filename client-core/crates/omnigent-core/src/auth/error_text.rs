@@ -52,13 +52,10 @@ impl PlatformError {
 }
 
 /// The message for a failed connection: the Jamf compliance hint for DNS failures when
-/// Databricks-internal features are enabled, otherwise the platform's own message.
+/// internal features are enabled, otherwise the platform's own message.
 #[must_use]
-pub fn connection_error_message(
-    error: &PlatformError,
-    databricks_internal_features: bool,
-) -> String {
-    if databricks_internal_features && error.is_dns_failure() {
+pub fn connection_error_message(error: &PlatformError, internal_features: bool) -> String {
+    if internal_features && error.is_dns_failure() {
         JAMF_COMPLIANCE_MESSAGE.to_owned()
     } else {
         error.localized_description.clone()
@@ -75,15 +72,12 @@ pub fn navigation_failure_message(
     error: &PlatformError,
     failed_url: &Url,
     pinned_origin: &str,
-    databricks_internal_features: bool,
+    internal_features: bool,
 ) -> Option<String> {
     if error.is_cancellation() || server_url::origin(failed_url) != pinned_origin {
         return None;
     }
-    Some(connection_error_message(
-        error,
-        databricks_internal_features,
-    ))
+    Some(connection_error_message(error, internal_features))
 }
 
 /// A page to restore after recovery, valid only for the destination it was recorded for.
@@ -263,7 +257,7 @@ mod tests {
 
     #[test]
     fn recovery_intent_applies_only_to_started_destination() {
-        let workspace = "https://workspace.cloud.databricks.com/ml/omnigents?o=1";
+        let workspace = "https://workspace.example.com/ml/omnigents?o=1";
         let intent = RecoveryIntent {
             initial_url: workspace.into(),
         };
@@ -273,7 +267,7 @@ mod tests {
             ConnectionIntent::Connect
         );
         assert_eq!(
-            intent.intent_for("https://workspace.cloud.databricks.com/ml/omnigents/c/x?o=1"),
+            intent.intent_for("https://workspace.example.com/ml/omnigents/c/x?o=1"),
             ConnectionIntent::Connect
         );
     }

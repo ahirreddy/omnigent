@@ -21,10 +21,9 @@ struct CredentialFileStoreTests {
     let folder = directory()
     defer { try? FileManager.default.removeItem(at: folder) }
     let store = CredentialFileStore(directory: folder)
-    let grant = SecureStoreKey(
-      namespace: "databricks", account: "https://dbc-1.cloud.databricks.com?o=42")
-    let other = SecureStoreKey(
-      namespace: "oidc", account: "https://dbc-1.cloud.databricks.com?o=42")
+    let account = "https://workspace.example.com?o=42"
+    let grant = SecureStoreKey(namespace: "databricks", account: account)
+    let other = SecureStoreKey(namespace: "oidc", account: account)
 
     #expect(try store.get(key: grant) == nil)
     try store.set(key: grant, value: Data("first".utf8))
@@ -39,7 +38,7 @@ struct CredentialFileStoreTests {
     #expect(files.count == 2)
     for file in files {
       #expect(try permissions(file) == 0o600, "\(file.lastPathComponent)")
-      #expect(!file.lastPathComponent.contains("databricks.com"), "account names are hashed")
+      #expect(!file.lastPathComponent.contains("example.com"), "account names are hashed")
     }
   }
 

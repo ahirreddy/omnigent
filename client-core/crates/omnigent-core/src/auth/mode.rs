@@ -20,8 +20,8 @@ pub enum ServerAuthentication {
     Oidc,
 }
 
-const WORKSPACE_DOMAINS: [&str; 2] = ["databricks.com", "azuredatabricks.net"];
-const APPS_DOMAIN: &str = "databricksapps.com";
+pub(crate) const WORKSPACE_DOMAINS: [&str; 2] = ["databricks.com", "azuredatabricks.net"];
+pub(crate) const APPS_DOMAIN: &str = "databricksapps.com";
 
 impl ServerAuthentication {
     /// Classifies a host name; `None` or empty is [`ServerAuthentication::Oidc`].
@@ -308,7 +308,7 @@ pub fn error_text(body: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::testing::response;
+    use crate::auth::testing::{APPS_DOMAIN, AZURE_WORKSPACE_DOMAIN, WORKSPACE_DOMAIN, response};
 
     #[test]
     fn info_fields_of_the_wrong_type_and_a_forbidden_reply_are_refused() {
@@ -327,15 +327,21 @@ mod tests {
     #[test]
     fn auth_classifies_workspace_hosts() {
         for origin in [
-            "https://databricks.com",
-            "https://dbc-123.cloud.databricks.com",
-            "https://azuredatabricks.net",
-            "https://adb-123.azuredatabricks.net",
-            "https://DBC-123.CLOUD.DATABRICKS.COM",
-            "https://ADB-123.AZUREDATABRICKS.NET",
+            "https://databricks.com".to_owned(),
+            format!("https://dbc-123.cloud.{WORKSPACE_DOMAIN}"),
+            "https://azuredatabricks.net".to_owned(),
+            format!("https://adb-123.{AZURE_WORKSPACE_DOMAIN}"),
+            format!(
+                "https://DBC-123.CLOUD.{}",
+                WORKSPACE_DOMAIN.to_ascii_uppercase()
+            ),
+            format!(
+                "https://ADB-123.{}",
+                AZURE_WORKSPACE_DOMAIN.to_ascii_uppercase()
+            ),
         ] {
             assert_eq!(
-                ServerAuthentication::for_origin(Some(origin)),
+                ServerAuthentication::for_origin(Some(&origin)),
                 ServerAuthentication::DatabricksWorkspace,
                 "{origin}"
             );
@@ -345,12 +351,12 @@ mod tests {
     #[test]
     fn auth_classifies_apps_separately() {
         for origin in [
-            "https://databricksapps.com",
-            "https://my-app.aws.databricksapps.com",
-            "https://MY-APP.AZURE.DATABRICKSAPPS.COM",
+            "https://databricksapps.com".to_owned(),
+            format!("https://my-app.aws.{APPS_DOMAIN}"),
+            format!("https://MY-APP.AZURE.{}", APPS_DOMAIN.to_ascii_uppercase()),
         ] {
             assert_eq!(
-                ServerAuthentication::for_origin(Some(origin)),
+                ServerAuthentication::for_origin(Some(&origin)),
                 ServerAuthentication::DatabricksApp,
                 "{origin}"
             );
@@ -396,16 +402,17 @@ mod tests {
     #[test]
     fn auth_classification_depends_only_on_host() {
         for origin in [
-            "http://dbc-123.cloud.databricks.com",
-            "https://dbc-123.cloud.databricks.com:8443/omnigent?o=123#conversation",
+            format!("http://dbc-123.cloud.{WORKSPACE_DOMAIN}"),
+            format!("https://dbc-123.cloud.{WORKSPACE_DOMAIN}:8443/omnigent?o=123#conversation"),
         ] {
             assert_eq!(
-                ServerAuthentication::for_origin(Some(origin)),
+                ServerAuthentication::for_origin(Some(&origin)),
                 ServerAuthentication::DatabricksWorkspace
             );
         }
+        let app = format!("https://my-app.{APPS_DOMAIN}:8443/c/abc");
         assert_eq!(
-            ServerAuthentication::for_origin(Some("https://my-app.databricksapps.com:8443/c/abc")),
+            ServerAuthentication::for_origin(Some(&app)),
             ServerAuthentication::DatabricksApp
         );
     }
@@ -413,18 +420,18 @@ mod tests {
     #[test]
     fn auth_host_and_origin_classification_agree() {
         for host in [
-            "databricks.com",
-            "DBC-123.CLOUD.DATABRICKS.COM",
-            "adb-123.azuredatabricks.net",
-            "databricksapps.com",
-            "MY-APP.AWS.DATABRICKSAPPS.COM",
-            "example.org",
-            "notdatabricks.com",
-            "azuredatabricks.net.example.org",
-            "databricksapps.com.example.org",
+            "databricks.com".to_owned(),
+            format!("DBC-123.CLOUD.{}", WORKSPACE_DOMAIN.to_ascii_uppercase()),
+            format!("adb-123.{AZURE_WORKSPACE_DOMAIN}"),
+            "databricksapps.com".to_owned(),
+            format!("MY-APP.AWS.{}", APPS_DOMAIN.to_ascii_uppercase()),
+            "example.org".to_owned(),
+            "notdatabricks.com".to_owned(),
+            "azuredatabricks.net.example.org".to_owned(),
+            "databricksapps.com.example.org".to_owned(),
         ] {
             assert_eq!(
-                ServerAuthentication::for_host(Some(host)),
+                ServerAuthentication::for_host(Some(&host)),
                 ServerAuthentication::for_origin(Some(&format!("https://{host}"))),
                 "{host}"
             );
@@ -450,7 +457,7 @@ mod tests {
     fn mode_from_info_follows_native_lab_rules() {
         let hosted = endpoint("https://h.example.com/api");
         let local = endpoint("http://127.0.0.1:6767");
-        let org = endpoint("https://acme.cloud.databricks.com/api?o=1");
+        let org = endpoint(&format!("https://acme.cloud.{WORKSPACE_DOMAIN}/api?o=1"));
         let accounts =
             info(r#"{"single_user":false,"accounts_enabled":true,"login_url":"/login"}"#);
         let oidc =

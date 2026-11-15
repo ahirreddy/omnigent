@@ -70,7 +70,7 @@ struct NewSessionDefaultsTests {
   {
     var catalog = catalog(hosts: hosts)
     catalog.managedSandboxes = true
-    catalog.sandboxProviders = ["arclet", "modal"]
+    catalog.sandboxProviders = ["daytona", "modal"]
     return catalog
   }
 
@@ -78,7 +78,7 @@ struct NewSessionDefaultsTests {
     let form = try form()
     form.applyDefaults(sandboxCatalog(hosts: [host("stopped-sandbox", online: false)]))
     #expect(form.isSandbox)
-    #expect(form.sandbox.provider == "arclet")
+    #expect(form.sandbox.provider == "daytona")
 
     // A machine that is online is where a session starts, unless the last one was a sandbox.
     let other = try self.form()
@@ -135,7 +135,7 @@ struct NewSessionDefaultsTests {
     let stale = try self.form()
     stale.preferences.set("gone", forKey: NewSessionForm.DefaultsKey.sandboxProvider)
     stale.applyDefaults(sandboxCatalog(hosts: [host("mac")]))
-    #expect(stale.sandbox.provider == "arclet")
+    #expect(stale.sandbox.provider == "daytona")
   }
 
   @Test func theAgentTheUserChoseStaysWhenItIsNotReady() throws {

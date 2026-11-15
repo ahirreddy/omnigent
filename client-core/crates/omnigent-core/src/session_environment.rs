@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn sandbox_labels_follow_the_web() {
-        assert_eq!(sandbox_label(Some("lakebox")), "Databricks Sandbox");
+        assert_eq!(sandbox_label(Some("e2b")), "E2B Sandbox");
         assert_eq!(sandbox_label(Some("acme")), "Acme Sandbox");
         assert_eq!(sandbox_label(None), "New Sandbox");
     }

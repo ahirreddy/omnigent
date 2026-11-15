@@ -213,6 +213,7 @@ fn default_scheme(trimmed: &str, allows_insecure_http: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::testing::{APPS_DOMAIN, AZURE_WORKSPACE_DOMAIN, WORKSPACE_DOMAIN};
 
     fn normalized(raw: &str, allows_insecure_http: bool) -> String {
         display(&normalize(raw, allows_insecure_http).unwrap())
@@ -229,32 +230,32 @@ mod tests {
     #[test]
     fn databricks_workspace_roots_and_ui_urls_map_to_the_api_mount() {
         let root = |raw: &str| databricks_api_root(&Url::parse(raw).unwrap()).to_string();
+        let host = format!("dbc-123.cloud.{WORKSPACE_DOMAIN}");
+        let azure = format!("https://adb-1.{AZURE_WORKSPACE_DOMAIN}");
+        let app = format!("https://my-app.aws.{APPS_DOMAIN}/");
         assert_eq!(
-            root("https://dbc-123.cloud.databricks.com/?o=42"),
-            "https://dbc-123.cloud.databricks.com/api/2.0/omnigent?o=42"
+            root(&format!("https://{host}/?o=42")),
+            format!("https://{host}/api/2.0/omnigent?o=42")
         );
         assert_eq!(
-            root("https://adb-1.azuredatabricks.net/omnigent/#c/abc"),
-            "https://adb-1.azuredatabricks.net/api/2.0/omnigent"
+            root(&format!("{azure}/omnigent/#c/abc")),
+            format!("{azure}/api/2.0/omnigent")
         );
         assert_eq!(
-            root("https://dbc-123.cloud.databricks.com/api/2.0/omnigent?o=42"),
-            "https://dbc-123.cloud.databricks.com/api/2.0/omnigent?o=42"
+            root(&format!("https://{host}/api/2.0/omnigent?o=42")),
+            format!("https://{host}/api/2.0/omnigent?o=42")
         );
         assert_eq!(
-            root("https://dbc-123.cloud.databricks.com/custom/mount"),
-            "https://dbc-123.cloud.databricks.com/custom/mount"
+            root(&format!("https://{host}/custom/mount")),
+            format!("https://{host}/custom/mount")
         );
         assert_eq!(root("https://example.com/"), "https://example.com/");
-        assert_eq!(
-            root("https://my-app.aws.databricksapps.com/"),
-            "https://my-app.aws.databricksapps.com/"
-        );
+        assert_eq!(root(&app), app);
         assert!(!is_databricks_workspace(
-            &Url::parse("http://dbc-123.cloud.databricks.com").unwrap()
+            &Url::parse(&format!("http://{host}")).unwrap()
         ));
         assert!(is_databricks_workspace(
-            &Url::parse("https://dbc-123.cloud.databricks.com").unwrap()
+            &Url::parse(&format!("https://{host}")).unwrap()
         ));
     }
 
@@ -271,8 +272,8 @@ mod tests {
     #[test]
     fn debug_policy_still_defaults_remote_host_to_https() {
         assert_eq!(
-            normalized("dbc-b7cf3f6a-ac9f.cloud.databricks.com", true),
-            "https://dbc-b7cf3f6a-ac9f.cloud.databricks.com"
+            normalized("workspace.example.com", true),
+            "https://workspace.example.com"
         );
     }
 
@@ -412,87 +413,87 @@ mod tests {
         workspace_ui_url_for_bare_root(&url(raw)).map(|url| url.to_string())
     }
 
+    /// The workspace host the mount tests use.
+    fn host() -> String {
+        format!("dbc-1234.cloud.{WORKSPACE_DOMAIN}")
+    }
+
     #[test]
     fn workspace_ui_url_rewrites_bare_roots() {
+        let workspace = format!("https://{}", host());
+        let azure = format!("https://adb-99.{AZURE_WORKSPACE_DOMAIN}");
         for (raw, expected) in [
+            (workspace.clone(), format!("{workspace}/omnigent")),
+            (format!("{workspace}/"), format!("{workspace}/omnigent")),
+            (format!("{azure}/"), format!("{azure}/omnigent")),
             (
-                "https://dbc-1234.cloud.databricks.com",
-                "https://dbc-1234.cloud.databricks.com/omnigent",
+                "https://databricks.com/".to_owned(),
+                "https://databricks.com/omnigent".to_owned(),
             ),
             (
-                "https://dbc-1234.cloud.databricks.com/",
-                "https://dbc-1234.cloud.databricks.com/omnigent",
-            ),
-            (
-                "https://adb-99.azuredatabricks.net/",
-                "https://adb-99.azuredatabricks.net/omnigent",
-            ),
-            ("https://databricks.com/", "https://databricks.com/omnigent"),
-            (
-                "https://azuredatabricks.net/",
-                "https://azuredatabricks.net/omnigent",
+                "https://azuredatabricks.net/".to_owned(),
+                "https://azuredatabricks.net/omnigent".to_owned(),
             ),
         ] {
-            assert_eq!(mount(raw).as_deref(), Some(expected), "{raw}");
+            assert_eq!(mount(&raw), Some(expected), "{raw}");
         }
     }
 
     #[test]
     fn workspace_ui_url_preserves_query_fragment() {
+        let host = host();
         assert_eq!(
-            mount("https://dbc-1234.cloud.databricks.com/?o=987654321").as_deref(),
-            Some("https://dbc-1234.cloud.databricks.com/omnigent?o=987654321")
+            mount(&format!("https://{host}/?o=987654321")),
+            Some(format!("https://{host}/omnigent?o=987654321"))
         );
         assert_eq!(
-            mount("https://dbc-1234.cloud.databricks.com/?o=1#frag").as_deref(),
-            Some("https://dbc-1234.cloud.databricks.com/omnigent?o=1#frag")
+            mount(&format!("https://{host}/?o=1#frag")),
+            Some(format!("https://{host}/omnigent?o=1#frag"))
         );
     }
 
     // Swift keeps the host's case as typed; the url crate lowercases it on parse.
     #[test]
     fn workspace_ui_url_keeps_port_and_lowercases_host() {
+        let host = host();
         assert_eq!(
-            mount("https://dbc-1234.cloud.databricks.com:8443/").as_deref(),
-            Some("https://dbc-1234.cloud.databricks.com:8443/omnigent")
+            mount(&format!("https://{host}:8443/")),
+            Some(format!("https://{host}:8443/omnigent"))
         );
         assert_eq!(
-            mount("https://DBC-1234.Cloud.DataBricks.Com/").as_deref(),
-            Some("https://dbc-1234.cloud.databricks.com/omnigent")
+            mount(&format!("https://{}/", host.to_ascii_uppercase())),
+            Some(format!("https://{host}/omnigent"))
         );
     }
 
     #[test]
     fn workspace_ui_url_leaves_non_root_paths() {
-        for raw in [
-            "https://dbc-1234.cloud.databricks.com/omnigent",
-            "https://dbc-1234.cloud.databricks.com/c/abc",
-            "https://dbc-1234.cloud.databricks.com/ml/omnigents",
-        ] {
-            assert_eq!(mount(raw), None, "{raw}");
+        for path in ["/omnigent", "/c/abc", "/ml/omnigents"] {
+            let raw = format!("https://{}{path}", host());
+            assert_eq!(mount(&raw), None, "{raw}");
         }
     }
 
     #[test]
     fn workspace_ui_url_leaves_apps_and_lookalikes() {
         for raw in [
-            "https://my-app.databricksapps.com/",
-            "https://databricksapps.com/",
-            "https://MY-APP.AWS.DATABRICKSAPPS.COM/",
-            "https://example.com/",
-            "https://localhost:8000/",
-            "https://databricks.com.evil.example/",
-            "https://azuredatabricks.net.example.org/",
-            "https://notdatabricks.com/",
-            "https://notazuredatabricks.net/",
+            format!("https://my-app.{APPS_DOMAIN}/"),
+            "https://databricksapps.com/".to_owned(),
+            format!("https://MY-APP.AWS.{}/", APPS_DOMAIN.to_ascii_uppercase()),
+            "https://example.com/".to_owned(),
+            "https://localhost:8000/".to_owned(),
+            "https://databricks.com.evil.example/".to_owned(),
+            "https://azuredatabricks.net.example.org/".to_owned(),
+            "https://notdatabricks.com/".to_owned(),
+            "https://notazuredatabricks.net/".to_owned(),
         ] {
-            assert_eq!(mount(raw), None, "{raw}");
+            assert_eq!(mount(&raw), None, "{raw}");
         }
     }
 
     #[test]
     fn workspace_ui_url_rejects_non_http_schemes() {
-        assert_eq!(mount("omnigent://dbc-1234.cloud.databricks.com/"), None);
+        assert_eq!(mount(&format!("omnigent://{}/", host())), None);
         assert_eq!(mount("file:///tmp"), None);
     }
 

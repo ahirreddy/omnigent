@@ -24,8 +24,7 @@ extension PreviewData {
   ]
 
   static let servers = [
-    ServerChoice(
-      id: "dbx", name: "ai-devtools-prod", url: "https://ai-devtools.cloud.databricks.com"),
+    ServerChoice(id: "dbx", name: "workspace-prod", url: "https://workspace.example.com"),
     ServerChoice(id: "local", name: "Local server", url: "http://127.0.0.1:6767"),
     ServerChoice(
       id: "staging", name: "Staging", url: "https://staging.omnigent.dev", isConnected: false),

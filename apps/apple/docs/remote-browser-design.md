@@ -51,10 +51,10 @@ These override the table above where they differ.
   `remote_debugging_port` and its own `host.sock`. Raw DevTools access is therefore scoped to
   one profile's tabs, which removes the need for a CDP proxy in v1. This replaces "one host per
   OS user": the CEF cache lock is per profile directory, so instances never share a cache.
-- **Platforms: Linux x86_64 and macOS runners.** Linux x86_64 is the production target (test
-  VM: `ssh arca_qemu2.ssh`). A macOS runner build of the same host is the local test loop: the
-  Mac can act as the "remote" for itself, exercising capture, x264 encode, the relay and
-  hardware decode end to end on one machine.
+- **Platforms: Linux x86_64 and macOS runners.** Linux x86_64 is the production target (tested on a
+  Linux VM). A macOS runner build of the same host is the local test loop: the Mac can act as the
+  "remote" for itself, exercising capture, x264 encode, the relay and hardware decode end to end on
+  one machine.
 
 ## 2. Reference conversation
 

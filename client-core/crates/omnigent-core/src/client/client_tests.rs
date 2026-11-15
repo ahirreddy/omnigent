@@ -1012,7 +1012,7 @@ fn a_message_to_a_session_whose_sandbox_is_starting_is_the_servers_to_hold() {
         "/v1/sessions/conv_a",
         r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4,
             "harness":"codex-native","runner_id":null,"runner_online":false,"host_id":null,
-            "sandbox_status":{"stage":"provisioning","provider":"arclet"}}"#,
+            "sandbox_status":{"stage":"provisioning","provider":"daytona"}}"#,
     );
     transport.ok(
         "/v1/sessions/conv_a/items",
@@ -1777,9 +1777,11 @@ fn an_upload_to_a_databricks_workspace_names_its_org() {
         r#"{"single_user":false,"accounts_enabled":false,"login_url":"/auth/login"}"#,
     );
     let core = core(transport);
-    let workspace =
-        crate::auth::endpoint::ServerEndpoint::new("https://w.cloud.databricks.com/?o=123")
-            .unwrap();
+    let workspace = format!(
+        "https://w.cloud.{}/?o=123",
+        crate::auth::testing::WORKSPACE_DOMAIN
+    );
+    let workspace = crate::auth::endpoint::ServerEndpoint::new(&workspace).unwrap();
     block_on(core.connect(
         workspace,
         Some(crate::auth::SecretString::new("workspace-token")),

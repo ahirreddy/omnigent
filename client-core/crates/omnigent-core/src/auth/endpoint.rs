@@ -327,7 +327,7 @@ pub fn is_databricks_workspace_host(host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::testing::header;
+    use crate::auth::testing::{APPS_DOMAIN, AZURE_WORKSPACE_DOMAIN, WORKSPACE_DOMAIN, header};
 
     const MOUNT: &str = "/api/2.0/omnigent";
 
@@ -453,10 +453,10 @@ mod tests {
     #[test]
     fn selector_canonicalization_and_documented_host_boundaries() {
         for host in [
-            "acme.databricks.com",
-            "dbc-test.cloud.databricks.com",
-            "test.gcp.databricks.com",
-            "adb-123.4.azuredatabricks.net",
+            format!("acme.{WORKSPACE_DOMAIN}"),
+            format!("dbc-test.cloud.{WORKSPACE_DOMAIN}"),
+            format!("test.gcp.{WORKSPACE_DOMAIN}"),
+            format!("adb-123.4.{AZURE_WORKSPACE_DOMAIN}"),
         ] {
             let raw = format!("https://{}:443{MOUNT}/?o=123", host.to_ascii_uppercase());
             let endpoint = ServerEndpoint::new(&raw).unwrap();
@@ -464,7 +464,8 @@ mod tests {
             assert_eq!(endpoint.databricks_org_id(), Some("123"));
             assert!(!endpoint.is_loopback_http());
         }
-        let unscoped = ServerEndpoint::new(&format!("https://acme.databricks.com{MOUNT}")).unwrap();
+        let unscoped = format!("https://acme.{WORKSPACE_DOMAIN}{MOUNT}");
+        let unscoped = ServerEndpoint::new(&unscoped).unwrap();
         assert_eq!(unscoped.databricks_org_id(), None, "never infer an org");
         let request = unscoped.request("/v1/me", &[], None).unwrap();
         assert_eq!(header(&request, DATABRICKS_ORG_HEADER), None);
@@ -492,7 +493,7 @@ mod tests {
             "o=%31",
             "o=123%0D%0AX-Test:1",
         ] {
-            let raw = format!("https://acme.databricks.com{MOUNT}?{query}");
+            let raw = format!("https://acme.{WORKSPACE_DOMAIN}{MOUNT}?{query}");
             assert_eq!(
                 ServerEndpoint::new(&raw),
                 Err(HostedAuthError::InvalidBaseUrl),
@@ -500,17 +501,17 @@ mod tests {
             );
         }
         for root in [
-            "http://acme.databricks.com",
-            "http://127.0.0.1",
-            "https://127.0.0.1",
-            "https://example.invalid",
-            "https://databricks.com",
-            "https://evildatabricks.com",
-            "https://acme.databricks.com.evil.invalid",
-            "https://evilazuredatabricks.net",
-            "https://acme.azuredatabricks.net.evil.invalid",
-            "https://app.aws.databricksapps.com",
-            "https://a..databricks.com",
+            format!("http://acme.{WORKSPACE_DOMAIN}"),
+            "http://127.0.0.1".to_owned(),
+            "https://127.0.0.1".to_owned(),
+            "https://example.invalid".to_owned(),
+            "https://databricks.com".to_owned(),
+            "https://evildatabricks.com".to_owned(),
+            "https://acme.databricks.com.evil.invalid".to_owned(),
+            "https://evilazuredatabricks.net".to_owned(),
+            "https://acme.azuredatabricks.net.evil.invalid".to_owned(),
+            format!("https://app.aws.{APPS_DOMAIN}"),
+            "https://a..databricks.com".to_owned(),
         ] {
             assert_eq!(
                 ServerEndpoint::new(&format!("{root}?o=123")),
@@ -522,10 +523,8 @@ mod tests {
 
     #[test]
     fn every_transport_carries_org_header_without_polluting_endpoint_query() {
-        let endpoint = ServerEndpoint::new(&format!(
-            "https://fixture.cloud.databricks.com:8443{MOUNT}?o=123"
-        ))
-        .unwrap();
+        let host = format!("fixture.cloud.{WORKSPACE_DOMAIN}");
+        let endpoint = ServerEndpoint::new(&format!("https://{host}:8443{MOUNT}?o=123")).unwrap();
         let token = SecretString::new("fixture-routing-token");
         let query = [("after", "cursor/+?&"), ("limit", "20")];
         for (path, socket) in [
@@ -547,7 +546,7 @@ mod tests {
             };
             let url = Url::parse(&target).unwrap();
             assert_eq!(url.scheme(), if socket { "wss" } else { "https" });
-            assert_eq!(url.host_str(), Some("fixture.cloud.databricks.com"));
+            assert_eq!(url.host_str(), Some(host.as_str()));
             assert_eq!(url.path(), format!("{MOUNT}{path}"));
             let pairs: Vec<(String, String)> = url.query_pairs().into_owned().collect();
             assert_eq!(
@@ -592,8 +591,9 @@ mod tests {
 
     #[test]
     fn identity_scope_separates_orgs_and_accounts() {
-        let first = ServerEndpoint::new("https://h.cloud.databricks.com/api?o=123").unwrap();
-        let second = ServerEndpoint::new("https://h.cloud.databricks.com/api?o=456").unwrap();
+        let root = format!("https://h.cloud.{WORKSPACE_DOMAIN}/api");
+        let first = ServerEndpoint::new(&format!("{root}?o=123")).unwrap();
+        let second = ServerEndpoint::new(&format!("{root}?o=456")).unwrap();
         assert_ne!(
             first.identity_scope("alice"),
             second.identity_scope("alice")

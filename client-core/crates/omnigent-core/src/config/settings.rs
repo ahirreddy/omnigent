@@ -835,11 +835,11 @@ mod tests {
     fn settings_known_server_url_matches_origin() {
         let mut store = store(&MemoryStorage::default());
         store
-            .remember_recent_server("https://my-workspace.cloud.databricks.com/ml/omnigents")
+            .remember_recent_server("https://my-workspace.example.com/ml/omnigents")
             .unwrap();
         assert_eq!(
-            store.known_server_url("https://my-workspace.cloud.databricks.com"),
-            Some("https://my-workspace.cloud.databricks.com/ml/omnigents")
+            store.known_server_url("https://my-workspace.example.com"),
+            Some("https://my-workspace.example.com/ml/omnigents")
         );
     }
 

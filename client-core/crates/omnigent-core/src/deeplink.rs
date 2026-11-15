@@ -991,11 +991,9 @@ mod tests {
     #[test]
     fn deeplink_remote_host_maps_to_https() {
         assert_eq!(
-            ios_ok(&format!(
-                "omnigent://my-workspace.cloud.databricks.com/c/{HEX}"
-            )),
+            ios_ok(&format!("omnigent://my-workspace.example.com/c/{HEX}")),
             (
-                "https://my-workspace.cloud.databricks.com".to_owned(),
+                "https://my-workspace.example.com".to_owned(),
                 format!("/c/{HEX}")
             )
         );
@@ -1166,12 +1164,12 @@ mod tests {
     fn deeplink_conversation_url_preserves_query_and_fragment() {
         for (base, expected) in [
             (
-                "https://workspace.databricks.com/omnigent?o=123",
-                "https://workspace.databricks.com/omnigent/c/abc?o=123",
+                "https://workspace.example.com/omnigent?o=123",
+                "https://workspace.example.com/omnigent/c/abc?o=123",
             ),
             (
-                "https://workspace.databricks.com/omnigent/?o=123#view",
-                "https://workspace.databricks.com/omnigent/c/abc?o=123#view",
+                "https://workspace.example.com/omnigent/?o=123#view",
+                "https://workspace.example.com/omnigent/c/abc?o=123#view",
             ),
             ("http://localhost:8000/", "http://localhost:8000/c/abc"),
             (
@@ -1223,11 +1221,8 @@ mod tests {
 
     #[test]
     fn desktop_remote_is_https() {
-        let link = desktop("omnigent://my-workspace.cloud.databricks.com/c/x").unwrap();
-        assert_eq!(
-            link.origin.serialized(),
-            "https://my-workspace.cloud.databricks.com"
-        );
+        let link = desktop("omnigent://my-workspace.example.com/c/x").unwrap();
+        assert_eq!(link.origin.serialized(), "https://my-workspace.example.com");
         assert_eq!(link.route, conversation("x"));
     }
 

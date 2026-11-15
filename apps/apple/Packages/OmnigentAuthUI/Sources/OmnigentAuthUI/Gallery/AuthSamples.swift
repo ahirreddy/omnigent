@@ -15,7 +15,7 @@ public nonisolated enum AuthSamples {
   /// An accounts server's API root.
   public static let accountsUrl = "https://agents.acme.dev/api/omnigent"
   /// A Databricks workspace's Omnigent mount.
-  public static let workspaceUrl = "https://dbc-1234.cloud.databricks.com/omnigent?o=1234567890"
+  public static let workspaceUrl = "https://workspace.example.com/omnigent?o=1234567890"
 
   /// The organization and recent servers.
   public static let directory = ServerDirectory(
@@ -181,7 +181,7 @@ public nonisolated enum AuthSamples {
       state: AuthViewState(
         phase: .signInRequired(
           baseUrl: workspaceUrl, serverName: nil, mode: .proxy,
-          methods: [.databricksWorkspace(workspaceHost: "dbc-1234.cloud.databricks.com")],
+          methods: [.databricksWorkspace(workspaceHost: "workspace.example.com")],
           reason: nil),
         server: workspaceServer)),
     AuthSample(
@@ -189,7 +189,7 @@ public nonisolated enum AuthSamples {
       state: AuthViewState(
         phase: .signingIn(
           baseUrl: workspaceUrl,
-          method: .databricksWorkspace(workspaceHost: "dbc-1234.cloud.databricks.com")),
+          method: .databricksWorkspace(workspaceHost: "workspace.example.com")),
         server: workspaceServer)),
     AuthSample(
       id: "unsupported", title: "Unsupported mode",

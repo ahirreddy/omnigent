@@ -137,33 +137,41 @@ pub(super) fn is_decimal_id(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::auth::databricks::test_support::{config_with, scope};
+    use crate::auth::testing::{AZURE_WORKSPACE_DOMAIN, WORKSPACE_DOMAIN};
+
+    /// The workspace origin these tests use.
+    fn workspace() -> String {
+        format!("https://dbc-123.cloud.{WORKSPACE_DOMAIN}")
+    }
 
     /// `DatabricksCredentialStoreTests::testScopeCanonicalizationAndIsolation`.
     #[test]
     fn databricks_scope_canonicalization_and_isolation() {
-        let first = scope("https://DBC-123.cloud.databricks.com:443/omnigent/c/abc?view=chat#view");
-        let same = scope("https://dbc-123.cloud.databricks.com");
+        let first = scope(&format!(
+            "https://DBC-123.cloud.{WORKSPACE_DOMAIN}:443/omnigent/c/abc?view=chat#view"
+        ));
+        let same = scope(&workspace());
         assert_eq!(first, same);
         assert_eq!(first.account(), same.account());
         let other_client = CredentialScope::new(
-            &Url::parse("https://dbc-123.cloud.databricks.com").unwrap(),
+            &Url::parse(&workspace()).unwrap(),
             &config_with("other-client"),
         )
         .unwrap();
         assert_ne!(first, other_client);
         assert_ne!(first.account(), other_client.account());
-        assert_ne!(first, scope("https://adb-123.azuredatabricks.net"));
-        assert_eq!(
-            first.workspace_origin(),
-            "https://dbc-123.cloud.databricks.com"
+        assert_ne!(
+            first,
+            scope(&format!("https://adb-123.{AZURE_WORKSPACE_DOMAIN}"))
         );
+        assert_eq!(first.workspace_origin(), workspace());
     }
 
     /// `DatabricksCredentialStoreTests::testWorkspaceIDsSeparateScopesWithoutChangingLegacyKeys`.
     #[test]
     fn databricks_workspace_id_scopes_and_legacy_key() {
-        let base = "https://dbc-123.cloud.databricks.com";
-        let legacy = scope(base);
+        let base = workspace();
+        let legacy = scope(&base);
         assert_eq!(
             legacy.account(),
             format!("{}:{base}test-client", base.len())
@@ -192,11 +200,9 @@ mod tests {
 
     #[test]
     fn store_key_uses_databricks_namespace() {
-        let key = scope("https://dbc-123.cloud.databricks.com").store_key();
+        let origin = workspace();
+        let key = scope(&origin).store_key();
         assert_eq!(key.namespace, SecureStoreKey::DATABRICKS_NAMESPACE);
-        assert_eq!(
-            key.account,
-            "36:https://dbc-123.cloud.databricks.comtest-client"
-        );
+        assert_eq!(key.account, format!("{}:{origin}test-client", origin.len()));
     }
 }

@@ -330,7 +330,9 @@ mod tests {
 
     use super::*;
     use crate::auth::pkce::code_challenge_s256;
-    use crate::auth::testing::{FixedEntropy, ScriptedTransport, body_text, header};
+    use crate::auth::testing::{
+        FixedEntropy, ScriptedTransport, WORKSPACE_DOMAIN, body_text, header,
+    };
 
     const MOUNT: &str = "/api/2.0/omnigent";
     const TOKEN: &str = "fixture-token-not-a-real-credential";
@@ -534,10 +536,8 @@ mod tests {
     fn org_scoped_auth_discovery_uses_header_and_rejects_standalone_login_before_sending_secrets() {
         use crate::auth::accounts::{AccountLoginOptions, login};
         use crate::auth::endpoint::DATABRICKS_ORG_HEADER;
-        let org = ServerEndpoint::new(&format!(
-            "https://fixture.cloud.databricks.com:8443{MOUNT}?o=123"
-        ))
-        .unwrap();
+        let org = format!("https://fixture.cloud.{WORKSPACE_DOMAIN}:8443{MOUNT}?o=123");
+        let org = ServerEndpoint::new(&org).unwrap();
         let transport = ScriptedTransport::new();
         transport.json(200, OIDC_INFO);
         let request = info_request(&org).unwrap();

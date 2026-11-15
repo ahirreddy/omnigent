@@ -138,7 +138,7 @@
     @Test("Databricks sign-in names the workspace, starts it and offers Retry on failure")
     func workspace() throws {
       let spy = AuthSpy()
-      let host = "dbc-1234.cloud.databricks.com"
+      let host = "workspace.example.com"
       let screen = OffscreenWindow(
         WorkspaceSignInView(
           server: AuthSamples.workspaceServer, workspaceHost: host,
