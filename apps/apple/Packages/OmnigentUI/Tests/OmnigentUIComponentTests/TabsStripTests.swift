@@ -45,8 +45,7 @@
       let screen = OffscreenWindow(strip(TabFixture.pair, spy.actions), width: 700, height: 38)
       defer { screen.close() }
       let empty = CGPoint(x: 560, y: 19)
-      try screen.click(empty, clickCount: 1)
-      try screen.click(empty, clickCount: 2)
+      try screen.doubleClick(empty)
       #expect(spy.calls == ["new tab"])
     }
 

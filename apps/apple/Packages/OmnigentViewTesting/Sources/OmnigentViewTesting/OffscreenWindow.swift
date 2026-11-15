@@ -141,29 +141,29 @@
         RunLoop.main.add(close, forMode: .common)
       }
       defer { center.removeObserver(observer) }
-      let down = try mouseEvent(.leftMouseDown, point, clickCount, modifiers)
-      let mouseUp = try mouseEvent(.leftMouseUp, point, clickCount, modifiers, delay: 0.03)
-      // An AppKit control tracks the mouse inside its mouse down until it sees the up. Posting
-      // stops the run loop in progress, so post only from inside that tracking: stopping the test
-      // runner's own loop would end the process with a false pass.
-      nonisolated(unsafe) let trackedUp = mouseUp
-      let release = Timer(timeInterval: 0.03, repeats: false) { _ in
-        MainActor.assumeIsolated { NSApp.postEvent(unsafe trackedUp, atStart: false) }
+      try MenuTrackingLock.holding {
+        let down = try mouseEvent(.leftMouseDown, point, clickCount, modifiers)
+        let mouseUp = try mouseEvent(.leftMouseUp, point, clickCount, modifiers, delay: 0.03)
+        // A control tracks the mouse inside its mouse down until it sees the up. Post only inside
+        // that tracking: stopping the runner's own loop would end the process with a false pass.
+        nonisolated(unsafe) let trackedUp = mouseUp
+        let release = Timer(timeInterval: 0.03, repeats: false) { _ in
+          MainActor.assumeIsolated { NSApp.postEvent(unsafe trackedUp, atStart: false) }
+        }
+        RunLoop.main.add(release, forMode: .common)
+        let target = activeWindow
+        // A destructive button ignores a first mouse; keying an inactive app's window steals nothing.
+        target.makeKey()
+        deliver(down, to: target)
+        if release.isValid {
+          release.invalidate()
+          RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+          deliver(mouseUp, to: target)
+        }
+        // Tracking that ended early, as a closing menu's does, leaves the posted up queued. A
+        // later button's tracking would end on it, and that button's action would never run.
+        NSApp.discardEvents(matching: .leftMouseUp, before: nil)
       }
-      RunLoop.main.add(release, forMode: .common)
-      let target = activeWindow
-      // A window that isn't key yet treats a click as first mouse, which a destructive button
-      // ignores. Making it key in an inactive app takes no focus from the frontmost app.
-      target.makeKey()
-      deliver(down, to: target)
-      if release.isValid {
-        release.invalidate()
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
-        deliver(mouseUp, to: target)
-      }
-      // Tracking that ended early, as a closing menu's does, leaves the posted up queued. A later
-      // button's tracking would end on it, and that button's action would never run.
-      NSApp.discardEvents(matching: .leftMouseUp, before: nil)
       settle()
       guard let menu = unsafe opened else { return nil }
       return (menu, unsafe wasClosed)
