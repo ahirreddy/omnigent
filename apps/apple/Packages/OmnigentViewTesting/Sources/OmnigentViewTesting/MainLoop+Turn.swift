@@ -23,7 +23,9 @@
     ///   - windows: Windows to check besides every shown one.
     /// - Returns: What happened, or is still due before `deadline`; empty when idle.
     static func runTurn(until deadline: CFAbsoluteTime, windows: [NSWindow]) -> Activity {
-      let slice = min(turn, max(0, deadline - CFAbsoluteTimeGetCurrent()))
+      let start = CFAbsoluteTimeGetCurrent()
+      defer { SettleTrace.note(turnTook: CFAbsoluteTimeGetCurrent() - start) }
+      let slice = min(turn, max(0, deadline - start))
       var activity: Activity = []
       if CFRunLoopRunInMode(.defaultMode, slice, true) == .handledSource {
         activity.insert(.source)
@@ -52,7 +54,11 @@
       // which is no work to wait for.
       if window.isVisible, window.viewsNeedDisplay {
         window.displayIfNeeded()
-        if !window.viewsNeedDisplay { activity.insert(.drawing) }
+        if window.viewsNeedDisplay {
+          SettleTrace.note(stuckDrawingIn: window)
+        } else {
+          activity.insert(.drawing)
+        }
       }
       return activity
     }
