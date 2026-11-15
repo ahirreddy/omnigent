@@ -154,7 +154,10 @@ struct ServerSettingsContainerTests {
     try await settle(page.screen, untilShowing: "Signed in as", contains: true)
     _ = try await settledControlFrames(page.screen)
     try clickInPane(1, on: page)
-    try await settle(page.screen, until: "the sign out") { !page.connection.isSignedIn }
+    // The confirmation and the sign-out request can take seconds on a busy machine.
+    try await settle(page.screen, until: "the sign out", timeout: .seconds(15)) {
+      !page.connection.isSignedIn
+    }
   }
 
   @Test("Harnesses and Custom Agents show over the server's own stores")

@@ -108,8 +108,9 @@ struct NewSessionWiringTests {
       in: menu(screen, at: point, offering: "Create Custom Agent\u{2026}"))
     try await settle(screen, untilShowing: "Create Custom Agent")
     try CustomAgentsScreenTests().fillIn("mine", in: screen)
-    try screen.clickControl(at: screen.controlFrames.count - 1)
-    try await settle(screen, until: "the draft") { form.startsPendingAgent }
+    // The sheet's last button is clicked where it rests: on a busy machine it is still sliding in.
+    try screen.clickControl(at: screen.restingControlFrames().count - 1)
+    try await settle(screen, until: "the draft", timeout: .seconds(15)) { form.startsPendingAgent }
     #expect(form.pendingChoice?.name == "mine")
   }
 }

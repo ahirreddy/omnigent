@@ -60,4 +60,31 @@ struct SessionListFamilyMoveTests {
     #expect(patches("peer").isEmpty, "the representative carries its member")
     #expect(list.session("peer")?.projectId == "p1")
   }
+
+  @Test("Without a server, or when a label-only project isn't promoted, nothing moves")
+  func refusedBulkMove() async throws {
+    let offline = SessionListStore()
+    #expect(await offline.move(["lead", "solo"], to: nil) == ["lead", "solo"])
+    #expect(offline.editError?.message == "Connect to a server before editing sessions.")
+
+    let server = server()
+    server.route(
+      "/v1/sessions/projects",
+      .json(#"[{"id":"p1","name":"Alpha"},{"id":null,"name":"Legacy"}]"#))
+    let list = try await connectedStore(server).sessionList
+    try await eventually("the label-only project") { list.projects.contains { $0.id == nil } }
+    let legacy = try #require(list.projects.first { $0.id == nil })
+    server.fail("/v1/projects", method: "POST")
+    #expect(await list.move(["lead", "solo"], to: legacy) == ["lead", "solo"])
+    #expect(list.editError != nil)
+    #expect(server.requests(to: "/v1/sessions/solo", method: "PATCH").isEmpty)
+
+    server.route(
+      "/v1/projects", method: "POST", .json(#"{"id":"p2","name":"Legacy"}"#, status: 201))
+    server.route(
+      "/v1/sessions/solo", method: "PATCH", .json(row("solo", representative: nil, project: "p2")))
+    #expect(await list.move(["solo"], to: legacy).isEmpty)
+    let patch = try #require(server.requests(to: "/v1/sessions/solo", method: "PATCH").last)
+    #expect(try server.body(of: patch)["project_id"] as? String == "p2")
+  }
 }
