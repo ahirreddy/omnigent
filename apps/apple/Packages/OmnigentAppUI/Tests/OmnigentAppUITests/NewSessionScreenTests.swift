@@ -45,15 +45,16 @@ struct NewSessionScreenTests {
     let connection = try await signedInStore(server)
     try await eventually("the session list") { connection.sessionList.isLoaded }
     let opened = Opened()
+    let form = try isolatedForm()
     let screen = OffscreenWindow(
-      NewSessionContainer(connection: connection, form: try isolatedForm()) {
+      NewSessionContainer(connection: connection, form: form) {
         opened.sessions.append($0)
       },
       width: width, height: 700)
     try await settle(screen, until: "the folder listing") {
       !server.requests("GET", "/v1/hosts/mac/filesystem").isEmpty
     }
-    try await pause(screen, .milliseconds(150))
+    try await settle(screen, until: "the recent folder") { !form.folder.isEmpty }
     return (screen, opened)
   }
 
@@ -76,6 +77,7 @@ struct NewSessionScreenTests {
     let server = startableServer()
     let (screen, opened) = try await page(server)
     defer { screen.close() }
+    try await settle(screen, untilShowing: "mac · recent")
     #expect(try screen.shows("mac · recent"), "the folder comes from the most recent session")
     let body = try await typeAndStart(screen, server)
     #expect(body["workspace"] as? String == "/work/recent")
@@ -148,7 +150,7 @@ struct NewSessionScreenTests {
     defer { screen.close() }
     try screen.choose(
       "Full access", in: try await menu(screen, at: Self.modeMenu, onceOffering: "Full access"))
-    try await pause(screen)
+    try await settle(screen, untilShowing: "Full access")
     #expect(try screen.shows("Full access"))
     let body = try await typeAndStart(screen, server)
     #expect((body["terminal_launch_args"] as? [String])?.first == "--permission-mode")
@@ -182,7 +184,7 @@ struct NewSessionScreenTests {
     let (screen, opened) = try await page(server)
     defer { screen.close() }
     _ = try await typeAndStart(screen, server)
-    try await pause(screen, .milliseconds(150))
+    try await settle(screen, untilShowing: "Message not sent")
     #expect(try screen.shows("Message not sent"))
     #expect(opened.sessions.isEmpty, "the user must see the failure first")
     #expect(try screen.shows("hello"), "the words aren't lost")
@@ -207,7 +209,7 @@ struct NewSessionScreenTests {
     let (screen, opened) = try await page(server)
     defer { screen.close() }
     _ = try await typeAndStart(screen, server)
-    try await pause(screen, .milliseconds(150))
+    try await settle(screen, untilShowing: "folder is not allowed")
     #expect(try screen.shows("folder is not allowed"))
     #expect(try screen.shows("hello"))
     #expect(opened.sessions.isEmpty)
@@ -237,7 +239,9 @@ struct NewSessionScreenTests {
       NewSessionContainer(connection: connection, form: try isolatedForm()) { _ in }, width: 900,
       height: 700)
     defer { screen.close() }
-    try await pause(screen, .milliseconds(200))
+    try await settle(screen, until: "the composer to take the keyboard") {
+      (screen.window.firstResponder as? NSTextView)?.isEditable == true
+    }
     try screen.type("hello")
     try screen.press(keyCode: 36, characters: "\r")
     try await pause(screen)
@@ -255,6 +259,7 @@ struct NewSessionScreenTests {
       "/v1/sessions", method: "GET", .json(#"{"object":"list","data":[\#(row)],"has_more":false}"#))
     let (screen, _) = try await page(server, width: 480)
     defer { screen.close() }
+    _ = try await settledControlFrames(screen)
     let tooWide = screen.allViews.filter { view in
       guard view is NSControl else { return false }
       let frame = view.convert(view.bounds, to: screen.host)
