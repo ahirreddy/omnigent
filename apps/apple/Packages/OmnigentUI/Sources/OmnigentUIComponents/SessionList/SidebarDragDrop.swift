@@ -100,11 +100,12 @@ struct SidebarDropHandler {
   let state: SidebarViewState
   let actions: SidebarActions
 
-  /// Where a drop on a row of `section` goes: a pinned row's slot, or out of a project.
-  func rowTarget(_ session: SessionSummary, in section: SidebarSections.Section)
-    -> SidebarDropTarget?
-  {
-    if session.isPinned { return .pinSlot(session.id) }
+  /// Where a drop on a row of `section` goes: a pinned row's slot, or out of a project. A row
+  /// nested in its family stands for Pinned itself, so nothing lands inside a family.
+  func rowTarget(
+    _ session: SessionSummary, in section: SidebarSections.Section, isNested: Bool = false
+  ) -> SidebarDropTarget? {
+    if section.isPinned { return isNested ? .pinned : .pinSlot(session.id) }
     guard state.display.groupBy == .default else { return nil }
     return section.showsDisplayMenu ? .sessions : nil
   }
@@ -116,7 +117,8 @@ struct SidebarDropHandler {
     return section.showsDisplayMenu ? .sessions : nil
   }
 
-  /// The group and its new order when `session` is dropped on another row of its own group.
+  /// The group and its new order when `session` is dropped on another row of its own group; a
+  /// family moves as one.
   func reordering(_ session: SessionSummary, onto target: SidebarDropTarget)
     -> (group: SessionGroup, ids: [String])?
   {
@@ -127,24 +129,20 @@ struct SidebarDropHandler {
       (group, targetID) = (.project(project.id), id)
     case .pinSlot, .projectSlot, .project, .pinned, .sessions: return nil
     }
-    let rows = SidebarSections.rows(of: group, in: state)
-    let ids = rows.reordered(moving: session.id, onto: targetID).map(\.id)
-    return ids.isEmpty ? nil : (group, ids)
+    let units = SidebarSections.units(of: group, in: state)
+    let moved = units.reordered(moving: session.id, onto: targetID)
+    return moved.isEmpty ? nil : (group, SidebarSections.orderIDs(moved, in: group))
   }
 
-  /// A row's Move submenu in `group`; none outside a group that orders itself, for a group of
-  /// one, or without the host's action.
+  /// A row's Move submenu in `group`, among its families and other rows; none outside a group
+  /// that orders itself, for a group of one, or without the host's action.
   func move(in group: SessionGroup?) -> SessionRowMove? {
-    guard let group, let reorder = actions.reorderGroup else { return nil }
-    let size =
-      switch group {
-      case .pinned: state.pinnedCount
-      case .project(let id): state.projects.first { $0.id == id }?.sessionIds.count ?? 0
-      }
-    guard size > 1 else { return nil }
+    guard let group, let reorder = actions.reorderGroup,
+      SidebarSections.units(of: group, in: state).count > 1
+    else { return nil }
     return SessionRowMove(
-      rows: { SidebarSections.rows(of: group, in: state) },
-      save: { rows in reorder(group, rows.map(\.id)) })
+      rows: { SidebarSections.units(of: group, in: state) },
+      save: { rows in reorder(group, SidebarSections.orderIDs(rows, in: group)) })
   }
 
   /// Carries out the drop; `false` when it does nothing.
@@ -158,8 +156,10 @@ struct SidebarDropHandler {
       reorder(order)
       return true
     case .session(let id):
+      // A nested member pins, moves and orders with its representative.
       guard let dropSession = actions.dropSession,
-        let session = state.list.sessions.first(where: { $0.id == id })
+        let session = state.list.sessions.first(where: { $0.id == id }),
+        !session.isNestedFamilyMember
       else { return false }
       if let reorder = actions.reorderGroup, let order = reordering(session, onto: target) {
         reorder(order.group, order.ids)

@@ -169,6 +169,7 @@ public struct CommandPalette: View {
       Image(systemName: entry.symbol).frame(width: 24).accessibilityHidden(true)
       VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
         Text(PaletteSearch.highlighted(entry.title, query: query)).font(Theme.Typography.label)
+        if let breadcrumb = entry.breadcrumb { PaletteBreadcrumbLine(breadcrumb: breadcrumb) }
         Text(entry.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
       }
       Spacer()

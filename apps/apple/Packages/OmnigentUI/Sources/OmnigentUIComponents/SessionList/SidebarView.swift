@@ -5,10 +5,10 @@ public import SwiftUI
 /// Shared and Sessions with the web's filter and display menu. Native list selection, keyboard
 /// navigation, context menus, hover pin, swipe actions and Delete-to-archive.
 public struct SidebarView: View {
-  private let state: SidebarViewState
+  let state: SidebarViewState
   @Binding private var selection: SidebarDestination?
   @Binding private var searchText: String
-  private let actions: SidebarActions
+  let actions: SidebarActions
 
   @State private var renaming: SessionSummary?
   @State private var renameText = ""
@@ -74,7 +74,7 @@ public struct SidebarView: View {
     .onChange(of: searchText.isEmpty) { _, isEmpty in
       if !isEmpty { behavior.searchCollapsed = [] }
     }
-    .onChange(of: state.list.sessions.filter(\.isPinned).map(\.id)) { old, new in
+    .onChange(of: SidebarSections.pinned(state).map(\.id)) { old, new in
       // A new pin opens Pinned, so it can't hide in a collapsed section.
       if SidebarBehavior.addsPin(old, new), !expansion(of: "Pinned").wrappedValue {
         expansion(of: "Pinned").wrappedValue = true
@@ -163,8 +163,10 @@ public struct SidebarView: View {
           Text("No projects").foregroundStyle(.secondary)
         }
       } else {
-        ForEach(section.sessions) { session in
-          row(session, target: dropHandler.rowTarget(session, in: section))
+        let layout = familyLayout(section.sessions, scope: .section(section.title))
+        ForEach(layout.visible) { session in
+          let place = rowPlace(session, in: section, layout: layout)
+          row(session, target: place.target, family: place.family)
         }
       }
     } header: {
@@ -249,15 +251,6 @@ public struct SidebarView: View {
     }
   }
 
-  private func summary(_ id: String) -> SessionSummary? {
-    state.list.sessions.first { $0.id == id }
-  }
-
-  /// A session as it is now; the list's own copy can be a message behind.
-  private func current(_ id: String) -> SessionSummary? {
-    actions.live?.row(id, false)?.session ?? summary(id)
-  }
-
 }
 
 extension SidebarView {
@@ -284,6 +277,8 @@ extension SidebarView {
       project: project, sessions: sessions, paging: state.paging,
       shown: shownInProject[project.id] ?? 0, selectedID: selection?.sessionID,
       load: actions.loadProjectPage, setShown: { shownInProject[project.id] = $0 })
+    let layout = familyLayout(
+      sessions, listedCount: pages.visibleCount, scope: .project(project.id))
     return ProjectFolder(
       project: project, sessions: sessions,
       isExpanded: Binding(
@@ -305,27 +300,39 @@ extension SidebarView {
         },
         confirmDelete: { confirmingProjectDelete = project }),
       drop: { item in drop(item, on: .project(project)) },
-      row: { session in row(session, target: .projectSlot(project, session.id)) },
+      row: { session in
+        let place = rowPlace(session, in: project, layout: layout)
+        row(session, target: place.target, family: place.family)
+      },
       folderMarker: expandedProjects.contains(project.id) ? nil : marker(sessions[...]),
       moreMarker: pages.visibleCount < sessions.count
-        ? marker(sessions.dropFirst(pages.visibleCount)) : nil)
+        ? marker(sessions.dropFirst(pages.visibleCount)) : nil, listed: layout.visible)
   }
 
-  private func row(_ session: SessionSummary, target: SidebarDropTarget?) -> some View {
+  /// A session's row; a nested member is no drag source, its family moving with its head.
+  private func row(
+    _ session: SessionSummary, target: SidebarDropTarget?, family: SessionRowFamily
+  ) -> some View {
     let isOpen = selection == .session(session.id)
     return SidebarLiveRow(
       snapshot: state.rowContent(session), live: actions.live, showsDraft: !isOpen
     ) { row in
-      sessionRow(row, reorder: dropHandler.move(in: target?.group))
+      sessionRow(row, reorder: dropHandler.move(in: target?.group), family: family)
     }
     .tag(SidebarDestination.session(session.id))
-    .sidebarSelection(bulk.isActive ? bulk.ids.contains(session.id) : isOpen)
-    .draggable(SidebarDragItem.session(session.id).payload)
+    .sidebarSelection(
+      bulk.isActive ? bulk.ids.contains(session.id) : isOpen, isNested: family.isNested
+    )
+    .sidebarDraggable(
+      family.movesWithFamily(session) ? nil : SidebarDragItem.session(session.id).payload
+    )
     .sidebarDropTarget { item in target.map { drop(item, on: $0) } ?? false }
   }
 
   /// A row and its menu for the session as it is now.
-  private func sessionRow(_ row: SidebarRowContent, reorder: SessionRowMove?) -> some View {
+  private func sessionRow(
+    _ row: SidebarRowContent, reorder: SessionRowMove?, family: SessionRowFamily
+  ) -> some View {
     let session = row.session
     var sessionActions = actions.sessions
     if let move = sessionActions.moveToProject {
@@ -361,7 +368,7 @@ extension SidebarView {
       inlineRename: inlineEdit.session?.id == session.id
         ? SidebarInlineEdit.field($inlineEdit, rename: actions.sessions.rename) : nil,
       beginInlineRename: canRenameInline(session, info: row.info)
-        ? { inlineEdit.begin(session) } : nil
+        ? { inlineEdit.begin(session) } : nil, family: family
     )
     #if os(iOS)
       .modifier(SessionSwipeActions(session: session, isUnread: row.isUnread, menu: menu))
@@ -386,6 +393,4 @@ extension SidebarView {
     guard let target, !bulk.isActive else { return false }
     return dropHandler.drop(item, on: target)
   }
-
-  private var dropHandler: SidebarDropHandler { SidebarDropHandler(state: state, actions: actions) }
 }

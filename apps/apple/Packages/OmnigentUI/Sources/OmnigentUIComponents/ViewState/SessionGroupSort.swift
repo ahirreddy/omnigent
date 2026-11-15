@@ -151,9 +151,15 @@ nonisolated public struct SessionGroupSorts: Hashable, Sendable, Codable {
         && !state.paging.projectsWithMore.contains(project.id)
     }
     if state.projectSort != nil { keep(projects: Set(state.projects.map(\.id))) }
+    // A family's place is saved under its id.
+    let families = Dictionary(
+      state.list.sessions.compactMap { session in session.family.map { (session.id, $0.id) } },
+      uniquingKeysWith: { first, _ in first })
     keep(
       members: Dictionary(
-        complete.map { ($0.id, Set($0.sessionIds)) }, uniquingKeysWith: { first, _ in first }))
+        complete.map { project in
+          (project.id, Set(project.sessionIds + project.sessionIds.compactMap { families[$0] }))
+        }, uniquingKeysWith: { first, _ in first }))
   }
 }
 
@@ -162,7 +168,8 @@ nonisolated extension SessionGroupSort {
   /// - Parameters:
   ///   - sessions: The group's sessions, in the list's order (most recent first).
   ///   - createdAt: When a session was created, Unix seconds.
-  ///   - custom: The remembered order for Custom. Sessions it does not name go first, as given,
+  ///   - custom: The remembered order for Custom, by ``SessionSummary/orderKey``. Sessions it
+  ///     does not name go first, as given,
   ///     so none keeps the order given (Pinned's is the server's pin order).
   /// - Returns: The sessions in order.
   func ordered(
@@ -180,9 +187,12 @@ nonisolated extension SessionGroupSort {
     case .custom:
       let place = Dictionary(
         zip(custom, custom.indices), uniquingKeysWith: { first, _ in first })
-      let remembered = sessions.filter { place[$0.id] != nil }
-      return sessions.filter { place[$0.id] == nil }
-        + Self.stablySorted(remembered) { (place[$0.id] ?? 0) < (place[$1.id] ?? 0) }
+      // A family's place is by its id, so it moves as one.
+      let remembered = sessions.filter { place[$0.orderKey] != nil }
+      return sessions.filter { place[$0.orderKey] == nil }
+        + Self.stablySorted(remembered) {
+          (place[$0.orderKey] ?? 0) < (place[$1.orderKey] ?? 0)
+        }
     }
   }
 

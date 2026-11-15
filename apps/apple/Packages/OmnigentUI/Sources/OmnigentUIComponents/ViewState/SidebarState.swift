@@ -232,6 +232,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var account: SignedInAccount?
   /// How Pinned and each project sort their sessions.
   public var groupSorts = SessionGroupSorts()
+  /// The families collapsed under their head, one opaque key per section or folder and family.
+  public var collapsedFamilies: Set<String> = []
 
   /// Creates sidebar state.
   /// - Parameters:
@@ -271,8 +273,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
     servers.first { $0.id == currentServerID }
   }
 
-  /// Pinned sessions now.
-  public var pinnedCount: Int { list.sessions.count(where: \.isPinned) }
+  /// The pin slots taken now: pinned sessions on their own and pinned family representatives.
+  public var pinnedCount: Int { SidebarFamilies.pinUnits(list.sessions) }
 
   /// The sort `group` shows: the one chosen for it, or its default.
   /// - Parameter group: Pinned, or a project.
@@ -334,6 +336,9 @@ public struct SidebarActions {
   public var loadProjectPage: (@MainActor (SessionProject) -> Void)?
   /// Rows and counts read as they are now; `nil` draws them from the state.
   public var live: SidebarLive?
+  /// Collapse (`true`) or expand a family by its key in ``SidebarViewState/collapsedFamilies``;
+  /// `nil` shows no family chevrons.
+  public var setFamilyCollapsed: (@MainActor (String, Bool) -> Void)?
 
   /// Creates actions.
   /// - Parameters:

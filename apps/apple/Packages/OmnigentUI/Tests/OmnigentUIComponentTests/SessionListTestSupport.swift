@@ -203,6 +203,13 @@
       actions.signOut = { [self] in calls.append("sign out") }
       actions.loadMoreSessions = { [self] in calls.append("load more") }
       actions.loadProjectPage = { [self] in calls.append("load project \($0.id)") }
+      actions.setFamilyCollapsed = { [self] key, collapsed in
+        if collapsed {
+          state.collapsedFamilies.insert(key)
+        } else {
+          state.collapsedFamilies.remove(key)
+        }
+      }
       return actions
     }
   }

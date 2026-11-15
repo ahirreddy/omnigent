@@ -31,8 +31,12 @@ struct SessionRowMenu {
     #endif
   }
 
-  /// Pin or Unpin is offered; archived rows omit it, since archive outranks pin (as the web).
-  var offersPin: Bool { actions.setPinned != nil && session.canPin && !session.isArchived }
+  /// Pin or Unpin is offered; archived rows omit it, since archive outranks pin (as the web), and
+  /// a nested member's pin is its family's, on its representative.
+  var offersPin: Bool {
+    actions.setPinned != nil && session.canPin && !session.isArchived
+      && !session.isNestedFamilyMember
+  }
 
   func togglePin() {
     guard let setPinned = actions.setPinned, offersPin else { return }
@@ -91,8 +95,10 @@ struct SessionRowMenu {
         setUnread(session, !isUnread)
       }
     }
-    // Filing is owner-only, as on the web.
-    if let move = actions.moveToProject, !isShared, !projects.isEmpty || newProject != nil {
+    // Filing is owner-only, as on the web; a nested member moves with its representative.
+    if let move = actions.moveToProject, !isShared, !session.isNestedFamilyMember,
+      !projects.isEmpty || newProject != nil
+    {
       // "Add to project" until it is filed, then "Move session", as the web.
       Menu(project == nil ? "Add to project" : "Move session", systemImage: "folder") {
         ForEach(projects) { target in
