@@ -89,11 +89,14 @@ import Testing
         selection: selection, chatTabID: chat.id, sideChatTabID: sideChat)
       try window.feed(shown, reply: "Alpha reply", streaming: true)
       try window.feed(hidden, reply: "Beta reply", streaming: false)
-      try await settle(screen, until: "the shown chat's reply") {
-        (try? window.builtReplies())?.contains("Alpha reply") == true
+      // The chats' editors, which focusComposer types into; drawing settles before any count.
+      try await settle(screen, until: "the chats' editors") {
+        screen.allViews.contains { ($0 as? NSTextView)?.isEditable == true }
       }
       try window.focusComposer()
-      await screen.settleTasks(limit: .milliseconds(200))
+      // Real time: with less, the keyboard moved back to the composer after a step had given it
+      // to the sidebar's search field.
+      try await Task.sleep(for: .milliseconds(200))
       return window
     }
 

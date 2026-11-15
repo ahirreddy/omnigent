@@ -121,8 +121,9 @@ struct ConnectedWindowFlowTests {
     try await settle(mounted.screen, until: "the sheet") {
       mounted.view.sidebarForkPresented.wrappedValue
     }
-    // The sheet reads its choices through the core, whose answers come from its own threads.
-    try await Task.sleep(for: .milliseconds(150))
+    try await settle(mounted.screen, until: "the sheet's choices") {
+      mounted.view.sidebarModel.fork.store?.catalog.value != nil
+    }
     return mounted
   }
 
