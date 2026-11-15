@@ -4,6 +4,9 @@
 
 use futures::channel::oneshot;
 use omnigent_core::projects::{self, ProjectSummary as CoreProject};
+use omnigent_core::session_families::{
+    self as families, SessionFamily as CoreFamily, SiblingDestinations as CoreDestinations,
+};
 use omnigent_core::session_query::{self, SessionFilter as CoreFilter};
 use omnigent_core::session_search::SearchScope;
 use omnigent_core::sessions::{
@@ -93,6 +96,36 @@ pub struct SessionSummary {
     /// The session that started this independent worker, when one did.
     #[uniffi(default)]
     pub created_by_session_id: Option<String>,
+    /// The session family it belongs to; `None` for a standalone session or a shared one.
+    #[uniffi(default)]
+    pub family: Option<SessionFamily>,
+}
+
+/// The session family ("nested agents") a session belongs to: independent root sessions grouped
+/// under one representative. Only the caller's own sessions carry one.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct SessionFamily {
+    /// The family id (the original source session's id); it never changes.
+    pub id: String,
+    /// The representative: the oldest active member, else the oldest kept one.
+    pub representative_id: Option<String>,
+    /// The representative's title.
+    pub representative_title: Option<String>,
+    /// The caller pinned the family.
+    pub pinned: bool,
+    /// The family pin's sort key, when pinned.
+    pub pinned_at: Option<String>,
+}
+
+/// Where "Add nested agent" may start the new member (`sibling_session_destinations`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum SiblingSessionDestinations {
+    /// Only the source session's host.
+    CurrentHost,
+    /// The source session's host, or a new managed sandbox.
+    CurrentHostOrNewSandbox,
+    /// Any host.
+    AnyHost,
 }
 
 /// How many sessions one project folder page reads, as the web's folder.
@@ -216,6 +249,50 @@ impl From<SessionListStatus> for SummaryStatus {
     }
 }
 
+impl From<CoreFamily> for SessionFamily {
+    fn from(family: CoreFamily) -> Self {
+        Self {
+            id: family.id,
+            representative_id: family.representative_id,
+            representative_title: family.representative_title,
+            pinned: family.pinned,
+            pinned_at: family.pinned_at,
+        }
+    }
+}
+
+impl From<SessionFamily> for CoreFamily {
+    fn from(family: SessionFamily) -> Self {
+        Self {
+            id: family.id,
+            representative_id: family.representative_id,
+            representative_title: family.representative_title,
+            pinned: family.pinned,
+            pinned_at: family.pinned_at,
+        }
+    }
+}
+
+impl From<CoreDestinations> for SiblingSessionDestinations {
+    fn from(destinations: CoreDestinations) -> Self {
+        match destinations {
+            CoreDestinations::CurrentHost => Self::CurrentHost,
+            CoreDestinations::CurrentHostOrNewSandbox => Self::CurrentHostOrNewSandbox,
+            CoreDestinations::AnyHost => Self::AnyHost,
+        }
+    }
+}
+
+impl From<SiblingSessionDestinations> for CoreDestinations {
+    fn from(destinations: SiblingSessionDestinations) -> Self {
+        match destinations {
+            SiblingSessionDestinations::CurrentHost => Self::CurrentHost,
+            SiblingSessionDestinations::CurrentHostOrNewSandbox => Self::CurrentHostOrNewSandbox,
+            SiblingSessionDestinations::AnyHost => Self::AnyHost,
+        }
+    }
+}
+
 impl From<CoreSummary> for SessionSummary {
     fn from(summary: CoreSummary) -> Self {
         Self {
@@ -245,6 +322,7 @@ impl From<CoreSummary> for SessionSummary {
             project_label: summary.project_label,
             comments_count: summary.comments_count,
             created_by_session_id: summary.created_by_session_id,
+            family: summary.family.map(Into::into),
         }
     }
 }
@@ -271,6 +349,7 @@ impl From<&SessionSummary> for CoreSummary {
             project_label: summary.project_label.clone(),
             comments_count: summary.comments_count,
             created_by_session_id: summary.created_by_session_id.clone(),
+            family: summary.family.clone().map(Into::into),
             ..Self::new(
                 summary.id.clone(),
                 summary.title.clone(),
@@ -352,6 +431,45 @@ pub fn project_members(
 #[uniffi::export]
 pub fn session_is_owned_by(session: SessionSummary, viewer_id: Option<String>) -> bool {
     CoreSummary::from(&session).is_owned_by(viewer_id.as_deref())
+}
+
+/// Whether `session` is a family member nested under another representative: it cannot be
+/// pinned or moved on its own, and the sidebar indents it under its family.
+#[must_use]
+#[uniffi::export]
+pub fn session_is_nested_member(session: SessionSummary) -> bool {
+    CoreSummary::from(&session).is_nested_member()
+}
+
+/// Whether `session` shows pinned: a nested member shows its family's pin (its loaded
+/// `representative`'s row, else the family's `pinned`); any other row shows its own pin.
+#[must_use]
+#[uniffi::export]
+pub fn session_shows_pinned(
+    session: SessionSummary,
+    representative: Option<SessionSummary>,
+) -> bool {
+    families::shows_pinned(
+        &CoreSummary::from(&session),
+        representative.as_ref().map(CoreSummary::from).as_ref(),
+    )
+}
+
+/// Whether `session` takes a pin slot when pinned: a standalone session or its family's
+/// representative. The pin limit counts these, and pin order moves them.
+#[must_use]
+#[uniffi::export]
+pub fn session_is_pin_unit(session: SessionSummary) -> bool {
+    families::is_pin_unit(&CoreSummary::from(&session))
+}
+
+/// How many pin slots `sessions` use: their pinned, unarchived standalone sessions and family
+/// representatives. Nested members never use a slot.
+#[must_use]
+#[uniffi::export]
+pub fn pinned_unit_count(sessions: Vec<SessionSummary>) -> u32 {
+    let core: Vec<CoreSummary> = sessions.iter().map(Into::into).collect();
+    u32::try_from(families::pinned_units(&core).len()).unwrap_or(u32::MAX)
 }
 
 /// The display title of a list filter.

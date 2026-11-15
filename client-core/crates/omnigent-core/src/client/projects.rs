@@ -12,7 +12,9 @@ use omnigent_protocol::sessions::SessionList;
 use serde_json::{Value, json};
 
 use super::requests::{page_query, validate_identifier};
-use super::sessions::{PROJECT_LABEL, SessionPage, SessionSummary, decode_snapshot_value};
+use super::sessions::{
+    EXPAND_FAMILIES, PROJECT_LABEL, SessionPage, SessionSummary, decode_snapshot_value,
+};
 use super::{ClientCore, ClientEvent, SessionError, lock};
 use crate::http::HttpTransport;
 
@@ -115,23 +117,21 @@ impl<T: HttpTransport> ClientCore<T> {
             query.push(("sort_by", "updated_at".to_owned()));
             query.push(("visibility", "mine".to_owned()));
             query.push(("project", name.to_owned()));
+            query.push((EXPAND_FAMILIES.0, EXPAND_FAMILIES.1.to_owned()));
             self.read_list(&query, after).await
         }
         .await;
-        if let Ok((sessions, _)) = &result
-            && !sessions.is_empty()
+        if let Ok(page) = &result
+            && !page.sessions.is_empty()
         {
             lock(&self.state).events.push(ClientEvent::SessionsChanged {
-                sessions: sessions.clone(),
+                sessions: page.sessions.clone(),
             });
         }
         self.dispatch();
-        result.map(|(sessions, next_cursor)| SessionPage {
-            sessions: sessions
-                .into_iter()
-                .filter(|session| !session.is_archived)
-                .collect(),
-            next_cursor,
+        result.map(|mut page| {
+            page.sessions.retain(|session| !session.is_archived);
+            page
         })
     }
 

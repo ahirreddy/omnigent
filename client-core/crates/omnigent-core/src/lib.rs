@@ -39,6 +39,7 @@ pub mod schedule;
 pub mod server_url;
 pub mod session_attention;
 pub mod session_environment;
+pub mod session_families;
 pub mod session_index;
 pub mod session_query;
 pub mod slash;

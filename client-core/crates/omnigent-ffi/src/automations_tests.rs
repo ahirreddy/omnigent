@@ -22,6 +22,7 @@ use crate::automations::{
     arrange_automations, build_schedule_rrule, default_schedule_model, describe_schedule,
     format_next_run, parse_schedule_rrule, schedule_needs_anchored_scheduling, validate_schedule,
 };
+use crate::sessions::SiblingSessionDestinations;
 use crate::test_support::{connected, json as reply};
 
 const TASK: &str = r#"{"id":"t1","name":"Standup","prompt":"Summarize",
@@ -287,6 +288,8 @@ fn server_pages_map_each_flag_to_its_own_field() {
         automation_projects: false,
         managed_sandboxes: false,
         automation_triggers: false,
+        sibling_sessions: false,
+        sibling_session_destinations: Some(SiblingSessionDestinations::AnyHost),
     };
     assert_eq!(read(&mut harness, r#"{"single_user":true}"#), none);
     for (body, expected) in [
@@ -365,6 +368,14 @@ fn server_pages_map_each_flag_to_its_own_field() {
             ServerPages {
                 automation_session_modes: true,
                 automation_triggers: true,
+                ..none
+            },
+        ),
+        (
+            r#"{"single_user":true,"sibling_sessions":true,"sibling_session_destinations":"current_host"}"#,
+            ServerPages {
+                sibling_sessions: true,
+                sibling_session_destinations: Some(SiblingSessionDestinations::CurrentHost),
                 ..none
             },
         ),

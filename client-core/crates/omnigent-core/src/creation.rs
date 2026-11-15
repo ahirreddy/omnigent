@@ -449,6 +449,10 @@ pub struct CreationCapabilities {
     /// `smart_routing_enabled`, with a router that answers for native Claude Code and Codex
     /// panes (`smart_routing_sources`).
     pub smart_routing: bool,
+    /// `sibling_sessions`: the caller can add nested agents to a session family.
+    pub sibling_sessions: bool,
+    /// `sibling_session_destinations`: where a nested agent may start.
+    pub sibling_destinations: crate::session_families::SiblingDestinations,
 }
 
 impl CreationCapabilities {
@@ -549,6 +553,8 @@ impl CreationCapabilities {
                 let options = crate::slash::SlashOptions::from_info(value)?;
                 options.smart_routing && options.routes_native_panes
             },
+            sibling_sessions: crate::session_families::sibling_sessions_enabled(object),
+            sibling_destinations: crate::session_families::SiblingDestinations::from_info(object),
         })
     }
 }
@@ -1405,5 +1411,22 @@ mod tests {
         );
         let bad = serde_json::json!({"sandbox_providers": [1]});
         assert!(CreationCapabilities::from_value(&bad).is_err());
+    }
+
+    #[test]
+    fn capabilities_read_nested_agents_and_their_destinations() {
+        use crate::session_families::SiblingDestinations;
+
+        let value = serde_json::json!({"sibling_sessions": true,
+            "sibling_session_destinations": "current_host"});
+        let capabilities = CreationCapabilities::from_value(&value).unwrap();
+        assert!(capabilities.sibling_sessions);
+        assert_eq!(
+            capabilities.sibling_destinations,
+            SiblingDestinations::CurrentHost
+        );
+        let older = CreationCapabilities::from_value(&serde_json::json!({})).unwrap();
+        assert!(!older.sibling_sessions);
+        assert_eq!(older.sibling_destinations, SiblingDestinations::AnyHost);
     }
 }

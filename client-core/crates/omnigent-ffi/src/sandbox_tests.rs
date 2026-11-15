@@ -45,6 +45,8 @@ fn catalog() -> CreationCatalog {
         custom_agents_settings: false,
         agent_detail: false,
         smart_routing: false,
+        sibling_sessions: false,
+        sibling_session_destinations: None,
     }
 }
 

@@ -45,7 +45,8 @@ pub(crate) struct ListWindow {
     pub(crate) refresh: Option<AbortHandle>,
     /// The next periodic re-read.
     pub(crate) reconcile: Option<AbortHandle>,
-    /// Rows the loaded pages held; a reload asks for as many, so pages stay loaded.
+    /// Rows the loaded pages selected (family members appended to them not counted); a reload
+    /// asks for as many, so pages stay loaded.
     rows: u32,
     /// The cursor after the loaded rows; `None` once every session is loaded.
     next_cursor: Option<String>,
@@ -133,7 +134,7 @@ impl Engine {
         self.schedule_list_reconcile();
         match result {
             Ok(page) => {
-                self.list.rows = u32::try_from(page.sessions.len()).unwrap_or(u32::MAX);
+                self.list.rows = u32::try_from(page.selected_rows).unwrap_or(u32::MAX);
                 self.list.next_cursor = page.next_cursor;
                 self.emit(CoreEvent::SessionListChanged {
                     change: SessionListChange::Reset {
@@ -178,7 +179,7 @@ impl Engine {
         self.list.loading_more = false;
         match result {
             Ok(page) => {
-                let added = u32::try_from(page.sessions.len()).unwrap_or(u32::MAX);
+                let added = u32::try_from(page.selected_rows).unwrap_or(u32::MAX);
                 self.list.rows = self.list.rows.saturating_add(added);
                 self.list.next_cursor = page.next_cursor;
                 if !page.sessions.is_empty() {

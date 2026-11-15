@@ -381,6 +381,28 @@ fn pages_follow_what_the_server_advertises() {
 }
 
 #[test]
+fn pages_report_nested_agents_and_where_they_may_start() {
+    use crate::session_families::SiblingDestinations;
+
+    let on = ServerPages::from_value(&json!({"sibling_sessions": true,
+        "sibling_session_destinations": "current_host_or_new_sandbox"}))
+    .unwrap();
+    assert!(on.sibling_sessions);
+    assert_eq!(
+        on.sibling_destinations,
+        SiblingDestinations::CurrentHostOrNewSandbox
+    );
+    let unknown = ServerPages::from_value(&json!({"sibling_sessions": "yes",
+        "sibling_session_destinations": "everywhere"}))
+    .unwrap();
+    assert!(!unknown.sibling_sessions);
+    assert_eq!(
+        unknown.sibling_destinations,
+        SiblingDestinations::CurrentHost
+    );
+}
+
+#[test]
 fn run_status_reads_every_wire_value_and_labels_only_the_in_flight_ones() {
     use AutomationRunStatus as Status;
     for (wire, status, label) in [

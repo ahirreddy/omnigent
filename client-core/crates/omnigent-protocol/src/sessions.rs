@@ -304,6 +304,36 @@ impl SessionPermissions {
     }
 }
 
+/// The session family a row belongs to (`SessionFamily`): independent root sessions grouped
+/// under one representative. Only rows the caller owns carry one.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SessionFamily {
+    /// The family id: the original source session's id. It never changes.
+    pub id: String,
+    /// The representative: the oldest active owned member, else the oldest retained one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_id: Option<String>,
+    /// The representative's title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_title: Option<String>,
+    /// The caller pinned the family.
+    #[serde(default, deserialize_with = "null_as_default")]
+    pub pinned: bool,
+    /// The family pin's sort key (epoch milliseconds, or a drag-order value).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned_at: Option<String>,
+}
+
+impl SessionFamily {
+    /// Whether the row `session_id` is a member nested under another representative.
+    #[must_use]
+    pub fn nests(&self, session_id: &str) -> bool {
+        self.representative_id
+            .as_deref()
+            .is_some_and(|representative| representative != session_id)
+    }
+}
+
 /// The failure text shown when a failed session has no `last_task_error` message.
 pub const DEFAULT_FAILURE_MESSAGE: &str =
     "The last response failed. Check the server or provider sign-in.";
@@ -398,6 +428,10 @@ pub struct SessionListItem {
     /// PR state synced.
     #[serde(default, skip_serializing_if = "Field::is_absent")]
     pub pull_requests_synced: Field<bool>,
+    /// Its session family. `GET /v1/sessions` omits it for a standalone row; update rows send
+    /// `null`.
+    #[serde(default, skip_serializing_if = "Field::is_absent")]
+    pub family: Field<SessionFamily>,
 }
 
 /// `GET /v1/sessions` (`SessionList`).
@@ -562,6 +596,9 @@ pub struct SessionSnapshot {
     /// The caller may start side chats here; `null` where the response did not compute it.
     #[serde(default, skip_serializing_if = "Field::is_absent")]
     pub side_chat_allowed: Field<bool>,
+    /// Its session family; `null` for a standalone session.
+    #[serde(default, skip_serializing_if = "Field::is_absent")]
+    pub family: Field<SessionFamily>,
 }
 
 impl SessionListItem {

@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_peer",
+    "query": {
+      "include_items": "false"
+    }
+  },
+  "status": 200,
+  "response": {
+    "id": "conv_peer",
+    "agent_id": "agent_1",
+    "agent_name": "Omni",
+    "status": "idle",
+    "created_at": 25,
+    "updated_at": 14,
+    "title": "Implementation",
+    "labels": {},
+    "items": [],
+    "permission_level": 4,
+    "project_id": "p_1",
+    "parent_session_id": null,
+    "family": {
+      "id": "conv_lead",
+      "representative_id": "conv_lead",
+      "representative_title": "Coordinator",
+      "pinned": false,
+      "pinned_at": null
+    }
+  }
+}

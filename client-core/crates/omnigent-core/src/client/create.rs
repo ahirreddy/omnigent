@@ -98,6 +98,7 @@ impl RawPage {
             first_id: None,
             last_id: self.last_id.clone(),
             has_more: self.has_more,
+            page_boundary: None,
         };
         let next = page
             .next_cursor(after)

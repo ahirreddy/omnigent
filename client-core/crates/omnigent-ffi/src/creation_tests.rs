@@ -44,6 +44,36 @@ fn catalog() -> CreationCatalog {
 }
 
 #[test]
+fn a_catalog_carries_nested_agents_and_reads_a_missing_destination_as_any_host() {
+    let on_core = core::CreationCatalog {
+        capabilities: core::CreationCapabilities {
+            sibling_sessions: true,
+            sibling_destinations:
+                omnigent_core::session_families::SiblingDestinations::CurrentHostOrNewSandbox,
+            ..core::CreationCapabilities::default()
+        },
+        ..core::CreationCatalog::default()
+    };
+    let mapped = CreationCatalog::from(on_core.clone());
+    assert!(mapped.sibling_sessions);
+    assert_eq!(
+        mapped.sibling_session_destinations,
+        Some(crate::sessions::SiblingSessionDestinations::CurrentHostOrNewSandbox)
+    );
+    assert_eq!(core::CreationCatalog::from(mapped.clone()), on_core);
+    let unset = CreationCatalog {
+        sibling_session_destinations: None,
+        ..mapped
+    };
+    assert_eq!(
+        core::CreationCatalog::from(unset)
+            .capabilities
+            .sibling_destinations,
+        omnigent_core::session_families::SiblingDestinations::AnyHost
+    );
+}
+
+#[test]
 fn every_picker_section_maps() {
     for (on_core, on_ffi) in [
         (

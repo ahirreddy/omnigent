@@ -9,6 +9,7 @@ use super::requests::validate_identifier;
 use super::{ClientCore, SessionError};
 use crate::http::HttpTransport;
 use crate::schedule::{describe_schedule, parse_iso8601};
+use crate::session_families::{SiblingDestinations, sibling_sessions_enabled};
 
 /// The top-level pages `GET /v1/info` advertises. Missing fields mean unsupported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -41,6 +42,10 @@ pub struct ServerPages {
     /// Jira, Slack and GitHub trigger templates: session modes plus the
     /// `session_orchestration` feature, since a trigger's session starts the others.
     pub automation_triggers: bool,
+    /// `sibling_sessions`: the caller can add nested agents to a session family.
+    pub sibling_sessions: bool,
+    /// `sibling_session_destinations`: where a nested agent may start.
+    pub sibling_destinations: SiblingDestinations,
 }
 
 impl ServerPages {
@@ -73,6 +78,8 @@ impl ServerPages {
             sharing: !single_user && !sharing_off,
             sharing_disabled: !single_user && sharing_off,
             canvas: feature("canvas")?,
+            sibling_sessions: sibling_sessions_enabled(object),
+            sibling_destinations: SiblingDestinations::from_info(object),
         })
     }
 }
