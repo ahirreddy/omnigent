@@ -99,18 +99,18 @@ final class MacNotificationFlowUITests: XCTestCase {
   private func requireAllowedNotifications(
     _ live: MacLiveUITestSupport, _ app: XCUIApplication
   ) throws {
-    let windows = app.windows.count
     app.typeKey(",", modifierFlags: .command)
-    XCTAssertTrue(live.waitUntil { app.windows.count == windows + 1 }, "no Settings window")
-    let settings = app.windows.element(boundBy: 0)
-    live.click(settings.toolbars.buttons["Notifications"], "the Notifications tab")
+    let back = live.element("settings-back", in: app)
+    XCTAssertTrue(back.appears(within: 10), "no Settings page")
+    live.click(
+      live.element("settings-category-Notifications", in: app), "the Notifications category")
     XCTAssertTrue(
       live.element("settings.notifications.play-sound", in: app).appears(within: 10),
       "no Notifications pane")
-    let isAllowed = settings.staticTexts.matching(NSPredicate(format: "value == %@", "Allowed"))
+    let isAllowed = app.staticTexts.matching(NSPredicate(format: "value == %@", "Allowed"))
       .firstMatch.appears(within: 5)
-    app.typeKey("w", modifierFlags: .command)
-    XCTAssertTrue(live.waitUntil { app.windows.count == windows }, "Settings stayed open")
+    app.typeKey(.escape, modifierFlags: [])
+    XCTAssertTrue(back.disappears(within: 10), "Settings stayed open")
     try XCTSkipUnless(
       isAllowed,
       "Allow the app's notifications on this machine (System Settings > Notifications).")

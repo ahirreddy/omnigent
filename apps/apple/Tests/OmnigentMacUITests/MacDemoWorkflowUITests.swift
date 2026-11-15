@@ -163,7 +163,8 @@ final class MacDemoWorkflowUITests: XCTestCase {
     live.assertRunning(app, "after the shortcuts list")
   }
 
-  /// Command-Comma opens Settings; every tab of its toolbar opens; Command-W closes it.
+  /// Command-Comma shows Settings in the window; every category of its sidebar opens; Command-W
+  /// goes back to the session and closes nothing.
   @MainActor
   func testSettingsOpensEveryTab() {
     let live = MacLiveUITestSupport(self)
@@ -171,18 +172,26 @@ final class MacDemoWorkflowUITests: XCTestCase {
     defer { app.terminate() }
     live.openDemo("demo-notes", in: app)
     let windows = app.windows.count
+    let tabs = live.tabs("chat", in: app).count
+    let transcript = live.element("transcript-demo-notes", in: app)
 
     app.typeKey(",", modifierFlags: .command)
-    XCTAssertTrue(live.waitUntil { app.windows.count == windows + 1 }, "no Settings window")
-    let settings = app.windows.element(boundBy: 0)
-    let tabs = settings.toolbars.buttons.allElementsBoundByIndex
-    XCTAssertFalse(tabs.isEmpty, "Settings has no tabs\n\(settings.debugDescription)")
-    for tab in tabs where tab.isHittable {
-      tab.click()
-      live.assertRunning(app, "on the Settings tab \(tab.label)")
+    let back = live.element("settings-back", in: app)
+    XCTAssertTrue(back.appears(within: 10), "no Settings page")
+    XCTAssertEqual(app.windows.count, windows, "Settings opened a window of its own")
+    let categories = app.buttons.matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "settings-category-")
+    ).allElementsBoundByIndex
+    XCTAssertFalse(categories.isEmpty, "Settings has no categories\n\(app.debugDescription)")
+    for category in categories where category.isHittable {
+      category.click()
+      live.assertRunning(app, "on the Settings category \(category.label)")
     }
     app.typeKey("w", modifierFlags: .command)
-    XCTAssertTrue(live.waitUntil { app.windows.count == windows }, "Settings did not close")
+    XCTAssertTrue(back.disappears(within: 10), "Command-W left Settings showing")
+    XCTAssertTrue(transcript.appears(within: 10), "the session did not come back")
+    XCTAssertEqual(app.windows.count, windows, "Command-W closed the window")
+    XCTAssertEqual(live.tabs("chat", in: app).count, tabs, "Command-W closed a tab under Settings")
   }
 
   /// Shift-Command-N opens a second window; Shift-Command-W closes it.
