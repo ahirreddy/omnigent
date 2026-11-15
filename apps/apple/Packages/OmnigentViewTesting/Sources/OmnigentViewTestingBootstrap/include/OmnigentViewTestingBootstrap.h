@@ -16,6 +16,9 @@ uint64_t omnigent_view_testing_now_ns(void);
 // Whether a `Task.sleep` noted ends after `after` and before `before`, in that clock.
 int omnigent_view_testing_sleep_ends_between(uint64_t after, uint64_t before);
 
+// Gives the process a foreground app's timers; returns how many steps failed (macOS only).
+int omnigent_view_testing_foreground_timers(void);
+
 // How many jobs have been queued for the main actor so far.
 unsigned long omnigent_view_testing_main_actor_jobs(void);
 

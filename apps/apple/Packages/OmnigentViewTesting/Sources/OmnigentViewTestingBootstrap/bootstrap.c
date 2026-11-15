@@ -17,6 +17,7 @@ static int shield_requested = 0;
 __attribute__((constructor)) static void omnigent_view_testing_bootstrap(void) {
   omnigent_view_testing_install_sleep_hooks();
 #if TARGET_OS_OSX
+  omnigent_view_testing_foreground_timers();
   shield_requested = 1;
   omnigent_view_testing_install_runner_loop_shield();
   omnigent_view_testing_clear_earlier_settings();
