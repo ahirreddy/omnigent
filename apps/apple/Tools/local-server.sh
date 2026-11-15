@@ -44,11 +44,11 @@ fi
 
 # Keep deployment credentials/config out of this loopback-only test server.
 # Explicit store paths also avoid the machine-global server lifecycle record.
-# PYTHONPATH: this checkout's own code, even when .venv came from another checkout.
+# PYTHONPATH: this checkout's own code and SDKs, even when .venv came from another checkout.
 exec env -i \
   HOME="${HOME:?HOME must be set}" \
   PATH="$repo_dir/.venv/bin:${PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}" \
-  PYTHONPATH="$repo_dir" \
+  PYTHONPATH="$repo_dir:$repo_dir/sdks/python-client:$repo_dir/sdks/ui" \
   PYTHONUNBUFFERED=1 \
   OMNIGENT_CONFIG_HOME="$runtime_dir/config" \
   OMNIGENT_DATA_DIR="$runtime_dir/data" \
