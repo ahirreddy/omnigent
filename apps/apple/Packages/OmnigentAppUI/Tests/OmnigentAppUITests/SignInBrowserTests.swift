@@ -59,7 +59,10 @@ struct SignInBrowserTests {
     let (controller, browser) = try controller(server)
     await controller.connectNow("http://127.0.0.1:6767")
     controller.actions.startBrowserSignIn(.loopbackBrowser(path: "/callback"))
-    try await eventually("the page") { !browser.opened.isEmpty }
+    try await eventually("the page, with the sign-in waiting for it") {
+      guard !browser.opened.isEmpty, case .signingIn = controller.state.phase else { return false }
+      return true
+    }
     let page = try #require(browser.opened.first)
     return (controller, try #require(URLComponents(url: page, resolvingAgainstBaseURL: false)))
   }

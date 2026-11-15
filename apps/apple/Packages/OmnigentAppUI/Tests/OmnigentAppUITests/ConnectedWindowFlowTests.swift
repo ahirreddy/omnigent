@@ -121,7 +121,8 @@ struct ConnectedWindowFlowTests {
     try await settle(mounted.screen, until: "the sheet") {
       mounted.view.sidebarForkPresented.wrappedValue
     }
-    try await pause(mounted.screen, .milliseconds(150))
+    // The sheet reads its choices through the core, whose answers come from its own threads.
+    try await Task.sleep(for: .milliseconds(150))
     return mounted
   }
 

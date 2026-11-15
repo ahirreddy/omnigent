@@ -54,7 +54,9 @@ struct NewSessionScreenTests {
     try await settle(screen, until: "the folder listing") {
       !server.requests("GET", "/v1/hosts/mac/filesystem").isEmpty
     }
-    try await settle(screen, until: "the recent folder") { !form.folder.isEmpty }
+    try await settle(screen, until: "the recent folder, and the composer with the keyboard") {
+      !form.folder.isEmpty && (screen.window.firstResponder as? NSTextView)?.isEditable == true
+    }
     return (screen, opened)
   }
 

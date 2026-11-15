@@ -87,6 +87,7 @@ struct SidebarWiringTests {
         #"{"object":"list","data":[\#(sessionRow("conv_a", host: "mac", workspace: "/w", updatedAt: 3))],"has_more":true,"last_id":"conv_a"}"#
       ))
     let session = try await signedInSession(server)
+    try await eventually("a next page") { session.connection.sessionList.paging.hasMore }
     let actions = connectedView(session, WindowSelection()).sidebarActions
     let reads = server.requests("GET", "/v1/sessions").count
     actions.loadMoreSessions?()
