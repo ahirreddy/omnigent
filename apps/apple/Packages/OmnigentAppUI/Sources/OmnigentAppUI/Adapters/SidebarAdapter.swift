@@ -117,9 +117,10 @@ enum SidebarAdapter {
     members: ([OmnigentCoreFFI.SessionSummary]) -> [[String]],
     isOwned: (OmnigentCoreFFI.SessionSummary) -> Bool
   ) -> (sessions: [OmnigentCoreFFI.SessionSummary], projects: [SessionProject]) {
+    let pinned = shownPinned(sessions)
     let folders: [SessionProject]
     if display.groupBy == .default {
-      let groups = members(sessions.filter { !$0.isPinned })
+      let groups = members(sessions.filter { !pinned.contains($0.id) })
       folders = zip(projects, groups).map { project, ids in
         SessionProject(
           id: project.id ?? "label:\(project.name)", name: project.name, sessionIds: ids,
@@ -130,7 +131,7 @@ enum SidebarAdapter {
     }
     let filed = Set(folders.flatMap(\.sessionIds))
     let shown = sessions.filter { session in
-      if session.isPinned || filed.contains(session.id) { return true }
+      if pinned.contains(session.id) || filed.contains(session.id) { return true }
       switch display.show {
       case .all, .archived: return true
       case .mine: return isOwned(session)
@@ -138,6 +139,18 @@ enum SidebarAdapter {
       }
     }
     return (shown, folders)
+  }
+
+  /// The sessions shown pinned (the core's `session_shows_pinned`): a pinned family's members
+  /// with it, never a member by a pin of its own.
+  static func shownPinned(_ sessions: [OmnigentCoreFFI.SessionSummary]) -> Set<String> {
+    let loaded = Dictionary(sessions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    return Set(
+      sessions.filter { session in
+        guard let family = session.family else { return session.isPinned }
+        return sessionShowsPinned(
+          session: session, representative: family.representativeId.flatMap { loaded[$0] })
+      }.map(\.id))
   }
 
   /// What a row shows beyond the summary.

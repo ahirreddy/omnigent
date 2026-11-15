@@ -22,7 +22,8 @@ public enum SidebarNavigationOrder {
       expandedProjects: lines(defaults.string(forKey: expandedProjectsKey)))
   }
 
-  /// The Pinned section's ids in order; none while it is collapsed, as on the web.
+  /// The Pinned section's ids in order, without the members of collapsed families; none while
+  /// it is collapsed, as on the web.
   /// - Parameters:
   ///   - state: The sidebar.
   ///   - defaults: Where the sidebar keeps its collapsed sections.
@@ -33,16 +34,18 @@ public enum SidebarNavigationOrder {
     let collapsed = lines(defaults.string(forKey: collapsedSectionsKey))
     let pinned = SidebarSections.sections(state).first(where: \.isPinned)
     guard let pinned, !collapsed.contains(pinned.title) else { return [] }
-    return pinned.sessions.map(\.id)
+    return state.visibleRows(pinned.sessions, in: .section(pinned.title))
+      .map(\.id)
   }
 
-  /// A group's session ids top to bottom, as its sort shows them.
+  /// A group's saved-order ids top to bottom, as its sort shows them: a project's families by
+  /// their ids, once each, and Pinned's pins.
   /// - Parameters:
   ///   - group: Pinned, or a project.
   ///   - state: The sidebar.
   /// - Returns: The ids.
   public static func groupIDs(_ group: SessionGroup, in state: SidebarViewState) -> [String] {
-    SidebarSections.rows(of: group, in: state).map(\.id)
+    SidebarSections.orderIDs(SidebarSections.units(of: group, in: state), in: group)
   }
 
   /// The session `offset` rows from `current`, wrapping at the ends. Off the list, forward
@@ -66,13 +69,18 @@ public enum SidebarNavigationOrder {
     shownInProject: [String: Int] = [:]
   ) -> [String] {
     let open = SidebarSections.sections(state).filter { !collapsed.contains($0.title) }
+    // A collapsed family's members are not on screen; its head is.
     return open.flatMap { (section: SidebarSections.Section) -> [String] in
-      guard section.isProjects else { return section.sessions.map(\.id) }
+      guard section.isProjects else {
+        return state.visibleRows(section.sessions, in: .section(section.title))
+          .map(\.id)
+      }
       return state.projects.filter { expandedProjects.contains($0.id) }.flatMap { project in
-        let members = SidebarSections.sessions(of: project, in: state).map(\.id)
+        let members = SidebarSections.sessions(of: project, in: state)
         let count = ProjectFolderPaging.visibleCount(
           count: members.count, shown: shownInProject[project.id] ?? 0, selectedIndex: nil)
-        return Array(members.prefix(count))
+        return state.visibleRows(members.prefix(count), in: .project(project.id))
+          .map(\.id)
       }
     }
   }

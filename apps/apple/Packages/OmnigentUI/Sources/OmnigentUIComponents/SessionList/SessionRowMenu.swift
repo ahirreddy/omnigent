@@ -100,8 +100,10 @@ struct SessionRowMenu {
         setUnread(session, !isUnread)
       }
     }
-    // Filing is owner-only, as on the web.
-    if let move = actions.moveToProject, !isShared, !projects.isEmpty || newProject != nil {
+    // Filing is owner-only, as on the web; a nested member moves with its representative.
+    if let move = actions.moveToProject, !isShared, !session.isNestedMember,
+      !projects.isEmpty || newProject != nil
+    {
       // "Add to project" until it is filed, then "Move session", as the web.
       Menu(project == nil ? "Add to project" : "Move session", systemImage: "folder") {
         ForEach(projects) { target in

@@ -171,17 +171,19 @@ struct BulkActionBar: View {
   }
 
   @ViewBuilder private var moveMenu: some View {
-    if let move = actions.sessions.moveToProject, !owned.isEmpty, !state.projects.isEmpty {
+    if let move = actions.moveMany, !owned.isEmpty, !state.projects.isEmpty {
+      // Only a representative moves its family, so a nested member needs it selected too.
+      let canMove = actions.canMoveTogether(owned)
       Menu {
         ForEach(state.projects) { project in
           Button(project.name) {
-            for session in owned { move(session, project) }
+            move(owned, project)
             exit()
           }
         }
         Divider()
         Button("Remove from project") {
-          for session in owned { move(session, nil) }
+          move(owned, nil)
           exit()
         }
       } label: {
@@ -189,7 +191,11 @@ struct BulkActionBar: View {
       }
       .menuIndicator(.hidden)
       .fixedSize()
-      .help("Move to project")
+      .disabled(!canMove)
+      .help(
+        canMove
+          ? "Move to project" : "A nested agent moves with its parent session; select that too"
+      )
       .accessibilityIdentifier("bulk-move-to-project")
     }
   }

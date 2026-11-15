@@ -51,7 +51,8 @@ struct PaletteAdapter: ViewModifier {
           return PaletteEntry(
             id: "session-\(summary.id)", title: summary.title,
             detail: "\(status(summary)) · \(summary.agentName) · \(summary.workspace)",
-            symbol: "bubble.left.and.text.bubble.right", target: .session(summary.id))
+            symbol: "bubble.left.and.text.bubble.right", target: .session(summary.id),
+            breadcrumb: breadcrumb(summary, core: $0))
         }, servers: managed + recent,
       hasNextRequest: !connection.sessionList.needsResponse.isEmpty)
     // Gated as the sidebar rows are, on what the server offers.
@@ -69,12 +70,10 @@ struct PaletteAdapter: ViewModifier {
       let content = try await list.search(query, inMessages: true, limit: UInt32(limit))
       var results = PaletteSearchResults(
         titles: titles.map { summary in
-          entry(OmnigentUIComponents.SessionSummary(summary), detail: nil, prefix: "found")
+          entry(summary, detail: nil, prefix: "found")
         },
         messages: content.map { summary in
-          entry(
-            OmnigentUIComponents.SessionSummary(summary), detail: summary.preview,
-            prefix: "message")
+          entry(summary, detail: summary.preview, prefix: "message")
         })
       results.hasMore = titles.count >= limit || content.count >= limit
       return results
@@ -84,13 +83,26 @@ struct PaletteAdapter: ViewModifier {
   }
 
   private func entry(
-    _ summary: OmnigentUIComponents.SessionSummary, detail: String?, prefix: String
+    _ core: OmnigentCoreFFI.SessionSummary, detail: String?, prefix: String
   ) -> PaletteEntry {
-    PaletteEntry(
+    let summary = OmnigentUIComponents.SessionSummary(core)
+    return PaletteEntry(
       id: "\(prefix)-\(summary.id)", title: summary.title,
       detail: detail ?? "\(status(summary)) · \(summary.agentName) · \(summary.workspace)",
       symbol: detail == nil ? "bubble.left.and.text.bubble.right" : "text.magnifyingglass",
-      target: .session(summary.id))
+      target: .session(summary.id), breadcrumb: breadcrumb(summary, core: core))
+  }
+
+  /// A nested session's breadcrumb, as the web's search rows: its project folder, then the
+  /// session it is nested under.
+  private func breadcrumb(
+    _ summary: OmnigentUIComponents.SessionSummary, core: OmnigentCoreFFI.SessionSummary
+  ) -> PaletteBreadcrumb? {
+    guard summary.isNestedMember else { return nil }
+    let list = session.connection.sessionList
+    let project = zip(list.projects, list.members(of: [core])).first { !$0.1.isEmpty }?.0.name
+    return .nested(
+      summary, project: project, loadedTitle: { list.sessionWithoutActivity($0)?.title })
   }
 
   private func status(_ summary: OmnigentUIComponents.SessionSummary) -> String {

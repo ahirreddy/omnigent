@@ -50,12 +50,14 @@ nonisolated public struct PaletteEntry: Hashable, Sendable, Identifiable {
   public var keywords: [String]
   /// Destination to execute.
   public var target: PaletteTarget
+  /// Where a nested session sits, shown under its title.
+  public var breadcrumb: PaletteBreadcrumb?
 
   /// Creates a palette entry.
   public init(
     id: String, title: String, detail: String = "", symbol: String,
     shortcut: String = "", isEnabled: Bool = true, keywords: [String] = [],
-    target: PaletteTarget
+    target: PaletteTarget, breadcrumb: PaletteBreadcrumb? = nil
   ) {
     self.id = id
     self.title = title
@@ -65,6 +67,7 @@ nonisolated public struct PaletteEntry: Hashable, Sendable, Identifiable {
     self.isEnabled = isEnabled
     self.keywords = keywords
     self.target = target
+    self.breadcrumb = breadcrumb
   }
 }
 

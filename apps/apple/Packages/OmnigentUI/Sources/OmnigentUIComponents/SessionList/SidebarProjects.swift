@@ -55,6 +55,8 @@ struct ProjectFolder<Row: View>: View {
   var folderMarker: SidebarHiddenMarker?
   /// The strongest state of the sessions under Show more.
   var moreMarker: SidebarHiddenMarker?
+  /// The rows its page lists, without the members of collapsed families.
+  let listed: [SessionSummary]
 
   @State private var isHovered = false
 
@@ -67,7 +69,7 @@ struct ProjectFolder<Row: View>: View {
           Text("No sessions").foregroundStyle(.secondary)
         }
       }
-      ForEach(sessions.prefix(pages.visibleCount)) { session in
+      ForEach(listed) { session in
         row(session)
       }
       if pages.visibleCount < sessions.count || (pages.hasMore && !sessions.isEmpty) {

@@ -277,5 +277,29 @@
       try menu.choose("Chat", in: try menu.openMenu(control: 0))
       #expect(try await waitUntil(window) { try !window.shows("terminal") })
     }
+
+    @Test(
+      "A nested member's header has no Pin, Add to project or project tag; its family's head does")
+    func nestedMemberHeader() async throws {
+      var sessionActions = SessionListActions()
+      sessionActions.setPinned = { _, _ in }
+      sessionActions.moveToProject = { _, _ in }
+      let extras = ConversationExtras(
+        sessionActions: sessionActions,
+        menuContext: SessionMenuContext(
+          projects: [SessionProject(id: "work", name: "Work", sessionIds: [])]))
+      for (summary, offers) in [
+        (FamilyFixture.implementation, false), (FamilyFixture.coordinator, true),
+      ] {
+        let window = try await screen(conversation(summary: summary), extras: extras)
+        defer { window.close() }
+        let menu = try titleMenu()
+        defer { menu.close() }
+        #expect(try menu.shows("Pin") == offers, "\(summary.id)")
+        #expect(try menu.shows("Add to project") == offers, "\(summary.id)")
+        #expect(try menu.shows("Copy Session ID"), "\(summary.id)")
+        #expect(box.items?.showsProjectTag == offers, "\(summary.id)")
+      }
+    }
   }
 #endif

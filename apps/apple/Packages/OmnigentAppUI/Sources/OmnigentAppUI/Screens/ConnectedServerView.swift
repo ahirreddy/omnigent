@@ -176,6 +176,7 @@ public struct ConnectedServerView: View {
       sorts: sidebar.groupSorts.sorts(for: groupSortAccount), server: connection.connectedServer,
       servers: serverSwitching?.choices ?? [])
     state.undo = sidebar.undo?.banner
+    state.collapsedFamilies = sidebar.collapsedFamilies
     state.showsAutomations = connection.pages?.offered?.automations == true
     state.showsUsage = connection.pages?.offered?.usage == true
     state.showsCanvas = connection.pages?.offered?.canvas == true

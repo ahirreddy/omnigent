@@ -189,6 +189,9 @@
       actions.setArchivedMany = { [self] in
         calls.append("archive many \($0.map(\.id).joined(separator: ",")) \($1)")
       }
+      actions.moveMany = { [self] in
+        calls.append("move many \($0.map(\.id).joined(separator: ",")) \($1?.id ?? "none")")
+      }
       actions.dropSession = { [self] in calls.append("drop \($0.id) \($1)") }
       actions.reorderProjects = { [self] in
         calls.append("reorder \($0.map(\.id).joined(separator: ","))")
@@ -203,6 +206,13 @@
       actions.signOut = { [self] in calls.append("sign out") }
       actions.loadMoreSessions = { [self] in calls.append("load more") }
       actions.loadProjectPage = { [self] in calls.append("load project \($0.id)") }
+      actions.setFamilyCollapsed = { [self] key, collapsed in
+        if collapsed {
+          state.collapsedFamilies.insert(key)
+        } else {
+          state.collapsedFamilies.remove(key)
+        }
+      }
       return actions
     }
   }

@@ -122,6 +122,8 @@ final class SidebarModel {
   /// The session a chat tab's menu is renaming.
   var renamingFromTab: OmnigentUIComponents.SessionSummary?
   var renameText = ""
+  /// Session families collapsed under their head, for this window's life (the web's tab).
+  var collapsedFamilies: Set<String> = []
 
   init(groupSorts: SidebarGroupSortStore = SidebarGroupSortStore()) {
     self.groupSorts = groupSorts
@@ -174,6 +176,20 @@ extension ConnectedServerView {
     }
     actions.setArchivedMany = { sessions, archived in
       requestArchive(sessions.map(\.id), archived: archived)
+    }
+    let list = connection.sessionList
+    actions.moveMany = { sessions, project in
+      move(sessions.map(\.id), to: project.map(ProjectSummary.init))
+    }
+    actions.canMoveTogether = { sessions in
+      sessionsCanMoveTogether(sessions: sessions.compactMap { list.session($0.id) })
+    }
+    actions.setFamilyCollapsed = { key, collapsed in
+      if collapsed {
+        model.collapsedFamilies.insert(key)
+      } else {
+        model.collapsedFamilies.remove(key)
+      }
     }
     actions.dropSession = { session, action in drop(session, action) }
     actions.live = SidebarAdapter.live(connection.sessionList)

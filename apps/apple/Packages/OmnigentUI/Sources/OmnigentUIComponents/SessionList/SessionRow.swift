@@ -29,10 +29,28 @@ struct SessionRow: View {
   /// Double-tap on iOS. On the Mac a tap gesture here would take the row's click from the list,
   /// so the list starts the rename (`SidebarView.renameOnDoubleClick`).
   var beginInlineRename: (() -> Void)?
+  /// How it sits in its session family: the head's chevron leads it, a nested row is indented.
+  var family = SessionRowFamily.standalone
 
   @State private var isHovered = false
+  @Environment(\.defaultMinListRowHeight) private var rowHeight
 
   var body: some View {
+    switch family {
+    case .standalone:
+      content
+    case .nested:
+      content.sessionFamilyNest(rowHeight: rowHeight)
+    case .head(let isExpanded, let toggle):
+      // Its own button, outside the row's combined element, so VoiceOver reads it apart.
+      HStack(spacing: SessionFamilyMetrics.chevronSpacing) {
+        SessionFamilyChevron(sessionID: session.id, isExpanded: isExpanded, toggle: toggle)
+        content
+      }
+    }
+  }
+
+  private var content: some View {
     HStack(alignment: .center, spacing: Theme.Spacing.small) {
       if isSelecting {
         Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
@@ -49,6 +67,7 @@ struct SessionRow: View {
           Text(session.title)
             .lineLimit(1)
             .fontWeight(isUnread ? .semibold : .regular)
+            .anchorPreference(key: SessionTitleAnchor.self, value: .bounds) { $0 }
         }
         if let line = detailLine {
           Text(line)
