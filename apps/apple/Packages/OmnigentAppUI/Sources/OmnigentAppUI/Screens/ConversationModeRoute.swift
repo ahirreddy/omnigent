@@ -48,12 +48,13 @@ final class ConversationPanelRoute {
   /// Whether the panel shows before the chat chooses.
   private(set) var showsByDefault = false
 
-  /// Whether the panel shows; setting it records the chat's choice.
+  /// Whether the panel shows; showing or hiding it records the chat's choice. A write that
+  /// changes nothing (a panel presentation syncing its binding) records none.
   var isShown: Bool {
     get { choice.map { $0 == .open } ?? showsByDefault }
     set {
-      let chosen: WorkspacePanelDefault = newValue ? .open : .collapsed
-      if choice != chosen { choice = chosen }
+      guard newValue != isShown else { return }
+      choice = newValue ? .open : .collapsed
     }
   }
 
@@ -68,8 +69,13 @@ final class ConversationPanelRoute {
     default preference: WorkspacePanelDefault, isSheet: Bool,
     _ source: Binding<ConversationPanelRoute>
   ) -> Binding<Bool> {
-    let shows = preference.showsPanel(isSheet: isSheet)
-    if showsByDefault != shows { showsByDefault = shows }
+    startsShown(preference.showsPanel(isSheet: isSheet))
     return source.isShown
+  }
+
+  /// Sets whether the panel shows before the chat chooses; only a change is written.
+  /// - Parameter shows: Whether it shows.
+  func startsShown(_ shows: Bool) {
+    if showsByDefault != shows { showsByDefault = shows }
   }
 }

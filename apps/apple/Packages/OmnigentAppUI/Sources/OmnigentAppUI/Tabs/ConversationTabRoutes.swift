@@ -1,5 +1,6 @@
 import Foundation
 import OmnigentUIComponents
+import OmnigentWorkspaceUI
 
 /// How a conversation opens its session's other tabs.
 struct ConversationTabRoutes {
@@ -29,6 +30,20 @@ struct ConversationTabRoutes {
   var applyDefaultView: (@MainActor () -> Void)?
   /// The chat's Chat or Terminal choice, kept by the window; `nil` keeps it in the chat's view.
   var viewChoice: SessionViewChoice?
+  /// The right panel of the window, where the window shows its session's beside every tab;
+  /// `nil` where the chat shows a panel of its own.
+  var windowPanel: WindowPanelRoute?
+}
+
+/// The right panel a window shows for its session, as a conversation in one of its tabs
+/// reaches it.
+struct WindowPanelRoute {
+  /// The session's toolbar and right-panel state.
+  let chrome: SessionChromeState
+  /// The conversation is the session's own chat, whose panel data the window loads.
+  let isSessionChat: Bool
+  /// Shows the panel on a tab, setting aside any open file or diff.
+  let show: @MainActor (InspectorTab) -> Void
 }
 
 extension WindowTabs {
@@ -61,6 +76,9 @@ extension WindowTabs {
       return withdraw
     }
     routes.viewChoice = groups.viewChoice(sessionID)
+    if SessionChromeState.isWindowHosted {
+      routes.windowPanel = windowPanel(of: ownerID, isSessionChat: sessionID == ownerID)
+    }
     routes.openNewSideChat = { openPendingSideChat(sessionID, draft: $0, sendNow: $1) }
     routes.newTerminal = { name in
       Task { await newTerminal(in: sessionID, named: name, replacing: nil, shownIn: ownerID) }
@@ -69,5 +87,21 @@ extension WindowTabs {
       routes.openBrowser = { openBrowser(in: ownerID) }
     }
     return routes
+  }
+}
+
+extension WindowTabs {
+  /// The right panel the window shows for `sessionID`.
+  /// - Parameters:
+  ///   - sessionID: The session whose tabs the window shows.
+  ///   - isSessionChat: The asking conversation is that session's own chat.
+  /// - Returns: The route.
+  func windowPanel(of sessionID: String, isSessionChat: Bool) -> WindowPanelRoute {
+    let chrome = groups.chrome(sessionID)
+    let session = session
+    return WindowPanelRoute(chrome: chrome, isSessionChat: isSessionChat) { tab in
+      session.workspace(of: sessionID)?.hideDocument()
+      chrome.show(tab)
+    }
   }
 }

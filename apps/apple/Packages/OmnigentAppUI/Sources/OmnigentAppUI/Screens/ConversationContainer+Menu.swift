@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import OmnigentCoreFFI
 import OmnigentStores
+import OmnigentTerminalStores
 import OmnigentUIComponents
 import OmnigentWorkspaceUI
 import SwiftUI
@@ -47,6 +48,29 @@ struct TranscriptExport: FileDocument {
   /// The system's type for an extension, or JSON where it has none.
   static func contentType(forExtension fileExtension: String) -> UTType {
     UTType(filenameExtension: fileExtension) ?? .json
+  }
+
+  /// Reads `conversation`'s whole transcript and hands it to `take`, for the save panel.
+  @MainActor
+  static func read(
+    _ conversation: ConversationStore, into take: @escaping @MainActor (Self) -> Void,
+    report: @escaping @MainActor (String) -> Void
+  ) {
+    Task {
+      do throws(CoreError) {
+        take(Self(text: try await conversation.exportTranscript()))
+      } catch {
+        report("Could not export the transcript: \(error.message)")
+      }
+    }
+  }
+
+  /// The save panel closed: a file that couldn't be written is reported.
+  @MainActor
+  static func finished(_ result: Result<URL, any Error>, report: @MainActor (String) -> Void) {
+    if case .failure(let error) = result {
+      report("Could not save the transcript: \(error.localizedDescription)")
+    }
   }
 
   // coverage:off only SwiftUI's save panel can make these; the flow testExportSavesTheTranscript
@@ -127,6 +151,82 @@ extension ConversationContainer {
     return SessionMenuContext(
       projects: projects, projectID: current?.id, isShared: !list.isOwned(session),
       createdBy: creator, parent: parent, branch: session.configuration?.gitBranch)
+  }
+}
+
+extension ConversationContainer {
+  /// The conversation's state around the transcript, with what its header and toolbar show.
+  var state: ConversationViewState {
+    adorned(ConversationAdapter.screenState(conversation, summary: summary))
+  }
+
+  /// `state` with Share's reason, the agent's terminal and its tools and policies.
+  func adorned(_ state: ConversationViewState) -> ConversationViewState {
+    var state = state
+    state.shareUnavailableReason = shareUnavailableReason
+    state.sandbox = SandboxAdapter.state(conversation, environment: hostEnvironment)
+    if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
+    state.agentInfo = conversation.agentInfo.map {
+      OmnigentUIComponents.AgentInfo(name: $0.name, tools: $0.tools, policies: $0.policies)
+    }
+    return state
+  }
+
+  /// The Share sheet over the session's grants, once its store exists.
+  func share(over shareStore: ShareStore?) -> (state: ShareViewState, actions: ShareActions)? {
+    guard offersShare, let shareStore else { return nil }
+    let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
+    return (ShareAdapter.state(shareStore, link: link), ShareAdapter.actions(shareStore))
+  }
+
+  /// Reads the whole transcript, then asks where to save it.
+  func exportTranscript() {
+    TranscriptExport.read(conversation, into: { export = $0 }, report: { failures.append($0) })
+  }
+
+  /// The save panel closed: a file that couldn't be written goes in the alert.
+  func exportFinished(_ result: Result<URL, any Error>) {
+    TranscriptExport.finished(result) { failures.append($0) }
+  }
+
+  /// The right panel's tabs, open files and "Open new" menu; none where the window shows the
+  /// session's panel beside every tab.
+  var workspaceSlots: WorkspaceSlots {
+    tabRoutes?.windowPanel == nil ? workspaceSlots(routes: toolRoutes) : WorkspaceSlots()
+  }
+
+  /// The right panel's content, with a side chat started and failures reported through `routes`.
+  func workspaceSlots(routes: SessionToolsAdapter.Routes) -> WorkspaceSlots {
+    WorkspacePanelSlots(
+      workspace: workspace, panel: panel, terminals: terminals, tabRoutes: tabRoutes,
+      terminalNames: terminalNames, permissionLevel: conversation.header?.permissionLevel,
+      canEdit: !(conversation.header?.readOnly ?? false),
+      newSideChat: SessionToolsAdapter.sideChat(conversation, routes: routes),
+      agents: AgentTreeAdapter.panel(conversation, open: routes.openSession),
+      composer: conversation.composer, report: routes.report
+    ).slots
+  }
+
+  /// The window loads what its panel shows of this chat's session, so the chat does not.
+  var windowLoadsPanel: Bool { tabRoutes?.windowPanel?.isSessionChat == true }
+
+  /// The title menu, the right panel's content, Share and navigation.
+  func extras(sharing shareStore: ShareStore?) -> ConversationExtras {
+    var extras = ConversationExtras(
+      sessionActions: forkable(sessionActions), slots: workspaceSlots, sandbox: sandboxActions,
+      share: share(over: shareStore), forkActions: forkActions, navigation: navigation,
+      menuContext: menuContext, exportTranscript: exportTranscript,
+      shareOpened: { Task { await shareStore?.load() } })
+    if let panel = tabRoutes?.windowPanel {
+      extras.showPanelTab = panel.show
+      extras.togglePanel = { [route = panel.chrome.panel] in route.isShown.toggle() }
+    }
+    return extras
+  }
+
+  /// The fork opens as a chat tab next to this one, focused.
+  var forkActions: ForkActions {
+    forkFlow.actions(open: tabRoutes?.openSession ?? openSession) { failures.append($0) }
   }
 }
 

@@ -1,4 +1,5 @@
 import OmnigentRemoteBrowser
+import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
 
@@ -25,6 +26,31 @@ extension ConnectedServerView {
     } else {
       NewSessionContainer(connection: connection, open: open)
     }
+  }
+
+  /// The strip's tabs, read when the titlebar asks for them; a session-less page has no strip.
+  /// They are the last shown session's, which a page leaves as they were: going to a page then
+  /// takes the strip away without rendering it first.
+  func strip(of tabs: WindowTabs) -> ShellTabs {
+    ShellTabs(
+      isShown: { tabs.groups.currentSessionID != nil },
+      content: {
+        guard let store = tabs.groups.lastShown else { return (TabsState(), TabActions()) }
+        return (tabs.state(store), renamable(tabs.actions(store)))
+      })
+  }
+
+  /// A chat tab's menu renames its session, as the session menu and Option-Command-R do.
+  func renamable(_ actions: TabActions) -> TabActions {
+    var actions = actions
+    actions.renameSession = renameSessionOfTab
+    return actions
+  }
+
+  /// Asks for a new title for the session of a chat tab, by the tab's id.
+  var renameSessionOfTab: @MainActor (String) -> Void {
+    let (model, tabs, list) = (sidebarModel, session.tabs, connection.sessionList)
+    return { model.askToRename(tabID: $0, tabs: tabs, list: list) }
   }
 
   /// The New Tab page; the window reads what it offers (``NewTabOptionsLoading``).

@@ -46,6 +46,9 @@ struct ConversationContainer: View {
   var offersShare = true
   /// Why Share shows disabled (sharing turned off on this server).
   var shareUnavailableReason: String?
+  /// The workspace the window's right panel shows, where a side chat's or sub-agent's file
+  /// links open; `nil` opens them in the chat's own workspace.
+  var linkedWorkspace: WorkspaceBrowserModel?
 
   /// The right panel once this chat shows or hides it; until then the default it opened with.
   @State private var panelRoute = ConversationPanelRoute()
@@ -66,7 +69,8 @@ struct ConversationContainer: View {
   @State private var harnessSurface: TerminalSurfaceController?
   // swiftlint:disable:next private_swiftui_state
   @State var forkFlow = ForkFlow()
-  @State private var export: TranscriptExport?
+  // swiftlint:disable:next private_swiftui_state
+  @State var export: TranscriptExport?
   @State private var shareStore: ShareStore?
   @State private var composerPreferences = StoredComposerPreferences.stored()
   @State private var fileLinks: WorkspaceFileLinks?
@@ -84,11 +88,7 @@ struct ConversationContainer: View {
       mode: modeRoute.mode(tabRoutes?.viewChoice, $modeRoute),
       fork: $forkFlow.sheet,
       actions: routed(forkable(actions)), composerActions: composerActions,
-      extras: ConversationExtras(
-        sessionActions: forkable(sessionActions), slots: workspaceSlots, sandbox: sandboxActions,
-        share: share(over: shareStore), forkActions: forkActions, navigation: navigation,
-        menuContext: menuContext, exportTranscript: exportTranscript,
-        shareOpened: { [shareStore] in Task { await shareStore?.load() } }),
+      extras: extras(sharing: shareStore),
       liveRows: ConversationAdapter.liveRows(conversation)
     ) {
       ConversationHarnessTerminal(
@@ -98,8 +98,8 @@ struct ConversationContainer: View {
       .modifier(TerminalPageFocus(surface: harnessSurface))
     }
     .modifier(MessageMediaEnvironment(fileLinks: fileLinks, conversation: conversation))
-    .task(id: workspace.map(ObjectIdentifier.init)) {
-      fileLinks = workspace.map(MarkdownLinksAdapter.links)
+    .task(id: (linkedWorkspace ?? workspace).map(ObjectIdentifier.init)) {
+      fileLinks = (linkedWorkspace ?? workspace).map(MarkdownLinksAdapter.links)
     }
     .fileExporter(
       isPresented: Binding(get: { export != nil }, set: { if !$0 { export = nil } }),
@@ -122,7 +122,7 @@ struct ConversationContainer: View {
       await composer.loadSkills()
     }
     // Reads the features too; the composer tray links the session's pull requests.
-    .task { await panel?.reloadPullRequests() }
+    .task { if !windowLoadsPanel { await panel?.reloadPullRequests() } }
     .modifier(
       SessionGoalPresenter(
         conversation: conversation, summary: summary, isPresented: $showsGoal,
@@ -130,21 +130,45 @@ struct ConversationContainer: View {
     )
     .onChange(of: conversation.isRunning) { _, running in
       Task { await composer.drainQueue(isRunning: running) }
-      if !running { Task { await panel?.refreshPullRequestsIfShown() } }
+      if !running, !windowLoadsPanel { Task { await panel?.refreshPullRequestsIfShown() } }
     }
     .onChange(of: terminals?.terminals.harness, initial: true) { attachHarness() }
-    .modifier(WorkspacePanelDefaults(workspace: workspace, choice: $panelRoute.choice))
+    .modifier(WorkspacePanelDefaults(workspace: ownPanelWorkspace, choice: $panelRoute.choice))
     .modifier(ComposerPreferencesReader(preferences: $composerPreferences))
     #if DEBUG
       .modifier(
         PerfConversationHooks(
-          showsInspector: showsInspector, inspectorTab: $inspectorTab,
-          openBrowser: tabRoutes?.openBrowser, openSideChat: tabRoutes?.openNewSideChat))
+          showPanel: showPanel, openBrowser: tabRoutes?.openBrowser,
+          openSideChat: tabRoutes?.openNewSideChat))
     #endif
-    .modifier(ChangedFilesFollower(revision: changedFilesRevision, workspace: workspace))
+    .modifier(ChangedFilesFollower(revision: changedFilesRevision, workspace: ownPanelWorkspace))
   }
 
-  /// Whether the right panel shows: the chat's choice, else the default where it is a column.
+  /// The workspace this chat's own right panel shows; none where the window shows the
+  /// session's panel and follows its files itself.
+  private var ownPanelWorkspace: WorkspaceBrowserModel? {
+    tabRoutes?.windowPanel == nil ? workspace : nil
+  }
+
+  /// Shows the right panel on a tab, or hides it (`nil`): the window's, where it shows one.
+  /// The chat makes no binding to the window's: making one reads it, and the chat would
+  /// render each time the panel changes.
+  private var showPanel: @MainActor (InspectorTab?) -> Void {
+    let windowChrome = tabRoutes?.windowPanel?.chrome
+    let (ownPanel, ownTab) = (showsInspector, $inspectorTab)
+    return { tab in
+      if let windowChrome {
+        if let tab { windowChrome.inspectorTab = tab }
+        windowChrome.panel.isShown = tab != nil
+      } else {
+        if let tab { ownTab.wrappedValue = tab }
+        ownPanel.wrappedValue = tab != nil
+      }
+    }
+  }
+
+  /// The chat's own panel: whether it shows, by the chat's choice or else the default where
+  /// it is a column. The window's panel is not this one.
   private var showsInspector: Binding<Bool> {
     #if os(iOS)
       let isSheet = sizeClass == .compact
@@ -152,17 +176,6 @@ struct ConversationContainer: View {
       let isSheet = false
     #endif
     return panelRoute.isShown(default: panelDefault, isSheet: isSheet, $panelRoute)
-  }
-
-  var state: ConversationViewState {
-    var state = ConversationAdapter.screenState(conversation, summary: summary)
-    state.shareUnavailableReason = shareUnavailableReason
-    state.sandbox = SandboxAdapter.state(conversation, environment: hostEnvironment)
-    if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
-    state.agentInfo = conversation.agentInfo.map {
-      OmnigentUIComponents.AgentInfo(name: $0.name, tools: $0.tools, policies: $0.policies)
-    }
-    return state
   }
 
   private func composerState(_ screen: ConversationViewState) -> ComposerViewState {
@@ -191,40 +204,18 @@ struct ConversationContainer: View {
       openNewSideChat: tabRoutes?.openNewSideChat,
       awaitForkedSideChat: tabRoutes?.awaitForkedSideChat,
       showPullRequests: {
-        inspectorTab = .pullRequests
-        panelRoute.choice = .open
+        if let panel = tabRoutes?.windowPanel {
+          panel.show(.pullRequests)
+        } else {
+          inspectorTab = .pullRequests
+          panelRoute.choice = .open
+        }
       },
       showGoal: {
         showsGoal = true
         Task { await conversation.tools.loadGoal() }
       },
       report: { failures.append($0) })
-  }
-
-  /// The Share sheet over the session's grants, once its store exists.
-  func share(over shareStore: ShareStore?) -> (state: ShareViewState, actions: ShareActions)? {
-    guard offersShare, let shareStore else { return nil }
-    let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
-    return (ShareAdapter.state(shareStore, link: link), ShareAdapter.actions(shareStore))
-  }
-
-  /// Reads the whole transcript, then asks where to save it.
-  func exportTranscript() {
-    let conversation = conversation
-    Task {
-      do throws(CoreError) {
-        export = TranscriptExport(text: try await conversation.exportTranscript())
-      } catch {
-        failures.append("Could not export the transcript: \(error.message)")
-      }
-    }
-  }
-
-  /// The save panel closed: a file that couldn't be written goes in the alert.
-  func exportFinished(_ result: Result<URL, any Error>) {
-    if case .failure(let error) = result {
-      failures.append("Could not save the transcript: \(error.localizedDescription)")
-    }
   }
 
   /// Attaches the harness TUI once ready (the store keeps it), applying the default view.
@@ -234,19 +225,6 @@ struct ConversationContainer: View {
     harnessSurface = terminals.harnessController(
       permissionLevel: conversation.header?.permissionLevel,
       hostID: conversation.header?.settings?.hostId)
-  }
-
-  /// The right panel's tabs, open files and "Open new" menu.
-  var workspaceSlots: WorkspaceSlots {
-    WorkspacePanelSlots(
-      workspace: workspace, panel: panel, terminals: terminals, tabRoutes: tabRoutes,
-      terminalNames: terminalNames, permissionLevel: conversation.header?.permissionLevel,
-      canEdit: !(conversation.header?.readOnly ?? false),
-      newSideChat: SessionToolsAdapter.sideChat(conversation, routes: toolRoutes),
-      agents: AgentTreeAdapter.panel(conversation, open: tabRoutes?.openSession ?? openSession),
-      composer: conversation.composer,
-      report: { failures.append($0) }
-    ).slots
   }
 
   /// Side questions and sub-agents open in tabs beside this chat; the "Back to the parent
@@ -274,21 +252,6 @@ struct ConversationContainer: View {
   func beginFork(_ context: ForkContext) {
     guard let makeForkStore else { return }
     Task { await forkFlow.begin(context, makeStore: makeForkStore) }
-  }
-
-  /// The fork opens as a chat tab next to this one, focused.
-  var forkActions: ForkActions {
-    let flow = forkFlow
-    let open = tabRoutes?.openSession ?? openSession
-    return flow.withSandboxActions(
-      ForkActions(
-        forkWith: { choices in
-          Task { await flow.fork(choices, open: open, report: { failures.append($0) }) }
-        },
-        selectionChanged: { agentID, hostID in
-          Task { await flow.selectionChanged(agentID: agentID, hostID: hostID) }
-        },
-        cancel: { flow.cancel() }))
   }
 }
 

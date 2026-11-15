@@ -42,15 +42,19 @@ struct TerminalTabView: View {
     .modifier(TerminalPageFocus(surface: surface))
     .navigationTitle(row?.terminal.displayLabel ?? "Terminal")
     .navigationSubtitle(sessionTitle)
-    .toolbar {
-      if isActivePane {
-        ToolbarItem(placement: .primaryAction) {
-          Button("Show Chat", systemImage: TabKind.chat.systemImage, action: showChat)
+    // A Mac window shows the session's own controls over every tab, the same on each, and
+    // the chat's tab is always in the strip.
+    #if !os(macOS)
+      .toolbar {
+        if isActivePane {
+          ToolbarItem(placement: .primaryAction) {
+            Button("Show Chat", systemImage: TabKind.chat.systemImage, action: showChat)
             .help("Show this session's chat")
             .accessibilityIdentifier("terminal-tab-chat")
+          }
         }
       }
-    }
+    #endif
     // A shell is not the session's terminal view, so Option-Command-\\ stays with the chat.
     .onAppear { store?.terminals.refresh() }
     .onChange(of: header?.permissionLevel, initial: true) { attach() }

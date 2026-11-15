@@ -110,6 +110,17 @@ enum TabAdapter {
     }
   }
 
+  /// Chat or Terminal for a session's chat tab, where the window's tabs carry that switch and
+  /// the session's agent has a terminal; `nil` shows no switch.
+  private static func viewMode(of sessionID: String, in session: ServerSession) -> SessionViewMode?
+  {
+    guard SessionChromeState.isWindowHosted,
+      let harness = session.terminals(of: sessionID)?.terminals.harness,
+      harness != .notTerminalFirst
+    else { return nil }
+    return session.tabs.viewMode(sessionID)
+  }
+
   /// Chat, agent terminal, agent browser and side chat tabs: titled from their session.
   private static func sessionItem(_ item: inout TabItemState, tab: AppTab, session: ServerSession) {
     let connection = session.connection
@@ -125,6 +136,7 @@ enum TabAdapter {
       item.isReadOnly = summary?.isReadOnly ?? false
       item.canRenameSession = summary?.canRename == true
       item.link = SidebarAdapter.webURL(server: connection.connectedServer, sessionID: id)
+      item.viewMode = viewMode(of: id, in: session)
     case .harness:
       item.title = summary.map { "\($0.title) (agent)" } ?? tab.title ?? "Agent Terminal"
       item.subtitle = summary.flatMap(context)

@@ -87,6 +87,19 @@ final class ForkFlow {
     }
   }
 
+  /// The sheet's actions. The fork opens through `open`; a start that failed goes to `report`.
+  func actions(
+    open: @escaping @MainActor (String) -> Void, report: @escaping @MainActor (String) -> Void
+  ) -> ForkActions {
+    withSandboxActions(
+      ForkActions(
+        forkWith: { choices in Task { await self.fork(choices, open: open, report: report) } },
+        selectionChanged: { agentID, hostID in
+          Task { await self.selectionChanged(agentID: agentID, hostID: hostID) }
+        },
+        cancel: { self.cancel() }))
+  }
+
   /// Closes the sheet. An uncertain fork's warning has been seen, so another may start.
   /// The sheet, for a key-path binding (`$flow.sheet`): dismissing it cancels. Unlike a closure
   /// binding it compares equal across updates, so it does not re-render the screen on its own.

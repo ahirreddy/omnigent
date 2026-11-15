@@ -80,6 +80,13 @@ struct WindowTabs {
     if openInNewWindow != nil {
       actions.moveToNewWindow = { moveToNewWindow($0, from: store)?() }
     }
+    // The chat tab's switch: the session's Chat or Terminal, brought on screen with it.
+    let groups = groups
+    actions.setViewMode = { tabID, mode in
+      if let sessionID = store.tab(tabID)?.content.sessionID {
+        groups.chrome(sessionID).mode = mode
+      }
+    }
     if supportsSplit {
       actions.showInPane = { store.show($0, in: $1) }
       actions.focusPane = { store.focus($0) }

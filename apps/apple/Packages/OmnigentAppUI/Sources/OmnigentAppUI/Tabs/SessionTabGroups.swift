@@ -38,6 +38,8 @@ public final class SessionTabGroups {
   @ObservationIgnored private(set) var recentTabs: [String] = []
   /// Each chat's Chat or Terminal choice, by session (see ``viewChoice(_:)``).
   @ObservationIgnored var viewChoices: [String: SessionViewChoice] = [:]
+  /// Each session's toolbar and right-panel state, by session (see ``chrome(_:)``).
+  @ObservationIgnored var chromes: [String: SessionChromeState] = [:]
 
   /// Reads a session's saved tabs when its group is made.
   @ObservationIgnored public var loadSaved: (@MainActor (String) -> TabWindowSnapshot?)?
@@ -195,6 +197,7 @@ public final class SessionTabGroups {
     }
     recentSessions.removeAll(where: sessionIDs.contains)
     viewChoices = viewChoices.filter { !sessionIDs.contains($0.key) }
+    chromes = chromes.filter { !sessionIDs.contains($0.key) }
     if let shown = currentSessionID, sessionIDs.contains(shown) {
       page = recentSessions.first.map(SidebarDestination.session)
       onChange?(nil)
@@ -211,6 +214,7 @@ public final class SessionTabGroups {
     recentSessions = []
     recentTabs = []
     viewChoices = [:]
+    chromes = [:]
     if page != nil { page = nil }
   }
 
