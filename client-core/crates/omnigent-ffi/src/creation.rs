@@ -471,6 +471,18 @@ pub fn creation_unavailable_reason(
     core::CreationCatalog::from(catalog).unavailable_reason(&agent_id, &host_id)
 }
 
+/// The warning for `agent_id` on `host_id` in `catalog` when it can be chosen yet may fail to
+/// launch (an SDK harness the host reports as needing sign-in), or `None`.
+#[must_use]
+#[uniffi::export]
+pub fn creation_readiness_warning(
+    catalog: CreationCatalog,
+    agent_id: String,
+    host_id: String,
+) -> Option<String> {
+    core::CreationCatalog::from(catalog).readiness_warning(&agent_id, &host_id)
+}
+
 /// Why `selection` cannot be created with the host's advertised `models`, or `None` when it can:
 /// readiness, an absolute workspace path, and an advertised, visible model.
 #[must_use]

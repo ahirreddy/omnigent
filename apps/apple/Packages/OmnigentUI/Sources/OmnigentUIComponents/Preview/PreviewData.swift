@@ -719,7 +719,10 @@ enum PreviewData {
     if host.sandboxProvider != nil { return "Managed sandbox creation is not available here." }
     if host.status != "online" { return "Connect this host before starting a session." }
     if selection.agentId.isEmpty { return "Choose a registered agent." }
-    if selection.agentId == "agent_claude" { return "Sign in to this harness on the host first." }
+    if selection.agentId == "agent_claude" {
+      return "Authentication required. Sign in or add credentials on the selected host before "
+        + "using this harness."
+    }
     if !selection.workspace.hasPrefix("/") {
       return "Enter an absolute workspace path beginning with /."
     }

@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value};
 
 use crate::client::json::{as_object, opt_array, opt_bool, opt_str, put_opt, req_str};
-use crate::creation::HarnessReadiness;
+use crate::creation::{HarnessReadiness, needs_authentication_reason};
 
 /// A reasoning effort a model supports.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -516,6 +516,24 @@ pub fn canonical_harness(value: Option<&str>) -> String {
     .to_owned()
 }
 
+/// The in-process SDK harnesses (the server's `_SDK_HARNESSES`), by canonical id and by the
+/// server's aliases that [`canonical_harness`] leaves as they are.
+const SDK_HARNESSES: [&str; 6] = [
+    "claude-sdk",
+    "openai-agents",
+    "antigravity",
+    "claude",
+    "agy",
+    "google-antigravity",
+];
+
+/// Whether `harness`, by any of its spellings, runs in process through an SDK, so the host
+/// cannot see credentials the agent brings itself.
+#[must_use]
+pub fn is_sdk_harness(harness: Option<&str>) -> bool {
+    SDK_HARNESSES.contains(&canonical_harness(harness).as_str())
+}
+
 /// The harness display label; unknown harnesses show their raw id.
 #[must_use]
 pub fn harness_label(value: Option<&str>) -> String {
@@ -803,7 +821,7 @@ impl ConfigurationCatalog {
             None => reason("Host readiness has not been reported."),
             Some(HarnessReadiness::Ready) => None,
             Some(HarnessReadiness::NeedsAuthentication) => {
-                reason("Sign in to this harness on the host first.")
+                needs_authentication_reason(target.harness.as_deref())
             }
             Some(HarnessReadiness::NotReady | HarnessReadiness::Unknown) => {
                 reason("This harness is not configured on the host.")

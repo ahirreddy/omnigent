@@ -208,17 +208,20 @@ final class NewSessionForm {
     }
   }
 
-  /// The amber "not ready" notice: the selected agent's harness reports a readiness that is
-  /// not ready on an online host (offline hosts and unknown agents say so in the context row).
+  /// The amber notice: the selected agent isn't ready on an online host or may need a sign-in
+  /// there (offline hosts and unknown agents say so in the context row).
   func harnessNotice(_ creation: CreationStore) -> (text: String, name: String)? {
     guard !isSandbox, !startsPendingAgent, let catalog = creation.catalog.value,
       let agent = selectedAgent(creation),
       let host = catalog.hosts.first(where: { $0.hostId == selection.hostId }),
-      host.status == "online", host.sandboxProvider == nil,
-      creationUnavailableReason(
-        catalog: catalog, agentId: selection.agentId, hostId: selection.hostId) != nil
+      host.status == "online", host.sandboxProvider == nil
     else { return nil }
-    return ("\(agent.name) isn't ready on \(host.name).", agent.name)
+    let (agentID, hostID) = (selection.agentId, selection.hostId)
+    if creationUnavailableReason(catalog: catalog, agentId: agentID, hostId: hostID) != nil {
+      return ("\(agent.name) isn't ready on \(host.name).", agent.name)
+    }
+    return creationReadinessWarning(catalog: catalog, agentId: agentID, hostId: hostID)
+      .map { ($0, agent.name) }
   }
 
   /// Nothing can run yet: no host is online and no managed sandbox is offered.

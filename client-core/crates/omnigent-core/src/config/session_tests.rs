@@ -236,7 +236,10 @@ fn harness_safety_requires_correct_online_configured_host_and_history_support() 
         host_id: host_id.into(),
         name: "Host".into(),
         status: "online".into(),
-        configured_harnesses: Some(BTreeMap::from([("claude-native".to_owned(), readiness)])),
+        configured_harnesses: Some(BTreeMap::from([
+            ("claude-native".to_owned(), readiness),
+            ("agents_sdk".to_owned(), readiness),
+        ])),
     };
     let other_host = ConfigurationCatalog {
         agents: vec![target.clone()],
@@ -251,8 +254,15 @@ fn harness_safety_requires_correct_online_configured_host_and_history_support() 
     };
     assert_eq!(
         needs_auth.unavailable_reason(&target, &current).as_deref(),
-        Some("Sign in to this harness on the host first.")
+        Some(crate::creation::AUTHENTICATION_REQUIRED)
     );
+    // An SDK harness's sign-in is only a warning: its agent may bring its own credentials.
+    let sdk_target = HarnessChoice {
+        id: "sdk".into(),
+        harness: Some("agents_sdk".into()),
+        ..target.clone()
+    };
+    assert_eq!(needs_auth.unavailable_reason(&sdk_target, &current), None);
     let mut child = current.clone();
     child.parent_id = Some("parent".into());
     assert!(demo_catalog().unavailable_reason(&target, &child).is_some());
@@ -277,6 +287,35 @@ fn harness_safety_requires_correct_online_configured_host_and_history_support() 
             .unavailable_reason(&scoped, &current)
             .is_some()
     );
+}
+
+#[test]
+fn sdk_harnesses_are_recognized_by_every_server_spelling() {
+    for harness in [
+        "claude-sdk",
+        "claude_sdk",
+        "claude",
+        "openai-agents",
+        "openai-agents-sdk",
+        "agents_sdk",
+        "antigravity",
+        "agy",
+        "google-antigravity",
+    ] {
+        assert!(is_sdk_harness(Some(harness)), "{harness}");
+    }
+    for harness in [
+        "claude-native",
+        "native-claude",
+        "codex",
+        "codex-native",
+        "antigravity-native",
+        "agy-native",
+        "pi",
+    ] {
+        assert!(!is_sdk_harness(Some(harness)), "{harness}");
+    }
+    assert!(!is_sdk_harness(None));
 }
 
 #[test]
