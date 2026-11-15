@@ -26,6 +26,7 @@ pub mod http;
 pub mod intents;
 pub mod ledger;
 pub mod mentions;
+pub mod nested_creation;
 pub mod notifications;
 pub mod read_state;
 pub mod realtime;

@@ -308,7 +308,7 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn catalog(&self) -> Result<CreationCatalog, SessionError> {
+    pub(crate) async fn catalog(&self) -> Result<CreationCatalog, SessionError> {
         let malformed = |detail: String| SessionError::MalformedResponse { detail };
         let capabilities = self.creation_capabilities().await?;
         let hosts = self
@@ -644,7 +644,7 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn models_for(
+    pub(crate) async fn models_for(
         &self,
         agent: &CreationAgent,
         host_id: &str,
@@ -897,6 +897,20 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         prepared: super::requests::Prepared,
     ) -> Result<CreationReceipt, SessionError> {
+        self.submit_creation_refused_as(prepared, Refusals::Ordinary)
+            .await
+    }
+
+    /// As [`Self::submit_prepared_creation`], reading refusals as `refusals` says.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(crate) async fn submit_creation_refused_as(
+        &self,
+        prepared: super::requests::Prepared,
+        refusals: Refusals,
+    ) -> Result<CreationReceipt, SessionError> {
         let result = self.transport.send(prepared.request).await;
         let mut state = lock(&self.state);
         let response = result.map_err(|_| CreationError::Uncertain)?;
@@ -913,7 +927,14 @@ impl<T: HttpTransport> ClientCore<T> {
             status @ (400 | 415 | 422) => {
                 return Err(CreationError::Rejected {
                     status,
-                    message: creation_rejection(&response.body, status),
+                    message: refusals.message(&response.body, status),
+                }
+                .into());
+            }
+            status @ (403 | 409) if refusals == Refusals::Nested => {
+                return Err(CreationError::Rejected {
+                    status,
+                    message: refusals.message(&response.body, status),
                 }
                 .into());
             }
@@ -947,6 +968,24 @@ impl<T: HttpTransport> ClientCore<T> {
             session_id: id,
             summary,
         })
+    }
+}
+
+/// Which answers to a create are refusals, and how they read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Refusals {
+    /// `400`, `415` and `422`, in the server's words.
+    Ordinary,
+    /// Also `403` and `409`, which the server sends before it keeps a sibling.
+    Nested,
+}
+
+impl Refusals {
+    fn message(self, body: &[u8], status: u16) -> String {
+        match self {
+            Self::Ordinary => creation_rejection(body, status),
+            Self::Nested => crate::nested_creation::nested_rejection(body, status),
+        }
     }
 }
 

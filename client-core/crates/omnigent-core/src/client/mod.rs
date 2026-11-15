@@ -33,6 +33,7 @@ pub mod browser;
 pub mod comments;
 pub mod configure;
 pub mod create;
+mod create_nested;
 mod custom_agents;
 pub mod databricks_session;
 mod error;

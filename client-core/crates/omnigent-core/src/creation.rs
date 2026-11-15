@@ -651,11 +651,22 @@ impl CreationCatalog {
     /// Why `agent_id` cannot be created on `host_id`, or `None` when it can.
     #[must_use]
     pub fn unavailable_reason(&self, agent_id: &str, host_id: &str) -> Option<String> {
+        self.host_unavailable_reason(agent_id, host_id, None)
+    }
+
+    /// As [`Self::unavailable_reason`], also allowing the sandbox host `reusable_sandbox` (a
+    /// nested agent's source's own).
+    pub(crate) fn host_unavailable_reason(
+        &self,
+        agent_id: &str,
+        host_id: &str,
+        reusable_sandbox: Option<&str>,
+    ) -> Option<String> {
         let reason = |text: &str| Some(text.to_owned());
         let Some(host) = self.hosts.iter().find(|host| host.host_id == host_id) else {
             return reason("Choose an existing host.");
         };
-        if host.sandbox_provider.is_some() {
+        if host.sandbox_provider.is_some() && reusable_sandbox != Some(host_id) {
             return reason("Managed sandbox creation is not available here.");
         }
         if host.status != "online" {
@@ -692,7 +703,19 @@ impl CreationCatalog {
         selection: &CreationSelection,
         models: &[ModelChoice],
     ) -> Result<(), CreationError> {
-        if let Some(reason) = self.unavailable_reason(&selection.agent_id, &selection.host_id) {
+        self.validate_on(selection, models, None)
+    }
+
+    /// As [`Self::validate`], also allowing the sandbox host `reusable_sandbox`.
+    pub(crate) fn validate_on(
+        &self,
+        selection: &CreationSelection,
+        models: &[ModelChoice],
+        reusable_sandbox: Option<&str>,
+    ) -> Result<(), CreationError> {
+        if let Some(reason) =
+            self.host_unavailable_reason(&selection.agent_id, &selection.host_id, reusable_sandbox)
+        {
             return Err(CreationError::Unavailable(reason));
         }
         let path = selection.workspace.trim();
