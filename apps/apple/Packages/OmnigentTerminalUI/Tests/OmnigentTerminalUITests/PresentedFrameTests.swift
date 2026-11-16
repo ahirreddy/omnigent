@@ -45,8 +45,9 @@
       defer { surface.screen.close() }
       let controller = surface.controller
       #expect(await surface.ready())
-      // The terminal with the keyboard draws on every display refresh.
-      controller.focus()
+      // Without the keyboard the terminal draws only when its content changes, so every frame
+      // comes from the output under test; a blinking cursor would add frames of its own.
+      #expect(surface.screen.window.makeFirstResponder(nil))
       #expect(await surface.settles { Self.shown(controller) != nil })
       try await Task.sleep(for: .milliseconds(300))
       var drawnOver = 0
@@ -66,6 +67,20 @@
       #expect(surfaces.count > 1, "the bursts' frames reach the layer")
       controller.render(.bytes(Array("\r\nall output parsed".utf8)))
       #expect(await surface.settles { controller.visibleText().contains("all output parsed") })
+    }
+
+    /// Held output waits for the count of frames on the layer to move, not for its limit.
+    @Test("each frame libghostty puts on the layer is counted")
+    func framesOnTheLayerAreCounted() async throws {
+      let surface = try WindowedSurface(width: 640, height: 400)
+      defer { surface.screen.close() }
+      let controller = surface.controller
+      #expect(await surface.ready())
+      for marker in 1...3 {
+        let before = controller.framesShown
+        controller.render(.bytes(Self.screen(marker, grid: controller.gridSize)))
+        #expect(await surface.settles { controller.framesShown > before }, "frame \(marker)")
+      }
     }
   }
 #endif

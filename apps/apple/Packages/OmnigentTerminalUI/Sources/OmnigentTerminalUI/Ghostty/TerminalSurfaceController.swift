@@ -39,17 +39,19 @@ private nonisolated func ghosttyIOWrite(
 }
 
 #if os(macOS)
-  /// Frames each surface's renderer has begun, by its controller's address. Only registered
-  /// surfaces count; libghostty reports frames on its renderer thread.
-  private nonisolated let drawnFrameCounts = Mutex<[UInt: Int]>([:])
+  /// Times each surface's renderer has taken the terminal's state for a frame, by its
+  /// controller's address. Only registered surfaces count; libghostty reports them on its
+  /// renderer thread.
+  private nonisolated let frameUpdateCounts = Mutex<[UInt: Int]>([:])
 
-  /// libghostty's `renderer_event_cb`: runs on the surface's renderer thread.
+  /// libghostty's `renderer_event_cb`: runs on the surface's renderer thread. Draws are not
+  /// counted: with the keyboard, a draw that changes nothing runs on every display refresh.
   private nonisolated func ghosttyRendererEvent(
     _ userdata: UnsafeMutableRawPointer?, _ event: ghostty_renderer_event_e
   ) {
-    guard event == GHOSTTY_RENDERER_EVENT_DRAW_FRAME_BEGIN else { return }
+    guard event == GHOSTTY_RENDERER_EVENT_UPDATE_FRAME_END else { return }
     let key = UInt(bitPattern: userdata)
-    drawnFrameCounts.withLock { counts in
+    frameUpdateCounts.withLock { counts in
       if let count = counts[key] { counts[key] = count + 1 }
     }
   }
@@ -118,6 +120,9 @@ public final class TerminalSurfaceController {
     @ObservationIgnored let view: TerminalSurfaceNSView
     /// Output waiting for the frame in flight to reach the layer (``TerminalOutputPacer``).
     @ObservationIgnored private var pacer: TerminalOutputPacer?
+    /// Frames libghostty has put on the view's layer.
+    @ObservationIgnored private(set) var framesShown = 0
+    @ObservationIgnored private var contentsObservation: NSKeyValueObservation?
   #else
     /// The view the surface renders into.
     @ObservationIgnored let view: TerminalSurfaceUIView
@@ -175,9 +180,9 @@ public final class TerminalSurfaceController {
       unsafe ghostty_surface_free(surface)
     }
     #if os(macOS)
-      // After the free: the renderer thread that counts frames has stopped.
-      let key = drawCountKey
-      drawnFrameCounts.withLock { $0[key] = nil }
+      // After the free: the renderer thread that counts updates has stopped.
+      let key = UInt(bitPattern: ObjectIdentifier(self))
+      frameUpdateCounts.withLock { $0[key] = nil }
     #endif
   }
 
@@ -302,20 +307,20 @@ public final class TerminalSurfaceController {
   }
 
   #if os(macOS)
-    /// This surface's key in `drawnFrameCounts`: the address its callbacks receive.
-    private var drawCountKey: UInt {
-      unsafe UInt(bitPattern: Unmanaged.passUnretained(self).toOpaque())
-    }
-
     /// Paces output to the frames that reach the layer. Out of a window nothing is shown, so
     /// output is parsed as it comes.
     private func makePacer() -> TerminalOutputPacer {
-      let key = drawCountKey
-      drawnFrameCounts.withLock { $0[key] = 0 }
+      // The address the surface's callbacks receive as their userdata.
+      let key = UInt(bitPattern: ObjectIdentifier(self))
+      frameUpdateCounts.withLock { $0[key] = 0 }
+      contentsObservation = view.layer?.observe(\.contents) { [weak self] _, _ in
+        guard Thread.isMainThread else { return }
+        MainActor.assumeIsolated { self?.framesShown += 1 }
+      }
       let view = view
       let probe = TerminalFrameProbe(
-        drawnFrames: { drawnFrameCounts.withLock { $0[key] ?? 0 } },
-        shownFrame: { view.layer?.contents.map { ObjectIdentifier($0 as AnyObject) } },
+        updatedFrames: { frameUpdateCounts.withLock { $0[key] ?? 0 } },
+        shownFrames: { [weak self] in self?.framesShown ?? 0 },
         isInWindow: { unsafe view.window != nil })
       return TerminalOutputPacer(
         probe: probe, feed: { [weak self] bytes in self?.parse(bytes) },
