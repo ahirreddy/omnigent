@@ -104,6 +104,21 @@
           == (drawn.size.height + Theme.Spacing.small + Theme.Spacing.row).rounded(.up))
     }
 
+    @Test("With runs drawn ahead, a short prompt is drawn at once instead of shown live")
+    func shortRunDrawsNow() throws {
+      let style = textStyle()
+      style.surface = .raster
+      style.setScale(2)
+      let cell = TranscriptTableTextCell(style: style)
+      cell.show(row(TranscriptFixture.user("u-short", "Short?")), version: 0, width: Self.width)
+      #expect(cell.texts.isEmpty)
+      guard case .raster(let view)? = cell.runs.first else {
+        Issue.record("the prompt shows live")
+        return
+      }
+      #expect(view.raster.size.usedWidth < 100)
+    }
+
     @Test("A user's prompt hugs its text in a bubble at the column's trailing edge")
     func promptSizing() throws {
       let cell = TranscriptTableTextCell(style: textStyle())
