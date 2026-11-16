@@ -172,6 +172,32 @@
       #expect(split.pieces.map(\.gapAbove) == [0, 16, 16, 16])
     }
 
+    @Test(
+      "A list or quote holding display math, a diagram, an image or a wide table stays whole",
+      arguments: [
+        "- item\n\n  $$\n  x^2\n  $$",
+        "> ```mermaid\n> graph TD\n>   A --> B\n> ```",
+        "- ![chart](data:image/png;base64,AAAA)",
+        "> | Notes |\n> | --- |\n> | \(String(repeating: "wide words ", count: 60)) |",
+        "- outer\n\n  > ![chart](data:image/png;base64,AAAA)",
+      ])
+    func nestedBlocks(markdown: String) {
+      let blocks = MarkdownParser.parse("Intro.\n\n\(markdown)\n\nOutro.")
+      let split = MessageTextSplit(blocks, ramp: MessageTextFixture.ramp)
+      let kinds = split.pieces.map { piece -> String in
+        switch piece.content {
+        case .text(let blocks): "text \(blocks.count)"
+        case .block(.list): "list"
+        case .block(.quote): "quote"
+        case .block: "other"
+        }
+      }
+      #expect(kinds == ["text 1", markdown.hasPrefix(">") ? "quote" : "list", "text 1"])
+      let textOnly = MarkdownParser.parse(
+        "- item\n\n  > quoted\n\n  | a | b |\n  | - | - |\n  | 1 | 2 |")
+      #expect(MessageTextSplit(textOnly, ramp: MessageTextFixture.ramp).pieces.count == 1)
+    }
+
     @Test("A rule is a line of its own; a last empty line keeps a space so it keeps its style")
     func ruleAndEnds() throws {
       let document = MessageTextFixture.document("Above\n\n---\n\nBelow")
@@ -191,7 +217,10 @@
       arguments: [
         ("- one\n- two\n  - nested\n\n3. three", "one\ntwo\nnested\nthree"),
         ("- [x] done\n- [ ] open", "done\nopen"),
-        ("Before\n\n```swift\nlet a = 1\n\nlet b = 2\n```\n\nAfter", "Before\nlet a = 1\n\nlet b = 2\nAfter"),
+        (
+          "Before\n\n```swift\nlet a = 1\n\nlet b = 2\n```\n\nAfter",
+          "Before\nlet a = 1\n\nlet b = 2\nAfter"
+        ),
         ("Above\n\n---\n\nBelow", "Above\nBelow"),
         ("- ```\n  x\n  ```\n- y", "x\ny"),
         ("| A | B |\n| --- | --- |\n| 1 | 2 |", "A\tB\n1\t2"),

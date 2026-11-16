@@ -1,9 +1,10 @@
+import SwiftUI
+
 #if canImport(AppKit)
   import AppKit
 #else
   import UIKit
 #endif
-import SwiftUI
 
 /// The design system's metrics the builder sets text with, as constants it can read off the
 /// main actor; a test checks they match `Theme`'s.
@@ -144,11 +145,11 @@ nonisolated struct MessageTextBuilder {
     case .html(let raw):
       lines(raw, font: palette.codeFont, color: palette.secondary, in: context)
     case .image(_, let alt):
-      // An image in a list or quote; a message's own images are blocks beside its text.
+      // The split keeps images, display math and lists holding them out of the text; this
+      // only draws blocks given to the builder directly.
       let label = alt.isEmpty ? "[Image]" : "[Image: \(alt)]"
       lines(label, font: palette.font(size: ramp.body), color: palette.secondary, in: context)
     case .math(let tex):
-      // Display math in a list or quote, in its Unicode form.
       lines(
         MathText.unicode(tex), font: palette.math(size: ramp.body), color: context.color,
         in: context)

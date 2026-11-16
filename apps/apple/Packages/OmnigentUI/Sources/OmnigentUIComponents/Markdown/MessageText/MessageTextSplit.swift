@@ -38,9 +38,14 @@ nonisolated struct MessageTextSplit {
     cited = MarkdownBlock.citedPaths(in: blocks)
   }
 
+  /// Whether `block` draws as text. A list or quote holding a block that can't stays whole,
+  /// drawn as ``MarkdownView`` draws it.
   static func drawsAsText(_ block: MarkdownBlock, ramp: TypeRamp) -> Bool {
     switch block {
-    case .paragraph, .heading, .quote, .list, .rule, .html: true
+    case .paragraph, .heading, .rule, .html: true
+    case .quote(let blocks): blocks.allSatisfy { drawsAsText($0, ramp: ramp) }
+    case .list(_, _, let items):
+      items.allSatisfy { $0.blocks.allSatisfy { drawsAsText($0, ramp: ramp) } }
     case .code(let language, _): CodeHighlighting.fenceName(language) != "mermaid"
     case .table(let table): MessageTableColumns.fits(table, ramp: ramp)
     case .image, .math: false
