@@ -5,11 +5,14 @@
 # style and prints medians (see apps/apple/docs/performance.md). From the repository root:
 #
 #   bash apps/apple/Tools/perf/scroll-bench.sh [--runs N] [--styles "chat cli"]
-#        [--scenarios a,b] [--scrollers overlay|legacy] [--sample] [--skip-build]
+#        [--scenarios a,b] [--scrollers overlay|legacy] [--lists "stack table"] [--sample]
+#        [--skip-build]
 #
 # Scrollers are overlay ones, as on a Mac with a trackpad, unless --scrollers legacy (a mouse's,
-# a VM's default). --sample also samples both passes of each scenario once more and prints where
-# the main thread's time went (sample-breakdown.py). In the shared test VMs, as one job:
+# a VM's default). --lists compares transcript lists in one job: each run launches once per list
+# (`-omnigent:transcript-list <list>`), and the medians are per list. --sample also samples both
+# passes of each scenario once more and prints where the main thread's time went
+# (sample-breakdown.py). In the shared test VMs, as one job:
 #   ~/src/omnigent-vm/vmq submit --priority high --only laptop-w1 --tree "$PWD" \
 #     --label "scroll bench" -- bash apps/apple/Tools/perf/scroll-bench.sh
 set -uo pipefail
@@ -19,13 +22,14 @@ die() {
   exit 1
 }
 
-runs=3 styles="chat cli" scenarios="" sample=0 build=1 scrollers=overlay
+runs=3 styles="chat cli" scenarios="" sample=0 build=1 scrollers=overlay lists=""
 while (($#)); do
   case "$1" in
     --runs) runs=$2; shift 2 ;;
     --styles) styles=$2; shift 2 ;;
     --scenarios) scenarios=$2; shift 2 ;;
     --scrollers) scrollers=$2; shift 2 ;;
+    --lists) lists=$2; shift 2 ;;
     --sample) sample=1; shift ;;
     --skip-build) build=0; shift ;;
     *) die "unknown argument $1" ;;
@@ -106,6 +110,7 @@ for style in $styles; do
   echo "== scroll, $style style"
   options=(--app "$app" --fresh-state --scrollers "$scrollers" --style "$style" --runs "$runs")
   [[ -n "$scenarios" ]] && options+=(--scenarios "$scenarios")
+  [[ -n "$lists" ]] && options+=(--lists "${lists// /,}")
   ((sample)) && options+=(--sample 1)
   .venv/bin/python apps/apple/Tools/perf/perf.py scroll "${options[@]}" || status=1
   # What the last run left built: the AppKit views in the transcript, by class.

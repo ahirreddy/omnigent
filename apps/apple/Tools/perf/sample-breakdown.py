@@ -26,6 +26,13 @@ APP = re.compile(r"\(in Omnigent\)")
 
 # (category, rule), most specific first.
 CATEGORIES: list[tuple[str, re.Pattern[str]]] = [
+    # The table list (`-omnigent:transcript-list table`): rows measured before they show or
+    # while idle, and the table asking for a row's cell.
+    ("table: rows measured", re.compile(r"TranscriptTableController\.(measure|prefetch)")),
+    (
+        "table: cells filled and rows placed",
+        re.compile(r"TranscriptTableController\.tableView|TranscriptTableCell\.show"),
+    ),
     (
         "AppKit views per text (selection overlays, link areas)",
         re.compile(

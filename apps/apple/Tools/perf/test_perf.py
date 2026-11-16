@@ -151,6 +151,27 @@ class SampleTests(unittest.TestCase):
         )
 
 
+class ScrollBenchTests(unittest.TestCase):
+    def test_each_run_launches_every_list_in_turn(self):
+        self.assertEqual(
+            perf.bench_order(["a", "b"], 2, ["stack", "table"]),
+            [
+                ("a", "stack"),
+                ("a", "table"),
+                ("a", "stack"),
+                ("a", "table"),
+                ("b", "stack"),
+                ("b", "table"),
+                ("b", "stack"),
+                ("b", "table"),
+            ],
+        )
+
+    def test_a_list_is_a_launch_argument_and_the_default_none(self):
+        self.assertEqual(perf.list_args("table"), ["-omnigent:transcript-list", "table"])
+        self.assertEqual(perf.list_args(None), [])
+
+
 class SessionTests(unittest.TestCase):
     def test_long_session_ids_match_the_seed(self):
         plans = seed.plan_sessions(0, 2, 500)
