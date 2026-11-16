@@ -119,6 +119,30 @@ struct TranscriptBenchmarks {
     }
   }
 
+  @Test(
+    "benchmark: the turn rail's active turn per change of the rows on screen",
+    .enabled(if: isEnabled))
+  func activeTurn() {
+    let state = Self.conversation(Self.rows(turns: 1_000), running: false)
+    let memo = TranscriptLayoutMemo()
+    let model = TurnRailModel()
+    model.setTurns(memo.turns(for: state))
+    let order = memo.rowIDs(for: state, isCLI: false)
+    // A screen of rows at each of 200 places down the transcript.
+    let screens = (0..<200).map { place in Set(order[(place * order.count / 200)...].prefix(12)) }
+    let walk = Self.perCall(screens.count) { index in
+      _ = TurnRailModel.activeTurn(
+        order: memo.entries(for: state).map(\.id), turns: Set(model.turns.map(\.id)),
+        visible: screens[index])
+    }
+    let kept = Self.perCall(screens.count) { index in
+      model.setActive(order: memo.rowIDs(for: state, isCLI: false), visible: screens[index])
+    }
+    print(
+      "benchmark: active turn over \(order.count) rows: walking them \(Self.format(walk)) ms, "
+        + "kept places \(Self.format(kept)) ms")
+  }
+
   @Test("benchmark: markdown parse per answer, uncached", .enabled(if: isEnabled))
   func markdownParse() {
     let answers = (1...200).map(Self.answer)

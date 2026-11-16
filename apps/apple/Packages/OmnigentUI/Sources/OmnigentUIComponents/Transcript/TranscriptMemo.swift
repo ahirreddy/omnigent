@@ -85,6 +85,8 @@ final class TranscriptLayoutMemo {
   /// The turns after the prefix's, and whether ``cachedTurns`` start with the prefix's.
   private var tailTurns: [TranscriptTurn] = []
   private var turnsUsePrefix = false
+  /// The ids ``rowIDs(for:isCLI:)`` returns, and the style they are for.
+  private var cachedIDs: (isCLI: Bool, ids: [String])?
   /// How many times the layout was computed, for tests.
   private(set) var computations = 0
   /// How many of those reused the folded prefix, for tests.
@@ -124,6 +126,16 @@ final class TranscriptLayoutMemo {
     return cachedBlocks
   }
 
+  /// The rows' ids, top to bottom (the CLI blocks' in the CLI style): the same array while the
+  /// inputs and the style are unchanged.
+  func rowIDs(for state: ConversationViewState, isCLI: Bool) -> [String] {
+    refresh(state)
+    if let cachedIDs, cachedIDs.isCLI == isCLI { return cachedIDs.ids }
+    let ids = isCLI ? blocks(for: state).map(\.id) : cachedEntries.map(\.id)
+    cachedIDs = (isCLI, ids)
+    return ids
+  }
+
   private static func cliBlocks(
     _ entries: ArraySlice<SegmentEntry>, state: ConversationViewState, lastAnswerID: String?,
     closesLastTurn: Bool = false
@@ -148,6 +160,7 @@ final class TranscriptLayoutMemo {
     computations += 1
     cachedBlocks = []
     hasBlocks = false
+    cachedIDs = nil
     entriesUsePrefix = false
     let reusedPrefix = layOut(state, isRunning: current.isRunning)
     updateTurns(reusedPrefix: reusedPrefix)
