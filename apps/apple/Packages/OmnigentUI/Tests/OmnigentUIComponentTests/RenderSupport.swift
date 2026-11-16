@@ -3,8 +3,24 @@
   import Foundation
   import OmnigentViewTesting
   import SwiftUI
+  import Testing
 
   @testable import OmnigentUIComponents
+
+  extension Tag {
+    /// A test that renders a whole catalog of images: CPU-bound minutes, so the edit loop skips
+    /// it and the full and coverage runs keep it.
+    @Tag static var slowLane: Self
+  }
+
+  extension Trait where Self == ConditionTrait {
+    /// Skips a ``Tag/slowLane`` test where `OMNIGENT_SKIP_SLOW_TESTS=1`, as the edit loop sets.
+    static var slowLane: Self {
+      .disabled(
+        if: ProcessInfo.processInfo.environment["OMNIGENT_SKIP_SLOW_TESTS"] == "1",
+        "slow lane: renders the whole catalog; runs in the full and coverage runs")
+    }
+  }
 
   /// Renders SwiftUI views offscreen through a real `NSHostingView` in a borderless window, so
   /// AppKit-backed controls (lists, text fields, menus) draw as they do in the app, which

@@ -5,8 +5,9 @@
   /// time. A duration passed to them is only a limit, reached when work keeps coming.
   ///
   /// At rest means a few short run loop turns in a row did no work: no source or event was
-  /// handled and the given windows had no layout pending and drew nothing. A turn never sleeps,
-  /// so coarse timers (a VM's wake 15 to 90 ms late) don't stretch it. Work still to come at a
+  /// handled and the given windows had no layout pending and drew nothing. A turn waits in the
+  /// run loop as it normally does; `OMNIGENT_WAIT_TURNS=poll` makes it poll instead, where
+  /// coarse timers (a VM's wake 15 to 90 ms late with timer coalescing on) would stretch it. Work still to come at a
   /// later time, a timer or a `Task.sleep`, is not waited for, except that ``settleTasks`` waits
   /// out the views' own timed pauses (`Theme.Timing`): wait for anything else's effect with
   /// ``waitUntil(timeout:windows:idleRecheck:_:)``, or for the time with ``run(for:)``.
@@ -138,7 +139,7 @@
     /// - Parameter seconds: How long to run.
     public static func run(for seconds: TimeInterval) {
       let start = CFAbsoluteTimeGetCurrent()
-      _ = poll(until: start + seconds)
+      if WaitStats.sleepingTurns { spin(seconds) } else { _ = poll(until: start + seconds) }
       WaitStats.record("run(for:)", since: start, reachedLimit: true)
     }
 

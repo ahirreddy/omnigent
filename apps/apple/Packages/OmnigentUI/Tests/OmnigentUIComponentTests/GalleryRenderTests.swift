@@ -167,7 +167,9 @@
       }
     }
 
-    @Test("renders in light and dark at Mac and compact widths", arguments: surfaces)
+    @Test(
+      "renders in light and dark at Mac and compact widths", .tags(.slowLane), .slowLane,
+      arguments: surfaces)
     func render(surface: Surface) throws {
       for layout in [LayoutWidth.regular, .compact] {
         let width = layout == .regular ? surface.regular.width : 390

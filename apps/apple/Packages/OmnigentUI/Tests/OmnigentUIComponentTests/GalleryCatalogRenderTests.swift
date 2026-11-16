@@ -18,28 +18,36 @@
     /// How many parts the catalog renders in.
     static let partCount = 8
 
-    @Test("every entry renders in both appearances, part 1") func renderPart1() async throws {
+    @Test("every entry renders in both appearances, part 1", .tags(.slowLane), .slowLane)
+    func renderPart1() async throws {
       try await renderPart(0)
     }
-    @Test("every entry renders in both appearances, part 2") func renderPart2() async throws {
+    @Test("every entry renders in both appearances, part 2", .tags(.slowLane), .slowLane)
+    func renderPart2() async throws {
       try await renderPart(1)
     }
-    @Test("every entry renders in both appearances, part 3") func renderPart3() async throws {
+    @Test("every entry renders in both appearances, part 3", .tags(.slowLane), .slowLane)
+    func renderPart3() async throws {
       try await renderPart(2)
     }
-    @Test("every entry renders in both appearances, part 4") func renderPart4() async throws {
+    @Test("every entry renders in both appearances, part 4", .tags(.slowLane), .slowLane)
+    func renderPart4() async throws {
       try await renderPart(3)
     }
-    @Test("every entry renders in both appearances, part 5") func renderPart5() async throws {
+    @Test("every entry renders in both appearances, part 5", .tags(.slowLane), .slowLane)
+    func renderPart5() async throws {
       try await renderPart(4)
     }
-    @Test("every entry renders in both appearances, part 6") func renderPart6() async throws {
+    @Test("every entry renders in both appearances, part 6", .tags(.slowLane), .slowLane)
+    func renderPart6() async throws {
       try await renderPart(5)
     }
-    @Test("every entry renders in both appearances, part 7") func renderPart7() async throws {
+    @Test("every entry renders in both appearances, part 7", .tags(.slowLane), .slowLane)
+    func renderPart7() async throws {
       try await renderPart(6)
     }
-    @Test("every entry renders in both appearances, part 8") func renderPart8() async throws {
+    @Test("every entry renders in both appearances, part 8", .tags(.slowLane), .slowLane)
+    func renderPart8() async throws {
       try await renderPart(7)
     }
 
