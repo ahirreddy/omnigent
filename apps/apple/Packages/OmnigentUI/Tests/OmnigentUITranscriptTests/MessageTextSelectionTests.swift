@@ -91,6 +91,31 @@
       #expect(text.selectedRange().length == 0)
     }
 
+    @Test("Copy and Reply leave a list's markers and a code block's header line out")
+    func copiesWithoutMarkers() async throws {
+      let log = HostLog()
+      let markdown = "Intro.\n\n- first\n- [x] second\n\n```swift\nlet a = 1\n```"
+      let screen = transcriptScreen(
+        ScrollView {
+          MessageMarkdown(text: markdown).environment(\.messageTextRenderer, .textKit)
+            .padding(.top, 60).padding(.horizontal, 40)
+        }
+        .transcriptSelectionPopup(reply: { log.add($0) }, ask: nil),
+        width: 520, height: 400)
+      defer { screen.close() }
+      restKeyboard(screen)
+      let text = try #require(MessageTextFixture.contentViews(in: screen).first).textView
+      screen.window.makeFirstResponder(text)
+      text.setSelectedRange(NSRange(location: 0, length: text.string.utf16.count))
+      try await announceSelection(screen)
+      let expected = "Intro.\nfirst\nsecond\nlet a = 1"
+      let pasteboard = SystemSideEffects.pasteboard
+      #expect(text.writeSelection(to: pasteboard, types: text.writablePasteboardTypes))
+      #expect(pasteboard.string(forType: .string) == expected)
+      try screen.clickControl(at: 0)
+      #expect(log.entries == [expected])
+    }
+
     @Test("An answer row draws its text in one TextKit view with the TextKit renderer")
     func messageRow() throws {
       let row = TranscriptFixture.answer("a1", "First paragraph.\n\n- an item\n\nLast paragraph.")

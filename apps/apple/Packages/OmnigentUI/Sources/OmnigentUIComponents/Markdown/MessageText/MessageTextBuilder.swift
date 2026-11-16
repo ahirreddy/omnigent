@@ -1,10 +1,9 @@
-import SwiftUI
-
 #if canImport(AppKit)
   import AppKit
 #else
   import UIKit
 #endif
+import SwiftUI
 
 /// The design system's metrics the builder sets text with, as constants it can read off the
 /// main actor; a test checks they match `Theme`'s.
@@ -93,6 +92,8 @@ nonisolated struct MessageTextBuilder {
     /// Its line's extra height goes under its glyphs, as SwiftUI sets text; a line with no
     /// text (a code block's header, a rule) takes it all as line height.
     var spacesUnderGlyphs = true
+    /// A line with no text of its own, which a copy leaves out with its line break.
+    var isPlaceholder = false
   }
 
   /// The document for `blocks`.
@@ -184,7 +185,7 @@ nonisolated struct MessageTextBuilder {
         content: space(font), lineHeight: 1 + 2 * MessageTextMetrics.extraSmall, font: font,
         indent: context.indent,
         mark: MessageBlockMark(block: lastBlock, role: .rule, indent: context.indent),
-        spacesUnderGlyphs: false),
+        spacesUnderGlyphs: false, isPlaceholder: true),
       in: context)
   }
 
@@ -241,6 +242,7 @@ nonisolated extension MessageTextBuilder {
       style.paragraphSpacingBefore = 0
     }
     let content = NSMutableAttributedString()
+    var markerLength = 0
     if let marker = pendingMarker {
       pendingMarker = nil
       let tab = NSAttributedString(string: "\t", attributes: [.font: paragraph.font])
@@ -253,6 +255,7 @@ nonisolated extension MessageTextBuilder {
           NSTextTab(textAlignment: .right, location: marker.end),
           NSTextTab(textAlignment: .left, location: paragraph.indent),
         ] + paragraph.tabs
+      markerLength = content.length
     }
     content.append(paragraph.content)
     let start = output.length
@@ -261,9 +264,19 @@ nonisolated extension MessageTextBuilder {
     let range = NSRange(location: start, length: output.length - start)
     output.addAttribute(.paragraphStyle, value: style, range: range)
     if let mark = paragraph.mark { output.addAttribute(.messageBlock, value: mark, range: range) }
+    omitFromCopy(range, markerLength: markerLength, isPlaceholder: paragraph.isPlaceholder)
     if !context.quotes.isEmpty {
       output.addAttribute(.messageQuotes, value: MessageQuoteMarks(context.quotes), range: range)
     }
+  }
+
+  /// Leaves a list marker or a placeholder line out of a copy, as the SwiftUI renderer's marker
+  /// isn't part of its text.
+  private func omitFromCopy(_ range: NSRange, markerLength: Int, isPlaceholder: Bool) {
+    let omitted =
+      isPlaceholder ? range : NSRange(location: range.location, length: markerLength)
+    guard omitted.length > 0 else { return }
+    output.addAttribute(.messageCopy, value: MessageCopyText.omitted, range: omitted)
   }
 
   /// The height of a line's glyphs in `font`, at most `lineHeight`.

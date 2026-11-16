@@ -1,10 +1,9 @@
-import SwiftUI
-
 #if canImport(AppKit)
   import AppKit
 #else
   import UIKit
 #endif
+import SwiftUI
 
 // MARK: Lists
 
@@ -28,7 +27,7 @@ nonisolated extension MessageTextBuilder {
         emit(
           Paragraph(
             content: NSAttributedString(), lineHeight: ramp.bodyLineHeight, font: font,
-            indent: inner.indent), in: inner)
+            indent: inner.indent, isPlaceholder: true), in: inner)
       }
       append(item.blocks, in: inner)
     }
@@ -81,7 +80,7 @@ nonisolated extension MessageTextBuilder {
         content: space(palette.sectionFont), lineHeight: Self.codeHeaderHeight + 1,
         font: palette.sectionFont, indent: context.indent,
         mark: MessageBlockMark(block: block, role: .codeHeader, indent: context.indent),
-        spacesUnderGlyphs: false),
+        spacesUnderGlyphs: false, isPlaceholder: true),
       in: context)
     let font = palette.codeFont
     let colored = highlighted(code, language: language, font: font)

@@ -1,17 +1,50 @@
-import Foundation
-import Synchronization
-
 #if canImport(AppKit)
   import AppKit
 #else
   import UIKit
 #endif
+import Foundation
+import Synchronization
 
 nonisolated extension NSAttributedString.Key {
   /// The block a paragraph belongs to, for the layers and controls drawn with it.
   static let messageBlock = NSAttributedString.Key("omnigent.messageBlock")
   /// The quotes a paragraph sits in, for their bars.
   static let messageQuotes = NSAttributedString.Key("omnigent.messageQuotes")
+  /// What a copy gives for this text instead (``MessageCopyText``): nothing for a list marker
+  /// or a code header's line, the Unicode form for typeset math.
+  static let messageCopy = NSAttributedString.Key("omnigent.messageCopy")
+}
+
+/// The text a copy gives for a range of message text. Each is its own object, so two pieces
+/// side by side stay apart.
+nonisolated final class MessageCopyText: NSObject {
+  let text: String
+
+  init(_ text: String) {
+    self.text = text
+  }
+
+  /// Copies as nothing.
+  static var omitted: MessageCopyText { MessageCopyText("") }
+}
+
+nonisolated extension NSAttributedString {
+  /// The plain text a copy of `range` gives, as the SwiftUI renderer's texts would: no list
+  /// markers or placeholder lines, and typeset math as its Unicode form.
+  func messageCopyText(in range: NSRange) -> String {
+    let range = NSIntersectionRange(range, NSRange(location: 0, length: length))
+    var copied = ""
+    // The block's third argument is AppKit's stop pointer, unused here.
+    unsafe enumerateAttribute(.messageCopy, in: range) { value, run, _ in
+      if let replacement = value as? MessageCopyText {
+        copied += replacement.text
+      } else {
+        copied += attributedSubstring(from: run).string.replacing("\u{FFFC}", with: "")
+      }
+    }
+    return copied
+  }
 }
 
 /// What one paragraph of message text is part of: a code block's header or line, a table row

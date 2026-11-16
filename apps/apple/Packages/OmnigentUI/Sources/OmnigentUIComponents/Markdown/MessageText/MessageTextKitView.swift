@@ -30,6 +30,27 @@
       }
     }
 
+    /// The plain text a copy of `range` gives: without list markers, placeholder lines or
+    /// attachment characters (``NSAttributedString/messageCopyText(in:)``).
+    func copiedText(in range: NSRange) -> String {
+      textContentStorage?.attributedString?.messageCopyText(in: range) ?? ""
+    }
+
+    /// The selection's copied text, its ranges a line apart.
+    var copiedSelection: String {
+      selectedRanges.map { copiedText(in: $0.rangeValue) }.joined(separator: "\n")
+    }
+
+    override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType])
+      -> Bool
+    {
+      let plain = types.filter { $0 == .string || $0.rawValue == "NSStringPboardType" }
+      guard !plain.isEmpty, selectedRange().length > 0 else { return false }
+      pboard.declareTypes(plain, owner: nil)
+      let text = copiedSelection
+      return plain.allSatisfy { pboard.setString(text, forType: $0) }
+    }
+
     override func resignFirstResponder() -> Bool {
       let resigned = super.resignFirstResponder()
       // One selection in the transcript at a time: a click elsewhere ends this one.

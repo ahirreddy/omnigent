@@ -186,6 +186,31 @@
       #expect(trailing.text.string == "Above\n ")
     }
 
+    @Test(
+      "A copy gives the SwiftUI renderer's plain text: no markers, task boxes or placeholder lines",
+      arguments: [
+        ("- one\n- two\n  - nested\n\n3. three", "one\ntwo\nnested\nthree"),
+        ("- [x] done\n- [ ] open", "done\nopen"),
+        ("Before\n\n```swift\nlet a = 1\n\nlet b = 2\n```\n\nAfter", "Before\nlet a = 1\n\nlet b = 2\nAfter"),
+        ("Above\n\n---\n\nBelow", "Above\nBelow"),
+        ("- ```\n  x\n  ```\n- y", "x\ny"),
+        ("| A | B |\n| --- | --- |\n| 1 | 2 |", "A\tB\n1\t2"),
+      ])
+    func copiedText(markdown: String, copied: String) {
+      let text = MessageTextFixture.document(markdown).text
+      let whole = text.messageCopyText(in: NSRange(location: 0, length: text.length))
+      #expect(whole.trimmingCharacters(in: .newlines) == copied, "\(text.string)")
+    }
+
+    @Test("A copy of part of a list item leaves its marker out")
+    func copiedPart() {
+      let text = MessageTextFixture.document("- first item\n- second item").text
+      let start = MessageTextFixture.offset(of: "item", in: text)
+      let end = MessageTextFixture.offset(of: "second", in: text) + 6
+      let copied = text.messageCopyText(in: NSRange(location: start, length: end - start))
+      #expect(copied == "item\nsecond")
+    }
+
     @Test("Equal text and style build one document, shared")
     func sharedDocuments() {
       let key = MessageTextDocumentKey(
