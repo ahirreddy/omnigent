@@ -59,8 +59,9 @@
       return found
     }
 
-    /// Clicks a point of the open popover's window with a real mouse down and up, letting an
-    /// AppKit control that tracks the mouse inside its mouse down see the up, as `click` does.
+    /// Clicks a point of the open popover's window with a real mouse down and up, as `click`
+    /// does: a control that tracks the mouse inside its down sees the up, and any other gets it
+    /// once the down returns, also when a busy main thread fired the up's timer first.
     func clickInPopover(at location: CGPoint) throws {
       guard let popover = popoverWindow else { throw OffscreenWindowError.notFound("popover") }
       func event(_ type: NSEvent.EventType, delay: TimeInterval) throws -> NSEvent {
@@ -74,17 +75,8 @@
       }
       let down = try event(.leftMouseDown, delay: 0)
       let mouseUp = try event(.leftMouseUp, delay: 0.03)
-      nonisolated(unsafe) let trackedUp = mouseUp
-      let release = Timer(timeInterval: 0.03, repeats: false) { _ in
-        MainActor.assumeIsolated { NSApp.postEvent(unsafe trackedUp, atStart: false) }
-      }
-      RunLoop.main.add(release, forMode: .common)
       popover.makeKey()
-      send(down, to: popover)
-      if release.isValid {
-        release.invalidate()
-        send(mouseUp, to: popover)
-      }
+      press(down, releasedBy: mouseUp, in: popover) { false }
       // An up that tracking never took would end the next button's tracking early.
       NSApp.discardEvents(matching: .leftMouseUp, before: nil)
       settle(0.2)
