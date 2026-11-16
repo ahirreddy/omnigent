@@ -43,10 +43,13 @@ nonisolated struct MessageTextStyle: Hashable, Sendable {
   var codeSurface: Color.Resolved
   var hover: Color.Resolved
   var border: Color.Resolved
+  /// The display's pixels per point, which SwiftUI rounds a line's baseline to.
+  var scale: CGFloat
 
   @MainActor init(environment: EnvironmentValues, code: MessageCodeFont) {
     ramp = environment.typeRamp
     self.code = code
+    scale = environment.displayScale
     isDark = environment.colorScheme == .dark
     func resolved(_ color: ThemeColor) -> Color.Resolved {
       color.resolve(in: environment).resolve(in: environment)

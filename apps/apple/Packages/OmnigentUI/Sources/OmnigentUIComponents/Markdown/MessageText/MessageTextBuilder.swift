@@ -221,7 +221,8 @@ nonisolated extension MessageTextBuilder {
     // its first line for the one under the paragraph before.
     let glyphs =
       paragraph.spacesUnderGlyphs
-      ? Self.glyphHeight(paragraph.font, lineHeight: paragraph.lineHeight)
+      ? Self.glyphHeight(
+        paragraph.font, lineHeight: paragraph.lineHeight, scale: palette.style.scale)
       : paragraph.lineHeight
     let extra = paragraph.lineHeight - glyphs
     style.minimumLineHeight = glyphs
@@ -243,21 +244,7 @@ nonisolated extension MessageTextBuilder {
       style.paragraphSpacingBefore = 0
     }
     let content = NSMutableAttributedString()
-    var markerLength = 0
-    if let marker = pendingMarker {
-      pendingMarker = nil
-      let tab = NSAttributedString(string: "\t", attributes: [.font: paragraph.font])
-      content.append(tab)
-      content.append(marker.text)
-      content.append(tab)
-      style.firstLineHeadIndent = marker.start
-      style.tabStops =
-        [
-          NSTextTab(textAlignment: .right, location: marker.end),
-          NSTextTab(textAlignment: .left, location: paragraph.indent),
-        ] + paragraph.tabs
-      markerLength = content.length
-    }
+    let markerLength = takeMarker(into: content, style: style, for: paragraph)
     content.append(paragraph.content)
     let start = output.length
     output.append(content)
@@ -271,6 +258,27 @@ nonisolated extension MessageTextBuilder {
     }
   }
 
+  /// Starts `content` with the list marker waiting for it, if any, between tabs that hang it in
+  /// its column; returns its length.
+  private mutating func takeMarker(
+    into content: NSMutableAttributedString, style: NSMutableParagraphStyle,
+    for paragraph: Paragraph
+  ) -> Int {
+    guard let marker = pendingMarker else { return 0 }
+    pendingMarker = nil
+    let tab = NSAttributedString(string: "\t", attributes: [.font: paragraph.font])
+    content.append(tab)
+    content.append(marker.text)
+    content.append(tab)
+    style.firstLineHeadIndent = marker.start
+    style.tabStops =
+      [
+        NSTextTab(textAlignment: .right, location: marker.end),
+        NSTextTab(textAlignment: .left, location: paragraph.indent),
+      ] + paragraph.tabs
+    return content.length
+  }
+
   /// Leaves a list marker or a placeholder line out of a copy, as the SwiftUI renderer's marker
   /// isn't part of its text.
   private func omitFromCopy(_ range: NSRange, markerLength: Int, isPlaceholder: Bool) {
@@ -281,8 +289,12 @@ nonisolated extension MessageTextBuilder {
   }
 
   /// The height of a line's glyphs in `font`, at most `lineHeight`.
-  static func glyphHeight(_ font: PlatformFont, lineHeight: CGFloat) -> CGFloat {
-    min(lineHeight, (font.ascender - font.descender).rounded(.up))
+  /// SwiftUI's exact line height sets the baseline the font's size below the line's top, on
+  /// the pixel; TextKit sets it the font's descent, to the point, above the glyphs' bottom.
+  static func glyphHeight(_ font: PlatformFont, lineHeight: CGFloat, scale: CGFloat) -> CGFloat {
+    let scale = max(scale, 1)
+    let baseline = (font.pointSize * scale).rounded() / scale
+    return min(lineHeight, baseline + (-font.descender).rounded())
   }
 
   /// `text` as AppKit attributes: emphasis, strong, strikethrough, inline code and math,
