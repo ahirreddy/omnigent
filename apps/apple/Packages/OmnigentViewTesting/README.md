@@ -6,10 +6,10 @@ clipboard, Finder, panels and windows away from the person using the Mac; `MainL
 
 ## Waiting
 
-A wait's duration is a limit, not a pause. Every wait returns once a few short run loop turns in
-a row did no work: no run loop source or event handled, and the watched windows had no layout
-pending and drew nothing. Turns never sleep (a VM wakes timers 15 to 90 ms late), so an idle
-settle takes about 7 ms.
+A wait's duration is a limit, not a pause. Every wait returns once three short run loop turns
+(2 ms each) in a row did no work: no run loop source or event handled, and the watched windows
+(an `OffscreenWindow`'s own, with its title bar, sheets and child windows) had no layout pending,
+drew nothing and ran no short layer animation. An idle settle takes about 7 ms.
 
 | Need | Use |
 | --- | --- |
@@ -17,22 +17,27 @@ settle takes about 7 ms.
 | A view's own run loop work | `screen.settle()` (limit 0.1 s) |
 | A `Task` or `.task {}` a click started | `await screen.settleTasks()` |
 | Something that takes as long as it takes | `try await screen.waitUntil { condition }` |
+| A condition that costs more than a turn | `screen.waitUntil(idleRecheck: .milliseconds(50)) { ... }` |
 | Real elapsed time | `screen.run(for: 0.3)` or `try await Task.sleep(for:)` |
 | No window (stores, models) | `MainLoop.settle`, `settleTasks`, `waitUntil`, `run(for:)` |
 
 `settle` runs inside the test's main actor job, so main actor tasks wait for the test to suspend;
-`settleTasks` suspends between turns so the ready ones run, and waits out the views' own timed
-pauses (every `Theme.Timing.pause` ending before its limit: the views announce each one in a test
-process). Neither waits for other work scheduled for later: a `Task.sleep` in a store, a future
-`Timer`, or events from the core's own threads. Wait for their effect with `waitUntil`, which
-checks its condition every turn and costs its timeout only when it fails.
+`settleTasks` suspends between turns so the ready ones run. Both wait out the views' own timed
+pauses (every `Theme.Timing.pause` ending before their limit: the views announce each one in a
+test process). Neither waits for other work scheduled for later: a `Task.sleep` in a store, a
+future `Timer`, or events from the core's own threads. Wait for their effect with `waitUntil`,
+which checks its condition every turn, settles the window once it holds, and costs its timeout
+only when it fails.
+
+A titled window: `OffscreenWindow(view, styleMask: [.titled, .fullSizeContentView],
+sceneBridging: [.toolbars, .title])` builds it titled from the start.
 
 ## Time and motion under test
 
 The test bundle's load sets, for its process only, `OmnigentDisableAnimations`: the views'
 animations (`Theme.Motion` in OmnigentUIComponents, `WorkspaceTheme.motion` in
-OmnigentWorkspaceUI) resolve to none, and sheets, window and scroll animations are off. A test
-that needs a real animation sets `Theme.Motion.isEnabled = true` for its duration.
+OmnigentWorkspaceUI) resolve to none, and window and scroll animations are off. A test that
+needs a real animation sets `Theme.Motion.isEnabled = true` for its duration.
 
 Every timed pause in OmnigentUIComponents (debounces, the transcript's pacing and frame landing,
 link settle and flash, notices) passes through `Theme.Timing.pause(_:)`. It is the app's own
@@ -44,14 +49,20 @@ Theme.Timing.scale = 0  // or 0.1
 defer { Theme.Timing.scale = 1 }
 ```
 
-Then wait for the effect with `waitUntil`, never a fixed sleep. The gallery exporter takes its
-settle as `CatalogExportJob.settle`.
+The gallery exporter takes its settle as `CatalogExportJob.settle`.
+
+## Slow lane
+
+Tests tagged `.slowLane` (the gallery's whole-catalog renders) are disabled where
+`OMNIGENT_SKIP_SLOW_TESTS=1`, as the edit loop sets; full and coverage runs keep them.
 
 ## Finding slow waits
 
 - `OMNIGENT_WAIT_STATS=1` prints, at exit, each kind of wait's total time, calls and how many
   took their whole limit.
 - `OMNIGENT_SETTLE_TRACE=1` prints, for each wait that took its whole limit, what its turns did
-  (sources, layout by view, drawing by window) and how long they took.
+  (sources, layout by view, drawing by window, animations by key) and how long they took.
 - `OMNIGENT_FIXED_WAITS=1` makes every wait take its whole limit again, to tell a wait that
   returns too early from a flaky test.
+- `OMNIGENT_WAIT_TURNS=poll` makes turns poll instead of sleeping, for a machine whose timers
+  wake late (timer coalescing on).
