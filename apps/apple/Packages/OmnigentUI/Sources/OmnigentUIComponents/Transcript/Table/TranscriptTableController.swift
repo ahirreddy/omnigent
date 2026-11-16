@@ -248,6 +248,8 @@
       } else {
         cell.show(model.rows[row], version: model.version(at: row), width: model.width)
       }
+      // Its row's height is known: going into the window and laying out there changes nothing.
+      cell.settle()
       return cell
     }
 

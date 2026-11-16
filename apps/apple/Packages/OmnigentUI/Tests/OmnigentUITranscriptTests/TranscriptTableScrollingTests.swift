@@ -184,14 +184,14 @@
       let measured = controller.measurements
       for step in 1...6 { try scroll(window, driver, to: end - CGFloat(step) * 150) }
       for step in 1...6 { try scroll(window, driver, to: end - 900 + CGFloat(step) * 150) }
-      #expect(controller.measurements == measured)
+      #expect(controller.measurements == measured, "\(controller.measurements - measured) more")
       controller.jumpToLatest()
       conversation.stream("streamed", "One line")
       window.settle(0.05)
       conversation.stream("streamed", "One line\n\nand another")
       window.settle(0.05)
       // The streamed row each time, and the footer once its working line goes.
-      #expect(controller.measurements - measured <= 4)
+      #expect(controller.measurements - measured <= 4, "\(controller.measurements - measured)")
       #expect(isAtEnd(driver))
     }
   }

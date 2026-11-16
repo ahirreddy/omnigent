@@ -187,13 +187,28 @@
       kind = row.kind
       rootView = TranscriptTableCellRoot(
         row: row, width: width, environment: rootView.environment)
+      settle()
     }
 
     /// The content's height at the width it shows, laid out now if it has to be.
     var idealHeight: CGFloat { intrinsicContentSize.height.rounded(.up) }
 
+    /// The cell's new content has not been laid out and drawn yet. Its height is known for that
+    /// content and width, so the report that follows its first layout is not a change.
+    private var isSettling = false
+
+    /// Takes no size report until the frame now being made is displayed.
+    func settle() {
+      guard !isSettling else { return }
+      isSettling = true
+      MainRunLoop.performAfterDisplay { [weak self] in
+        MainActor.assumeIsolated { self?.isSettling = false }
+      }
+    }
+
     /// Reports the change; the table, not Auto Layout, sizes the cell.
     override func invalidateIntrinsicContentSize() {
+      guard !isSettling else { return }
       idealSizeChanged?(self)
     }
   }

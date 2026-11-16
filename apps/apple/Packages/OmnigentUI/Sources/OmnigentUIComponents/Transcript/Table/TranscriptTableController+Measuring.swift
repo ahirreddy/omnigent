@@ -90,6 +90,7 @@
         isMeasuring = true
         let height = cell.idealHeight
         isMeasuring = false
+        measurements += 1
         if model.record(height, at: index) { noted.insert(index) }
       }
       noteHeights(noted)
