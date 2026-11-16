@@ -2053,6 +2053,38 @@ fn an_elicitation_notifies_at_once_and_the_badge_follows() {
     )));
 }
 
+/// The demo has no stream: an open session reports a live link, or its composer waits on
+/// "Connecting…" forever. A disconnect stops it and a reconnect brings it back.
+#[test]
+fn a_demo_session_is_live_while_the_demo_is_connected() {
+    let mut harness = Harness::demo();
+    harness.core.open_session("demo-design".into());
+    harness.pump();
+    assert_eq!(link_states(&harness.events.take()), [], "not connected yet");
+
+    harness
+        .call(|core| async move { core.connect(String::new(), None).await })
+        .unwrap();
+    assert_eq!(link_states(&harness.events.take()), [LinkState::Live]);
+    harness.core.open_session("demo-notes".into());
+    harness.pump();
+    assert_eq!(link_states(&harness.events.take()), [LinkState::Live]);
+
+    harness.core.disconnect();
+    harness.pump();
+    assert_eq!(
+        link_states(&harness.events.take()),
+        [LinkState::Stopped, LinkState::Stopped]
+    );
+    harness
+        .call(|core| async move { core.connect(String::new(), None).await })
+        .unwrap();
+    assert_eq!(
+        link_states(&harness.events.take()),
+        [LinkState::Live, LinkState::Live]
+    );
+}
+
 #[test]
 fn the_demo_reconnects_open_sessions_and_a_stray_tick_does_nothing() {
     let mut harness = Harness::demo();

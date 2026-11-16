@@ -470,6 +470,7 @@ impl Engine {
             let ids: Vec<String> = self.drivers.keys().cloned().collect();
             for id in ids {
                 self.request_hydration(&id);
+                self.demo_link(&id, core::realtime::ConnectionState::Live);
             }
             return;
         }
@@ -488,9 +489,14 @@ impl Engine {
         self.attention.tracker.reset();
         self.attention.rows.clear();
         self.stop_updates();
+        // A demo session was live only while the demo was connected.
+        let demo_was_live = self.is_demo() && self.is_connected();
         let ids: Vec<String> = self.drivers.keys().cloned().collect();
         for id in ids {
             self.stream_input(&id, StreamInput::Stop);
+            if demo_was_live {
+                self.demo_link(&id, core::realtime::ConnectionState::Stopped);
+            }
             if let Some(driver) = self.drivers.get(&id) {
                 driver.sync.close_stream();
             }
