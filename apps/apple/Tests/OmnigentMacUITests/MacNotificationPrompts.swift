@@ -23,6 +23,23 @@ enum MacNotificationPrompts {
     if seconds > 0 { quietLaunches = declined == 0 ? quietLaunches + 1 : 0 }
   }
 
+  /// Answers the system's "find devices on local networks" prompt with Don't Allow. A print
+  /// sheet or a browser tab raises it mid-screen, and it stays over every later flow and run.
+  /// - Parameter seconds: How long to wait for it to show.
+  static func declineLocalNetwork(waiting seconds: TimeInterval) {
+    let system = XCUIApplication(bundleIdentifier: "com.apple.UserNotificationCenter")
+    let prompt = system.staticTexts.matching(
+      NSPredicate(format: "value CONTAINS %@", "local networks")
+    ).firstMatch
+    guard prompt.appears(within: seconds) else { return }
+    let decline = system.dialogs.buttons.matching(
+      NSPredicate(format: "title BEGINSWITH %@", "Don")
+    ).firstMatch
+    XCTAssertTrue(decline.exists, "the prompt has no Don't Allow\n\(system.debugDescription)")
+    decline.click()
+    XCTAssertTrue(prompt.disappears(within: 10), "the local network prompt stayed")
+  }
+
   /// Chooses Options > Don't Allow on one banner; its controls show while the pointer is on it.
   /// Everything is clicked by position: the banners give UI automation no hit point.
   private static func decline(_ prompt: XCUIElement, in center: XCUIApplication) -> Bool {

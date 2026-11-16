@@ -40,8 +40,11 @@ final class MacLinkPointerFlowUITests: XCTestCase {
     defer { app.terminate() }
     let words = "pointer check \(UUID().uuidString.prefix(6)) with some more plain words"
     live.startDemoSession("\(Self.address) \(words)", in: app)
-    XCTAssertTrue(
-      live.element("composer-stop", in: app).disappears(within: 30), "the reply never ended")
+    // The working row shows a moment after the send, in both views; until it goes the
+    // streaming reply redraws the link.
+    let working = live.element("transcript-working", in: app)
+    XCTAssertTrue(working.appears(within: 15), "no reply started")
+    XCTAssertTrue(working.disappears(within: 30), "the reply never ended")
 
     // The message's text holds its link as an element of its own, the size of the link.
     let linked = app.links.matching(NSPredicate(format: "title == %@", Self.address)).firstMatch

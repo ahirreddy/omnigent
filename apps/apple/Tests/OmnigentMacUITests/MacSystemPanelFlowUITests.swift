@@ -81,35 +81,17 @@ final class MacSystemPanelFlowUITests: XCTestCase {
       XCTAssertTrue(
         sheet.buttons["Print"].appears(within: 10),
         "the sheet has no Print button\n\(app.debugDescription)")
-      declineLocalNetworkPrompt()
+      // The first print sheet on a machine raises the prompt a few seconds after the sheet.
+      MacNotificationPrompts.declineLocalNetwork(waiting: Self.localNetworkIsAnswered ? 0 : 8)
+      Self.localNetworkIsAnswered = true
       live.clickDialogButton("Cancel", in: app)
       XCTAssertTrue(sheet.disappears(within: 15), "Cancel left the print sheet")
       XCTAssertTrue(live.text(containing: page.title, in: app).exists, "the page is gone")
       live.assertRunning(app, "after cancelling the print sheet")
     }
 
-    /// Whether a print sheet of this run already showed the local network prompt is answered.
+    /// Whether a print sheet of this run already waited for the local network prompt.
     @MainActor private static var localNetworkIsAnswered = false
-
-    /// Answers the system's "find devices on local networks" prompt with Don't Allow. The app's
-    /// first print sheet on a machine raises it mid-screen, a few seconds after the sheet (it
-    /// looks for printers), and it stays over every later flow until it is answered.
-    @MainActor
-    private func declineLocalNetworkPrompt() {
-      let system = XCUIApplication(bundleIdentifier: "com.apple.UserNotificationCenter")
-      let prompt = system.staticTexts.matching(
-        NSPredicate(format: "value CONTAINS %@", "local networks")
-      ).firstMatch
-      let wait: TimeInterval = Self.localNetworkIsAnswered ? 0 : 8
-      Self.localNetworkIsAnswered = true
-      guard prompt.appears(within: wait) else { return }
-      let decline = system.dialogs.buttons.matching(
-        NSPredicate(format: "title BEGINSWITH %@", "Don")
-      ).firstMatch
-      XCTAssertTrue(decline.exists, "the prompt has no Don't Allow\n\(system.debugDescription)")
-      decline.click()
-      XCTAssertTrue(prompt.disappears(within: 10), "the local network prompt stayed")
-    }
   #endif
 
   /// The Add menu's Photos… shows the system photo picker, and the photo chosen there attaches.

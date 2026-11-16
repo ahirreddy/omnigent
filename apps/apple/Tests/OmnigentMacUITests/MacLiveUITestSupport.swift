@@ -83,9 +83,15 @@ struct MacLiveUITestSupport {
       + Self.freshStateArguments
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.appears(within: 30), "no window")
-    MacNotificationPrompts.decline(waiting: 3)
+    declineSystemPrompts()
     parkPointer(in: app)
     return app
+  }
+
+  /// Answers the permission prompts on screen, a last flow's or run's included.
+  private func declineSystemPrompts() {
+    MacNotificationPrompts.decline(waiting: 3)
+    MacNotificationPrompts.declineLocalNetwork(waiting: 0)
   }
 
   /// Launches the app on the core's offline demo server (`-OmnigentDemo`).
@@ -104,7 +110,7 @@ struct MacLiveUITestSupport {
       ] + Self.freshStateArguments + arguments
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.appears(within: 30), "no window")
-    MacNotificationPrompts.decline(waiting: 3)
+    declineSystemPrompts()
     parkPointer(in: app)
     return app
   }
