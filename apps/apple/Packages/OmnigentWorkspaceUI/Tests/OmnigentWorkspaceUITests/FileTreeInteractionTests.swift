@@ -131,6 +131,8 @@
       #expect(await settle(screen) { source.requests.contains("search mai") })
       #expect(await settle(screen) { model.rows.count == 3 })
       #expect(model.rows.last?.content == .note("More files match. Refine the search to see them."))
+      // The rows change before the list draws them.
+      _ = await settle(screen) { (try? shownString(screen))?.contains("More files match") == true }
       let text = try shownString(screen)
       #expect(text.contains("main.rs"), "read: \(text)")
       #expect(text.contains("More files match"), "read: \(text)")

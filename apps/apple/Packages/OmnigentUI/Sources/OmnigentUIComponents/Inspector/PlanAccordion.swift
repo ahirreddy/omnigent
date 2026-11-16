@@ -21,7 +21,9 @@ public struct PlanAccordion: View {
     let current = todos.first { $0.state == .inProgress }
     VStack(alignment: .leading, spacing: 0) {
       Button {
-        withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { isExpanded.toggle() }
+        withAnimation(reduceMotion ? nil : Theme.Motion.animation(.snappy(duration: 0.2))) {
+          isExpanded.toggle()
+        }
       } label: {
         HStack(spacing: Theme.Spacing.medium) {
           ProgressRing(fraction: todos.isEmpty ? 0 : Double(done) / Double(todos.count))

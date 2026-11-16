@@ -136,7 +136,7 @@ struct ViewedSessionReportTests {
       try await settle(window.screen, until: "the unread mark") {
         window.list.unreadIDs.contains(BudgetWindow.shown)
       }
-      try await pause(window.screen, .milliseconds(200))
+      try await Task.sleep(for: .milliseconds(200))
       #expect(window.list.unreadIDs.contains(BudgetWindow.shown), "unread while its chat is hidden")
 
       window.tabs.select(window.chatTabID)

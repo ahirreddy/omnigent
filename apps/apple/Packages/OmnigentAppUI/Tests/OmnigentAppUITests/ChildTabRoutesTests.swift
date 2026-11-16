@@ -269,7 +269,7 @@ extension ChildTabsTests {
     try await settle(mounted.screen, until: "the sub-agent's conversation") {
       session.connection.openConversation("conv_b") != nil
     }
-    try await pause(mounted.screen, .milliseconds(200))
+    try await Task.sleep(for: .milliseconds(200))
     #expect(mounted.selection.page == .session("conv_a"))
     #expect(session.tabs.page == .session("conv_a"))
     #expect(session.tabs.groups["conv_b"] == nil)

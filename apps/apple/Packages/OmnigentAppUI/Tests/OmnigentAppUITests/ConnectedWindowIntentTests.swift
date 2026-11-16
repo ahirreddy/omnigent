@@ -132,7 +132,7 @@ extension ConnectedWindowFlowTests {
     try await settle(mounted.screen, until: "the answer") {
       list.editError == nil && list.session("conv_b")?.title == "Renamed"
     }
-    try await pause(mounted.screen)
+    try await Task.sleep(for: .milliseconds(60))
     #expect(try mounted.screen.shows("Renamed"))
     #expect(SystemSideEffects.record.alertMessages.count == 1, "the second try was saved")
   }
@@ -165,13 +165,13 @@ extension ConnectedWindowFlowTests {
     try await settle(mounted.screen, until: "the alert") {
       SystemSideEffects.record.alertMessages == ["Could Not Update the Session"]
     }
-    try await pause(mounted.screen)
+    try await Task.sleep(for: .milliseconds(60))
     #expect(tabs.groups["conv_b"] != nil, "a refused delete keeps the tabs")
 
     server.route("/v1/sessions/conv_b", method: "DELETE", .json(#"{"deleted":true}"#))
     mounted.view.sessionListActions.delete?(row)
     try await settle(mounted.screen, until: "the second write") { saved.arrivals == 1 }
-    try await pause(mounted.screen)
+    try await Task.sleep(for: .milliseconds(60))
     #expect(tabs.groups["conv_b"] != nil)
     saved.release()
     try await settle(mounted.screen, until: "the tabs to leave") { tabs.groups["conv_b"] == nil }

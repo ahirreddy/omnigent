@@ -12,14 +12,8 @@ func settle<Content: View>(
   _ screen: OffscreenWindow<Content>, until description: String,
   timeout: Duration = .seconds(5), _ condition: () -> Bool
 ) async throws {
-  let deadline = ContinuousClock.now + timeout
-  while !condition() {
-    guard ContinuousClock.now < deadline else {
-      Issue.record("timed out waiting for \(description)")
-      return
-    }
-    screen.settle(0.005)
-    try await Task.sleep(for: .milliseconds(5))
+  if await !screen.waitUntil(timeout: timeout, condition) {
+    Issue.record("timed out waiting for \(description)")
   }
 }
 
@@ -29,35 +23,27 @@ func settle<Content: View>(
   _ screen: OffscreenWindow<Content>, untilShowing text: String, contains: Bool = false,
   timeout: Duration = .seconds(5)
 ) async throws {
-  let deadline = ContinuousClock.now + timeout
   func isShowing() throws -> Bool {
     contains ? try screen.shownText().contains { $0.contains(text) } : try screen.shows(text)
   }
-  while try !isShowing() {
-    guard ContinuousClock.now < deadline else {
-      Issue.record("timed out waiting to show \(text) in \(try screen.shownText().prefix(60))")
-      return
-    }
-    screen.settle(0.005)
-    try await Task.sleep(for: .milliseconds(5))
+  // Reading the shown text costs more than a turn: read it again once the window has worked.
+  if try await !screen.waitUntil(timeout: timeout, idleRecheck: .milliseconds(50), isShowing) {
+    Issue.record("timed out waiting to show \(text) in \(try screen.shownText().prefix(60))")
   }
 }
 
-/// Lets the screen's tasks run for a moment with nothing particular to wait for.
+/// Lets the screen's tasks run until the window is at rest, or for `time` while work keeps
+/// coming. A task's later `Task.sleep` is not waited for.
 @MainActor
 func pause<Content: View>(_ screen: OffscreenWindow<Content>, _ time: Duration = .milliseconds(60))
   async throws
 {
-  let deadline = ContinuousClock.now + time
-  while ContinuousClock.now < deadline {
-    screen.settle(0.005)
-    try await Task.sleep(for: .milliseconds(5))
-  }
+  await screen.settleTasks(limit: time)
 }
 
-/// The window's controls once they have stopped moving, over three reads and 150 ms: a page that
-/// loads, a tab that opens and a banner that arrives lay the window out over several updates,
-/// and a click must land where a control is.
+/// The window's controls once they have stopped moving: three reads agree, each taken with the
+/// window at rest, and none moved for 50 ms. A page that loads, a tab that opens and a banner
+/// that arrives lay the window out over several updates, and a click must land where a control is.
 @MainActor
 func settledControlFrames<Content: View>(_ screen: OffscreenWindow<Content>) async throws
   -> [CGRect]
@@ -65,13 +51,18 @@ func settledControlFrames<Content: View>(_ screen: OffscreenWindow<Content>) asy
   var frames = screen.controlFrames
   var unchangedReads = 0
   var unchangedSince = ContinuousClock.now
-  try await settle(screen, until: "the controls to stop moving") {
+  let deadline = ContinuousClock.now + .seconds(5)
+  // The core's events come from its own threads, so a window at rest can still change.
+  while unchangedReads < 3 || ContinuousClock.now - unchangedSince < .milliseconds(50) {
+    guard ContinuousClock.now < deadline else {
+      Issue.record("timed out waiting for the controls to stop moving")
+      break
+    }
+    await screen.settleTasks(limit: .milliseconds(50))
     let latest = screen.controlFrames
     if latest != frames { unchangedSince = .now }
     unchangedReads = latest == frames ? unchangedReads + 1 : 0
     frames = latest
-    // On a busy machine three quick reads can all come before the next layout pass.
-    return unchangedReads >= 3 && ContinuousClock.now - unchangedSince >= .milliseconds(150)
   }
   return frames
 }

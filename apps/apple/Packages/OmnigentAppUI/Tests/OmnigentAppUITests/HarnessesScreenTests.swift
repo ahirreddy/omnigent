@@ -72,7 +72,9 @@ struct HarnessesScreenTests {
     }
     let menu = try screen.openMenu(screen.controlFrames[0].center)
     try screen.choose("Box", in: menu)
-    try await pause(screen)
+    try await settle(screen, until: "Box's state") {
+      (try? screen.shows("Not installed")) == false
+    }
     #expect(try !screen.shows("Not installed"), "Codex is ready on Box")
   }
 
@@ -93,7 +95,9 @@ struct HarnessesScreenTests {
     try await settle(
       screen, untilShowing: "Codex is installed on Mac. One more step to finish setup.")
     try screen.clickControl(at: 2)
-    try await pause(screen, .milliseconds(200))
+    try await settle(screen, until: "the sheet to close") {
+      (try? screen.shows("Set Up Codex on Mac")) == false
+    }
     #expect(try !screen.shows("Set Up Codex on Mac"))
   }
 
@@ -177,7 +181,9 @@ struct HarnessesScreenTests {
     try screen.clickControl(at: screen.controlFrames.count - 1)
     try await settle(screen, untilShowing: "Claude Code is ready on Mac.")
     try screen.clickControl(at: screen.controlFrames.count - 1)
-    try await pause(screen, .milliseconds(200))
+    try await settle(screen, until: "the sheet to close") {
+      (try? screen.shows("Sign In to Claude Code on Mac")) == false
+    }
     #expect(
       try screen.shows("Claude Code is ready on Mac."), "the notice stays on the details page")
     #expect(try !screen.shows("Sign In to Claude Code on Mac"))

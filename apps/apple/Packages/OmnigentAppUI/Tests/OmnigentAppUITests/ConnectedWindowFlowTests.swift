@@ -73,7 +73,7 @@ struct ConnectedWindowFlowTests {
     try await settle(mounted.screen, until: "the reload") {
       server.requests("GET", "/v1/sessions").count > reads
     }
-    try await pause(mounted.screen, .milliseconds(300))
+    try await Task.sleep(for: .milliseconds(300))
     #expect(mounted.selection.page == .session("conv_new"))
     #expect(list.sessionsByID["conv_new"]?.title == "hello")
   }
@@ -85,11 +85,11 @@ struct ConnectedWindowFlowTests {
     let store = try #require(mounted.session.tabs.current)
     let inbox = store.open(.inbox)
     store.show(inbox.id, in: .trailing)
-    try await pause(mounted.screen, .milliseconds(100))
+    try await settle(mounted.screen, untilShowing: "Inbox")
     #expect(store.splitState != nil)
     #expect(try mounted.screen.shows("Inbox"))
     store.close(inbox.id)
-    try await pause(mounted.screen)
+    try await settle(mounted.screen, until: "the split to close") { store.splitState == nil }
     #expect(store.splitState == nil)
   }
 
@@ -121,7 +121,9 @@ struct ConnectedWindowFlowTests {
     try await settle(mounted.screen, until: "the sheet") {
       mounted.view.sidebarForkPresented.wrappedValue
     }
-    try await pause(mounted.screen, .milliseconds(150))
+    try await settle(mounted.screen, until: "the sheet's choices") {
+      mounted.view.sidebarModel.fork.store?.catalog.value != nil
+    }
     return mounted
   }
 
@@ -137,7 +139,7 @@ struct ConnectedWindowFlowTests {
     try await settle(mounted.screen, until: "the request") {
       !server.requests("POST", "/v1/sessions/conv_a/fork").isEmpty
     }
-    try await pause(mounted.screen)
+    try await Task.sleep(for: .milliseconds(60))
     #expect(mounted.view.sidebarForkPresented.wrappedValue)
   }
 
@@ -149,7 +151,12 @@ struct ConnectedWindowFlowTests {
       .json(#"{"id":"conv_f","status":"idle","created_at":5,"permission_level":4}"#, status: 201))
     server.route("/v1/hosts/mac/runners", method: "POST", .json(#"{"detail":"no"}"#, status: 500))
     let mounted = try await forkSheet(server)
-    defer { mounted.screen.close() }
+    // The failure's alert stays up, so the error it shows is still there to read.
+    SystemSideEffects.showAlertSheets()
+    defer {
+      mounted.screen.close()
+      SystemSideEffects.reset()
+    }
     mounted.view.sidebarForkActions.forkWith(
       ForkChoices(agentID: "ag_claude", directory: "/w", start: true, hostID: "mac"))
     try await settle(mounted.screen, until: "the failure") {
@@ -243,6 +250,8 @@ func titledWindow(
 func titled<Root: View>(_ root: Root, width: CGFloat, height: CGFloat) async throws
   -> OffscreenWindow<Root>
 {
+  // Re-hosted after a borderless start: built titled from the start, the split view's
+  // separator item in the toolbar stays hidden, unlike the app's window.
   let screen = OffscreenWindow(root, width: width, height: height)
   let frame = screen.window.frame
   screen.window.contentView = nil
@@ -250,6 +259,6 @@ func titled<Root: View>(_ root: Root, width: CGFloat, height: CGFloat) async thr
   screen.window.setFrame(frame, display: false)
   screen.host.sceneBridgingOptions = [.toolbars, .title]
   screen.window.contentView = screen.host
-  try await pause(screen, .milliseconds(300))
+  await screen.settleTasks(limit: .milliseconds(300))
   return screen
 }

@@ -239,7 +239,8 @@ struct JumpToTopReveal: ViewModifier {
     .opacity(isShown ? 1 : 0)
     .allowsHitTesting(isShown)
     .accessibilityHidden(!isShown)
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isShown)
+    .animation(
+      reduceMotion ? nil : Theme.Motion.animation(.easeOut(duration: 0.15)), value: isShown)
   }
 
   /// Reveals the pill while the reader scrolls up, and hides it once they stop or turn back.
@@ -255,7 +256,7 @@ struct JumpToTopReveal: ViewModifier {
       tracker.hideTask?.cancel()
       tracker.hideTask = Task { @MainActor in
         do {
-          try await Task.sleep(for: Self.scrollReveal)
+          try await Task.sleep(for: Theme.Timing.pause(Self.scrollReveal))
         } catch {
           return  // Superseded by a newer scroll.
         }

@@ -189,7 +189,9 @@ struct AdapterActionWiringTests {
         #"{"object":"list","data":[\#(sessionRow("conv_a", host: "mac", workspace: "/w", updatedAt: 3))],"has_more":true,"last_id":"conv_a"}"#
       ))
     let connection = try await signedInStore(server)
-    try await eventually("the list") { connection.sessionList.isLoaded }
+    try await eventually("the list, with a next page") {
+      connection.sessionList.isLoaded && connection.sessionList.paging.hasMore
+    }
     let before = server.requests("GET", "/v1/sessions").count
     InboxTriageAdapter(connection: connection, open: { _ in })
       .actions.loadMoreSessions?()

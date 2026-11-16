@@ -1,6 +1,8 @@
 #if os(macOS)
   import AppKit
   import Foundation
+  import ImageIO
+  import OmnigentViewTesting
   import SwiftUI
   import Testing
 
@@ -16,28 +18,36 @@
     /// How many parts the catalog renders in.
     static let partCount = 8
 
-    @Test("every entry renders in both appearances, part 1") func renderPart1() async throws {
+    @Test("every entry renders in both appearances, part 1", .tags(.slowLane), .slowLane)
+    func renderPart1() async throws {
       try await renderPart(0)
     }
-    @Test("every entry renders in both appearances, part 2") func renderPart2() async throws {
+    @Test("every entry renders in both appearances, part 2", .tags(.slowLane), .slowLane)
+    func renderPart2() async throws {
       try await renderPart(1)
     }
-    @Test("every entry renders in both appearances, part 3") func renderPart3() async throws {
+    @Test("every entry renders in both appearances, part 3", .tags(.slowLane), .slowLane)
+    func renderPart3() async throws {
       try await renderPart(2)
     }
-    @Test("every entry renders in both appearances, part 4") func renderPart4() async throws {
+    @Test("every entry renders in both appearances, part 4", .tags(.slowLane), .slowLane)
+    func renderPart4() async throws {
       try await renderPart(3)
     }
-    @Test("every entry renders in both appearances, part 5") func renderPart5() async throws {
+    @Test("every entry renders in both appearances, part 5", .tags(.slowLane), .slowLane)
+    func renderPart5() async throws {
       try await renderPart(4)
     }
-    @Test("every entry renders in both appearances, part 6") func renderPart6() async throws {
+    @Test("every entry renders in both appearances, part 6", .tags(.slowLane), .slowLane)
+    func renderPart6() async throws {
       try await renderPart(5)
     }
-    @Test("every entry renders in both appearances, part 7") func renderPart7() async throws {
+    @Test("every entry renders in both appearances, part 7", .tags(.slowLane), .slowLane)
+    func renderPart7() async throws {
       try await renderPart(6)
     }
-    @Test("every entry renders in both appearances, part 8") func renderPart8() async throws {
+    @Test("every entry renders in both appearances, part 8", .tags(.slowLane), .slowLane)
+    func renderPart8() async throws {
       try await renderPart(7)
     }
 
@@ -82,24 +92,36 @@
       guard !entries.isEmpty else { return }
       let job = CatalogExportJob(
         entries: entries, directory: directory, preferences: preferences,
-        settleTime: .milliseconds(40))
+        settleTime: .milliseconds(40), settle: Self.settle)
       let report = try await CatalogExporter.run(job)
       let plan = CatalogExporter.plan(job)
       #expect(report.images.count == plan.count)
       for (item, url) in zip(plan, report.images) {
-        let image = try #require(
-          NSBitmapImageRep(data: try Data(contentsOf: url)), "\(item.fileName)")
+        let size = try #require(Self.pixelSize(of: url), "\(item.fileName) is no image")
         let entry = try #require(GalleryCatalog.entry(item.entryID))
         let layout = CatalogLayout(canvas: entry.canvas, screen: item.screen)
-        #expect(CGFloat(image.pixelsWide) >= layout.width, "\(item.fileName) is too narrow")
+        #expect(size.width >= layout.width, "\(item.fileName) is too narrow")
         if let height = layout.height {
-          #expect(CGFloat(image.pixelsHigh) >= height, "\(item.fileName) is too short")
+          #expect(size.height >= height, "\(item.fileName) is too short")
         }
       }
       #expect(FileManager.default.fileExists(atPath: report.index.path))
       let manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: report.manifest))
       #expect((manifest as? [Any])?.count == entries.count)
       if keep == nil { try FileManager.default.removeItem(at: directory) }
+    }
+
+    /// A render's wait ends once its view is at rest, within the exporter's own durations.
+    static let settle: CatalogSettle = { await MainLoop.settleTasks(limit: $0) }
+
+    /// A PNG's size in pixels, read from its header without decoding the image.
+    static func pixelSize(of url: URL) -> CGSize? {
+      guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+        let width = properties[kCGImagePropertyPixelWidth] as? Int,
+        let height = properties[kCGImagePropertyPixelHeight] as? Int
+      else { return nil }
+      return CGSize(width: width, height: height)
     }
 
     @Test("a component state draws something in light and dark")
@@ -113,7 +135,8 @@
         let traits = CatalogTraits(theme: .omni, scheme: scheme, screen: mac)
         let data = try await CatalogExporter.render(
           state, context: CatalogContext(screen: mac, preferences: preferences), traits: traits,
-          layout: CatalogLayout(canvas: entry.canvas, screen: mac), name: state.id)
+          layout: CatalogLayout(canvas: entry.canvas, screen: mac), name: state.id,
+          settle: Self.settle)
         let image = try #require(NSBitmapImageRep(data: data))
         let rendered = RenderSupport.Rendered(image: image)
         #expect(RenderSupport.inkCoverage(rendered) > 0.01)
@@ -132,7 +155,7 @@
         let data = try await CatalogExporter.render(
           state, context: CatalogContext(screen: screen, preferences: preferences),
           traits: CatalogTraits(theme: .omni, scheme: .dark, screen: screen), layout: layout,
-          name: screen.id, settleTime: .milliseconds(40))
+          name: screen.id, settleTime: .milliseconds(40), settle: Self.settle)
         let image = try #require(NSBitmapImageRep(data: data))
         #expect(CGFloat(image.pixelsWide) >= layout.width, "\(screen.id)")
         #expect(CGFloat(image.pixelsHigh) >= layout.height ?? 0, "\(screen.id)")

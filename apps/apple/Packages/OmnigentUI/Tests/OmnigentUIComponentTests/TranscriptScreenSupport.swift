@@ -36,11 +36,11 @@
   }
 
   /// Lets what a click or a view's `task` started finish: a run loop spun inside the test's job
-  /// would hold those tasks back on the main queue, so this suspends instead.
+  /// would hold those tasks back on the main queue, so this suspends instead. It returns once the
+  /// window is at rest, within `milliseconds`; a task's later `Task.sleep` is not waited for.
   @MainActor
   func letTasksRun(_ screen: OffscreenWindow<AnyView>, milliseconds: Int = 60) async throws {
-    try await Task.sleep(for: .milliseconds(milliseconds))
-    screen.settle(0.02)
+    await screen.settleTasks(limit: .milliseconds(milliseconds))
   }
 
   /// Lets a transcript's opening end: its wait for the framing scroll to land, which takes as
@@ -48,7 +48,7 @@
   @MainActor
   func letOpeningEnd(_ screen: OffscreenWindow<AnyView>) async throws {
     try await TranscriptFollow.waitForFrameLanding()
-    try await letTasksRun(screen, milliseconds: 300)
+    await screen.settleTasks(limit: .milliseconds(300))
   }
 
   /// Whether `condition` comes true within ten seconds, for what takes however long the machine
@@ -57,13 +57,7 @@
   func waitUntil(
     _ screen: OffscreenWindow<AnyView>, _ condition: @MainActor () throws -> Bool
   ) async throws -> Bool {
-    let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: .seconds(10))
-    while clock.now < deadline {
-      if try condition() { return true }
-      try await letTasksRun(screen, milliseconds: 100)
-    }
-    return try condition()
+    try await screen.waitUntil(timeout: .seconds(10), condition)
   }
 
   /// The selection popup reads the selection when its event monitor sees an event, which only

@@ -40,7 +40,9 @@ struct SessionChromeWindowTests {
       #expect(items.allSatisfy(kept.contains), "\(tab.name) replaced a toolbar item")
     }
     window.tabs.select(window.chatTabID)
-    try await pause(window.screen, .milliseconds(300))
+    try await settle(window.screen, until: "the chat's toolbar") {
+      window.sessionControls == ChromeWindow.controls && window.toolbarItems == items
+    }
     #expect(window.sessionControls == ChromeWindow.controls, "back on the chat")
     #expect(window.toolbarItems == items, "the same items as before the tabs opened")
   }
@@ -71,7 +73,10 @@ struct SessionChromeWindowTests {
     try await pause(window.screen, .milliseconds(200))
     let toggleMode = try #require(window.probe.commands?.toggleViewMode, "the menu's command")
     toggleMode()
-    window.screen.settle(0.3)
+    try await settle(window.screen, until: "the chat in the chat view") {
+      window.session.tabs.viewMode(ChromeWindow.shown) == .chat
+        && window.tabs.selectedID == window.chatTabID
+    }
     #expect(window.session.tabs.viewMode(ChromeWindow.shown) == .chat)
     #expect(window.tabs.selectedID == window.chatTabID)
   }
@@ -129,7 +134,7 @@ struct SessionChromeWindowTests {
     // The side chat's own Toggle Right Panel reaches the window's panel.
     let toggle = try #require(window.probe.commands?.toggleInspector, "the chat's command")
     toggle()
-    window.screen.settle(0.3)
+    try await settle(window.screen, until: "the panel to close") { !window.chrome.panel.isShown }
     #expect(!window.chrome.panel.isShown)
 
     try window.chooseInSessionMenu("Mark as unread")

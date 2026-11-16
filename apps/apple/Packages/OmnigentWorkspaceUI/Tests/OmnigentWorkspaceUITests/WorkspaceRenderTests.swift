@@ -1,15 +1,17 @@
 #if os(macOS)
   import AppKit
   import Foundation
+  import OmnigentViewTesting
   import SwiftUI
   import Testing
 
   @testable import OmnigentWorkspaceUI
 
   /// Renders each workspace surface in light and dark through a real `NSHostingView` (lists,
-  /// pickers and text fields draw as in the app, unlike `ImageRenderer`). Each render must be
-  /// the requested size and not blank, and dark must be darker than light. With
-  /// `OMNIGENT_WORKSPACE_RENDER_DIR` set, images are written as `ws-<surface>-<scheme>.png`.
+  /// pickers and text fields draw as in the app, unlike `ImageRenderer`), once it draws the same
+  /// on two passes in a row. Each render must be the requested size and not blank, and dark must
+  /// be darker than light. With `OMNIGENT_WORKSPACE_RENDER_DIR` set, images are written as
+  /// `ws-<surface>-<scheme>.png`.
   @Suite("Workspace rendering", .serialized)
   struct WorkspaceRenderTests {
     nonisolated struct Surface: CustomTestStringConvertible, Sendable {
@@ -96,12 +98,12 @@
       var luminance: [ColorScheme: Double] = [:]
       for scheme in [ColorScheme.light, .dark] {
         let view = await surface.make()
-        let image = try Renderer.render(
+        let (image, pixels) = try Renderer.render(
           view, size: surface.size, scheme: scheme, compact: surface.compact)
-        #expect(CGFloat(image.pixelsWide) >= surface.size.width)
-        #expect(CGFloat(image.pixelsHigh) >= surface.size.height)
-        #expect(Renderer.inkCoverage(image) > 0.01, "\(surface.name) \(scheme) looks blank")
-        luminance[scheme] = Renderer.averageLuminance(image)
+        #expect(CGFloat(pixels.width) >= surface.size.width)
+        #expect(CGFloat(pixels.height) >= surface.size.height)
+        #expect(Renderer.inkCoverage(pixels) > 0.01, "\(surface.name) \(scheme) looks blank")
+        luminance[scheme] = Renderer.averageLuminance(pixels)
         try Renderer.write(image, name: "ws-\(surface.name)-\(scheme == .light ? "light" : "dark")")
       }
       #expect((luminance[.light] ?? 0) > (luminance[.dark] ?? 1), "\(surface.name): dark is darker")
@@ -114,9 +116,13 @@
       case encodingFailed
     }
 
+    /// How many layout and drawing passes a render may take to draw the same twice in a row.
+    static let maxPasses = 12
+
+    /// The view drawn in a window of `size`, once two passes a moment apart draw the same.
     static func render(
       _ view: AnyView, size: CGSize, scheme: ColorScheme, compact: Bool
-    ) throws -> NSBitmapImageRep {
+    ) throws -> (NSBitmapImageRep, Pixels) {
       _ = NSApplication.shared
       let content =
         view
@@ -133,16 +139,21 @@
       window.appearance = host.appearance
       window.contentView = host
       host.frame = CGRect(origin: .zero, size: size)
-      for _ in 0..<3 {
+      defer { window.orderOut(nil) }
+      var drawn: (NSBitmapImageRep, Pixels)?
+      for _ in 0..<maxPasses {
         host.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.12))
+        MainLoop.settle(limit: 0.03, windows: [window])
+        guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+          throw Failure.bitmapUnavailable
+        }
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let pixels = try Pixels(bitmap)
+        if pixels == drawn?.1 { break }
+        drawn = (bitmap, pixels)
       }
-      guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
-        throw Failure.bitmapUnavailable
-      }
-      host.cacheDisplay(in: host.bounds, to: bitmap)
-      window.orderOut(nil)
-      return bitmap
+      guard let drawn else { throw Failure.bitmapUnavailable }
+      return drawn
     }
 
     static func write(_ image: NSBitmapImageRep, name: String) throws {
@@ -156,40 +167,74 @@
       try data.write(to: url.appending(path: "\(name).png"))
     }
 
-    static func averageLuminance(_ image: NSBitmapImageRep) -> Double {
+    static func averageLuminance(_ pixels: Pixels) -> Double {
       var total = 0.0
       var samples = 0
-      for row in stride(from: 0, to: image.pixelsHigh, by: 8) {
-        for column in stride(from: 0, to: image.pixelsWide, by: 8) {
-          guard let color = image.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB) else {
-            continue
-          }
-          total +=
-            0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722
-            * color.blueComponent
+      for row in stride(from: 0, to: pixels.height, by: 8) {
+        for column in stride(from: 0, to: pixels.width, by: 8) {
+          let color = pixels.color(column: column, row: row)
+          total += 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue
           samples += 1
         }
       }
       return samples == 0 ? 0 : total / Double(samples)
     }
 
-    static func inkCoverage(_ image: NSBitmapImageRep) -> Double {
+    static func inkCoverage(_ pixels: Pixels) -> Double {
       var counts: [UInt32: Int] = [:]
       var samples = 0
-      for row in stride(from: 0, to: image.pixelsHigh, by: 4) {
-        for column in stride(from: 0, to: image.pixelsWide, by: 4) {
-          guard let color = image.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB) else {
-            continue
-          }
+      for row in stride(from: 0, to: pixels.height, by: 4) {
+        for column in stride(from: 0, to: pixels.width, by: 4) {
+          let color = pixels.color(column: column, row: row)
           let key =
-            UInt32(color.redComponent * 31) << 10 | UInt32(color.greenComponent * 31) << 5
-            | UInt32(color.blueComponent * 31)
+            UInt32(color.red * 31) << 10 | UInt32(color.green * 31) << 5 | UInt32(color.blue * 31)
           counts[key, default: 0] += 1
           samples += 1
         }
       }
       guard samples > 0, let background = counts.values.max() else { return 0 }
       return Double(samples - background) / Double(samples)
+    }
+  }
+
+  /// A render's pixels in 8-bit device RGB, rows from the top, read once instead of a color
+  /// object per sample.
+  struct Pixels: Equatable {
+    let width: Int
+    let height: Int
+    let bytesPerRow: Int
+    let bytes: [UInt8]
+
+    init(_ image: NSBitmapImageRep) throws {
+      width = image.pixelsWide
+      height = image.pixelsHigh
+      let alpha = CGImageAlphaInfo.premultipliedLast.rawValue
+      guard let source = image.cgImage,
+        let context = unsafe CGContext(
+          data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+          space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: alpha)
+      else { throw Renderer.Failure.bitmapUnavailable }
+      context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+      guard let drawn = context.makeImage(), let data = drawn.dataProvider?.data as Data? else {
+        throw Renderer.Failure.bitmapUnavailable
+      }
+      bytesPerRow = drawn.bytesPerRow
+      bytes = [UInt8](data)
+    }
+
+    /// A pixel's red, green and blue, from 0 to 1.
+    struct Color {
+      let red: Double
+      let green: Double
+      let blue: Double
+    }
+
+    /// The pixel in `column` from the left and `row` from the top.
+    func color(column: Int, row: Int) -> Color {
+      let offset = row * bytesPerRow + column * 4
+      return Color(
+        red: Double(bytes[offset]) / 255, green: Double(bytes[offset + 1]) / 255,
+        blue: Double(bytes[offset + 2]) / 255)
     }
   }
 #endif

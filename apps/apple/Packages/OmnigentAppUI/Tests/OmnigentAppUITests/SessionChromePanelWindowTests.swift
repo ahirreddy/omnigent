@@ -82,7 +82,13 @@ extension SessionChromeWindowTests {
     try await window.settleUntilPanelOpen()
     for focus in [TabPane.trailing, .leading] {
       window.tabs.focus(focus)
-      try await pause(window.screen, .milliseconds(200))
+      try await settle(window.screen, until: "the panel with \(focus) focused") {
+        let column = window.panelColumn
+        let maxX = column.map { $0.convert($0.bounds, to: window.screen.host).maxX }
+        return maxX == window.screen.host.bounds.maxX && window.panelSplits == 1
+          && window.sessionControls == ChromeWindow.controls
+          && (try? window.screen.shows("alpha-notes.txt")) == true
+      }
       let panel = try window.panelFrame()
       #expect(panel.maxX == window.screen.host.bounds.maxX, "\(focus): \(panel)")
       #expect(window.panelSplits == 1, "\(focus): the window's one panel, no pane's own")
@@ -109,9 +115,9 @@ extension SessionChromeWindowTests {
 
     // Another session has its own panel state: this one's stays open for when it is back.
     window.session.tabs.show(.session("conv_c"))
-    try await pause(window.screen, .milliseconds(400))
+    try await Task.sleep(for: .milliseconds(400))
     window.session.tabs.chrome("conv_c").panel.isShown = false
-    try await pause(window.screen, .milliseconds(100))
+    try await Task.sleep(for: .milliseconds(100))
     try await window.settleUntilPanelClosed("for the other session, by its own choice")
     window.session.tabs.show(.session(ChromeWindow.shown))
     try await window.settleUntilPanelOpen("as this session left it")
@@ -124,7 +130,10 @@ extension SessionChromeWindowTests {
     defer { window.screen.close() }
     let openChanges = try #require(window.probe.commands?.openChanges, "the chat's command")
     openChanges()
-    window.screen.settle(0.3)
+    try await window.settleUntilPanelOpen()
+    try await settle(window.screen, until: "the changes tab") {
+      window.chrome.inspectorTab == .changes
+    }
     #expect(window.chrome.inspectorTab == .changes)
     #expect(try window.panelFrame().maxX == window.screen.host.bounds.maxX)
     #expect(window.panelSplits == 1, "the window's panel, and none of the chat's own")
@@ -137,7 +146,7 @@ extension SessionChromeWindowTests {
     try await settle(window.screen, until: "the pull requests") {
       !window.server.requests("GET", ChromeWindow.pullRequests).isEmpty
     }
-    try await pause(window.screen, .milliseconds(300))
+    try await Task.sleep(for: .milliseconds(300))
     let atOpen = window.server.requests("GET", ChromeWindow.pullRequests).count
     #expect(atOpen == 1, "the window reads them once, the chat inside not at all: \(atOpen)")
     try await window.show(.newTab)
@@ -168,12 +177,17 @@ extension SessionChromeWindowTests {
     try window.click(control: ChromeWindow.panelToggle)
     try await window.settleUntilPanelOpen()
     window.session.tabs.show(.usage)
-    try await pause(window.screen, .milliseconds(400))
+    try await settle(window.screen, until: "the page without session chrome") {
+      window.sessionControls.isEmpty && !window.session.tabs.shownPanelIsShown
+        && window.probe.commands == nil
+    }
     #expect(window.sessionControls.isEmpty, "\(window.toolbarLabels)")
     #expect(!window.session.tabs.shownPanelIsShown, "a page has no panel to show")
     #expect(window.probe.commands == nil, "no session answers the Conversation menu")
     window.session.tabs.show(.session(ChromeWindow.shown))
-    try await pause(window.screen, .milliseconds(400))
+    try await settle(window.screen, until: "the session's chrome") {
+      window.sessionControls == ChromeWindow.controls && window.chrome.panel.isShown
+    }
     #expect(window.sessionControls == ChromeWindow.controls)
     #expect(window.chrome.panel.isShown, "the page left the session's own choice alone")
     try await window.settleUntilPanelOpen("the session's panel, back as it was")

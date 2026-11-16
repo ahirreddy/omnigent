@@ -7,6 +7,8 @@
 extern void omnigent_view_testing_install_runner_loop_shield(void);
 extern void omnigent_view_testing_clear_earlier_settings(void);
 extern void omnigent_view_testing_overlay_scroll_bars(void);
+extern void omnigent_view_testing_quiet_motion(void);
+extern void omnigent_view_testing_track_pauses(void);
 #endif
 
 static int shield_requested = 0;
@@ -19,6 +21,8 @@ __attribute__((constructor)) static void omnigent_view_testing_bootstrap(void) {
   omnigent_view_testing_install_runner_loop_shield();
   omnigent_view_testing_clear_earlier_settings();
   omnigent_view_testing_overlay_scroll_bars();
+  omnigent_view_testing_quiet_motion();
+  omnigent_view_testing_track_pauses();
 #endif
 }
 

@@ -21,7 +21,10 @@ struct TerminalTabFocusTests {
     let selection = WindowSelection(.session("demo-design"))
     let screen = OffscreenWindow(
       AppWindowRoot(session: session, selection: selection), width: 1200, height: 800)
-    try await pause(screen, .milliseconds(300))
+    // A terminal remembers what had the keyboard as it showed; the chat's editor takes it first.
+    try await settle(screen, until: "the chat's editor to take the keyboard") {
+      (screen.window.firstResponder as? NSTextView)?.isEditable == true
+    }
     return (screen, session)
   }
 
@@ -53,7 +56,7 @@ struct TerminalTabFocusTests {
       terminalHasKeyboard(screen)
     }
     tabs.select(chat.id)
-    try await pause(screen, .milliseconds(300))
+    try await Task.sleep(for: .milliseconds(300))
     #expect(!terminalHasKeyboard(screen))
     tabs.select(shell.id)
     try await settle(screen, until: "the terminal to take the keyboard back") {
@@ -70,7 +73,7 @@ struct TerminalTabFocusTests {
     tabs.open(terminal)
     try await pause(screen, .milliseconds(30))
     tabs.select(chat.id)
-    try await pause(screen, .milliseconds(400))
+    try await Task.sleep(for: .milliseconds(400))
     #expect(tabs.selected?.id == chat.id)
     #expect(!terminalHasKeyboard(screen))
   }

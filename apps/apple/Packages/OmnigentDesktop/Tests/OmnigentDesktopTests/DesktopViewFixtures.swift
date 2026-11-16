@@ -58,11 +58,7 @@
   /// Lets started tasks run and the view update.
   @MainActor
   func flush<Content: View>(_ screen: OffscreenWindow<Content>) async {
-    for _ in 0..<4 {
-      screen.settle(0.02)
-      await Task.yield()
-    }
-    screen.settle(0.02)
+    await screen.settleTasks()
   }
 
   /// Waits for a condition while tasks and the run loop proceed.
@@ -70,17 +66,7 @@
   func settle<Content: View>(
     _ screen: OffscreenWindow<Content>, until condition: () -> Bool
   ) async -> Bool {
-    for _ in 0..<200 {
-      screen.settle(0.005)
-      if condition() { return true }
-      await Task.yield()
-      do {
-        try await Task.sleep(for: .milliseconds(5))
-      } catch {
-        return condition()
-      }
-    }
-    return condition()
+    await screen.waitUntil(timeout: .seconds(5), condition)
   }
 
   extension OffscreenWindow {

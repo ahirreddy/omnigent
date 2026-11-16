@@ -192,7 +192,7 @@ public struct CommandPalette: View {
     }
     isSearching = true
     do {
-      try await Task.sleep(for: .milliseconds(250))
+      try await Task.sleep(for: Theme.Timing.pause(.milliseconds(250)))
     } catch {
       // A newer query replaced this one.
       return

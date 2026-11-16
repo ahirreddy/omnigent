@@ -87,7 +87,9 @@ struct CustomAgentsScreenTests {
     try screen.clickControl(at: Self.create)
     try await settle(screen, untilShowing: "Create Custom Agent")
     try pressShortcut(screen, keyCode: 53, characters: "\u{1b}", modifiers: [])
-    try await pause(screen, .milliseconds(300))
+    try await settle(screen, until: "the form to close") {
+      (try? screen.shows("Create Custom Agent")) == false
+    }
     #expect(try !screen.shows("Create Custom Agent"))
     #expect(server.requests("POST", "/v1/agents").isEmpty)
   }

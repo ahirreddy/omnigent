@@ -3,6 +3,7 @@ import OmnigentCoreFFI
 import OmnigentServices
 import OmnigentStores
 import OmnigentTestSupport
+import OmnigentViewTesting
 import Synchronization
 import Testing
 
@@ -91,12 +92,7 @@ func signedInStore(
 func eventually(
   _ description: String, timeout: Duration = .seconds(5), _ condition: () -> Bool
 ) async throws {
-  let deadline = ContinuousClock.now + timeout
-  while !condition() {
-    guard ContinuousClock.now < deadline else {
-      Issue.record("timed out waiting for \(description)")
-      return
-    }
-    try await Task.sleep(for: .milliseconds(5))
+  if await !MainLoop.waitUntil(timeout: timeout, condition) {
+    Issue.record("timed out waiting for \(description)")
   }
 }

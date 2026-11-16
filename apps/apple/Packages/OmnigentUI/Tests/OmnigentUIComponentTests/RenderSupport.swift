@@ -1,9 +1,26 @@
 #if os(macOS)
   import AppKit
   import Foundation
+  import OmnigentViewTesting
   import SwiftUI
+  import Testing
 
   @testable import OmnigentUIComponents
+
+  extension Tag {
+    /// A test that renders a whole catalog of images: CPU-bound minutes, so the edit loop skips
+    /// it and the full and coverage runs keep it.
+    @Tag static var slowLane: Self
+  }
+
+  extension Trait where Self == ConditionTrait {
+    /// Skips a ``Tag/slowLane`` test where `OMNIGENT_SKIP_SLOW_TESTS=1`, as the edit loop sets.
+    static var slowLane: Self {
+      .disabled(
+        if: ProcessInfo.processInfo.environment["OMNIGENT_SKIP_SLOW_TESTS"] == "1",
+        "slow lane: renders the whole catalog; runs in the full and coverage runs")
+    }
+  }
 
   /// Renders SwiftUI views offscreen through a real `NSHostingView` in a borderless window, so
   /// AppKit-backed controls (lists, text fields, menus) draw as they do in the app, which
@@ -64,7 +81,7 @@
       window.contentView = host
       host.frame = CGRect(origin: .zero, size: size)
       host.layoutSubtreeIfNeeded()
-      RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+      MainLoop.settle(limit: 0.15, windows: [window])
       host.layoutSubtreeIfNeeded()
       guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
         throw RenderError.bitmapUnavailable
@@ -86,17 +103,13 @@
 
     /// Mean luminance (0 to 1) over a sample grid.
     static func averageLuminance(_ rendered: Rendered) -> Double {
-      let image = rendered.image
+      guard let pixels = Pixels(rendered.image) else { return 0 }
       var total = 0.0
       var samples = 0
-      for row in stride(from: 0, to: image.pixelsHigh, by: 8) {
-        for column in stride(from: 0, to: image.pixelsWide, by: 8) {
-          guard let color = image.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB) else {
-            continue
-          }
-          total +=
-            0.2126 * color.redComponent + 0.7152 * color.greenComponent
-            + 0.0722 * color.blueComponent
+      for row in stride(from: 0, to: pixels.height, by: 8) {
+        for column in stride(from: 0, to: pixels.width, by: 8) {
+          let color = pixels.color(column, row)
+          total += 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue
           samples += 1
         }
       }
@@ -106,14 +119,13 @@
     /// Whether any pixel is strongly colored in `hex`'s hue. Hues survive the display's color
     /// matching, which shifts exact values.
     static func shows(_ hex: UInt32, in rendered: Rendered) -> Bool {
-      let image = rendered.image
+      guard let pixels = Pixels(rendered.image) else { return false }
       let wanted = NSColor(Color(hex: hex)).usingColorSpace(.deviceRGB)?.hueComponent ?? 0
-      for row in 0..<image.pixelsHigh {
-        for column in 0..<image.pixelsWide {
-          guard let color = image.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB),
-            color.saturationComponent > 0.4, color.brightnessComponent > 0.4
-          else { continue }
-          let distance = abs(color.hueComponent - wanted)
+      for row in 0..<pixels.height {
+        for column in 0..<pixels.width {
+          let color = Pixels.hsb(pixels.color(column, row))
+          guard color.saturation > 0.4, color.brightness > 0.4 else { continue }
+          let distance = abs(color.hue - wanted)
           if min(distance, 1 - distance) < 0.05 { return true }
         }
       }
@@ -132,14 +144,13 @@
     /// The fraction of pixels that differ from the most common color: a cheap "something
     /// rendered" check that catches blank or placeholder output.
     static func inkCoverage(_ rendered: Rendered) -> Double {
-      let image = rendered.image
+      guard let pixels = Pixels(rendered.image) else { return 0 }
       var counts: [UInt32: Int] = [:]
       let step = 4
       var samples = 0
-      for row in stride(from: 0, to: image.pixelsHigh, by: step) {
-        for column in stride(from: 0, to: image.pixelsWide, by: step) {
-          guard let key = colorKey(image, column, row) else { continue }
-          counts[key, default: 0] += 1
+      for row in stride(from: 0, to: pixels.height, by: step) {
+        for column in stride(from: 0, to: pixels.width, by: step) {
+          counts[pixels.key(column, row), default: 0] += 1
           samples += 1
         }
       }
@@ -152,19 +163,18 @@
     /// few pixels at any backing scale, wherever the text beside it lands on the pixel grid.
     static func inkedWidth(_ rendered: Rendered) -> CGFloat {
       let image = rendered.image
+      guard let pixels = Pixels(image) else { return 0 }
       var counts: [UInt32: Int] = [:]
-      for row in stride(from: 0, to: image.pixelsHigh, by: 2) {
-        for column in stride(from: 0, to: image.pixelsWide, by: 2) {
-          if let key = colorKey(image, column, row) { counts[key, default: 0] += 1 }
+      for row in stride(from: 0, to: pixels.height, by: 2) {
+        for column in stride(from: 0, to: pixels.width, by: 2) {
+          counts[pixels.key(column, row), default: 0] += 1
         }
       }
       guard let background = counts.max(by: { $0.value < $1.value })?.key else { return 0 }
       let inked = { (column: Int) in
-        (0..<image.pixelsHigh).contains { row in
-          colorKey(image, column, row).map { $0 != background } ?? false
-        }
+        (0..<pixels.height).contains { row in pixels.key(column, row) != background }
       }
-      let columns = 0..<image.pixelsWide
+      let columns = 0..<pixels.width
       guard let first = columns.first(where: inked), let last = columns.last(where: inked) else {
         return 0
       }
@@ -172,13 +182,84 @@
       return CGFloat(last - first + 1) * pointsPerPixel
     }
 
-    /// A pixel's color in 5 bits a channel, so near-equal colors count as one.
-    private static func colorKey(_ image: NSBitmapImageRep, _ column: Int, _ row: Int) -> UInt32? {
-      guard let color = image.colorAt(x: column, y: row)?.usingColorSpace(.deviceRGB) else {
-        return nil
+    /// A color's channels from 0 to 1.
+    struct RGB {
+      let red: Double
+      let green: Double
+      let blue: Double
+    }
+
+    /// A color's hue, saturation and brightness from 0 to 1.
+    struct HSB {
+      let hue: Double
+      let saturation: Double
+      let brightness: Double
+    }
+
+    /// An image's pixels in 8-bit device RGB, converted once: reading an `NSColor` for each pixel
+    /// took most of a render test's time.
+    struct Pixels {
+      let width: Int
+      let height: Int
+      /// Premultiplied RGBA, the top row first.
+      private let bytes: [UInt8]
+
+      init?(_ image: NSBitmapImageRep) {
+        guard let picture = image.cgImage else { return nil }
+        width = picture.width
+        height = picture.height
+        var buffer = [UInt8](repeating: 0, count: width * height * 4)
+        let drew = buffer.withUnsafeMutableBytes { raw -> Bool in
+          let info = CGImageAlphaInfo.premultipliedLast.rawValue
+          guard
+            let context = unsafe CGContext(
+              data: raw.baseAddress, width: picture.width, height: picture.height,
+              bitsPerComponent: 8, bytesPerRow: picture.width * 4,
+              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: info)
+          else { return false }
+          context.draw(
+            picture, in: CGRect(x: 0, y: 0, width: picture.width, height: picture.height))
+          return true
+        }
+        guard drew else { return nil }
+        bytes = buffer
       }
-      return UInt32(color.redComponent * 31) << 10 | UInt32(color.greenComponent * 31) << 5
-        | UInt32(color.blueComponent * 31)
+
+      /// A pixel's color, from the top left, with its alpha taken out.
+      func color(_ column: Int, _ row: Int) -> RGB {
+        let index = (row * width + column) * 4
+        let alpha = Double(bytes[index + 3])
+        guard alpha > 0 else { return RGB(red: 0, green: 0, blue: 0) }
+        return RGB(
+          red: Double(bytes[index]) / alpha, green: Double(bytes[index + 1]) / alpha,
+          blue: Double(bytes[index + 2]) / alpha)
+      }
+
+      /// Hue, saturation and brightness, as `NSColor` gives them.
+      static func hsb(_ color: RGB) -> HSB {
+        let highest = max(color.red, color.green, color.blue)
+        let spread = highest - min(color.red, color.green, color.blue)
+        guard highest > 0, spread > 0 else {
+          return HSB(hue: 0, saturation: 0, brightness: highest)
+        }
+        let sector: Double =
+          if highest == color.red {
+            (color.green - color.blue) / spread
+          } else if highest == color.green {
+            2 + (color.blue - color.red) / spread
+          } else {
+            4 + (color.red - color.green) / spread
+          }
+        let hue = (sector / 6).truncatingRemainder(dividingBy: 1)
+        return HSB(hue: hue < 0 ? hue + 1 : hue, saturation: spread / highest, brightness: highest)
+      }
+
+      /// A pixel's color in 5 bits a channel, so near-equal colors count as one.
+      func key(_ column: Int, _ row: Int) -> UInt32 {
+        let pixel = color(column, row)
+        return UInt32(min(pixel.red, 1) * 31) << 10 | UInt32(min(pixel.green, 1) * 31) << 5
+          | UInt32(min(pixel.blue, 1) * 31)
+      }
     }
   }
 #endif

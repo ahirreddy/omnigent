@@ -93,7 +93,9 @@ struct AutomationsScreenTests {
     #expect(body["prompt"] as? String == "Do it")
     #expect(body["host_id"] as? String == "mac")
     #expect(body["agent_id"] as? String == "ag_claude")
-    try await pause(screen, .milliseconds(300))
+    try await settle(screen, until: "the sheet to close") {
+      (try? screen.shows("Create automation")) == false
+    }
     #expect(try !screen.shows("Create automation"), "the sheet closes once saved")
   }
 
@@ -120,7 +122,9 @@ struct AutomationsScreenTests {
     try screen.clickControl(at: 4)
     try await settle(screen, untilShowing: "Create automation")
     try pressShortcut(screen, keyCode: 53, characters: "\u{1b}", modifiers: [])
-    try await pause(screen, .milliseconds(300))
+    try await settle(screen, until: "the sheet to close") {
+      (try? screen.shows("Create automation")) == false
+    }
     #expect(try !screen.shows("Create automation"))
   }
 
@@ -179,7 +183,7 @@ struct AutomationsScreenTests {
     #expect(try screen.shows("Host \u{00B7} None of your hosts was online."))
     // Its controls: Back, Edit, Delete, Run, Pause, then the run's row.
     try screen.clickControl(at: 5)
-    try await pause(screen, .milliseconds(100))
+    try await settle(screen, until: "the run's session") { !opened.sessions.isEmpty }
     #expect(opened.sessions == ["c2"], "the run opens its session")
     try screen.clickControl(at: 0)
     try await settle(screen, untilShowing: "Suggestions")
@@ -215,7 +219,9 @@ struct AutomationsScreenTests {
     try screen.clickControl(at: 1)
     try await settle(screen, untilShowing: "Save changes")
     try pressShortcut(screen, keyCode: 53, characters: "\u{1b}", modifiers: [])
-    try await pause(screen, .milliseconds(300))
+    try await settle(screen, until: "the editor to close") {
+      (try? screen.shows("Save changes")) == false
+    }
     try screen.clickControl(at: 2)
     try await settle(screen, until: "the delete") {
       !server.requests("DELETE", "/v1/scheduled-tasks/t1").isEmpty
@@ -243,7 +249,7 @@ extension AutomationsScreenTests {
     // Each press is with no field focused, so the key goes to the sheet's default button.
     _ = screen.activeWindow.makeFirstResponder(nil)
     try screen.press(keyCode: 36, characters: "\r")
-    try await pause(screen, .milliseconds(100))
+    try await Task.sleep(for: .milliseconds(100))
     #expect(server.requests("POST", "/v1/scheduled-tasks").isEmpty, "nothing to save yet")
     try typeAFullDraft(screen)
     _ = screen.activeWindow.makeFirstResponder(nil)

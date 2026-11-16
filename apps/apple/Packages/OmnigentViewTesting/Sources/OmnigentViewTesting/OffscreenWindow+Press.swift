@@ -29,7 +29,7 @@
       // false pass. In the default mode nothing tracks, so the posted up waits in the queue.
       nonisolated(unsafe) let trackedUp = mouseUp
       nonisolated(unsafe) var postedUntracked = false
-      let release = Timer(timeInterval: 0.03, repeats: false) { _ in
+      let release = Timer(timeInterval: 0.01, repeats: false) { _ in
         MainActor.assumeIsolated {
           unsafe postedUntracked = RunLoop.current.currentMode == .default
           NSApp.postEvent(unsafe trackedUp, atStart: false)
@@ -39,7 +39,9 @@
       deliver(down, to: target)
       if release.isValid {
         release.invalidate()
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
+        // A menu that opened and closed within the down took the whole click.
+        guard !isMenuOpen() else { return }
+        MainLoop.settle(limit: 0.03, windows: [target])
         deliver(mouseUp, to: target)
       } else if unsafe postedUntracked, !isMenuOpen(),
         let waiting = NSApp.nextEvent(

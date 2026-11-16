@@ -103,7 +103,7 @@ struct FileCommentsPanel: View {
         }
         .onChange(of: selectedID) { _, id in
           guard let id else { return }
-          withAnimation { proxy.scrollTo(id, anchor: .center) }
+          withAnimation(WorkspaceTheme.motion(.default)) { proxy.scrollTo(id, anchor: .center) }
         }
       }
     }
