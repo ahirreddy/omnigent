@@ -40,12 +40,6 @@
     }
   }
 
-  /// Which piece of which message a text view shows.
-  nonisolated struct MessageTextSource: Hashable, Sendable {
-    var text: String
-    var piece: Int
-  }
-
   /// One run of text blocks in a ``MessageTextHostView``: the document is built once per text,
   /// style and linked paths, and its view lays out once per width.
   struct MessageTextBlocksView: NSViewRepresentable {
@@ -92,31 +86,6 @@
         let shown = links.map { links in blocks.map { $0.linking(with: links) } } ?? blocks
         var builder = MessageTextBuilder(palette: MessageTextPalette(style))
         return builder.document(linked.isEmpty ? blocks : shown)
-      }
-    }
-  }
-
-  extension MarkdownBlock {
-    /// The block with the workspace paths it cites linked, once they are known to exist.
-    func linking(with links: WorkspaceFileLinks) -> MarkdownBlock {
-      switch self {
-      case .paragraph(let text):
-        return .paragraph(links.linking(text))
-      case .heading(let level, let text):
-        return .heading(level: level, text: links.linking(text))
-      case .quote(let blocks):
-        return .quote(blocks.map { $0.linking(with: links) })
-      case .list(let ordered, let start, let items):
-        let linked = items.map {
-          MarkdownListItem(blocks: $0.blocks.map { $0.linking(with: links) }, task: $0.task)
-        }
-        return .list(ordered: ordered, start: start, items: linked)
-      case .table(var table):
-        table.header = table.header.map { links.linking($0) }
-        table.rows = table.rows.map { $0.map { links.linking($0) } }
-        return .table(table)
-      case .code, .rule, .html, .image, .math:
-        return self
       }
     }
   }
