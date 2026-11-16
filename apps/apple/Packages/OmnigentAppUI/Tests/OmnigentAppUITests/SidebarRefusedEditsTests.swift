@@ -31,7 +31,8 @@ struct SidebarRefusedEditsTests {
     #expect(view.sidebarModel.undo != nil)
     try await eventually("the write") { gate.arrivals == 1 }
     #expect(session.tabs.page == .session("conv_b"), "the window left before the answer")
-    #expect(!list.visible.contains { $0.id == "conv_a" }, "and so did the row")
+    // The hidden row comes as the core's event, which can land after the write arrives.
+    try await eventually("the row to leave") { !list.visible.contains { $0.id == "conv_a" } }
     gate.release()
     try await eventually("the offer to retry") { list.editRetry != nil }
     #expect(list.editRetry?.title == "Could Not Archive the Session")
