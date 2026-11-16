@@ -2,51 +2,6 @@
   import AppKit
   import Synchronization
 
-  nonisolated extension NSAttributedString.Key {
-    /// The block a paragraph belongs to, for the layers and controls drawn with it.
-    static let messageBlock = NSAttributedString.Key("omnigent.messageBlock")
-    /// The quotes a paragraph sits in, for their bars.
-    static let messageQuotes = NSAttributedString.Key("omnigent.messageQuotes")
-  }
-
-  /// What one paragraph of message text is part of: a code block's header or line, a table row
-  /// or a rule. ``MessageTextLayersView`` draws them from the laid-out lines.
-  nonisolated final class MessageBlockMark: NSObject {
-    enum Role {
-      /// The band a code block's language label and Copy button sit on.
-      case codeHeader
-      case codeLine(isLast: Bool)
-      case tableRow(isHeader: Bool, isLast: Bool, width: CGFloat)
-      case rule
-    }
-
-    let block: Int
-    let role: Role
-    /// The block's leading edge.
-    let indent: CGFloat
-
-    init(block: Int, role: Role, indent: CGFloat) {
-      self.block = block
-      self.role = role
-      self.indent = indent
-    }
-  }
-
-  /// The quotes around a paragraph, outermost first: each one's bar and its leading edge.
-  nonisolated final class MessageQuoteMarks: NSObject {
-    let bars: [MessageQuoteBar]
-
-    init(_ bars: [MessageQuoteBar]) {
-      self.bars = bars
-    }
-  }
-
-  /// One quote's bar.
-  nonisolated struct MessageQuoteBar: Hashable, Sendable {
-    var id: Int
-    var leading: CGFloat
-  }
-
   /// A control drawn over a block: a code block's header or a table's Copy menu.
   nonisolated enum MessageTextChrome: Sendable {
     case code(code: String, language: String?)

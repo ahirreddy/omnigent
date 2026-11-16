@@ -2,21 +2,6 @@
   import AppKit
   import SwiftUI
 
-  /// The design system's metrics the builder sets text with, as constants it can read off the
-  /// main actor; a test checks they match `Theme`'s.
-  nonisolated enum MessageTextMetrics {
-    /// `Theme.Control.target` on the Mac.
-    static let controlTarget: CGFloat = 28
-    /// `Theme.Spacing`.
-    static let extraSmall: CGFloat = 4
-    static let small: CGFloat = 8
-    static let medium: CGFloat = 12
-    static let large: CGFloat = 16
-    static let extraLarge: CGFloat = 24
-    /// `MarkdownTableView.rowPadding`.
-    static let tableRowPadding: CGFloat = 10
-  }
-
   /// Builds a run of markdown blocks into one attributed string: paragraphs, headings, lists,
   /// quotes, rules, tables that fit and code blocks, spaced and styled as ``MarkdownView`` draws
   /// them. Code blocks and tables leave room for their layers and controls. Lists, code and
@@ -39,13 +24,12 @@
     var previousExtra: CGFloat = 0
 
     /// A code block's header band: a control's height and the padding around it, then a rule.
-    static let codeHeaderHeight =
-      MessageTextMetrics.controlTarget + 2 * MessageTextMetrics.extraSmall
+    static let codeHeaderHeight = MessageTextMetrics.codeHeaderHeight
     /// Inside a code block, around its code.
-    static let codePadding = MessageTextMetrics.large
+    static let codePadding = MessageTextMetrics.codePadding
     /// Under a table, its controls' row.
-    static let tableControlsHeight = MessageTextMetrics.controlTarget
-    static let quoteBarWidth: CGFloat = 3
+    static let tableControlsHeight = MessageTextMetrics.tableControlsHeight
+    static let quoteBarWidth = MessageTextMetrics.quoteBarWidth
 
     var ramp: TypeRamp { palette.style.ramp }
 
