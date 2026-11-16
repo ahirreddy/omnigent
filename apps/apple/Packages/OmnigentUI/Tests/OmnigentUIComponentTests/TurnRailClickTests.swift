@@ -106,5 +106,41 @@
       screen.liveScroll(rail, began: false)
       #expect(target.olderLoads > 0)
     }
+
+    /// The top and bottom, in points, of what draws right of the ticks.
+    private func drawnRows(in screen: OffscreenWindow<RailHost>) throws -> ClosedRange<CGFloat> {
+      let rendered = try RenderSupport.capture(screen.host)
+      let pixels = try #require(RenderSupport.Pixels(rendered.image))
+      let scale = CGFloat(pixels.width) / screen.host.bounds.width
+      let blank = pixels.color(pixels.width - 2, pixels.height - 2)
+      let columns = stride(from: Int(60 * scale), to: Int(300 * scale), by: 2)
+      let drawn = (0..<pixels.height).filter { row in
+        columns.contains { column in
+          let ink = pixels.color(column, row)
+          return max(
+            abs(ink.red - blank.red), abs(ink.green - blank.green), abs(ink.blue - blank.blue))
+            > 0.06
+        }
+      }
+      let top = try #require(drawn.first, "nothing drawn beside the rail")
+      return CGFloat(top) / scale...CGFloat(drawn.last ?? top) / scale
+    }
+
+    @Test("a tick's preview is centered on the tick, beside the rail, and follows the pointer")
+    func previewSitsBesideTheHoveredTick() throws {
+      let target = RailJumpTarget()
+      let model = TurnRailModel()
+      model.setTurns((0..<30).map { TranscriptTurn(id: "u\($0)", text: "Turn \($0)") })
+      let screen = OffscreenWindow(RailHost(target: target, model: model), width: 400, height: 320)
+      defer { screen.close() }
+
+      for index in [20, 5] {
+        try screen.hover(tick(index))
+        let rows = try drawnRows(in: screen)
+        let middle = (rows.lowerBound + rows.upperBound) / 2
+        #expect(abs(middle - tick(index).y) < 12, "tick \(index) at \(tick(index).y): \(rows)")
+      }
+      try screen.endHover()
+    }
   }
 #endif

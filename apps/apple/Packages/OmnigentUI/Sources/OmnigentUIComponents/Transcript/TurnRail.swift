@@ -144,14 +144,18 @@ struct TurnRail: View {
     min(Self.maxHeight, CGFloat(model.turns.count) * Self.pitch + 2 * Self.fade)
   }
 
-  @ViewBuilder private var previewBox: some View {
-    if let hoveredID, let turn = model.turns.first(where: { $0.id == hoveredID }) {
-      TurnPreview(text: turn.text, response: preview(turn.id))
-        .alignmentGuide(.top) { $0[VerticalAlignment.center] - previewY }
-        .alignmentGuide(.leading) { _ in -32 }
-        .allowsHitTesting(false)
-        .transition(.opacity)
+  /// The preview beside the hovered tick. The guides sit on the stack, not on the preview: an
+  /// overlay ignores the guides of a view inside an `if`.
+  private var previewBox: some View {
+    ZStack(alignment: .topLeading) {
+      if let hoveredID, let turn = model.turns.first(where: { $0.id == hoveredID }) {
+        TurnPreview(text: turn.text, response: preview(turn.id))
+          .allowsHitTesting(false)
+          .transition(.opacity)
+      }
     }
+    .alignmentGuide(.top) { $0[VerticalAlignment.center] - previewY }
+    .alignmentGuide(.leading) { _ in -32 }
   }
 
   /// Picks the tick under the pointer from its height in the rail and the rail's scroll.
