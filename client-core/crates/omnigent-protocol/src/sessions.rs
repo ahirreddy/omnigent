@@ -398,6 +398,10 @@ pub struct SessionListItem {
     /// What a `running` session's agent is parked on in its terminal, e.g. `permission prompt`.
     #[serde(default, skip_serializing_if = "Field::is_absent")]
     pub blocked_on: Field<String>,
+    /// How often the session has gone from idle or failed to working. It only grows, so a turn
+    /// that ran wholly between two reads still shows. Older servers omit it.
+    #[serde(default, skip_serializing_if = "Field::is_absent")]
+    pub turns_started: Field<u64>,
     /// Workspace path.
     #[serde(default, skip_serializing_if = "Field::is_absent")]
     pub workspace: Field<String>,
