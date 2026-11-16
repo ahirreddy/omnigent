@@ -256,7 +256,7 @@ struct JumpToTopReveal: ViewModifier {
       tracker.hideTask?.cancel()
       tracker.hideTask = Task { @MainActor in
         do {
-          try await Task.sleep(for: Self.scrollReveal)
+          try await Task.sleep(for: Theme.Timing.pause(Self.scrollReveal))
         } catch {
           return  // Superseded by a newer scroll.
         }
