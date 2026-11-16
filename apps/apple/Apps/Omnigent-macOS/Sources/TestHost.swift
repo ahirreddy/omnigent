@@ -172,11 +172,14 @@ enum TestHost {
     let startUpdater: () -> Void
 
     /// Runs the work in order, unless the process hosts tests: they must not stop or adopt the
-    /// user's server and host, check for updates or start a chaos run.
-    /// - Parameter isTestHost: Whether the process hosts tests.
-    func run(isTestHost: Bool) {
+    /// user's server and host, check for updates or start a chaos run. The offline demo leaves
+    /// the local server alone too.
+    /// - Parameters:
+    ///   - isTestHost: Whether the process hosts tests.
+    ///   - isDemo: Whether this is a demo launch.
+    func run(isTestHost: Bool, isDemo: Bool) {
       guard !isTestHost else { return }
-      startLocalServer()
+      if !isDemo { startLocalServer() }
       startChaos()
       startUpdater()
     }

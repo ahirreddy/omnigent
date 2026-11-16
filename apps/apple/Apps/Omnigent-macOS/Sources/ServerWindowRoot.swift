@@ -117,8 +117,12 @@ struct ServerWindowRoot: View {
     let session = services.makeServerSession()
     configure(session)
     self.session = session
+    let localServer = desktop.localServer
+    guard localServer.capability.isAvailable else { return }
     if Self.resumesLocalServer(
-      boundTo: id.serverURL, localServerIsRunning: desktop.localServer.server.endpoint != nil)
+      boundTo: id.serverURL, isDemo: services.isDemo,
+      localServerIsRunning: localServer.server.endpoint != nil,
+      isServed: { url in isServed(url, by: localServer) })
     {
       session.signIn.resumeLocalServer()
     }
@@ -158,17 +162,6 @@ struct ServerWindowRoot: View {
       }
       Task { await services.didConnect(to: url) }
     }
-  }
-
-  /// Quitting stopped the server this Mac runs for itself, so a window opened on the connect
-  /// screen or on that stopped server goes back to it. A window on another server does not.
-  /// - Parameters:
-  ///   - serverURL: The server the window opens on.
-  ///   - localServerIsRunning: Whether this Mac's server is up.
-  /// - Returns: Whether to offer to start the local server again.
-  static func resumesLocalServer(boundTo serverURL: URL?, localServerIsRunning: Bool) -> Bool {
-    guard let serverURL else { return true }
-    return LocalInstall.isLocalInstall(serverURL.absoluteString) && !localServerIsRunning
   }
 
   /// The server's display name ("This Mac" for a loopback server, never `127.0.0.1`).
@@ -355,5 +348,40 @@ extension ServerWindowRoot {
     WindowSettingsHost(
       settings: settings, selection: $selection, window: id.instance, desktop: desktop,
       page: settingsPage(settings))
+  }
+}
+
+extension ServerWindowRoot {
+  /// Quitting stopped the server this Mac runs for itself, so a window opened on the connect
+  /// screen or on that stopped server goes back to it. A window on another server does not, nor
+  /// one on a loopback address another server still answers (Terminal's, a test's), nor any
+  /// window of the offline demo.
+  /// - Parameters:
+  ///   - serverURL: The server the window opens on.
+  ///   - isDemo: Whether this launch runs the offline demo.
+  ///   - localServerIsRunning: Whether this Mac's server is up.
+  ///   - isServed: Whether something listens at a loopback server URL; asked last.
+  /// - Returns: Whether to offer to start the local server again.
+  static func resumesLocalServer(
+    boundTo serverURL: URL?, isDemo: Bool, localServerIsRunning: Bool,
+    isServed: (URL) -> Bool
+  ) -> Bool {
+    guard !isDemo else { return false }
+    guard let serverURL else { return true }
+    return LocalInstall.isLocalInstall(serverURL.absoluteString) && !localServerIsRunning
+      && !isServed(serverURL)
+  }
+
+  /// Whether something listens at `url`. A check that fails counts as served, so the window
+  /// stays on its server rather than moving to one this Mac starts.
+  private func isServed(_ url: URL, by localServer: LocalServerManager) -> Bool {
+    do {
+      return try localServer.isListening(at: url)
+    } catch {
+      services.logger.error(
+        "Could not check whether \(url.absoluteString, privacy: .public) is served: \(error.message, privacy: .public)"
+      )
+      return true
+    }
   }
 }

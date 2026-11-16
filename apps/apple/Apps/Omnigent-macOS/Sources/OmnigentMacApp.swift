@@ -254,7 +254,7 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       startLocalServer: { super.applicationDidFinishLaunching(notification) },
       startChaos: startDiagnostics,
       startUpdater: { [self] in startUpdater(startUpdates) }
-    ).run(isTestHost: isTestHost)
+    ).run(isTestHost: isTestHost, isDemo: Self.isDemo)
   }
 
   // coverage:off Sparkle's real scheduled checks; a real launch in the VM starts them

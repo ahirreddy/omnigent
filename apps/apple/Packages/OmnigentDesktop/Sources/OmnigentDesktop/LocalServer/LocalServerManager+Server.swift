@@ -1,4 +1,4 @@
-import Foundation
+public import Foundation
 
 /// The local server: start, readiness, crashes, restarts and stop.
 extension LocalServerManager {
@@ -43,6 +43,17 @@ extension LocalServerManager {
     }
     server = .starting(trigger)
     await spawnServer(resolution, trigger: trigger)
+  }
+
+  /// Whether something already listens on `url`'s loopback port. A window bound there reaches
+  /// that server, whoever started it (this app, Terminal or a test), so this Mac's own server
+  /// is not the one to start for it.
+  /// - Parameter url: A loopback server URL.
+  /// - Returns: Whether its port is taken; `false` for a URL without a port.
+  /// - Throws: When the port can't be checked.
+  public func isListening(at url: URL) throws(LocalServerError) -> Bool {
+    guard let port = url.port else { return false }
+    return try !dependencies.runner.isLoopbackPortAvailable(port)
   }
 
   /// Stops the server. One the app started is signaled; one started outside the app is stopped

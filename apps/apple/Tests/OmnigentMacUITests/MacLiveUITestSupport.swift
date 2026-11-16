@@ -136,7 +136,7 @@ struct MacLiveUITestSupport {
     ] + noLocalServerArguments + windowFrameArguments
 
   /// A CLI and a data folder that are not there, so the app neither starts This Mac's server nor
-  /// finds one already running. With either, it moves a window on a loopback server to it.
+  /// finds one already running, and no flow leaves a server of its own behind in the VM.
   nonisolated static let noLocalServerArguments = [
     "-desktop.localServer.cliPath", "/var/empty/no-omnigent-cli-in-ui-tests",
     "-desktop.localServer.dataDirectory", "/var/empty/no-omnigent-data-in-ui-tests",
