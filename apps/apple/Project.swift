@@ -70,6 +70,8 @@ let iOSApp = Target.target(
     extra: [
       "UILaunchScreen": [:],
       "UIApplicationSupportsIndirectInputEvents": true,
+      // ProMotion iPhones run animations above 60 Hz only with this; scrolling isn't capped.
+      "CADisableMinimumFrameDurationOnPhone": true,
       // iPad windows: each scene has its own server, tabs and session.
       "UIApplicationSceneManifest": ["UIApplicationSupportsMultipleScenes": true],
       "UISupportedInterfaceOrientations": [
