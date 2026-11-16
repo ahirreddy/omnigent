@@ -73,17 +73,24 @@ struct ServerSettingsContainerTests {
     #expect(try !page.screen.shows("Signed in as"))
   }
 
-  /// The middle of the sidebar row that draws `title`.
-  private func rowPoint(titled title: String, on page: Page) throws -> CGPoint {
+  /// The middle of the sidebar row that draws `title`, once the sidebar has drawn it.
+  private func rowPoint(titled title: String, on page: Page) async throws -> CGPoint {
     let screen = page.screen
-    let list = try #require(screen.allViews.lazy.compactMap { $0 as? NSTableView }.first)
-    let row = try (0..<list.numberOfRows).first { row in
-      guard let view = list.rowView(atRow: row, makeIfNecessary: false) else { return false }
-      return try screen.shownText(under: view).contains(title)
+    func row() -> (list: NSTableView, row: Int)? {
+      guard let list = screen.allViews.lazy.compactMap({ $0 as? NSTableView }).first else {
+        return nil
+      }
+      let row = (0..<list.numberOfRows).first { row in
+        guard let view = list.rowView(atRow: row, makeIfNecessary: false) else { return false }
+        return (try? screen.shownText(under: view).contains(title)) == true
+      }
+      return row.map { (list, $0) }
     }
-    let frame = list.convert(
-      list.rect(ofRow: try #require(row, "no row titled \(title)")),
-      to: screen.activeWindow.contentView)
+    // A busy machine can draw the sidebar's rows a moment after the page.
+    try await settle(screen, until: "a row titled \(title)") { row() != nil }
+    let found = try #require(row(), "no row titled \(title)")
+    let frame = found.list.convert(
+      found.list.rect(ofRow: found.row), to: screen.activeWindow.contentView)
     return CGPoint(x: frame.midX, y: frame.midY)
   }
 
@@ -92,9 +99,9 @@ struct ServerSettingsContainerTests {
     let server = settingsServer()
     let page = try await page(server)
     defer { page.screen.close() }
-    #expect(try page.screen.shows("Signed in as"))
+    try await settle(page.screen, untilShowing: "Signed in as")
     #expect(server.requests("GET", "/v1/mcp-registry/services").isEmpty)
-    try page.screen.click(try rowPoint(titled: ServerSettingsPane.mcp.title, on: page))
+    try page.screen.click(try await rowPoint(titled: ServerSettingsPane.mcp.title, on: page))
     try await settle(page.screen, untilShowing: "Docs")
     #expect(!server.requests("GET", "/v1/mcp-registry/services").isEmpty)
     #expect(try !page.screen.shows("Signed in as"))
