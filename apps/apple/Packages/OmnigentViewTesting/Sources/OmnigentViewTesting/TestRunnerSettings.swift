@@ -7,6 +7,12 @@
     TestRunnerSettings.clearEarlierRun()
   }
 
+  /// The test bundle's load calls this from C, before any test runs.
+  @_cdecl("omnigent_view_testing_apply_environment_defaults")
+  func applyEnvironmentDefaults() {
+    TestRunnerSettings.applyEnvironmentDefaults()
+  }
+
   /// The test bundle's load calls this from C, before the process makes a scroll view.
   @_cdecl("omnigent_view_testing_overlay_scroll_bars")
   func overlayScrollBars() {
@@ -53,6 +59,33 @@
       let defaults = UserDefaults.standard
       var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
       arguments[scrollBarsKey] = scrollBarsWhenScrolling
+      defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+    }
+
+    /// Settings a run passes in the environment, read as launch arguments: `key=value` pairs
+    /// split by `;`, such as `omnigent:message-text=textkit` to run the views with that setting.
+    static let environmentDefaultsVariable = "OMNIGENT_TEST_DEFAULTS"
+
+    /// The pairs in `value`; a pair without `=` or a key is skipped.
+    static func environmentDefaults(_ value: String) -> [String: String] {
+      var settings: [String: String] = [:]
+      for pair in value.split(separator: ";") {
+        let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+        let key = parts[0].trimmingCharacters(in: .whitespaces)
+        guard parts.count == 2, !key.isEmpty else { continue }
+        settings[key] = parts[1].trimmingCharacters(in: .whitespaces)
+      }
+      return settings
+    }
+
+    /// Sets this process's ``environmentDefaultsVariable`` settings over its launch arguments.
+    static func applyEnvironmentDefaults() {
+      guard let value = ProcessInfo.processInfo.environment[environmentDefaultsVariable] else {
+        return
+      }
+      let defaults = UserDefaults.standard
+      var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
+      arguments.merge(environmentDefaults(value)) { _, passed in passed }
       defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
     }
 

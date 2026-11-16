@@ -1,4 +1,5 @@
 #if os(macOS)
+  import AppKit
   import OmnigentViewTesting
   import OmnigentViewTextReading
   import SwiftUI
@@ -51,9 +52,44 @@
     }
   }
 
+  /// An AppKit text view in a SwiftUI host, as a message's TextKit text is.
+  private struct TextKitText: NSViewRepresentable {
+    let text: String
+    var isEditable = false
+
+    func makeNSView(context: Context) -> NSTextView {
+      let view = NSTextView(usingTextLayoutManager: true)
+      view.isEditable = isEditable
+      view.string = text
+      return view
+    }
+
+    func updateNSView(_ view: NSTextView, context: Context) {}
+  }
+
   @Suite("Shown text", .serialized)
   @MainActor
   struct ShownTextTests {
+    @Test("Reads a read-only TextKit view by paragraph and cell, and leaves editors out")
+    func textKitViews() throws {
+      let screen = OffscreenWindow(
+        VStack {
+          Text("SwiftUI text")
+          TextKitText(text: "First paragraph\n\t•\tAn item\nCell one\tCell two \u{FFFC}\n \nEnd")
+            .frame(width: 300, height: 120)
+          TextKitText(text: "Typed draft", isEditable: true).frame(width: 300, height: 40)
+        }, width: 320, height: 260)
+      defer { screen.close() }
+      let shown = try screen.shownText()
+      for piece in [
+        "SwiftUI text", "First paragraph", "•", "An item", "Cell one", "Cell two", "End",
+      ] {
+        #expect(shown.filter { $0 == piece }.count == 1, "\(piece) in \(shown)")
+      }
+      #expect(shown.count == 7, "no blank or attachment pieces: \(shown)")
+      #expect(try !screen.shows("Typed draft"), "an editor's text is typed, not shown")
+    }
+
     /// Without the setting, an empty list would read as a view showing nothing.
     @Test("A process that records no view tree fails the read")
     func noViewTree() throws {

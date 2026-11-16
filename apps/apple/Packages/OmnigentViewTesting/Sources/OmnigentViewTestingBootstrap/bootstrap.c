@@ -6,6 +6,7 @@
 #if TARGET_OS_OSX
 extern void omnigent_view_testing_install_runner_loop_shield(void);
 extern void omnigent_view_testing_clear_earlier_settings(void);
+extern void omnigent_view_testing_apply_environment_defaults(void);
 extern void omnigent_view_testing_overlay_scroll_bars(void);
 extern void omnigent_view_testing_quiet_motion(void);
 extern void omnigent_view_testing_track_pauses(void);
@@ -20,6 +21,7 @@ __attribute__((constructor)) static void omnigent_view_testing_bootstrap(void) {
   shield_requested = 1;
   omnigent_view_testing_install_runner_loop_shield();
   omnigent_view_testing_clear_earlier_settings();
+  omnigent_view_testing_apply_environment_defaults();
   omnigent_view_testing_overlay_scroll_bars();
   omnigent_view_testing_quiet_motion();
   omnigent_view_testing_track_pauses();
