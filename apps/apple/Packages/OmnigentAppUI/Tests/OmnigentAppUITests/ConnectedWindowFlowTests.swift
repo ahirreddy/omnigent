@@ -151,7 +151,12 @@ struct ConnectedWindowFlowTests {
       .json(#"{"id":"conv_f","status":"idle","created_at":5,"permission_level":4}"#, status: 201))
     server.route("/v1/hosts/mac/runners", method: "POST", .json(#"{"detail":"no"}"#, status: 500))
     let mounted = try await forkSheet(server)
-    defer { mounted.screen.close() }
+    // The failure's alert stays up, so the error it shows is still there to read.
+    SystemSideEffects.showAlertSheets()
+    defer {
+      mounted.screen.close()
+      SystemSideEffects.reset()
+    }
     mounted.view.sidebarForkActions.forkWith(
       ForkChoices(agentID: "ag_claude", directory: "/w", start: true, hostID: "mac"))
     try await settle(mounted.screen, until: "the failure") {
@@ -245,9 +250,15 @@ func titledWindow(
 func titled<Root: View>(_ root: Root, width: CGFloat, height: CGFloat) async throws
   -> OffscreenWindow<Root>
 {
-  let screen = OffscreenWindow(
-    root, width: width, height: height, styleMask: [.titled, .resizable, .fullSizeContentView],
-    sceneBridging: [.toolbars, .title])
+  // Re-hosted after a borderless start: built titled from the start, the split view's
+  // separator item in the toolbar stays hidden, unlike the app's window.
+  let screen = OffscreenWindow(root, width: width, height: height)
+  let frame = screen.window.frame
+  screen.window.contentView = nil
+  screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
+  screen.window.setFrame(frame, display: false)
+  screen.host.sceneBridgingOptions = [.toolbars, .title]
+  screen.window.contentView = screen.host
   await screen.settleTasks(limit: .milliseconds(300))
   return screen
 }
