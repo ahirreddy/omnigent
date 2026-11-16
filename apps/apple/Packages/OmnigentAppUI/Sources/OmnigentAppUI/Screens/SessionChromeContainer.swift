@@ -35,7 +35,7 @@ struct SessionChromeContainer: ViewModifier {
     let export = kept.map { Bindable($0).export } ?? $noExport
     return
       content
-      .sessionChrome(surface?.chrome, panelShown: Bindable(session.tabs).shownPanelIsShown)
+      .sessionChrome(surface?.chrome, panelShown: session.tabs.shownPanel)
       .modifier(SessionChromeCommands(tabs: session.tabs, commands: surface?.commands))
       .fileExporter(
         isPresented: Binding(

@@ -48,9 +48,8 @@ extension View {
   /// inside leave both to the window.
   /// - Parameters:
   ///   - chrome: The shown session's; `nil` on a page without a session.
-  ///   - panelShown: Whether the panel shows, as one binding across sessions and pages:
-  ///     SwiftUI's inspector can still write the binding it had after the session changed.
-  ///     `nil` binds the shown session's own.
+  ///   - panelShown: Whether the panel shows: the shown session's, also while `chrome` is
+  ///     `nil` before its chat opens, or a page's. `nil` binds the chrome's own.
   /// - Returns: The view.
   public func sessionChrome(_ chrome: SessionChrome?, panelShown: Binding<Bool>? = nil)
     -> some View

@@ -170,6 +170,30 @@ extension SessionChromeWindowTests {
     }
   }
 
+  @Test("The end of a collapse or expand, reported after the session changed, chooses nothing")
+  func lateReportAfterASwitch() async throws {
+    let window = try await ChromeWindow.open()
+    defer { window.screen.close() }
+    try window.click(control: ChromeWindow.panelToggle)
+    try await window.settleUntilPanelOpen()
+    let column = try PanelColumnReports(window)
+    // On a busy Mac, AppKit ends the expand begun for this session once the next one shows.
+    window.session.tabs.show(.session("conv_c"))
+    column.send(collapsed: false)
+    #expect(window.session.tabs.chrome("conv_c").panel.choice == nil, "conv_c chose nothing")
+    try await window.settleUntilPanelClosed("for the other session, by its default")
+
+    window.session.tabs.show(.session(ChromeWindow.shown))
+    try await window.settleUntilPanelOpen("as this session left it")
+    window.session.tabs.show(.usage)
+    try await settle(window.screen, until: "the page") { window.sessionControls.isEmpty }
+    // The page's collapse ends once the session is back.
+    window.session.tabs.show(.session(ChromeWindow.shown))
+    column.send(collapsed: true)
+    #expect(window.chrome.panel.choice == .open, "the session's own choice")
+    try await window.settleUntilPanelOpen("the session's panel, back as it was")
+  }
+
   @Test("A page without a session shows no session controls and no panel")
   func noChromeOverAPage() async throws {
     let window = try await ChromeWindow.open()
@@ -178,11 +202,11 @@ extension SessionChromeWindowTests {
     try await window.settleUntilPanelOpen()
     window.session.tabs.show(.usage)
     try await settle(window.screen, until: "the page without session chrome") {
-      window.sessionControls.isEmpty && !window.session.tabs.shownPanelIsShown
+      window.sessionControls.isEmpty && !window.session.tabs.shownPanel.wrappedValue
         && window.probe.commands == nil
     }
     #expect(window.sessionControls.isEmpty, "\(window.toolbarLabels)")
-    #expect(!window.session.tabs.shownPanelIsShown, "a page has no panel to show")
+    #expect(!window.session.tabs.shownPanel.wrappedValue, "a page has no panel to show")
     #expect(window.probe.commands == nil, "no session answers the Conversation menu")
     window.session.tabs.show(.session(ChromeWindow.shown))
     try await settle(window.screen, until: "the session's chrome") {
@@ -191,5 +215,27 @@ extension SessionChromeWindowTests {
     #expect(window.sessionControls == ChromeWindow.controls)
     #expect(window.chrome.panel.isShown, "the page left the session's own choice alone")
     try await window.settleUntilPanelOpen("the session's panel, back as it was")
+  }
+}
+
+/// SwiftUI's controller of the right panel's column, told as AppKit tells it that the column
+/// finished collapsing or expanding once its animation ends.
+@MainActor
+private struct PanelColumnReports {
+  private static let report = NSSelectorFromString("splitViewItem:didChangeCollapsed:animated:")
+  let controller: NSSplitViewController
+  let item: NSSplitViewItem
+
+  init(_ window: ChromeWindow) throws {
+    let split = try #require(window.panelSplit, "the right panel's split view")
+    controller = try #require(split.delegate as? NSSplitViewController, "its controller")
+    item = try #require(controller.splitViewItems.last, "the panel's item")
+    try #require(controller.responds(to: Self.report), "SwiftUI's controller takes the report")
+  }
+
+  func send(collapsed: Bool) {
+    typealias Report = @convention(c) (NSObject, Selector, NSSplitViewItem, Bool, Bool) -> Void
+    let send = unsafe unsafeBitCast(controller.method(for: Self.report), to: Report.self)
+    send(controller, Self.report, item, collapsed, true)
   }
 }
