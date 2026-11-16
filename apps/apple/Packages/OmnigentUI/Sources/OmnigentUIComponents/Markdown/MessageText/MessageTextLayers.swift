@@ -12,6 +12,8 @@ enum MessageTextShape: Equatable {
   case codeBlock(CGRect)
   /// A rule, a table's rule or a quote's bar.
   case fill(CGRect, Fill)
+  /// Typeset inline math, over its clear attachment.
+  case image(CGImage, CGRect)
 
   enum Fill: Equatable {
     case separator
@@ -36,6 +38,7 @@ struct MessageTextLayerCollector {
     var bottom: CGFloat
   }
   private var fills: [MessageTextShape] = []
+  private var images: [MessageTextShape] = []
   private(set) var chromeFrames: [Int: CGRect] = [:]
   /// The lowest point any layer or control reaches.
   private(set) var bottom: CGFloat = 0
@@ -53,7 +56,7 @@ struct MessageTextLayerCollector {
               x: bar.leading, y: bar.top, width: MessageTextBuilder.quoteBarWidth,
               height: bar.bottom - bar.top), .quoteBar)
         }
-      } + fills
+      } + fills + images
   }
 
   mutating func add(_ fragment: NSTextLayoutFragment) {
@@ -75,8 +78,10 @@ struct MessageTextLayerCollector {
     // the last line's out.
     let lineHeight = style.map { $0.minimumLineHeight + $0.lineSpacing } ?? 0
     let lastTop = origin.y + last.typographicBounds.minY
-    var bottom = max(origin.y + last.typographicBounds.maxY, lastTop + lineHeight)
+    var bottom = max(
+      origin.y + last.typographicBounds.maxY + (style?.lineSpacing ?? 0), lastTop + lineHeight)
     self.bottom = max(self.bottom, bottom)
+    addMath(in: fragment, string: string)
     guard mark != nil || quotes != nil else { return }
     if let mark { bottom = place(mark, top: top, bottom: bottom) }
     for bar in quotes?.bars ?? [] {
@@ -84,6 +89,31 @@ struct MessageTextLayerCollector {
       quoteBars[bar.id] = QuoteSpan(leading: bar.leading, top: start, bottom: bottom)
     }
     self.bottom = max(self.bottom, bottom)
+  }
+
+  /// Each typeset math image, its baseline on its line's.
+  private mutating func addMath(in fragment: NSTextLayoutFragment, string: NSAttributedString) {
+    let origin = fragment.layoutFragmentFrame.origin
+    let lines = fragment.textLineFragments
+    var found: [MessageTextShape] = []
+    // The block's third argument is AppKit's stop pointer, unused here.
+    unsafe string.enumerateAttribute(
+      .messageMath, in: NSRange(location: 0, length: string.length)
+    ) { value, range, _ in
+      guard let math = value as? MessageMathMark,
+        let line = lines.first(where: { NSLocationInRange(range.location, $0.characterRange) })
+      else { return }
+      let bounds = line.typographicBounds
+      let baseline = origin.y + bounds.minY + line.glyphOrigin.y
+      let leading = origin.x + bounds.minX + line.locationForCharacter(at: range.location).x
+      found.append(
+        .image(
+          math.image,
+          CGRect(
+            x: leading, y: baseline - math.baseline, width: math.size.width,
+            height: math.size.height)))
+    }
+    images += found
   }
 
   /// Records a marked paragraph's layer and control; returns where its block ends below it.
@@ -149,6 +179,9 @@ extension MessageTextShape {
         x: 0, y: MessageTextBuilder.codeHeaderHeight, width: rect.width, height: 1)
       rule.backgroundColor = palette.separator.cgColor
       layer.sublayers = [header, rule]
+    case .image(let image, let rect):
+      layer.frame = rect
+      layer.contents = image
     case .fill(let rect, let fill):
       layer.frame = rect
       switch fill {

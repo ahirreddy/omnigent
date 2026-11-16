@@ -45,6 +45,9 @@ nonisolated struct MessageTextBuilder {
   var topInset: CGFloat = 0
   /// The space under the last paragraph's lines.
   var previousExtra: CGFloat = 0
+  /// Inline math typeset so far, by its TeX: a paragraph shows each as an image on its
+  /// baseline, as ``MarkdownParagraphText`` does, and the rest in their Unicode form.
+  var typesetMath: [String: RenderedRichBlock] = [:]
 
   /// A code block's header band: a control's height and the padding around it, then a rule.
   static let codeHeaderHeight =
@@ -95,6 +98,8 @@ nonisolated struct MessageTextBuilder {
     var spacesUnderGlyphs = true
     /// A line with no text of its own, which a copy leaves out with its line break.
     var isPlaceholder = false
+    /// A line holding typeset math grows to fit it, as SwiftUI's does.
+    var fitsMath = false
   }
 
   /// The document for `blocks`.
@@ -159,11 +164,12 @@ nonisolated struct MessageTextBuilder {
   /// A paragraph, or a heading at `level`.
   private mutating func prose(_ text: AttributedString, level: Int?, in context: Context) {
     guard let level else {
-      let content = inline(text, size: ramp.body, codeSize: ramp.code, color: context.color)
+      let content = inline(
+        text, size: ramp.body, codeSize: ramp.code, color: context.color, setsMath: true)
       emit(
         Paragraph(
           content: content, lineHeight: ramp.bodyLineHeight, font: palette.font(size: ramp.body),
-          indent: context.indent), in: context)
+          indent: context.indent, fitsMath: Self.holdsMath(content)), in: context)
       return
     }
     let size = ramp.heading(level)
@@ -226,7 +232,7 @@ nonisolated extension MessageTextBuilder {
       : paragraph.lineHeight
     let extra = paragraph.lineHeight - glyphs
     style.minimumLineHeight = glyphs
-    style.maximumLineHeight = glyphs
+    style.maximumLineHeight = paragraph.fitsMath ? 0 : glyphs
     style.lineSpacing = extra
     style.firstLineHeadIndent = paragraph.indent
     style.headIndent = paragraph.indent
@@ -297,19 +303,38 @@ nonisolated extension MessageTextBuilder {
     return min(lineHeight, baseline + (-font.descender).rounded())
   }
 
-  /// `text` as AppKit attributes: emphasis, strong, strikethrough, inline code and math,
-  /// and links.
+  /// Whether `content` holds typeset math.
+  static func holdsMath(_ content: NSAttributedString) -> Bool {
+    var found = false
+    // The block's third argument is AppKit's stop pointer, unused here.
+    unsafe content.enumerateAttribute(
+      .messageMath, in: NSRange(location: 0, length: content.length)
+    ) { value, _, _ in
+      if value != nil { found = true }
+    }
+    return found
+  }
+
+  /// `text` as attributes: emphasis, strong, strikethrough, inline code and links. Where
+  /// `setsMath` (a paragraph), inline math is typeset or in the serif math face; elsewhere it is
+  /// plain text, as SwiftUI's headings and table cells draw it.
   func inline(
     _ linked: AttributedString, size: CGFloat, weight: PlatformFont.Weight = .regular,
-    codeSize: CGFloat, color: PlatformColor
+    codeSize: CGFloat, color: PlatformColor, setsMath: Bool = false
   ) -> NSAttributedString {
     let result = NSMutableAttributedString()
     for run in linked.runs {
       let intent = run.inlinePresentationIntent ?? []
       let strong = intent.contains(.stronglyEmphasized)
       var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: color]
-      if run[MathSpanAttribute.self] != nil {
+      if let url = run.link { attributes[.link] = url }
+      if setsMath, let tex = run[MathSpanAttribute.self] {
         attributes[.font] = palette.math(size: size)
+        let unicode = String(linked[run.range].characters)
+        if let typeset = typesetMath[tex] {
+          result.append(math(typeset, unicode: unicode, color: color, attributes: attributes))
+          continue
+        }
       } else if intent.contains(.code) {
         attributes[.font] = palette.inlineCode(size: codeSize, strong: strong)
         attributes[.backgroundColor] = palette.inlineCodeBackground
@@ -320,10 +345,31 @@ nonisolated extension MessageTextBuilder {
       if intent.contains(.strikethrough) {
         attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
       }
-      if let url = run.link { attributes[.link] = url }
       result.append(
         NSAttributedString(string: String(linked[run.range].characters), attributes: attributes))
     }
     return result
+  }
+
+  /// Typeset math: a clear attachment that takes the image's room as SwiftUI's line does (its
+  /// whole height above the baseline), and the image in the text's color, which the layers
+  /// draw where SwiftUI does (its own baseline on the line's). A copy gives its Unicode form.
+  private func math(
+    _ typeset: RenderedRichBlock, unicode: String, color: PlatformColor,
+    attributes: [NSAttributedString.Key: Any]
+  ) -> NSAttributedString {
+    guard let image = MessageTextPlatform.tinted(typeset.image, color: color) else {
+      return NSAttributedString(string: unicode, attributes: attributes)
+    }
+    let attachment = NSTextAttachment()
+    attachment.image = MessageTextPlatform.clear(typeset.size)
+    attachment.bounds = CGRect(origin: .zero, size: typeset.size)
+    let piece = NSMutableAttributedString(attachment: attachment)
+    var attributes = attributes
+    attributes[.messageCopy] = MessageCopyText(unicode)
+    attributes[.messageMath] = MessageMathMark(
+      image: image, size: typeset.size, baseline: typeset.baseline)
+    piece.addAttributes(attributes, range: NSRange(location: 0, length: piece.length))
+    return piece
   }
 }

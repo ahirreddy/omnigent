@@ -20,7 +20,10 @@ nonisolated struct MessageTextSplit {
     var runGap: CGFloat = 0
     func flush() {
       guard !run.isEmpty else { return }
-      pieces.append(MessageTextPiece(id: pieces.count, gapAbove: runGap, content: .text(run)))
+      pieces.append(
+        MessageTextPiece(
+          id: pieces.count, gapAbove: runGap, content: .text(run),
+          inlineMath: MarkdownBlock.inlineMath(in: run)))
       run = []
     }
     for (index, block) in blocks.enumerated() {
@@ -64,6 +67,8 @@ nonisolated struct MessageTextPiece: Identifiable, Sendable {
   /// The gap above it, as ``TypeRamp/spacing(above:after:)`` gives it.
   let gapAbove: CGFloat
   let content: Content
+  /// The TeX of the inline math its paragraphs typeset, in order, without repeats.
+  var inlineMath: [String] = []
 }
 
 /// Split messages by text and ramp, so a row built again splits nothing.
@@ -85,6 +90,29 @@ final class MessageTextSplits {
     entries.value(for: Key(text: text, ramp: ramp)) {
       MessageTextSplit(MarkdownCache.shared.blocks(for: text), ramp: ramp)
     }
+  }
+}
+
+nonisolated extension MarkdownBlock {
+  /// The TeX of the inline math in `blocks`' paragraphs, in lists and quotes too, in order and
+  /// without repeats: what ``MarkdownParagraphText`` typesets.
+  static func inlineMath(in blocks: [MarkdownBlock]) -> [String] {
+    var found: [String] = []
+    func visit(_ blocks: [MarkdownBlock]) {
+      for block in blocks {
+        switch block {
+        case .paragraph(let text):
+          for run in text.runs {
+            if let tex = run[MathSpanAttribute.self], !found.contains(tex) { found.append(tex) }
+          }
+        case .quote(let inner): visit(inner)
+        case .list(_, _, let items): for item in items { visit(item.blocks) }
+        case .heading, .code, .table, .rule, .html, .image, .math: break
+        }
+      }
+    }
+    visit(blocks)
+    return found
   }
 }
 

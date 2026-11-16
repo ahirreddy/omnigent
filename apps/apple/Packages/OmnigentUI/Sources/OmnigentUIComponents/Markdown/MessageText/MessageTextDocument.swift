@@ -1,10 +1,11 @@
+import Foundation
+import Synchronization
+
 #if canImport(AppKit)
   import AppKit
 #else
   import UIKit
 #endif
-import Foundation
-import Synchronization
 
 nonisolated extension NSAttributedString.Key {
   /// The block a paragraph belongs to, for the layers and controls drawn with it.
@@ -14,6 +15,21 @@ nonisolated extension NSAttributedString.Key {
   /// What a copy gives for this text instead (``MessageCopyText``): nothing for a list marker
   /// or a code header's line, the Unicode form for typeset math.
   static let messageCopy = NSAttributedString.Key("omnigent.messageCopy")
+  /// Typeset inline math the layers draw over its clear attachment (``MessageMathMark``).
+  static let messageMath = NSAttributedString.Key("omnigent.messageMath")
+}
+
+/// Typeset inline math: its image in the text's color, its size and its baseline from the top.
+nonisolated final class MessageMathMark: NSObject, @unchecked Sendable {
+  let image: CGImage
+  let size: CGSize
+  let baseline: CGFloat
+
+  init(image: CGImage, size: CGSize, baseline: CGFloat) {
+    self.image = image
+    self.size = size
+    self.baseline = baseline
+  }
 }
 
 /// The text a copy gives for a range of message text. Each is its own object, so two pieces
@@ -158,6 +174,8 @@ nonisolated struct MessageTextDocumentKey: Hashable, Sendable {
   var piece: Int
   var style: MessageTextStyle
   var linked: [URL?]
+  /// The inline math typeset into it, by TeX; none in a document laid out ahead.
+  var math: [String] = []
 }
 
 /// Which piece of which message a text view shows.

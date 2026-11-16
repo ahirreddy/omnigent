@@ -89,6 +89,32 @@ nonisolated enum MessageTextPlatform {
     #endif
   }
 
+  /// A snapshot drawn in `color` where it isn't clear, as a template image is in SwiftUI;
+  /// `nil` when no bitmap can be made.
+  static func tinted(_ image: CGImage, color: PlatformColor) -> CGImage? {
+    let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+    guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+      // No buffer is passed: Core Graphics allocates and owns it.
+      let context = unsafe CGContext(
+        data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+        bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    else { return nil }
+    context.draw(image, in: rect)
+    context.setBlendMode(.sourceIn)
+    context.setFillColor(color.cgColor)
+    context.fill(rect)
+    return context.makeImage()
+  }
+
+  /// A clear image `size` points large: room in a line for something drawn behind the text.
+  static func clear(_ size: CGSize) -> PlatformImage {
+    #if os(macOS)
+      NSImage(size: size, flipped: false) { _ in true }
+    #else
+      UIGraphicsImageRenderer(size: size).image { _ in }
+    #endif
+  }
+
   /// A monochrome symbol at `size` in `color`, its cut-outs kept clear, as SwiftUI draws one.
   static func symbol(
     _ name: String, size: CGFloat, color: PlatformColor, description: String
