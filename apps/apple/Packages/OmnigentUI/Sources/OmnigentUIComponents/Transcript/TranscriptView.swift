@@ -91,9 +91,10 @@ public struct TranscriptView: View {
             .padding(.top, Theme.Spacing.small)
         }
       }
-      .environment(\.conversationActions, actions)
-      .environment(\.openURL, environmentRelay.openURL)
-      .environment(\.transcriptScrollState, scroll)
+      .modifier(
+        TranscriptEnvironment(
+          relay: environmentRelay, publications: environmentRelay.publications, scroll: scroll)
+      )
       .defaultScrollAnchor(.bottom, for: .initialOffset)
       .modifier(ScrollEdgeWatch(scroll: scroll))
       .modifier(EndByEdge(scroll: scroll))
