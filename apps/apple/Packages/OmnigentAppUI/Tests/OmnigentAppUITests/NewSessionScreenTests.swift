@@ -170,10 +170,7 @@ struct NewSessionScreenTests {
     #expect(shown.contains { $0.contains("box") }, "\(shown)")
     #expect(!shown.contains { $0.contains("recent") }, "\(shown)")
     #expect(!server.requests("GET", "/v1/hosts/box/filesystem").isEmpty)
-    try screen.type("hello")
-    try screen.press(keyCode: 36, characters: "\r")
-    try await Task.sleep(for: .milliseconds(60))
-    let body = try #require(try server.posted("/v1/sessions").first)
+    let body = try await typeAndStart(screen, server)
     #expect(body["host_id"] as? String == "box")
     #expect(body["workspace"] as? String != "/work/recent", "that path belongs to the other host")
   }
