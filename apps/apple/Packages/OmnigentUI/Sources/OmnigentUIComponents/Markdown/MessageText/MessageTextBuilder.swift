@@ -2,13 +2,28 @@
   import AppKit
   import SwiftUI
 
+  /// The design system's metrics the builder sets text with, as constants it can read off the
+  /// main actor; a test checks they match `Theme`'s.
+  nonisolated enum MessageTextMetrics {
+    /// `Theme.Control.target` on the Mac.
+    static let controlTarget: CGFloat = 28
+    /// `Theme.Spacing`.
+    static let extraSmall: CGFloat = 4
+    static let small: CGFloat = 8
+    static let medium: CGFloat = 12
+    static let large: CGFloat = 16
+    static let extraLarge: CGFloat = 24
+    /// `MarkdownTableView.rowPadding`.
+    static let tableRowPadding: CGFloat = 10
+  }
+
   /// Builds a run of markdown blocks into one attributed string: paragraphs, headings, lists,
   /// quotes, rules, tables that fit and code blocks, spaced and styled as ``MarkdownView`` draws
   /// them. Code blocks and tables leave room for their layers and controls. Lists, code and
-  /// tables are in `MessageTextBuilder+Blocks.swift`.
-  struct MessageTextBuilder {
+  /// tables are in `MessageTextBuilder+Blocks.swift`. It runs off the main actor too, so the
+  /// blocks come with workspace paths already linked.
+  nonisolated struct MessageTextBuilder {
     let palette: MessageTextPalette
-    let links: WorkspaceFileLinks?
 
     let output = NSMutableAttributedString()
     /// The gap the next paragraph keeps above it.
@@ -24,18 +39,18 @@
     var previousExtra: CGFloat = 0
 
     /// A code block's header band: a control's height and the padding around it, then a rule.
-    static let codeHeaderHeight = Theme.Control.target + 2 * Theme.Spacing.extraSmall
+    static let codeHeaderHeight =
+      MessageTextMetrics.controlTarget + 2 * MessageTextMetrics.extraSmall
     /// Inside a code block, around its code.
-    static let codePadding = Theme.Spacing.large
+    static let codePadding = MessageTextMetrics.large
     /// Under a table, its controls' row.
-    static let tableControlsHeight = Theme.Control.target
+    static let tableControlsHeight = MessageTextMetrics.controlTarget
     static let quoteBarWidth: CGFloat = 3
 
     var ramp: TypeRamp { palette.style.ramp }
 
-    init(palette: MessageTextPalette, links: WorkspaceFileLinks?) {
+    init(palette: MessageTextPalette) {
       self.palette = palette
-      self.links = links
     }
 
     /// Where a block sits: its leading edge, the quotes around it and its text color.
@@ -108,7 +123,7 @@
         var quoted = context
         lastBlock += 1
         quoted.quotes.append(MessageQuoteBar(id: lastBlock, leading: context.indent))
-        quoted.indent += Self.quoteBarWidth + Theme.Spacing.medium
+        quoted.indent += Self.quoteBarWidth + MessageTextMetrics.medium
         quoted.color = palette.secondary
         append(inner, in: quoted)
       case .list(let ordered, let start, let items):
@@ -118,9 +133,7 @@
       case .rule:
         rule(in: context)
       case .html(let raw):
-        lines(
-          raw, font: palette.style.code.font(size: ramp.code), color: palette.secondary,
-          in: context)
+        lines(raw, font: palette.codeFont, color: palette.secondary, in: context)
       case .image(_, let alt):
         // An image in a list or quote; a message's own images are blocks beside its text.
         let label = alt.isEmpty ? "[Image]" : "[Image: \(alt)]"
@@ -160,7 +173,7 @@
       let font = palette.font(size: ramp.body)
       emit(
         Paragraph(
-          content: space(font), lineHeight: 1 + 2 * Theme.Spacing.extraSmall, font: font,
+          content: space(font), lineHeight: 1 + 2 * MessageTextMetrics.extraSmall, font: font,
           indent: context.indent,
           mark: MessageBlockMark(block: lastBlock, role: .rule, indent: context.indent),
           spacesUnderGlyphs: false),
@@ -188,7 +201,7 @@
 
   // MARK: Paragraphs
 
-  extension MessageTextBuilder {
+  nonisolated extension MessageTextBuilder {
     /// Appends `paragraph`, with the list marker waiting for it, if any.
     mutating func emit(_ paragraph: Paragraph, in context: Context) {
       let style = NSMutableParagraphStyle()
@@ -251,12 +264,11 @@
     }
 
     /// `text` as AppKit attributes: emphasis, strong, strikethrough, inline code and math,
-    /// and links (with workspace paths that exist linked).
+    /// and links.
     func inline(
-      _ text: AttributedString, size: CGFloat, weight: NSFont.Weight = .regular,
+      _ linked: AttributedString, size: CGFloat, weight: NSFont.Weight = .regular,
       codeSize: CGFloat, color: NSColor
     ) -> NSAttributedString {
-      let linked = links?.linking(text) ?? text
       let result = NSMutableAttributedString()
       for run in linked.runs {
         let intent = run.inlinePresentationIntent ?? []

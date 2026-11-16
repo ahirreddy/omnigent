@@ -7,7 +7,9 @@
   /// ``fittingSize(for:fillsWidth:)``.
   final class MessageTextContentView: NSView, NSTextViewDelegate {
     let document: MessageTextDocument
-    let textView = MessageTextKitView(usingTextLayoutManager: true)
+    let textView: MessageTextKitView
+    /// The stack laid out off the main actor that the text view shows, kept alive with it.
+    private let prepared: MessageTextPreparedLayout?
     private let layers = MessageTextLayersView()
     private var chromeViews: [Int: NSView] = [:]
     private var measurements: [CGFloat: Measurement] = [:]
@@ -31,10 +33,16 @@
     static let minimumWidth: CGFloat = 40
     /// The width an unconstrained proposal lays out at.
     static let unconstrainedWidth: CGFloat = 10_000
-    private static let unlimitedHeight: CGFloat = 10_000_000
-
     init(document: MessageTextDocument) {
       self.document = document
+      // Text laid out off the main actor comes with its layout; anything else lays out here.
+      prepared = document.takePreparedLayout()
+      if let prepared {
+        let frame = CGRect(x: 0, y: 0, width: prepared.width, height: 0)
+        textView = MessageTextKitView(frame: frame, textContainer: prepared.container)
+      } else {
+        textView = MessageTextKitView(usingTextLayoutManager: true)
+      }
       super.init(frame: .zero)
       configureTextView()
       addSubview(layers)
@@ -70,6 +78,7 @@
       ]
       textView.delegate = self
       textView.linkAt = { [weak self] point in self?.link(at: point) }
+      guard prepared == nil else { return }
       if let container = textView.textLayoutManager?.textContainer {
         container.lineFragmentPadding = 0
         container.widthTracksTextView = false
@@ -136,7 +145,9 @@
         return Measurement(height: 0, usedWidth: 0)
       }
       layoutPasses += 1
-      container.size = CGSize(width: width, height: Self.unlimitedHeight)
+      // The same size again would throw away a layout made off the main actor.
+      let size = CGSize(width: width, height: MessageTextPreparedLayout.unlimitedHeight)
+      if container.size != size { container.size = size }
       var collector = MessageTextLayerCollector(width: width)
       var height: CGFloat = 0
       var usedWidth: CGFloat = 0

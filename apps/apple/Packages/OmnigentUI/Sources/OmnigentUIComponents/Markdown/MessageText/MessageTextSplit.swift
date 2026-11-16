@@ -3,7 +3,7 @@
   import SwiftUI
 
   /// A message split into runs of blocks drawn as text and the blocks between them.
-  struct MessageTextSplit {
+  nonisolated struct MessageTextSplit {
     var pieces: [MessageTextPiece]
     /// The workspace paths the message cites.
     var cited: [CitedPath]
@@ -45,8 +45,8 @@
   }
 
   /// One piece of a split message.
-  struct MessageTextPiece: Identifiable {
-    enum Content {
+  nonisolated struct MessageTextPiece: Identifiable, Sendable {
+    enum Content: Sendable {
       case text([MarkdownBlock])
       case block(MarkdownBlock)
     }

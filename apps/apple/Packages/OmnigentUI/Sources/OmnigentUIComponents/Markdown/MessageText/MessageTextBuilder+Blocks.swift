@@ -4,7 +4,7 @@
 
   // MARK: Lists
 
-  extension MessageTextBuilder {
+  nonisolated extension MessageTextBuilder {
     mutating func list(
       ordered: Bool, start: Int, items: [MarkdownListItem], in context: Context
     ) {
@@ -14,7 +14,7 @@
         let marker = marker(ordered: ordered, number: start + index, task: item.task, font: font)
         let width = max(ordered ? 22 : 12, marker.size().width.rounded(.up))
         var inner = context
-        inner.indent = context.indent + width + Theme.Spacing.small
+        inner.indent = context.indent + width + MessageTextMetrics.small
         pendingMarker = Marker(text: marker, start: context.indent, end: context.indent + width)
         switch item.blocks.first {
         case .paragraph, .heading:
@@ -78,7 +78,7 @@
 
   // MARK: Code
 
-  extension MessageTextBuilder {
+  nonisolated extension MessageTextBuilder {
     /// A header line the layers and the Copy button sit on, then a paragraph per code line.
     mutating func codeBlock(_ code: String, language: String?, in context: Context) {
       lastBlock += 1
@@ -92,7 +92,7 @@
           mark: MessageBlockMark(block: block, role: .codeHeader, indent: context.indent),
           spacesUnderGlyphs: false),
         in: context)
-      let font = palette.style.code.font(size: ramp.code)
+      let font = palette.codeFont
       let colored = highlighted(code, language: language, font: font)
       let lines = Self.lineRanges(in: colored.string)
       for (index, range) in lines.enumerated() {
@@ -139,7 +139,7 @@
 
   // MARK: Tables
 
-  extension MessageTextBuilder {
+  nonisolated extension MessageTextBuilder {
     /// A row per line, cells on tab stops, with room for the rules and the Copy menu.
     mutating func table(_ table: MarkdownTable, in context: Context) {
       lastBlock += 1
@@ -172,8 +172,9 @@
           Paragraph(
             content: content, lineHeight: ramp.bodyLineHeight,
             font: palette.font(size: ramp.body, weight: isHeader ? .semibold : .regular),
-            indent: context.indent, before: MarkdownTableView.rowPadding,
-            after: MarkdownTableView.rowPadding + rule + (isLast ? Self.tableControlsHeight : 0),
+            indent: context.indent, before: MessageTextMetrics.tableRowPadding,
+            after: MessageTextMetrics.tableRowPadding + rule
+              + (isLast ? Self.tableControlsHeight : 0),
             tabs: columns.tabs,
             mark: MessageBlockMark(block: block, role: role, indent: context.indent),
             lineBreak: .byClipping), in: context)
@@ -183,7 +184,7 @@
 
   /// A table's columns as tab stops, sized as ``MarkdownTableView``'s grid sizes them: each
   /// column as wide as its widest cell, between 60 and 360 points, then a gap.
-  struct MessageTableColumns {
+  nonisolated struct MessageTableColumns {
     static let minimum: CGFloat = 60
     static let maximum: CGFloat = 360
     /// The widest table drawn as text; a wider one stays a grid that scrolls sideways.
@@ -206,7 +207,7 @@
         case .center: tabs.append(NSTextTab(textAlignment: .center, location: start + width / 2))
         case .trailing: tabs.append(NSTextTab(textAlignment: .right, location: start + width))
         }
-        start += width + Theme.Spacing.extraLarge
+        start += width + MessageTextMetrics.extraLarge
       }
       leadsWithTab = alignments.first.map { $0 != .leading } ?? false
       if !leadsWithTab, !tabs.isEmpty { tabs.removeFirst() }
@@ -242,7 +243,7 @@
         + table.rows.map { $0.map { plain($0, regular) } }
       let natural = rows.flatMap { $0.map { $0.size().width } }
       guard natural.allSatisfy({ $0 <= maximum }) else { return false }
-      let total = widths(of: rows).reduce(0) { $0 + $1 + Theme.Spacing.extraLarge }
+      let total = widths(of: rows).reduce(0) { $0 + $1 + MessageTextMetrics.extraLarge }
       return total <= widest
     }
   }

@@ -8,17 +8,20 @@
     var size: Double
     var family: String
     var isHeavier: Bool
+    /// How much larger than the default the code font is.
+    var scale: Double
 
     @MainActor init(_ typography: CodeTypography = .shared) {
       size = typography.size
       family = typography.family
       isHeavier = typography.isHeavier
+      scale = typography.scale
     }
 
     /// The code font for text whose size is `base` at the default setting, as
     /// ``CodeTypography/font(size:)`` makes it.
-    @MainActor func font(size base: CGFloat) -> NSFont {
-      let points = (base * size / CodeTypography.defaultSize).rounded()
+    func font(size base: CGFloat) -> NSFont {
+      let points = (base * scale).rounded()
       let weight: NSFont.Weight = isHeavier ? .medium : .regular
       guard !family.isEmpty else { return .monospacedSystemFont(ofSize: points, weight: weight) }
       let descriptor = NSFontDescriptor(fontAttributes: [.family: family])
@@ -53,9 +56,9 @@
     }
   }
 
-  /// A style's fonts and colors as AppKit draws them.
-  @MainActor
-  struct MessageTextPalette {
+  /// A style's fonts and colors as AppKit draws them, resolved once on the main actor so text
+  /// can be built off it. Fonts and colors don't change once made.
+  nonisolated struct MessageTextPalette: @unchecked Sendable {
     let style: MessageTextStyle
     let text: NSColor
     let secondary: NSColor
@@ -68,8 +71,11 @@
     let inlineCodeBackground: NSColor
     /// The code block header's language label (`Theme.Typography.section`).
     let sectionFont: NSFont
+    /// Code blocks and raw HTML.
+    let codeFont: NSFont
+    private let tokenColors: [CodeToken: NSColor]
 
-    init(_ style: MessageTextStyle) {
+    @MainActor init(_ style: MessageTextStyle) {
       self.style = style
       let appearance = NSAppearance(named: style.isDark ? .darkAqua : .aqua)
       func system(_ color: NSColor, alpha: CGFloat = 1) -> NSColor {
@@ -91,6 +97,12 @@
       border = NSColor(Color(style.border))
       let caption = NSFont.preferredFont(forTextStyle: .caption1).pointSize
       sectionFont = .systemFont(ofSize: caption, weight: .medium)
+      codeFont = style.code.font(size: style.ramp.code)
+      let tokens: [CodeToken] =
+        [.inserted, .deleted, .header]
+        + [SyntaxToken.keyword, .string, .comment, .number, .type].map(CodeToken.syntax)
+      tokenColors = Dictionary(
+        uniqueKeysWithValues: tokens.map { ($0, Self.color($0, isDark: style.isDark)) })
     }
 
     /// The prose font at `size`, with `weight`, italic when `italic`.
@@ -115,7 +127,10 @@
 
     /// A code token's color, as ``CodeHighlighting`` colors it.
     func color(_ token: CodeToken) -> NSColor {
-      let dark = style.isDark
+      tokenColors[token] ?? text
+    }
+
+    @MainActor private static func color(_ token: CodeToken, isDark dark: Bool) -> NSColor {
       let color: Color =
         switch token {
         case .syntax(let syntax): WorkspaceTheme.tokenColor(syntax, dark ? .dark : .light)

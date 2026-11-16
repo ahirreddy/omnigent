@@ -16,7 +16,7 @@
 
     /// The document for all of `markdown`, as one text run.
     static func document(_ markdown: String) -> MessageTextDocument {
-      var builder = MessageTextBuilder(palette: MessageTextPalette(style), links: nil)
+      var builder = MessageTextBuilder(palette: MessageTextPalette(style))
       return builder.document(MarkdownParser.parse(markdown))
     }
 

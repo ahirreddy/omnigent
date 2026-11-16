@@ -1,7 +1,8 @@
 #if os(macOS)
   import AppKit
+  import Synchronization
 
-  extension NSAttributedString.Key {
+  nonisolated extension NSAttributedString.Key {
     /// The block a paragraph belongs to, for the layers and controls drawn with it.
     static let messageBlock = NSAttributedString.Key("omnigent.messageBlock")
     /// The quotes a paragraph sits in, for their bars.
@@ -47,14 +48,15 @@
   }
 
   /// A control drawn over a block: a code block's header or a table's Copy menu.
-  enum MessageTextChrome {
+  nonisolated enum MessageTextChrome: Sendable {
     case code(code: String, language: String?)
     case table(MarkdownTable)
   }
 
   /// A run of a message's markdown as one attributed string, built once per text and style and
-  /// shared by every view that shows it (``MessageTextDocuments``).
-  final class MessageTextDocument {
+  /// shared by every view that shows it (``MessageTextDocuments``). Built on or off the main
+  /// actor; nothing in it changes after, except a prepared layout handed over once.
+  nonisolated final class MessageTextDocument: @unchecked Sendable {
     /// Tells documents apart without hashing their text: views and heights are kept by it.
     let serial: UInt64
     let text: NSAttributedString
@@ -68,14 +70,15 @@
     /// Space above the first line: TextKit drops a first paragraph's spacing, so the view adds it.
     let topInset: CGFloat
 
-    private static var serials: UInt64 = 0
+    private static let serials = Atomic<UInt64>(0)
+    /// Its text laid out off the main actor, for the first view that shows it.
+    private let prepared = Mutex<MessageTextPreparedLayout?>(nil)
 
     init(
       text: NSAttributedString, palette: MessageTextPalette, chrome: [Int: MessageTextChrome],
       hasWideBlocks: Bool, topInset: CGFloat = 0
     ) {
-      Self.serials += 1
-      serial = Self.serials
+      serial = Self.serials.add(1, ordering: .relaxed).newValue
       self.text = text
       self.palette = palette
       self.chrome = chrome
@@ -90,6 +93,19 @@
         }
       }
       self.links = links
+    }
+
+    /// Keeps `layout` for the next view that shows this document.
+    func offer(_ layout: MessageTextPreparedLayout) {
+      prepared.withLock { $0 = layout }
+    }
+
+    /// The layout prepared off the main actor, once; a text container shows in one view.
+    func takePreparedLayout() -> MessageTextPreparedLayout? {
+      prepared.withLock { kept in
+        defer { kept = nil }
+        return kept
+      }
     }
   }
 

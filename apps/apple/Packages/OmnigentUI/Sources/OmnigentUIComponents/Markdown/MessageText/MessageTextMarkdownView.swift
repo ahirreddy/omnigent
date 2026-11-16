@@ -87,8 +87,36 @@
       let key = MessageTextDocumentKey(
         text: source.text, piece: source.piece, style: style, linked: linked)
       return MessageTextDocuments.shared.document(for: key) {
-        var builder = MessageTextBuilder(palette: MessageTextPalette(style), links: links)
-        return builder.document(blocks)
+        // An answer laid out ahead, off the main actor, comes with its layout.
+        if let prepared = MessageTextPrewarm.shared.takeDocument(for: key) { return prepared }
+        let shown = links.map { links in blocks.map { $0.linking(with: links) } } ?? blocks
+        var builder = MessageTextBuilder(palette: MessageTextPalette(style))
+        return builder.document(linked.isEmpty ? blocks : shown)
+      }
+    }
+  }
+
+  extension MarkdownBlock {
+    /// The block with the workspace paths it cites linked, once they are known to exist.
+    func linking(with links: WorkspaceFileLinks) -> MarkdownBlock {
+      switch self {
+      case .paragraph(let text):
+        return .paragraph(links.linking(text))
+      case .heading(let level, let text):
+        return .heading(level: level, text: links.linking(text))
+      case .quote(let blocks):
+        return .quote(blocks.map { $0.linking(with: links) })
+      case .list(let ordered, let start, let items):
+        let linked = items.map {
+          MarkdownListItem(blocks: $0.blocks.map { $0.linking(with: links) }, task: $0.task)
+        }
+        return .list(ordered: ordered, start: start, items: linked)
+      case .table(var table):
+        table.header = table.header.map { links.linking($0) }
+        table.rows = table.rows.map { $0.map { links.linking($0) } }
+        return .table(table)
+      case .code, .rule, .html, .image, .math:
+        return self
       }
     }
   }

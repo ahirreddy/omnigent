@@ -63,7 +63,12 @@
 
     /// The size at a proposed width, laid out once per width.
     func fittingSize(for width: CGFloat?) -> CGSize? {
-      content?.fittingSize(for: width, fillsWidth: fillsWidth)
+      guard let content else { return nil }
+      // Answers fill the column: the next ones lay out ahead at this width.
+      if fillsWidth, let width, width.isFinite, width >= MessageTextContentView.minimumWidth {
+        MessageTextPrewarm.shared.note(palette: content.document.palette, width: width)
+      }
+      return content.fittingSize(for: width, fillsWidth: fillsWidth)
     }
 
     /// Hands the view back for the next row that shows its document.
