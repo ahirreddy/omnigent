@@ -1,24 +1,18 @@
 import Foundation
-import OmnigentViewTesting
 import Testing
 
 @testable import OmnigentTerminalUI
 
-/// Runs the main actor until `condition` holds or `timeout` passes. On the Mac it checks after
-/// every short run loop turn; a short `Task.sleep` can take many times as long in a VM.
+/// Polls `condition` on the main actor until it holds or `timeout` passes.
 @MainActor
 func eventually(timeout: Duration = .seconds(5), _ condition: () -> Bool) async -> Bool {
-  #if os(macOS)
-    await MainLoop.waitUntil(timeout: timeout, condition)
-  #else
-    let clock = ContinuousClock()
-    let deadline = clock.now + timeout
-    while clock.now < deadline {
-      if condition() { return true }
-      try? await Task.sleep(for: .milliseconds(20))
-    }
-    return condition()
-  #endif
+  let clock = ContinuousClock()
+  let deadline = clock.now + timeout
+  while clock.now < deadline {
+    if condition() { return true }
+    try? await Task.sleep(for: .milliseconds(20))
+  }
+  return condition()
 }
 
 @Suite("Ghostty surface over a remote connection", .serialized)

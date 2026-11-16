@@ -4,25 +4,19 @@ import Testing
 
 @testable import OmnigentBrowser
 
-/// Runs the main actor until `condition` holds or `timeout` passes. On the Mac it checks after
-/// every short run loop turn; a short `Task.sleep` can take many times as long in a VM.
 @MainActor
 func waitUntil(
   timeout: Duration = .seconds(10), _ condition: () -> Bool
 ) async throws -> Bool {
-  #if os(macOS)
-    await MainLoop.waitUntil(timeout: timeout, condition)
-  #else
-    let clock = ContinuousClock()
-    let deadline = clock.now + timeout
-    while !condition() {
-      if clock.now >= deadline {
-        return false
-      }
-      try await Task.sleep(for: .milliseconds(20))
+  let clock = ContinuousClock()
+  let deadline = clock.now + timeout
+  while !condition() {
+    if clock.now >= deadline {
+      return false
     }
-    return true
-  #endif
+    try await Task.sleep(for: .milliseconds(20))
+  }
+  return true
 }
 
 @MainActor
