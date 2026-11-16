@@ -1,6 +1,7 @@
 #if os(macOS)
   import AppKit
   import OmnigentViewTesting
+  import OmnigentViewTextReading
   import SwiftUI
   import Testing
 
@@ -132,6 +133,33 @@
       window.settle()
       #expect(isAtEnd(driver))
       #expect(controller.follow.follows)
+    }
+
+    @Test("Leaving the end shows Jump to latest and coming back hides it, rendering no rows")
+    func pillAlone() async throws {
+      let (driver, controller) = try await screen(session())
+      let window = driver.screen
+      defer { window.close() }
+      let scrollView = try #require(driver.scrollView)
+      let end = driver.offset
+      var showed = false
+      let renders = RenderTally.recording {
+        window.liveScroll(scrollView, began: true)
+        driver.move(to: end - 300)
+        window.liveScroll(scrollView, began: false)
+        window.settle()
+        showed = (try? window.shows("Jump to latest")) ?? false
+        window.liveScroll(scrollView, began: true)
+        driver.move(to: end)
+        window.liveScroll(scrollView, began: false)
+        window.settle()
+      }
+      #expect(showed)
+      #expect(!controller.follow.pill.isShown)
+      #expect(try !window.shows("Jump to latest"))
+      // The pill is the only view that reads it: not the transcript, nor its rows.
+      #expect(renders["transcript", default: 0] == 0, "\(renders)")
+      #expect(renders["rows", default: 0] == 0, "\(renders)")
     }
 
     @Test("Older rows landing above keep the reader on the row they were reading")

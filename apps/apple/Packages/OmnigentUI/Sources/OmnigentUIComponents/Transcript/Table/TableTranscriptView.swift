@@ -1,5 +1,6 @@
 #if os(macOS)
   import AppKit
+  import Observation
   import SwiftUI
 
   /// The transcript as a table (`omnigent:transcript-list table`): an `NSTableView` whose rows
@@ -16,7 +17,7 @@
     @State private var layout = TranscriptLayoutMemo()
     @State private var environmentRelay = TranscriptEnvironmentRelay()
     @State private var pacer = TranscriptRowsPacer()
-    @State private var pill = TranscriptFollow.Pill()
+    @State private var pill = TranscriptTablePill()
     @State private var rail = TurnRailModel()
     @Environment(\.transcriptAppearance) private var appearance
     @Environment(\.transcriptFocus) private var focus
@@ -71,11 +72,7 @@
           loadOlder: { controller.requestOlder() })
       )
       .overlay(alignment: .bottom) {
-        if pill.isShown {
-          JumpToLatestPill(pill: pill) { controller.jumpToLatest() }
-            .padding(.bottom, Theme.Spacing.medium)
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
-        }
+        TableJumpPill(model: pill) { controller.jumpToLatest() }
       }
       .background { if appearance.isCLI { CLICanvas() } }
       .cliPalette()
@@ -85,11 +82,31 @@
 
     /// Hands the controller the callbacks that reach this view's state.
     private func wireController() {
-      let pill = $pill
-      controller.showPill = { if pill.wrappedValue != $0 { pill.wrappedValue = $0 } }
+      controller.showPill = { [pill] in if pill.pill != $0 { pill.pill = $0 } }
       controller.visibleRowsChanged = { [rail] order, visible in
         guard rail.turns.count >= 2 else { return }
         rail.setActive(order: order, visible: visible)
+      }
+    }
+  }
+
+  /// What the Jump to latest pill shows, read by the pill alone: a reader going past the end
+  /// and back shows and hides it without the transcript, its rows and cells updating.
+  @MainActor
+  @Observable
+  final class TranscriptTablePill {
+    var pill = TranscriptFollow.Pill()
+  }
+
+  private struct TableJumpPill: View {
+    let model: TranscriptTablePill
+    let jump: () -> Void
+
+    var body: some View {
+      if model.pill.isShown {
+        JumpToLatestPill(pill: model.pill, action: jump)
+          .padding(.bottom, Theme.Spacing.medium)
+          .transition(.opacity.combined(with: .move(edge: .bottom)))
       }
     }
   }
@@ -117,6 +134,10 @@
       return TranscriptTableList(
         rows: rows, state: state, actions: actions, isCLI: isCLI, controller: controller
       )
+      .background {
+        TranscriptTableEnvironmentFeed(environment: controller.environment)
+          .frame(width: 0, height: 0)
+      }
       .onChange(of: layout.turns(for: state), initial: true) { _, turns in rail.setTurns(turns) }
       .modifier(PacedWhileShown(pacer: pacer))
       .modifier(TableShownWatch(controller: controller))
@@ -147,8 +168,19 @@
     }
   }
 
-  /// The controller's scroll view in the SwiftUI tree; each update hands it the rows and the
-  /// environment its cells render in.
+  /// Hands the cells the transcript's environment when it changes. On its own, apart from the
+  /// rows, so new rows do not hand every cell on screen the same environment again.
+  private struct TranscriptTableEnvironmentFeed: NSViewRepresentable {
+    let environment: TranscriptTableEnvironment
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+      environment.values = context.environment
+    }
+  }
+
+  /// The controller's scroll view in the SwiftUI tree; each update hands it the rows.
   private struct TranscriptTableList: NSViewRepresentable {
     let rows: [TranscriptTableRow]
     let state: ConversationViewState

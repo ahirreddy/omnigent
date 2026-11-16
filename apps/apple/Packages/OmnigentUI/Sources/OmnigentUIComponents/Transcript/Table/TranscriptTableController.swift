@@ -135,12 +135,13 @@
 
     // MARK: Updates
 
-    /// Takes a SwiftUI update: the rows, the conversation and the environment the cells render in.
+    /// Takes a SwiftUI update: the rows and the conversation, and the environment the cells
+    /// render in until the environment's own feed hands it over.
     func update(
       rows: [TranscriptTableRow], state: ConversationViewState, actions: ConversationActions,
       isCLI: Bool, environment values: EnvironmentValues
     ) {
-      environment.values = values
+      if environment.values == nil { environment.values = values }
       self.actions = actions
       self.isCLI = isCLI
       let previous = self.state

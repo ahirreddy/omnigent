@@ -200,6 +200,8 @@
 
     /// Scrolls row `id` into view; a row the table does not have yet is shown once it does.
     func show(_ id: String, at placement: Placement) {
+      // A reader sent to a row is not then framed at the latest turn.
+      needsFraming = false
       guard let index = model.index(of: id) else {
         pendingShow = (id, placement)
         return
