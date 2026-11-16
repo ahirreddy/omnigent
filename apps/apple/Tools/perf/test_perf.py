@@ -101,12 +101,28 @@ class BusyTests(unittest.TestCase):
         self.assertEqual(numbers["passes"], 4)
         self.assertEqual(numbers["busy_ms"], 35.0)
         self.assertEqual(numbers["over_8ms"], 2)
+        self.assertEqual(numbers["over_8ms_pct"], 50.0)
         self.assertEqual(numbers["over_16ms"], 1)
         self.assertEqual(numbers["p50_ms"], 9.0)
         self.assertEqual(numbers["max_ms"], 20.0)
 
     def test_an_empty_window_has_no_passes(self):
-        self.assertEqual(perf.parse_busy(BUSY, 3000, 4000).numbers["max_ms"], 0.0)
+        numbers = perf.parse_busy(BUSY, 3000, 4000).numbers
+        self.assertEqual(numbers["max_ms"], 0.0)
+        self.assertEqual(numbers["over_8ms_pct"], 0.0)
+
+
+class VariantTests(unittest.TestCase):
+    def test_a_variant_is_a_name_and_its_launch_arguments(self):
+        variant = perf.Variant.parse("textkit=-omnigent:message-text textkit")
+        self.assertEqual(variant.name, "textkit")
+        self.assertEqual(variant.args, ["-omnigent:message-text", "textkit"])
+        self.assertEqual(perf.Variant.parse("base=").args, [])
+
+    def test_a_variant_needs_a_name_and_an_equals_sign(self):
+        for text in ("textkit", "=-a b"):
+            with self.assertRaises(ValueError):
+                perf.Variant.parse(text)
 
 
 class SampleTests(unittest.TestCase):
@@ -170,6 +186,30 @@ class ScrollBenchTests(unittest.TestCase):
     def test_a_list_is_a_launch_argument_and_the_default_none(self):
         self.assertEqual(perf.list_args("table"), ["-omnigent:transcript-list", "table"])
         self.assertEqual(perf.list_args(None), [])
+
+    def test_a_list_plus_textkit_also_draws_messages_with_textkit(self):
+        self.assertEqual(
+            perf.list_args("table+textkit"),
+            ["-omnigent:transcript-list", "table", "-omnigent:message-text", "textkit"],
+        )
+        with self.assertRaises(ValueError):
+            perf.list_args("table+unknown")
+
+    def test_every_list_runs_with_every_variant(self):
+        launched = perf.bench_variants(
+            ["stack", "table"], [perf.Variant("base", []), perf.Variant("big", ["-a", "b"])]
+        )
+        self.assertEqual(
+            [(variant.name, variant.args) for variant in launched],
+            [
+                ("stack-base", ["-omnigent:transcript-list", "stack"]),
+                ("stack-big", ["-omnigent:transcript-list", "stack", "-a", "b"]),
+                ("table-base", ["-omnigent:transcript-list", "table"]),
+                ("table-big", ["-omnigent:transcript-list", "table", "-a", "b"]),
+            ],
+        )
+        self.assertEqual(perf.bench_variants([], []), [perf.Variant("", [])])
+        self.assertEqual([v.name for v in perf.bench_variants(["table"], [])], ["table"])
 
 
 class SessionTests(unittest.TestCase):
