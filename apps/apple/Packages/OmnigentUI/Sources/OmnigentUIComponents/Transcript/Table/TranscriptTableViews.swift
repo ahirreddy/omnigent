@@ -23,12 +23,11 @@
   }
 
   /// The table transcript's scroll view: it tells the controller about wheel and trackpad
-  /// events, which are the reader's scrolls, before it scrolls for them.
+  /// events, which are the reader's scrolls, before it scrolls for them. Overriding
+  /// `scrollWheel` keeps it out of responsive scrolling, as SwiftUI's scroll view is: that
+  /// scrolls a gesture on its own thread from the window's event queue.
   final class TranscriptTableScrollView: NSScrollView {
     weak var owner: TranscriptTableController?
-
-    /// Seeing the events first leaves scrolling as AppKit does it.
-    override static var isCompatibleWithResponsiveScrolling: Bool { true }
 
     override func scrollWheel(with event: NSEvent) {
       owner?.readerScrolled()
