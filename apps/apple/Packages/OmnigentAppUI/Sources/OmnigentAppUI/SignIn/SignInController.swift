@@ -47,13 +47,18 @@ public final class SignInController {
   @ObservationIgnored let accounts: RememberedAccounts
   @ObservationIgnored var browserTask: Task<Void, Never>?
   @ObservationIgnored var challenge: OidcChallenge?
-  #if os(macOS)
-    @ObservationIgnored var listener: LoopbackRedirectListener?
-    /// Makes the listener each loopback sign-in waits on.
-    @ObservationIgnored var makeListener: @MainActor () -> LoopbackRedirectListener = {
+  @ObservationIgnored var listener: LoopbackRedirectListener?
+  /// Makes the listener each loopback sign-in waits on.
+  @ObservationIgnored var makeListener: @MainActor () -> LoopbackRedirectListener = {
+    #if os(macOS)
       LoopbackRedirectListener()
-    }
-  #endif
+    #else
+      LoopbackRedirectListener(successMessage: "Signed in. You can return to Omnigent.")
+    #endif
+  }
+  /// Where a Databricks loopback sign-in shows its page: the system browser on macOS; on iOS the
+  /// sign-in sheet, which keeps the app (and its listener) in the foreground.
+  @ObservationIgnored var databricksLoopbackPage = LoopbackPage.platformDefault
   /// Shows the sign-in sheet, which waits for the page to come back to `callback`.
   @ObservationIgnored var authenticateInSheet: AuthenticateInSheet = SignInController.systemSheet()
 

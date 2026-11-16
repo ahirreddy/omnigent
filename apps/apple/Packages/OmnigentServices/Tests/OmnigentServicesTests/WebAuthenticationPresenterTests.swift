@@ -15,6 +15,7 @@ private final class FakeSignInSession: WebAuthenticationSessionRunning {
   /// Runs inside `start()`, as a session that finishes at once would.
   var onStart: (@MainActor (FakeSignInSession) -> Void)?
   private(set) var startCount = 0
+  private(set) var cancelCount = 0
 
   init(complete: @escaping @Sendable (URL?, (any Error)?) -> Void) {
     self.complete = complete
@@ -24,6 +25,10 @@ private final class FakeSignInSession: WebAuthenticationSessionRunning {
     startCount += 1
     onStart?(self)
     return startsSuccessfully
+  }
+
+  func cancel() {
+    cancelCount += 1
   }
 }
 
@@ -186,6 +191,49 @@ private final class FixedAnchorProvider: WebAuthenticationAnchorProviding {
     let expected = try callbackURL()
     factory.sessions.first?.complete(expected, nil)
     #expect(try await first.value == expected)
+  }
+
+  @Test("Cancelling the sign-in's task dismisses the sheet and reads as a cancellation")
+  func cancelledTask() async throws {
+    let factory = FakeSessionFactory()
+    let presenter = WebAuthenticationPresenter(makeSession: factory.make)
+    let page = page
+    let scheme = scheme
+    let provider = FixedAnchorProvider()
+    let signIn = Task {
+      try await presenter.authenticate(url: page, callback: scheme, anchorProvider: provider)
+    }
+    while factory.sessions.isEmpty { await Task.yield() }
+    #expect(factory.sessions.first?.cancelCount == 0)
+
+    signIn.cancel()
+    await #expect(throws: WebAuthenticationError.cancelled) { try await signIn.value }
+    #expect(factory.sessions.first?.cancelCount == 1)
+    // The dismissed session's own completion arrives late and changes nothing.
+    factory.sessions.first?.complete(nil, ASWebAuthenticationSessionError(.canceledLogin))
+
+    let expected = try callbackURL()
+    factory.configure = { session in session.onStart = { $0.complete(expected, nil) } }
+    let next = try await presenter.authenticate(
+      url: page, callback: scheme, anchorProvider: provider)
+    #expect(next == expected, "the next sign-in still runs")
+  }
+
+  @Test("A sign-in whose task is already cancelled shows no sheet")
+  func cancelledBeforeTheSheet() async {
+    let factory = FakeSessionFactory()
+    let presenter = WebAuthenticationPresenter(makeSession: factory.make)
+    let page = page
+    let scheme = scheme
+    let provider = FixedAnchorProvider()
+    let signIn = Task {
+      while !Task.isCancelled { await Task.yield() }
+      return try await presenter.authenticate(
+        url: page, callback: scheme, anchorProvider: provider)
+    }
+    signIn.cancel()
+    await #expect(throws: WebAuthenticationError.cancelled) { try await signIn.value }
+    #expect(factory.sessions.isEmpty)
   }
 
   @Test("The real factory builds a system session without starting it")

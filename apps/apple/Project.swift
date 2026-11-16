@@ -101,7 +101,10 @@ let iOSApp = Target.target(
       "SUPPORTS_MACCATALYST": "NO",
       "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
       "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
-    ]
+    ],
+    // Dev builds are signed by other teams, which the HTTPS redirect's associated domain
+    // doesn't list; Release keeps it for the store app.
+    debug: Omnigent.loopbackDatabricksRedirect
   )
 )
 
@@ -151,7 +154,7 @@ let macApp = Target.target(
         // `@testable import`.
         "PRODUCT_MODULE_NAME": "OmnigentMac",
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) OMNIGENT_CHROMIUM",
-      ].merging(Omnigent.desktopDatabricksRedirect) { _, new in new }
+      ].merging(Omnigent.loopbackDatabricksRedirect) { _, new in new }
     ) { _, new in new },
     debug: [
       "CODE_SIGN_IDENTITY": "-",
@@ -189,7 +192,7 @@ let macAppStoreApp = Target.target(
       "ENABLE_HARDENED_RUNTIME": "YES",
       "COMBINE_HIDPI_IMAGES": "YES",
       "PRODUCT_MODULE_NAME": "OmnigentMacAppStore",
-    ].merging(Omnigent.desktopDatabricksRedirect) { _, new in new },
+    ].merging(Omnigent.loopbackDatabricksRedirect) { _, new in new },
     debug: [
       "CODE_SIGN_IDENTITY": "-",
       "CODE_SIGN_ENTITLEMENTS": "Apps/Omnigent-macOS/OmnigentMacAppStore-Debug.entitlements",
