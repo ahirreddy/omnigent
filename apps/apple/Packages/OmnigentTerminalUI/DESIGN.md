@@ -110,7 +110,10 @@ WebSocket ──binary──► Rust TerminalAttach ──AttachOutput::Output�
   and is thread-safe. We call it on the main actor from the connection's output stream. A
   `TerminalOutput.resetScreen` (the Rust machine's `ResetScreen`, emitted on every reattach)
   feeds `ESC c` (RIS). The server's next frame is a `capture-pane` seed of the current screen
-  that starts with `CSI H CSI 2J`.
+  that starts with `CSI H CSI 2J`. On macOS output waits while a frame libghostty drew has not
+  reached the layer (`TerminalOutputPacer`): its three IOSurfaces are reused once the GPU is
+  done, not once Core Animation stops showing them, so a busy main thread would otherwise have
+  the renderer draw into the frame on screen.
 - **Input.** Ghostty encodes keys, IME commits, paste and mouse reports according to the modes
   the remote program set through its output: DECCKM, the kitty keyboard flags,
   modifyOtherKeys, bracketed paste and the SGR mouse modes. It then calls `io_write_cb` on its

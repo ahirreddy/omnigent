@@ -13,6 +13,7 @@ import OmnigentGhosttyKit
 
 #if os(macOS)
   import AppKit
+  import Synchronization
 #else
   import UIKit
 #endif
@@ -36,6 +37,25 @@ private nonisolated func ghosttyIOWrite(
   let buffer = unsafe UnsafeRawBufferPointer(start: data, count: Int(length))
   sink.continuation.yield(unsafe Array(buffer))
 }
+
+#if os(macOS)
+  /// Times each surface's renderer has taken the terminal's state for a frame, by its
+  /// controller's address. Only registered surfaces count; libghostty reports them on its
+  /// renderer thread.
+  private nonisolated let frameUpdateCounts = Mutex<[UInt: Int]>([:])
+
+  /// libghostty's `renderer_event_cb`: runs on the surface's renderer thread. Draws are not
+  /// counted: with the keyboard, a draw that changes nothing runs on every display refresh.
+  private nonisolated func ghosttyRendererEvent(
+    _ userdata: UnsafeMutableRawPointer?, _ event: ghostty_renderer_event_e
+  ) {
+    guard event == GHOSTTY_RENDERER_EVENT_UPDATE_FRAME_END else { return }
+    let key = UInt(bitPattern: userdata)
+    frameUpdateCounts.withLock { counts in
+      if let count = counts[key] { counts[key] = count + 1 }
+    }
+  }
+#endif
 
 /// The state of the find bar.
 public struct TerminalSearch: Hashable, Sendable {
@@ -98,6 +118,11 @@ public final class TerminalSurfaceController {
   #if os(macOS)
     /// The view the surface renders into.
     @ObservationIgnored let view: TerminalSurfaceNSView
+    /// Output waiting for the frame in flight to reach the layer (``TerminalOutputPacer``).
+    @ObservationIgnored private var pacer: TerminalOutputPacer?
+    /// Frames libghostty has put on the view's layer.
+    @ObservationIgnored private(set) var framesShown = 0
+    @ObservationIgnored private var contentsObservation: NSKeyValueObservation?
   #else
     /// The view the surface renders into.
     @ObservationIgnored let view: TerminalSurfaceUIView
@@ -138,6 +163,9 @@ public final class TerminalSurfaceController {
     unsafe try createSurface(newSurface)
     view.controller = self
     runtime.register(self)
+    #if os(macOS)
+      pacer = makePacer()
+    #endif
     startPumps(input: input)
     connection.start()
   }
@@ -151,6 +179,11 @@ public final class TerminalSurfaceController {
     if let surface = unsafe surface {
       unsafe ghostty_surface_free(surface)
     }
+    #if os(macOS)
+      // After the free: the renderer thread that counts updates has stopped.
+      let key = UInt(bitPattern: ObjectIdentifier(self))
+      frameUpdateCounts.withLock { $0[key] = nil }
+    #endif
   }
 
   private static func sharedRuntime() throws(GhosttyError) -> GhosttyRuntime {
@@ -177,6 +210,9 @@ public final class TerminalSurfaceController {
     unsafe config.io_mode = GHOSTTY_SURFACE_IO_MANUAL_MIRROR
     unsafe config.io_write_cb = unsafe ghosttyIOWrite
     unsafe config.io_write_userdata = unsafe Unmanaged.passUnretained(sink).toOpaque()
+    #if os(macOS)
+      unsafe config.renderer_event_cb = ghosttyRendererEvent
+    #endif
     guard let surface = unsafe newSurface(runtime.app, &config) else {
       throw .surfaceCreationFailed
     }
@@ -235,18 +271,32 @@ public final class TerminalSurfaceController {
       if outputBeforeFirstSize.count > heldOutputLimit { showHeldOutput() }
       return
     }
-    feed(bytes)
+    #if os(macOS)
+      if let pacer {
+        pacer.submit(bytes)
+        return
+      }
+    #endif
+    parse(bytes)
   }
 
   /// Parses what waited for the first size.
   private func showHeldOutput() {
     let held = outputBeforeFirstSize
     outputBeforeFirstSize = []
-    feed(held)
+    parse(held)
+  }
+
+  /// Parses and renders remote output now, after any output still waiting for a frame.
+  func feed(_ bytes: [UInt8]) {
+    #if os(macOS)
+      pacer?.flush()
+    #endif
+    parse(bytes)
   }
 
   /// Parses and renders remote output.
-  func feed(_ bytes: [UInt8]) {
+  private func parse(_ bytes: [UInt8]) {
     guard let surface = unsafe surface, !bytes.isEmpty else { return }
     bytes.withUnsafeBufferPointer { buffer in
       unsafe buffer.withMemoryRebound(to: CChar.self) { chars in
@@ -255,6 +305,28 @@ public final class TerminalSurfaceController {
     }
     view.requestRender()
   }
+
+  #if os(macOS)
+    /// Paces output to the frames that reach the layer. Out of a window nothing is shown, so
+    /// output is parsed as it comes.
+    private func makePacer() -> TerminalOutputPacer {
+      // The address the surface's callbacks receive as their userdata.
+      let key = UInt(bitPattern: ObjectIdentifier(self))
+      frameUpdateCounts.withLock { $0[key] = 0 }
+      contentsObservation = view.layer?.observe(\.contents) { [weak self] _, _ in
+        guard Thread.isMainThread else { return }
+        MainActor.assumeIsolated { self?.framesShown += 1 }
+      }
+      let view = view
+      let probe = TerminalFrameProbe(
+        updatedFrames: { frameUpdateCounts.withLock { $0[key] ?? 0 } },
+        shownFrames: { [weak self] in self?.framesShown ?? 0 },
+        isInWindow: { unsafe view.window != nil })
+      return TerminalOutputPacer(
+        probe: probe, feed: { [weak self] bytes in self?.parse(bytes) },
+        commit: { CATransaction.flush() })
+    }
+  #endif
 
   /// Renders one frame now. iOS only: the view's display link calls this when Ghostty asked
   /// for a frame (`GHOSTTY_ACTION_RENDER`).
@@ -299,6 +371,19 @@ public final class TerminalSurfaceController {
     guard pixels.isFinite, pixels > 0 else { return nil }
     return pixels < CGFloat(UInt32.max) ? UInt32(pixels) : UInt32.max
   }
+
+  #if os(macOS)
+    /// The display whose refreshes Ghostty paces this surface's frames to.
+    @ObservationIgnored private(set) var displayID: UInt32?
+
+    /// The window moved to the display `id`. Ghostty's display link otherwise follows the
+    /// main display, which can refresh at another rate and phase.
+    func setDisplay(_ id: UInt32) {
+      guard let surface = unsafe surface, id != displayID else { return }
+      displayID = id
+      unsafe ghostty_surface_set_display_id(surface, id)
+    }
+  #endif
 
   /// The view gained or lost keyboard focus.
   func setFocused(_ focused: Bool) {

@@ -12,7 +12,8 @@
     func roundTrip() async throws {
       let surface = try NeverShownSurface()
       #expect(await surface.ready())
-      #expect(surface.controller.state == .attached(readOnly: false))
+      // The state reaches the controller on a pump of its own, not with the output.
+      #expect(await eventually { surface.controller.state == .attached(readOnly: false) })
       #expect(surface.controller.gridSize != nil)
       #expect(surface.connection.sizes.last == surface.controller.gridSize)
       surface.controller.type("echo round-trip")
