@@ -91,10 +91,37 @@
       }
       prefetchCursor = cursor
       noteHeights(noted)
+      prewarmAnswers(in: kept)
       guard cursor.above >= 0 || cursor.below < model.rows.count else { return }
       MainRunLoop.perform { [weak self] in
         MainActor.assumeIsolated { self?.prefetch(generation) }
       }
+    }
+
+    // MARK: Prewarm
+
+    /// How many viewports past the measured lookahead a scroll lays answers out ahead.
+    static let prewarmReach: CGFloat = 2
+
+    /// Hands the settled answers in `rect` that a text cell draws to the prewarm, nearest the
+    /// viewport first, so they lay out off the main thread before they scroll in.
+    func prewarmAnswers(in rect: NSRect, upward: Bool = false) {
+      guard textStyle.isEnabled, MessageTextPrewarm.isEnabled, tableView.numberOfRows > 0 else {
+        return
+      }
+      let range = tableView.rows(in: rect)
+      guard range.length > 0 else { return }
+      var indexes = Array(range.location..<(range.location + range.length))
+      if upward { indexes.reverse() }
+      var texts: [String] = []
+      for index in indexes where model.rows.indices.contains(index) {
+        let id = model.rows[index].id
+        let version = model.version(at: index)
+        guard prewarmed[id] != version, let message = textMessage(at: index) else { continue }
+        prewarmed[id] = version
+        if message.role == .answer { texts.append(message.markdown) }
+      }
+      MessageTextPrewarm.shared.prioritize(texts)
     }
 
     func startingCursor() -> (above: Int, below: Int) {

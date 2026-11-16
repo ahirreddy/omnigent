@@ -31,7 +31,7 @@ CATEGORIES: list[tuple[str, re.Pattern[str]]] = [
     ("table: rows measured", re.compile(r"TranscriptTableController\.(measure|prefetch)")),
     (
         "table: cells filled and rows placed",
-        re.compile(r"TranscriptTableController\.tableView|TranscriptTableCell\.show"),
+        re.compile(r"TranscriptTableController\.tableView|TranscriptTable\w*Cell\.show"),
     ),
     (
         "AppKit views per text (selection overlays, link areas)",

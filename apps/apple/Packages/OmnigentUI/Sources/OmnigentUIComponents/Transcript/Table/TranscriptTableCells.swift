@@ -154,24 +154,47 @@
     }
   }
 
-  /// A table cell: a hosting view showing one row, which reports when its content's ideal size
-  /// changes (a fold opening, an image or a diagram arriving) instead of asking Auto Layout.
-  final class TranscriptTableCell: NSHostingView<TranscriptTableCellRoot> {
-    /// What the cell shows, by row id, content version and width.
-    struct Shown: Equatable {
-      var id: String
-      var version: Int
-      var width: CGFloat
-    }
+  /// What a cell shows, by row id, content version and width.
+  struct TranscriptTableShown: Equatable {
+    var id: String
+    var version: Int
+    var width: CGFloat
+  }
 
-    private(set) var shown: Shown?
-    private(set) var kind: TranscriptTableRowKind?
+  /// The kinds of cell the pool reuses: rows hosted in SwiftUI, and settled messages drawn as
+  /// TextKit text in AppKit (``TranscriptTableTextCell``), each by row kind.
+  enum TranscriptTableCellKind: Hashable {
+    case hosted(TranscriptTableRowKind)
+    case text(TranscriptTableRowKind)
+  }
+
+  /// A table cell: it shows one row at a width and reports when its content's ideal size
+  /// changes (a fold opening, an image arriving) instead of asking Auto Layout.
+  @MainActor
+  protocol TranscriptTableCell: NSView {
+    var shown: TranscriptTableShown? { get }
+    var kind: TranscriptTableCellKind? { get }
     /// Told when the content's ideal size may have changed.
-    var idealSizeChanged: ((TranscriptTableCell) -> Void)?
+    var idealSizeChanged: ((any TranscriptTableCell) -> Void)? { get set }
+    /// Shows `row`, unless the cell shows that version of it at `width` already.
+    func show(_ row: TranscriptTableRow, version: Int, width: CGFloat)
+    /// The content's height at the width it shows, laid out now if it has to be.
+    var idealHeight: CGFloat { get }
+    /// Takes no size report until the frame now being made is displayed.
+    func settle()
+  }
+
+  /// A cell hosting a row's SwiftUI view.
+  final class TranscriptTableHostingCell: NSHostingView<TranscriptTableCellRoot>,
+    TranscriptTableCell
+  {
+    private(set) var shown: TranscriptTableShown?
+    private(set) var kind: TranscriptTableCellKind?
+    var idealSizeChanged: ((any TranscriptTableCell) -> Void)?
 
     /// A cell for the table: no window bridging, no safe area, sized by its row.
-    static func make(environment: TranscriptTableEnvironment) -> TranscriptTableCell {
-      let cell = TranscriptTableCell(
+    static func make(environment: TranscriptTableEnvironment) -> TranscriptTableHostingCell {
+      let cell = TranscriptTableHostingCell(
         rootView: TranscriptTableCellRoot(row: nil, width: 0, environment: environment))
       cell.sizingOptions = [.intrinsicContentSize]
       cell.safeAreaRegions = []
@@ -179,25 +202,22 @@
       return cell
     }
 
-    /// Shows `row`, unless the cell shows that version of it at `width` already.
     func show(_ row: TranscriptTableRow, version: Int, width: CGFloat) {
-      let next = Shown(id: row.id, version: version, width: width)
+      let next = TranscriptTableShown(id: row.id, version: version, width: width)
       guard next != shown else { return }
       shown = next
-      kind = row.kind
+      kind = .hosted(row.kind)
       rootView = TranscriptTableCellRoot(
         row: row, width: width, environment: rootView.environment)
       settle()
     }
 
-    /// The content's height at the width it shows, laid out now if it has to be.
     var idealHeight: CGFloat { intrinsicContentSize.height.rounded(.up) }
 
     /// The cell's new content has not been laid out and drawn yet. Its height is known for that
     /// content and width, so the report that follows its first layout is not a change.
     private var isSettling = false
 
-    /// Takes no size report until the frame now being made is displayed.
     func settle() {
       guard !isSettling else { return }
       isSettling = true
@@ -222,31 +242,37 @@
     /// How many spare cells of each kind are kept beyond those.
     var spareLimit = 4
 
-    private var parked: [String: TranscriptTableCell] = [:]
+    private var parked: [String: any TranscriptTableCell] = [:]
     /// Parked row ids, oldest first.
     private var order: [String] = []
-    private var spares: [TranscriptTableRowKind: [TranscriptTableCell]] = [:]
+    private var spares: [TranscriptTableCellKind: [any TranscriptTableCell]] = [:]
 
     var parkedCount: Int { parked.count }
 
-    /// A cell for `row`: the one that last showed it, else a spare of its kind, else, once the
-    /// pool is full, the oldest parked cell of its kind; `nil` for a new one.
-    mutating func take(for row: TranscriptTableRow) -> TranscriptTableCell? {
-      if let cell = parked.removeValue(forKey: row.id) {
-        order.removeAll { $0 == row.id }
+    /// A cell of `kind` for row `id`: the one that last showed it, else a spare of its kind,
+    /// else, once the pool is full, the oldest parked cell of its kind; `nil` for a new one.
+    mutating func take(id: String, kind: TranscriptTableCellKind) -> (any TranscriptTableCell)? {
+      if let cell = parked[id] {
+        parked[id] = nil
+        order.removeAll { $0 == id }
+        // A row whose kind changed (it settled, or the style did) takes another cell.
+        guard cell.kind == kind else {
+          spare(cell)
+          return take(id: id, kind: kind)
+        }
         return cell
       }
-      if let cell = spares[row.kind]?.popLast() { return cell }
+      if let cell = spares[kind]?.popLast() { return cell }
       guard parked.count >= parkedLimit,
-        let id = order.first(where: { parked[$0]?.kind == row.kind }),
-        let cell = parked.removeValue(forKey: id)
+        let oldest = order.first(where: { parked[$0]?.kind == kind }),
+        let cell = parked.removeValue(forKey: oldest)
       else { return nil }
-      order.removeAll { $0 == id }
+      order.removeAll { $0 == oldest }
       return cell
     }
 
     /// Keeps a cell that left the table, under the row it shows.
-    mutating func park(_ cell: TranscriptTableCell) {
+    mutating func park(_ cell: any TranscriptTableCell) {
       guard let id = cell.shown?.id else {
         spare(cell)
         return
@@ -261,6 +287,9 @@
       }
     }
 
+    /// The parked cell for row `id`, left in the pool.
+    func parkedCell(for id: String) -> (any TranscriptTableCell)? { parked[id] }
+
     /// Lets go of the rows that are gone: their cells become spares.
     mutating func keep(only ids: Set<String>) {
       for id in order where !ids.contains(id) {
@@ -269,7 +298,7 @@
       order.removeAll { !ids.contains($0) }
     }
 
-    private mutating func spare(_ cell: TranscriptTableCell) {
+    private mutating func spare(_ cell: any TranscriptTableCell) {
       guard let kind = cell.kind else { return }
       if spares[kind, default: []].count < spareLimit { spares[kind, default: []].append(cell) }
     }
