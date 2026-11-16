@@ -13,6 +13,9 @@
 
     /// Whether waits take their whole limit, as they did before they ended at rest.
     static let fixedWaits = ProcessInfo.processInfo.environment["OMNIGENT_FIXED_WAITS"] == "1"
+    /// Whether a turn sleeps in the run loop until its end instead of polling: cheaper on the CPU
+    /// where timers are precise.
+    static let sleepingTurns = ProcessInfo.processInfo.environment["OMNIGENT_WAIT_TURNS"] == "sleep"
     static let isRecording = ProcessInfo.processInfo.environment["OMNIGENT_WAIT_STATS"] == "1"
     private static let totals = OSAllocatedUnfairLock(initialState: [String: Total]())
     private static let printer = OSAllocatedUnfairLock(initialState: false)

@@ -42,7 +42,7 @@ public final class TranscriptFocus {
     flashTimer?.cancel()
     flashTimer = Task { [weak self, flashDuration] in
       do {
-        try await Task.sleep(for: flashDuration)
+        try await Task.sleep(for: Theme.Timing.pause(flashDuration))
       } catch {
         return  // A newer flash took over, with a timer of its own.
       }
@@ -90,7 +90,7 @@ struct MessageFlash: View {
       .accessibilityHidden(true)
       .task {
         do {
-          try await Task.sleep(for: .seconds(0.6))
+          try await Task.sleep(for: Theme.Timing.pause(.seconds(0.6)))
         } catch {
           return  // The row scrolled away and the flash ended with it.
         }
@@ -125,7 +125,7 @@ struct TranscriptMessageFocus: ViewModifier {
       .task(id: focus?.messageID(in: sessionID)) {
         guard focus?.messageID(in: sessionID) != nil else { return }
         do {
-          try await Task.sleep(for: settle)
+          try await Task.sleep(for: Theme.Timing.pause(settle))
         } catch {
           return  // Another link or session replaced it.
         }

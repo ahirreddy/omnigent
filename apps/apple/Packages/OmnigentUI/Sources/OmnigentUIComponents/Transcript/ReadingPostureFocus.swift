@@ -106,7 +106,9 @@ private struct ReadingPostureFocus: ViewModifier {
         hasCommand: event?.modifierFlags.contains(.command) ?? false)
       guard !isHiddenTab, isActivePane, !keepsFocus else { return }
       // A composer that left the screen during the wait takes nothing.
-      guard (try? await Task.sleep(for: .milliseconds(100))) != nil else { return }
+      guard (try? await Task.sleep(for: Theme.Timing.pause(.milliseconds(100)))) != nil else {
+        return
+      }
       isFocused.wrappedValue = true
     }
   #endif

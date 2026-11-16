@@ -26,7 +26,8 @@ func settle<Content: View>(
   func isShowing() throws -> Bool {
     contains ? try screen.shownText().contains { $0.contains(text) } : try screen.shows(text)
   }
-  if try await !screen.waitUntil(timeout: timeout, isShowing) {
+  // Reading the shown text costs more than a turn: read it again once the window has worked.
+  if try await !screen.waitUntil(timeout: timeout, idleRecheck: .milliseconds(50), isShowing) {
     Issue.record("timed out waiting to show \(text) in \(try screen.shownText().prefix(60))")
   }
 }

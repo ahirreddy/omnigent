@@ -24,12 +24,16 @@
     /// Runs the loop and suspends until `condition` holds, checking after every short turn.
     /// - Parameters:
     ///   - timeout: How long the condition may take; only a failing wait takes it all.
+    ///   - idleRecheck: For a condition that costs more than a turn, such as reading the shown
+    ///     text: check it only after the window did work, and this often otherwise.
     ///   - condition: What to wait for.
     /// - Returns: Whether the condition held within `timeout`.
     public func waitUntil(
-      timeout: Duration = .seconds(10), _ condition: () throws -> Bool
+      timeout: Duration = .seconds(10), idleRecheck: Duration? = nil,
+      _ condition: () throws -> Bool
     ) async rethrows -> Bool {
-      try await MainLoop.waitUntil(timeout: timeout, condition)
+      try await MainLoop.waitUntil(
+        timeout: timeout, windows: [window], idleRecheck: idleRecheck, condition)
     }
 
     /// Runs the main run loop for all of `seconds`, for what needs real time to pass.

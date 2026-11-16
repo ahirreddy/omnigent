@@ -29,7 +29,7 @@ nonisolated struct TranscriptFollow: Equatable {
   @MainActor
   static func waitForFrameLanding() async throws {
     for _ in 0..<10 {
-      try await Task.sleep(for: .milliseconds(50))
+      try await Task.sleep(for: Theme.Timing.pause(.milliseconds(50)))
     }
   }
 

@@ -35,7 +35,7 @@ struct ComposerPullRequestChip: View {
       if inside {
         Task {
           // A short delay, so passing over the chip does not open the preview.
-          try? await Task.sleep(for: .milliseconds(350))
+          try? await Task.sleep(for: Theme.Timing.pause(.milliseconds(350)))
           if hovering { showsPreview = true }
         }
       } else {

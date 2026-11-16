@@ -53,7 +53,7 @@
         .task(id: peek.pendingTimer) {
           guard let timer = peek.pendingTimer else { return }
           do {
-            try await Task.sleep(for: timer.delay)
+            try await Task.sleep(for: Theme.Timing.pause(timer.delay))
           } catch {
             // Cancelled: the pointer moved again and superseded this delay.
             return

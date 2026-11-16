@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentViewTesting
 import Synchronization
 
 @testable import OmnigentDesktop
@@ -359,15 +360,8 @@ func loopback(_ port: Int) throws -> URL {
   return url
 }
 
-/// Polls `condition` in real time, for short bounded waits on work already in flight.
+/// Polls `condition` every run loop turn, for short bounded waits on work already in flight.
 @MainActor
 func waitUntil(within duration: Duration, _ condition: () -> Bool) async {
-  let deadline = ContinuousClock.now + duration
-  while !condition(), ContinuousClock.now < deadline {
-    do {
-      try await Task.sleep(for: .milliseconds(10))
-    } catch {
-      return
-    }
-  }
+  _ = await MainLoop.waitUntil(timeout: duration, condition)
 }

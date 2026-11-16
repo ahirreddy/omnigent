@@ -92,6 +92,21 @@ enum Theme {
     }
   }
 
+  /// The views' timed pauses: debounces, settle delays, pacing, how long a flash or a notice
+  /// stays. Every one passes through ``pause(_:)``, so a test that waits on one can shorten them
+  /// all for its duration.
+  enum Timing {
+    /// Multiplies every pause; 1 in the app, 0 for none.
+    static var scale: Double = 1
+
+    /// `duration`, scaled.
+    /// - Parameter duration: The pause the app takes.
+    /// - Returns: The pause to take now.
+    static func pause(_ duration: Duration) -> Duration {
+      scale == 1 ? duration : duration * max(0, scale)
+    }
+  }
+
   static var codeFont: Font { Typography.code }
 
   static var codeBackground: Color { Color.secondary.opacity(0.1) }
@@ -246,7 +261,7 @@ struct CopyButton: View {
     .task(id: copied) {
       guard copied else { return }
       do {
-        try await Task.sleep(for: confirmationDuration)
+        try await Task.sleep(for: Theme.Timing.pause(confirmationDuration))
       } catch {
         // Cancelled because the button went away; there is nothing left to reset.
         return
