@@ -11,8 +11,9 @@
 
   /// What a scroll renders. Scrolling over rows already built renders none of the transcript,
   /// its row list or its rows: the scroll state, the visible rows and the pills' trackers are not
-  /// observed. The rail's ticks follow the active turn, and Jump to latest renders the transcript
-  /// once as it shows or hides, however many steps the scroll takes.
+  /// observed. Nor does it update the AppKit views of the rows' text: selectable texts and links'
+  /// pointer areas. The rail's ticks follow the active turn, and Jump to latest renders the
+  /// transcript once as it shows or hides, however many steps the scroll takes.
   @Suite("Transcript scroll churn", .serialized)
   @MainActor
   struct TranscriptScrollChurnTests {
@@ -26,13 +27,14 @@
     private static let transcriptScopes = ["transcript", "rows", "row", "markdown"]
 
     /// A long conversation over a dock, opened at its newest row and following it.
-    private func open() async throws -> (OffscreenWindow<AnyView>, TranscriptScrollDriver) {
+    private func open(rows: [Row] = TranscriptFixture.turns(Self.turns))
+      async throws -> (OffscreenWindow<AnyView>, TranscriptScrollDriver)
+    {
       // These start from where the opening leaves the reader; its framing wait runs a tenth as long.
       Theme.Timing.scale = 0.1
       defer { Theme.Timing.scale = 1 }
       let conversation = LiveConversation(
-        ConversationViewState(
-          header: TranscriptFixture.header, rows: TranscriptFixture.turns(Self.turns)))
+        ConversationViewState(header: TranscriptFixture.header, rows: rows))
       let window = transcriptScreen(
         DockedTranscriptHost(
           conversation: conversation, pane: TranscriptPane(width: Self.width, dock: 68)),
@@ -93,6 +95,45 @@
       let renders = RenderTally.recording { scrollDownAndBack(viewport) }
       #expect(transcriptRenders(renders).isEmpty, "\(renders)")
       #expect(HangTrace.tallies().count("turn rail active", since: before) >= 2)
+    }
+
+    @Test("Steps over built rows of links, tables and code update no AppKit view of their text")
+    func linkedRowsUpdateNoTextViews() async throws {
+      let (window, viewport) = try await open(rows: TranscriptBenchmarks.rows(turns: 40))
+      defer { window.close() }
+      let scrollView = try #require(viewport.scrollView)
+      window.liveScroll(scrollView, began: true)
+      viewport.move(to: viewport.maximumOffset / 2)
+      scrollDownAndBack(viewport)
+
+      var renders: [String: Int] = [:]
+      let textUpdates = try SelectableTextUpdates.recording {
+        renders = RenderTally.recording { scrollDownAndBack(viewport) }
+      }
+      window.liveScroll(scrollView, began: false)
+      // Each step moves the links' layout anchors; their pointer areas keep the same value.
+      #expect(renders["link areas", default: 0] == 0, "\(renders)")
+      #expect(textUpdates == 0, "selectable texts were handed their string again")
+
+      // A link on screen still turns the pointer into a hand.
+      let shown = scrollView.contentView.convert(scrollView.contentView.bounds, to: nil)
+        .insetBy(dx: 0, dy: 100)
+      let onScreen = window.allViews.compactMap { $0 as? LinkPointerAreas.AreasView }.lazy
+        .compactMap { areas -> (LinkPointerAreas.AreasView, CGPoint)? in
+          guard let link = areas.linkRects.first else { return nil }
+          let center = areas.convert(CGPoint(x: link.midX, y: link.midY), to: nil)
+          return shown.contains(center) ? (areas, center) : nil
+        }.first
+      let (areas, location) = try #require(onScreen)
+      let moved = try #require(
+        NSEvent.mouseEvent(
+          with: .mouseMoved, location: location, modifierFlags: [],
+          timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: window.window.windowNumber, context: nil, eventNumber: 1, clickCount: 0,
+          pressure: 0))
+      NSCursor.arrow.set()
+      areas.mouseMoved(with: moved)
+      #expect(NSCursor.current == NSCursor.pointingHand)
     }
 
     @Test("Leaving the bottom and coming back renders the transcript once each way, for the pill")

@@ -20,34 +20,40 @@ extension View {
   /// over the text.
   private struct LinkPointer: ViewModifier {
     let links: [LinkSpan]
+    @State private var layouts = LinkTextLayouts()
 
     func body(content: Content) -> some View {
       if links.isEmpty {
         content
       } else {
-        content.overlayPreferenceValue(Text.LayoutKey.self) { layouts in
-          GeometryReader { proxy in
-            LinkPointerAreas(
-              links: links,
-              layouts: layouts.map { PlacedTextLayout(origin: proxy[$0.origin], layout: $0.layout) }
-            )
-          }
+        content.overlayPreferenceValue(Text.LayoutKey.self) { anchored in
+          // A scroll moves the layout's anchor every frame. The layout is kept aside, so the
+          // areas' view stays the same value: nothing measures or updates it.
+          layouts.keep(anchored)
+          return LinkPointerAreas(links: links, layouts: layouts)
         }
       }
     }
   }
 
-  /// A text's layout and where it starts in the view over it.
-  struct PlacedTextLayout {
-    let origin: CGPoint
-    let layout: Text.Layout
+  /// The latest layout of a linked `Text`. The modifier is on the `Text` itself, so the layout
+  /// starts at the origin of the view over it.
+  final class LinkTextLayouts {
+    private(set) var layouts: [Text.Layout] = []
+    /// Counts the layouts kept, so the areas find their rectangles again after a new one.
+    private(set) var revision = 0
+
+    func keep(_ anchored: [Text.LayoutKey.AnchoredLayout]) {
+      layouts = anchored.map(\.layout)
+      revision += 1
+    }
   }
 
   /// Shows the pointing hand while the pointer is over a link of the selectable text under it.
   /// It takes no clicks, so the text still opens links, selects and shows its menus.
   struct LinkPointerAreas: NSViewRepresentable {
     let links: [LinkSpan]
-    let layouts: [PlacedTextLayout]
+    let layouts: LinkTextLayouts
 
     func makeNSView(context: Context) -> AreasView {
       let view = AreasView()
@@ -56,14 +62,18 @@ extension View {
     }
 
     func updateNSView(_ view: AreasView, context: Context) {
+      #if DEBUG
+        RenderTally.count("link areas")
+      #endif
       view.show(links: links, layouts: layouts)
     }
 
     final class AreasView: NSView {
       private var links: [LinkSpan] = []
-      private var layouts: [PlacedTextLayout] = []
+      private var layouts: LinkTextLayouts?
       private var rects: [CGRect] = []
-      private var rectsAreFound = false
+      /// The revision of the layouts ``rects`` were found in.
+      private var rectsRevision: Int?
       private var area: NSTrackingArea?
       private var turnObserver: CFRunLoopObserver?
       /// Where the pointer is in the window; tests give their own, the real one is far away.
@@ -79,20 +89,18 @@ extension View {
 
       override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-      func show(links: [LinkSpan], layouts: [PlacedTextLayout]) {
+      func show(links: [LinkSpan], layouts: LinkTextLayouts) {
         self.links = links
         self.layouts = layouts
-        rectsAreFound = false
+        rectsRevision = nil
       }
 
       /// Each link's rectangle on each line, found when the pointer first asks after a layout.
       var linkRects: [CGRect] {
-        if rectsAreFound { return rects }
-        rects = layouts.flatMap { placed in
-          LinkGeometry.rects(of: links, in: placed.layout)
-            .map { $0.offsetBy(dx: placed.origin.x, dy: placed.origin.y) }
-        }
-        rectsAreFound = true
+        guard let layouts else { return [] }
+        if rectsRevision == layouts.revision { return rects }
+        rects = layouts.layouts.flatMap { LinkGeometry.rects(of: links, in: $0) }
+        rectsRevision = layouts.revision
         return rects
       }
 
