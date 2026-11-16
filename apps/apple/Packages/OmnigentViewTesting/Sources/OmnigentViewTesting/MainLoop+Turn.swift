@@ -11,6 +11,8 @@
       static let layout = Self(rawValue: 1 << 2)
       /// A window drew what it had pending.
       static let drawing = Self(rawValue: 1 << 3)
+      /// One of the views' timed pauses ends before the wait's limit.
+      static let pause = Self(rawValue: 1 << 4)
     }
 
     /// Runs one short turn of the loop and finishes the windows' pending layout. Timers due in

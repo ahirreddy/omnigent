@@ -21,10 +21,11 @@ settle takes about 7 ms.
 | No window (stores, models) | `MainLoop.settle`, `settleTasks`, `waitUntil`, `run(for:)` |
 
 `settle` runs inside the test's main actor job, so main actor tasks wait for the test to suspend;
-`settleTasks` suspends between turns so the ready ones run. Neither waits for work scheduled for
-later: a product `Task.sleep` (a debounce, a pacer, a flash), a future `Timer`, or events from the
-core's own threads. Wait for their effect with `waitUntil`, which checks its condition every turn
-and costs its timeout only when it fails.
+`settleTasks` suspends between turns so the ready ones run, and waits out the views' own timed
+pauses (every `Theme.Timing.pause` ending before its limit: the views announce each one in a test
+process). Neither waits for other work scheduled for later: a `Task.sleep` in a store, a future
+`Timer`, or events from the core's own threads. Wait for their effect with `waitUntil`, which
+checks its condition every turn and costs its timeout only when it fails.
 
 ## Time and motion under test
 

@@ -7,8 +7,9 @@
   /// At rest means a few short run loop turns in a row did no work: no source or event was
   /// handled and the given windows had no layout pending and drew nothing. A turn never sleeps,
   /// so coarse timers (a VM's wake 15 to 90 ms late) don't stretch it. Work still to come at a
-  /// later time, a timer or a `Task.sleep`, is not waited for: wait for its effect with
-  /// ``waitUntil(timeout:_:)``, or for the time with ``run(for:)`` or `Task.sleep`.
+  /// later time, a timer or a `Task.sleep`, is not waited for, except that ``settleTasks`` waits
+  /// out the views' own timed pauses (`Theme.Timing`): wait for anything else's effect with
+  /// ``waitUntil(timeout:windows:idleRecheck:_:)``, or for the time with ``run(for:)``.
   /// `OMNIGENT_FIXED_WAITS=1` makes every wait take its whole limit again, to tell a flaky wait
   /// from a flaky test.
   @MainActor
@@ -45,7 +46,8 @@
     }
 
     /// Settles as ``settle(limit:windows:)`` does, suspending between turns so main actor tasks
-    /// that are ready run too.
+    /// that are ready run too, and waiting out the views' timed pauses (`Theme.Timing`) that end
+    /// before `limit`.
     /// - Parameters:
     ///   - limit: The longest wait.
     ///   - windows: The windows whose layout and drawing count, with their sheets and children.
@@ -63,8 +65,9 @@
       var idle = 0
       SettleTrace.begin()
       while idle < idleTurns, CFAbsoluteTimeGetCurrent() < deadline {
-        let activity = runTurn(until: deadline, windows: windows)
+        var activity = runTurn(until: deadline, windows: windows)
         await Task.yield()
+        if PauseTracker.hasPause(endingBefore: deadline) { activity.insert(.pause) }
         SettleTrace.note(activity)
         idle = activity.isEmpty ? idle + 1 : 0
       }

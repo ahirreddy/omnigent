@@ -86,6 +86,19 @@
       #expect(await MainLoop.waitUntil(timeout: .seconds(5)) { done.isSet })
     }
 
+    @Test("a pause the views announce is waited out by the async settle, and its work runs")
+    func waitsForAnnouncedPause() async {
+      let done = Flag()
+      NotificationCenter.default.post(
+        name: PauseTracker.pauseBegan, object: nil, userInfo: [PauseTracker.secondsKey: 0.15])
+      Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(150))
+        done.isSet = true
+      }
+      await MainLoop.settleTasks(limit: .seconds(2))
+      #expect(done.isSet)
+    }
+
     @Test("with nothing to do the async settle ends at once")
     func idleSettleTasks() async {
       let seconds = await elapsed { await MainLoop.settleTasks(limit: .seconds(1)) }
