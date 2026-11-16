@@ -245,13 +245,9 @@ func titledWindow(
 func titled<Root: View>(_ root: Root, width: CGFloat, height: CGFloat) async throws
   -> OffscreenWindow<Root>
 {
-  let screen = OffscreenWindow(root, width: width, height: height)
-  let frame = screen.window.frame
-  screen.window.contentView = nil
-  screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
-  screen.window.setFrame(frame, display: false)
-  screen.host.sceneBridgingOptions = [.toolbars, .title]
-  screen.window.contentView = screen.host
+  let screen = OffscreenWindow(
+    root, width: width, height: height, styleMask: [.titled, .resizable, .fullSizeContentView],
+    sceneBridging: [.toolbars, .title])
   await screen.settleTasks(limit: .milliseconds(300))
   return screen
 }
