@@ -1598,6 +1598,62 @@ log show --last 30m --predicate 'subsystem == "ai.omnigent.performance" AND cate
 
 What it costs is in [follow-ups.md](follow-ups.md), "Transcript read by an assistive client".
 
+## A layout that never ended, with scroll bars beside the content (November 2026)
+
+Where scroll bars take room beside the content (a mouse, "Show scroll bars: Always", a test
+VM's default), a session's main thread could stay busy for good once its turn rail had more
+ticks than it shows, past 30 user turns: about 62 s of main-thread CPU a minute, run-loop
+passes of 50-150 ms, and app code near 0% of the samples. Reading all of a 300-turn session's
+history (the scroll bench's `scroll-loaded`) got there every time; paging history in by
+scrolling up fast sometimes did.
+
+The rail asked for `.scrollIndicators(.hidden)`, which on macOS still shows a bar where bars
+take room. In the rail's 24 pt gutter the 17 pt bar left the ticks 7 pt, and the rail's lazy
+stack and its scroll view laid each other out again on every pass: offscreen, the rail's clip
+and document views changed frame about 2,700 times a second. Each pass laid the window out
+again, the transcript's lazy stack over every loaded row with it, which is where the samples'
+time went (`LazySubviewPlacements`, `HostingScrollView.updateContext`, `NSScrollView tile`,
+`NSClipView setFrameSize`). The transcript's own geometry was the same at the end of every
+pass, so none of its observers saw anything. Below 31 turns the rail fits and shows no bar.
+
+The rail now asks for `.scrollIndicators(.never)`: no bar in any setting, and the ticks keep
+the gutter. It still scrolls by wheel and trackpad and follows the active turn.
+
+Found by switching parts off one at a time in Release experiment builds (the M4 VM, bars
+beside the content, the `?message=` link that reads all history; never settled means the main
+thread busy more than half of each of two 8 s windows after a 30 s wait):
+
+| Switched off | Runs that never settled |
+| --- | --- |
+| Nothing | 6 of 6 |
+| The turn rail | 0 of 4 |
+| The rail's bar (`.never`) | 0 of 2 |
+| The rail's lazy stack (a `VStack`) | 0 of 2 |
+| The rail's scroll view | 0 of 2 |
+| Its mask, scroll observers, active-turn scroll, tick ids or preview | 2 of 2 each |
+| The transcript's end by edge, or its visibility observer and scroll targets | 2 of 2 each |
+| Rows' horizontal scroll views (tables, code, tool output, math) | 2 of 2 |
+
+`TurnRailScrollBarTests` opens a 60-turn transcript in a process of its own with bars beside
+the content and expects its scroll views to keep their frames for half a second and the rail's
+ticks to keep the gutter. With `.hidden` the rail's frames never rest.
+
+The scroll bench runs with overlay bars unless asked (`--scrollers legacy`), which is why later
+baselines did not loop; the run that found it had the documents and offsets of runs with bars
+beside the content (624801 pt; 553456 to 511034 in its second run). In Release, `scroll-loaded`
+on the laptop VM with `--scrollers legacy`, the two builds taken in turn, two runs of each per
+style (chat from the second run of each launch of the bench, whose first opens a session not
+loaded yet):
+
+| Main thread | `.hidden` | `.never` |
+| --- | --- | --- |
+| Chat: link to quiet | never (120 s limit), 2 of 2 | 1.7-2.5 s |
+| Chat: CPU, cold pass | 63.0-63.1 s | 0.65-1.06 s |
+| Chat: CPU, warm pass | 63.1 s | 0.58-0.88 s |
+| CLI: link to quiet | never (120 s limit), 2 of 2 | 1.9 s |
+| CLI: CPU, cold pass | 62.9 s | 0.70-0.76 s |
+| CLI: CPU, warm pass | 62.5-62.6 s | 0.89-0.93 s |
+
 ## Where the time still goes
 
 - **Switching tabs** renders the detail and the tab that shows once, 50-80 ms in Release to a
