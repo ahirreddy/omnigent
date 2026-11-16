@@ -17,7 +17,8 @@ public protocol WebAuthenticationAnchorProviding: AnyObject {
 }
 
 /// The callback forms `ASWebAuthenticationSession` can receive. Loopback redirects are not one
-/// of them: use ``LoopbackRedirectListener`` with the system browser for those.
+/// of them: ``LoopbackRedirectListener`` receives those, and the sheet is dismissed by
+/// cancelling its task.
 public enum WebAuthenticationCallback: Sendable, Equatable {
   /// A custom URL scheme, such as `ai.omnigent.ios`.
   case customScheme(String)
@@ -49,6 +50,8 @@ protocol WebAuthenticationSessionRunning: AnyObject {
   /// Shows the sign-in sheet.
   /// - Returns: Whether the session started.
   func start() -> Bool
+  /// Dismisses the sheet.
+  func cancel()
 }
 
 extension ASWebAuthenticationSession: WebAuthenticationSessionRunning {}
@@ -97,7 +100,8 @@ public final class WebAuthenticationPresenter {
   ///   - prefersEphemeralSession: Whether to skip the browser's shared cookies.
   ///   - anchorProvider: Supplies the window to present from.
   /// - Returns: The full callback URL, including its query.
-  /// - Throws: ``WebAuthenticationError/cancelled`` when the user dismisses the sheet, or
+  /// - Throws: ``WebAuthenticationError/cancelled`` when the user dismisses the sheet or the
+  ///   calling task is cancelled (which dismisses it), or
   ///   ``WebAuthenticationError/failed(message:)`` for every other outcome.
   public func authenticate(
     url: URL,
@@ -118,21 +122,27 @@ public final class WebAuthenticationPresenter {
       presentationContext = nil
     }
 
-    let outcome = await withCheckedContinuation { (continuation: OutcomeContinuation) in
-      let waiter = OutcomeWaiter(continuation)
-      let session = makeSession(url, callback) { @Sendable callbackURL, error in
-        // The completion's queue is undocumented, so it must not assume the main actor.
-        waiter.resume(returning: Self.outcome(callbackURL: callbackURL, error: error))
+    let waiter = OutcomeWaiter()
+    let outcome = await withTaskCancellationHandler {
+      await withCheckedContinuation { (continuation: OutcomeContinuation) in
+        guard waiter.wait(continuation) else { return }
+        let session = makeSession(url, callback) { @Sendable callbackURL, error in
+          // The completion's queue is undocumented, so it must not assume the main actor.
+          waiter.resume(returning: Self.outcome(callbackURL: callbackURL, error: error))
+        }
+        session.presentationContextProvider = context
+        session.prefersEphemeralWebBrowserSession = prefersEphemeralSession
+        activeSession = session
+        guard session.start() else {
+          waiter.resume(
+            returning: .failure(.failed(message: "The sign-in session could not start.")))
+          return
+        }
       }
-      session.presentationContextProvider = context
-      session.prefersEphemeralWebBrowserSession = prefersEphemeralSession
-      activeSession = session
-      guard session.start() else {
-        waiter.resume(
-          returning: .failure(.failed(message: "The sign-in session could not start.")))
-        return
-      }
+    } onCancel: {
+      waiter.resume(returning: .failure(.cancelled))
     }
+    if Task.isCancelled { activeSession?.cancel() }
     switch outcome {
     case .success(let callbackURL):
       return callbackURL
@@ -177,17 +187,42 @@ private final class SignInPresentationContext: NSObject,
 }
 
 /// Resumes a sign-in once. Apple doesn't say whether a session that fails to start also calls its
-/// completion, and a second resume would crash the app.
+/// completion, and a second resume would crash the app. An outcome that arrives before the wait
+/// (a task cancelled before the session was made) is kept for it.
 private final class OutcomeWaiter: Sendable {
-  private let continuation: Mutex<OutcomeContinuation?>
+  private struct State {
+    var continuation: OutcomeContinuation?
+    var early: Result<URL, WebAuthenticationError>?
+    var resumed = false
+  }
 
-  init(_ continuation: OutcomeContinuation) {
-    self.continuation = Mutex(continuation)
+  private let state = Mutex(State())
+
+  /// Parks `continuation` until the outcome; resumes it at once with one that already arrived.
+  /// - Returns: Whether the sign-in should go on.
+  func wait(_ continuation: OutcomeContinuation) -> Bool {
+    let early = state.withLock { state -> Result<URL, WebAuthenticationError>? in
+      if let early = state.early {
+        state.resumed = true
+        return early
+      }
+      state.continuation = continuation
+      return nil
+    }
+    guard let early else { return true }
+    continuation.resume(returning: early)
+    return false
   }
 
   func resume(returning outcome: Result<URL, WebAuthenticationError>) {
-    let waiting = continuation.withLock { continuation in
-      defer { continuation = nil }
+    let waiting = state.withLock { state -> OutcomeContinuation? in
+      guard !state.resumed else { return nil }
+      guard let continuation = state.continuation else {
+        if state.early == nil { state.early = outcome }
+        return nil
+      }
+      state.resumed = true
+      state.continuation = nil
       return continuation
     }
     waiting?.resume(returning: outcome)

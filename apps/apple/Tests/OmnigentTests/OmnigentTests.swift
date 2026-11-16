@@ -27,6 +27,21 @@ struct AppConnectionTests {
   }
 }
 
+/// Dev builds are signed by teams that the HTTPS redirect's associated domain doesn't list, so
+/// Debug signs in to Databricks through the loopback redirect; Release keeps the HTTPS one.
+struct DatabricksRedirectTests {
+  @Test func redirectMatchesTheBuildConfiguration() {
+    let info = Bundle.main
+    #expect(info.object(forInfoDictionaryKey: "DatabricksOAuthClientID") as? String == "omnigent")
+    let redirect = info.object(forInfoDictionaryKey: "DatabricksOAuthRedirectURL") as? String
+    #if DEBUG
+      #expect(redirect == "http://localhost")
+    #else
+      #expect(redirect == "https://login.databricks.com/mobile-redirect")
+    #endif
+  }
+}
+
 @MainActor
 struct WindowTintTests {
   /// Built on the main actor as the window does; SwiftUI's async renderer resolves the tint off

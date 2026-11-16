@@ -1,256 +1,257 @@
-#if os(macOS)
-  import Foundation
-  import Network
-  import Testing
+import Foundation
+import Network
+import Testing
 
-  @testable import OmnigentServices
+@testable import OmnigentServices
 
-  @Suite struct LoopbackRedirectListenerTests {
-    /// A URL from a string this test built, failing the test when it is malformed.
-    func url(_ string: String) throws -> URL {
-      try #require(URL(string: string))
+@Suite struct LoopbackRedirectListenerTests {
+  /// A URL from a string this test built, failing the test when it is malformed.
+  func url(_ string: String) throws -> URL {
+    try #require(URL(string: string))
+  }
+
+  /// Sends one `GET` with an ephemeral session and returns the status and body.
+  func get(_ url: URL) async throws -> (Int, String) {
+    let session = URLSession(configuration: .ephemeral)
+    defer { session.finishTasksAndInvalidate() }
+    let (data, response) = try await session.data(from: url)
+    let status = try #require(response as? HTTPURLResponse).statusCode
+    return (status, String(bytes: data, encoding: .utf8) ?? "")
+  }
+
+  @Test func receivesTheCallbackWithItsQuery() async throws {
+    let listener = LoopbackRedirectListener()
+    let redirect = try await listener.start(path: "/oauth/callback")
+    #expect(redirect.absoluteString.hasPrefix("http://127.0.0.1:"))
+    #expect(redirect.path == "/oauth/callback")
+
+    let waiter = Task { try await listener.waitForCallback() }
+    let (status, body) = try await get(url("\(redirect.absoluteString)?code=abc123&state=xyz"))
+
+    #expect(status == 200)
+    #expect(body.contains("You can close this window"))
+    let callback = try await waiter.value
+    #expect(callback.absoluteString == "\(redirect.absoluteString)?code=abc123&state=xyz")
+  }
+
+  /// Databricks registers `http://localhost`; the browser resolves it to this listener. The page
+  /// says what the listener was made with (iOS sends the user back to the app).
+  @Test func localhostRedirectsOnTheRootPath() async throws {
+    let listener = LoopbackRedirectListener(successMessage: "Signed in. Return to the app.")
+    let redirect = try await listener.start(path: "/", host: "localhost")
+    #expect(redirect.absoluteString.hasPrefix("http://localhost:"))
+    #expect(redirect.path == "/")
+
+    let waiter = Task { try await listener.waitForCallback() }
+    let (status, body) = try await get(url("\(redirect.absoluteString)?code=abc&state=xyz"))
+    #expect(status == 200)
+    #expect(body.contains("<p>Signed in. Return to the app.</p>"))
+    #expect(!body.contains("close this window"))
+    let callback = try await waiter.value
+    #expect(callback.absoluteString == "\(redirect.absoluteString)?code=abc&state=xyz")
+  }
+
+  @Test func otherHostsAreRefused() async throws {
+    let listener = LoopbackRedirectListener()
+    await #expect(throws: LoopbackRedirectError.self) {
+      try await listener.start(path: "/", host: "example.com")
     }
+  }
 
-    /// Sends one `GET` with an ephemeral session and returns the status and body.
-    func get(_ url: URL) async throws -> (Int, String) {
-      let session = URLSession(configuration: .ephemeral)
-      defer { session.finishTasksAndInvalidate() }
-      let (data, response) = try await session.data(from: url)
-      let status = try #require(response as? HTTPURLResponse).statusCode
-      return (status, String(bytes: data, encoding: .utf8) ?? "")
+  @Test func otherPathsAreNotFoundAndDoNotCompleteTheWait() async throws {
+    let listener = LoopbackRedirectListener()
+    let redirect = try await listener.start(path: "/oauth/callback")
+    let waiter = Task { try await listener.waitForCallback() }
+
+    let port = try #require(redirect.port)
+    let (status, _) = try await get(url("http://127.0.0.1:\(port)/favicon.ico"))
+    #expect(status == 404)
+
+    let (ok, _) = try await get(url("\(redirect.absoluteString)?code=late"))
+    #expect(ok == 200)
+    let callback = try await waiter.value
+    #expect(callback.query == "code=late")
+  }
+
+  @Test func requestSplitAcrossReadsIsAssembled() async throws {
+    let listener = LoopbackRedirectListener()
+    let redirect = try await listener.start(path: "/cb")
+    let waiter = Task { try await listener.waitForCallback() }
+    let port = try #require(redirect.port)
+    let endpointPort = try #require(NWEndpoint.Port(rawValue: UInt16(port)))
+
+    let connection = NWConnection(host: "127.0.0.1", port: endpointPort, using: .tcp)
+    connection.start(queue: .global())
+    try await send(connection, "GET /cb?code=spl")
+    try await Task.sleep(for: .milliseconds(100))
+    try await send(connection, "it HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+
+    let callback = try await waiter.value
+    #expect(callback.query == "code=split")
+    connection.cancel()
+  }
+
+  @Test func nonGetMethodsAreRejected() async throws {
+    let listener = LoopbackRedirectListener()
+    let redirect = try await listener.start(path: "/cb")
+    let waiter = Task { try await listener.waitForCallback() }
+    let port = try #require(redirect.port)
+
+    var request = URLRequest(url: try url("http://127.0.0.1:\(port)/cb?code=x"))
+    request.httpMethod = "POST"
+    let session = URLSession(configuration: .ephemeral)
+    defer { session.finishTasksAndInvalidate() }
+    let (_, response) = try await session.data(for: request)
+    #expect((response as? HTTPURLResponse)?.statusCode == 405)
+
+    listener.cancel()
+    await #expect(throws: LoopbackRedirectError.cancelled) {
+      _ = try await waiter.value
     }
+  }
 
-    @Test func receivesTheCallbackWithItsQuery() async throws {
-      let listener = LoopbackRedirectListener()
-      let redirect = try await listener.start(path: "/oauth/callback")
-      #expect(redirect.absoluteString.hasPrefix("http://127.0.0.1:"))
-      #expect(redirect.path == "/oauth/callback")
+  @Test func cancellingTheWaiterStopsTheListener() async throws {
+    let listener = LoopbackRedirectListener()
+    let redirect = try await listener.start(path: "/cb")
+    let waiter = Task { try await listener.waitForCallback() }
+    waiter.cancel()
 
-      let waiter = Task { try await listener.waitForCallback() }
-      let (status, body) = try await get(url("\(redirect.absoluteString)?code=abc123&state=xyz"))
-
-      #expect(status == 200)
-      #expect(body.contains("You can close this window"))
-      let callback = try await waiter.value
-      #expect(callback.absoluteString == "\(redirect.absoluteString)?code=abc123&state=xyz")
+    await #expect(throws: LoopbackRedirectError.cancelled) {
+      _ = try await waiter.value
     }
-
-    /// Databricks registers `http://localhost`; the browser resolves it to this listener.
-    @Test func localhostRedirectsOnTheRootPath() async throws {
-      let listener = LoopbackRedirectListener()
-      let redirect = try await listener.start(path: "/", host: "localhost")
-      #expect(redirect.absoluteString.hasPrefix("http://localhost:"))
-      #expect(redirect.path == "/")
-
-      let waiter = Task { try await listener.waitForCallback() }
-      let (status, _) = try await get(url("\(redirect.absoluteString)?code=abc&state=xyz"))
-      #expect(status == 200)
-      let callback = try await waiter.value
-      #expect(callback.absoluteString == "\(redirect.absoluteString)?code=abc&state=xyz")
+    let port = try #require(redirect.port)
+    let late = try url("http://127.0.0.1:\(port)/cb?code=after")
+    await #expect(throws: (any Error).self) {
+      _ = try await get(late)
     }
+  }
 
-    @Test func otherHostsAreRefused() async throws {
-      let listener = LoopbackRedirectListener()
-      await #expect(throws: LoopbackRedirectError.self) {
-        try await listener.start(path: "/", host: "example.com")
-      }
+  @Test func waitingBeforeStartIsAnError() async {
+    let listener = LoopbackRedirectListener()
+    await #expect(throws: LoopbackRedirectError.notStarted) {
+      _ = try await listener.waitForCallback()
     }
+  }
 
-    @Test func otherPathsAreNotFoundAndDoNotCompleteTheWait() async throws {
-      let listener = LoopbackRedirectListener()
-      let redirect = try await listener.start(path: "/oauth/callback")
-      let waiter = Task { try await listener.waitForCallback() }
-
-      let port = try #require(redirect.port)
-      let (status, _) = try await get(url("http://127.0.0.1:\(port)/favicon.ico"))
-      #expect(status == 404)
-
-      let (ok, _) = try await get(url("\(redirect.absoluteString)?code=late"))
-      #expect(ok == 200)
-      let callback = try await waiter.value
-      #expect(callback.query == "code=late")
+  @Test func pathMustStartWithASlash() async {
+    let listener = LoopbackRedirectListener()
+    await #expect(throws: LoopbackRedirectError.self) {
+      _ = try await listener.start(path: "cb")
     }
+  }
 
-    @Test func requestSplitAcrossReadsIsAssembled() async throws {
-      let listener = LoopbackRedirectListener()
-      let redirect = try await listener.start(path: "/cb")
-      let waiter = Task { try await listener.waitForCallback() }
-      let port = try #require(redirect.port)
-      let endpointPort = try #require(NWEndpoint.Port(rawValue: UInt16(port)))
+  @Test func requestLineParsingWaitsForTheWholeHead() {
+    #expect(LoopbackRedirectListener.requestLine(in: Data("GET /cb HTTP/1.1\r\n".utf8)) == nil)
+    let complete = Data("GET /cb?x=1 HTTP/1.1\r\nHost: a\r\n\r\n".utf8)
+    #expect(
+      LoopbackRedirectListener.requestLine(in: complete)
+        == LoopbackRedirectListener.RequestLine(method: "GET", target: "/cb?x=1"))
+    #expect(
+      LoopbackRedirectListener.requestLine(in: Data("nonsense\r\n\r\n".utf8))
+        == LoopbackRedirectListener.RequestLine(method: "", target: ""))
+  }
 
-      let connection = NWConnection(host: "127.0.0.1", port: endpointPort, using: .tcp)
-      connection.start(queue: .global())
-      try await send(connection, "GET /cb?code=spl")
-      try await Task.sleep(for: .milliseconds(100))
-      try await send(connection, "it HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
-
-      let callback = try await waiter.value
-      #expect(callback.query == "code=split")
-      connection.cancel()
+  @Test func startingTwiceIsRefusedAndTheFirstKeepsWorking() async throws {
+    let listener = LoopbackRedirectListener()
+    let redirect = try await listener.start(path: "/cb")
+    await #expect(throws: LoopbackRedirectError.alreadyStarted) {
+      _ = try await listener.start(path: "/other")
     }
+    let waiter = Task { try await listener.waitForCallback() }
+    let (status, _) = try await get(try url("\(redirect.absoluteString)?code=x"))
+    #expect(status == 200)
+    #expect(try await waiter.value.query == "code=x")
+  }
 
-    @Test func nonGetMethodsAreRejected() async throws {
-      let listener = LoopbackRedirectListener()
-      let redirect = try await listener.start(path: "/cb")
-      let waiter = Task { try await listener.waitForCallback() }
-      let port = try #require(redirect.port)
+  /// Opens a raw connection to `listener`'s port.
+  func connect(to redirect: URL) throws -> NWConnection {
+    let port = try #require(redirect.port)
+    let endpointPort = try #require(NWEndpoint.Port(rawValue: UInt16(port)))
+    let connection = NWConnection(host: "127.0.0.1", port: endpointPort, using: .tcp)
+    connection.start(queue: .global())
+    return connection
+  }
 
-      var request = URLRequest(url: try url("http://127.0.0.1:\(port)/cb?code=x"))
-      request.httpMethod = "POST"
-      let session = URLSession(configuration: .ephemeral)
-      defer { session.finishTasksAndInvalidate() }
-      let (_, response) = try await session.data(for: request)
-      #expect((response as? HTTPURLResponse)?.statusCode == 405)
-
-      listener.cancel()
-      await #expect(throws: LoopbackRedirectError.cancelled) {
-        _ = try await waiter.value
-      }
-    }
-
-    @Test func cancellingTheWaiterStopsTheListener() async throws {
-      let listener = LoopbackRedirectListener()
-      let redirect = try await listener.start(path: "/cb")
-      let waiter = Task { try await listener.waitForCallback() }
-      waiter.cancel()
-
-      await #expect(throws: LoopbackRedirectError.cancelled) {
-        _ = try await waiter.value
-      }
-      let port = try #require(redirect.port)
-      let late = try url("http://127.0.0.1:\(port)/cb?code=after")
-      await #expect(throws: (any Error).self) {
-        _ = try await get(late)
-      }
-    }
-
-    @Test func waitingBeforeStartIsAnError() async {
-      let listener = LoopbackRedirectListener()
-      await #expect(throws: LoopbackRedirectError.notStarted) {
-        _ = try await listener.waitForCallback()
-      }
-    }
-
-    @Test func pathMustStartWithASlash() async {
-      let listener = LoopbackRedirectListener()
-      await #expect(throws: LoopbackRedirectError.self) {
-        _ = try await listener.start(path: "cb")
-      }
-    }
-
-    @Test func requestLineParsingWaitsForTheWholeHead() {
-      #expect(LoopbackRedirectListener.requestLine(in: Data("GET /cb HTTP/1.1\r\n".utf8)) == nil)
-      let complete = Data("GET /cb?x=1 HTTP/1.1\r\nHost: a\r\n\r\n".utf8)
-      #expect(
-        LoopbackRedirectListener.requestLine(in: complete)
-          == LoopbackRedirectListener.RequestLine(method: "GET", target: "/cb?x=1"))
-      #expect(
-        LoopbackRedirectListener.requestLine(in: Data("nonsense\r\n\r\n".utf8))
-          == LoopbackRedirectListener.RequestLine(method: "", target: ""))
-    }
-
-    @Test func startingTwiceIsRefusedAndTheFirstKeepsWorking() async throws {
-      let listener = LoopbackRedirectListener()
-      let redirect = try await listener.start(path: "/cb")
-      await #expect(throws: LoopbackRedirectError.alreadyStarted) {
-        _ = try await listener.start(path: "/other")
-      }
-      let waiter = Task { try await listener.waitForCallback() }
-      let (status, _) = try await get(try url("\(redirect.absoluteString)?code=x"))
-      #expect(status == 200)
-      #expect(try await waiter.value.query == "code=x")
-    }
-
-    /// Opens a raw connection to `listener`'s port.
-    func connect(to redirect: URL) throws -> NWConnection {
-      let port = try #require(redirect.port)
-      let endpointPort = try #require(NWEndpoint.Port(rawValue: UInt16(port)))
-      let connection = NWConnection(host: "127.0.0.1", port: endpointPort, using: .tcp)
-      connection.start(queue: .global())
-      return connection
-    }
-
-    /// The first bytes the listener answers `connection` with.
-    private func answer(on connection: NWConnection) async throws -> String {
-      try await withCheckedThrowingContinuation { continuation in
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 1_024) { data, _, _, error in
-          if let error {
-            continuation.resume(throwing: error)
-          } else {
-            continuation.resume(returning: String(bytes: data ?? Data(), encoding: .utf8) ?? "")
-          }
+  /// The first bytes the listener answers `connection` with.
+  private func answer(on connection: NWConnection) async throws -> String {
+    try await withCheckedThrowingContinuation { continuation in
+      connection.receive(minimumIncompleteLength: 1, maximumLength: 1_024) { data, _, _, error in
+        if let error {
+          continuation.resume(throwing: error)
+        } else {
+          continuation.resume(returning: String(bytes: data ?? Data(), encoding: .utf8) ?? "")
         }
       }
     }
+  }
 
-    @Test func aRequestLineThatMakesNoSenseIsRefusedAndTheWaitGoesOn() async throws {
-      let listener = LoopbackRedirectListener()
-      let redirect = try await listener.start(path: "/cb")
-      let waiter = Task { try await listener.waitForCallback() }
-      let connection = try connect(to: redirect)
-      defer { connection.cancel() }
+  @Test func aRequestLineThatMakesNoSenseIsRefusedAndTheWaitGoesOn() async throws {
+    let listener = LoopbackRedirectListener()
+    let redirect = try await listener.start(path: "/cb")
+    let waiter = Task { try await listener.waitForCallback() }
+    let connection = try connect(to: redirect)
+    defer { connection.cancel() }
 
-      try await send(connection, "nonsense\r\n\r\n")
-      #expect(try await answer(on: connection).hasPrefix("HTTP/1.1 400"))
+    try await send(connection, "nonsense\r\n\r\n")
+    #expect(try await answer(on: connection).hasPrefix("HTTP/1.1 400"))
 
-      let (status, _) = try await get(try url("\(redirect.absoluteString)?code=after"))
-      #expect(status == 200)
-      #expect(try await waiter.value.query == "code=after")
-    }
+    let (status, _) = try await get(try url("\(redirect.absoluteString)?code=after"))
+    #expect(status == 200)
+    #expect(try await waiter.value.query == "code=after")
+  }
 
-    @Test func anOversizedRequestIsRefusedWithoutWaitingForItsEnd() async throws {
-      let listener = LoopbackRedirectListener()
-      let redirect = try await listener.start(path: "/cb")
-      let connection = try connect(to: redirect)
-      defer {
-        connection.cancel()
-        listener.cancel()
-      }
-      try await send(
-        connection,
-        String(repeating: "a", count: LoopbackRedirectListener.maximumHeadBytes + 1))
-      #expect(try await answer(on: connection).hasPrefix("HTTP/1.1 400"))
-    }
-
-    @Test func aClientThatHangsUpEarlyDoesNotEndTheWait() async throws {
-      let listener = LoopbackRedirectListener()
-      let redirect = try await listener.start(path: "/cb")
-      let waiter = Task { try await listener.waitForCallback() }
-      let connection = try connect(to: redirect)
-      try await send(connection, "GET /cb")
+  @Test func anOversizedRequestIsRefusedWithoutWaitingForItsEnd() async throws {
+    let listener = LoopbackRedirectListener()
+    let redirect = try await listener.start(path: "/cb")
+    let connection = try connect(to: redirect)
+    defer {
       connection.cancel()
-
-      let (status, _) = try await get(try url("\(redirect.absoluteString)?code=later"))
-      #expect(status == 200)
-      #expect(try await waiter.value.query == "code=later")
+      listener.cancel()
     }
-
-    @Test func bytesThatAreNotTextAreMalformed() {
-      var bytes = Data([0xFF, 0xFE])
-      bytes.append(Data("\r\n\r\n".utf8))
-      #expect(
-        LoopbackRedirectListener.requestLine(in: bytes)
-          == LoopbackRedirectListener.RequestLine(method: "", target: ""))
-    }
-
-    /// Sends `text` on `connection`, waiting until the network has accepted it.
-    private func send(_ connection: NWConnection, _ text: String) async throws {
-      try await withCheckedThrowingContinuation { continuation in
-        connection.send(
-          content: Data(text.utf8),
-          completion: .contentProcessed(continuation.resumeOnSend))
-      }
-    }
+    try await send(
+      connection,
+      String(repeating: "a", count: LoopbackRedirectListener.maximumHeadBytes + 1))
+    #expect(try await answer(on: connection).hasPrefix("HTTP/1.1 400"))
   }
 
-  extension CheckedContinuation where T == Void, E == any Error {
-    /// Resumes with success, or with the send error.
-    func resumeOnSend(_ error: NWError?) {
-      if let error {
-        resume(throwing: error)
-      } else {
-        resume()
-      }
+  @Test func aClientThatHangsUpEarlyDoesNotEndTheWait() async throws {
+    let listener = LoopbackRedirectListener()
+    let redirect = try await listener.start(path: "/cb")
+    let waiter = Task { try await listener.waitForCallback() }
+    let connection = try connect(to: redirect)
+    try await send(connection, "GET /cb")
+    connection.cancel()
+
+    let (status, _) = try await get(try url("\(redirect.absoluteString)?code=later"))
+    #expect(status == 200)
+    #expect(try await waiter.value.query == "code=later")
+  }
+
+  @Test func bytesThatAreNotTextAreMalformed() {
+    var bytes = Data([0xFF, 0xFE])
+    bytes.append(Data("\r\n\r\n".utf8))
+    #expect(
+      LoopbackRedirectListener.requestLine(in: bytes)
+        == LoopbackRedirectListener.RequestLine(method: "", target: ""))
+  }
+
+  /// Sends `text` on `connection`, waiting until the network has accepted it.
+  private func send(_ connection: NWConnection, _ text: String) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      connection.send(
+        content: Data(text.utf8),
+        completion: .contentProcessed(continuation.resumeOnSend))
     }
   }
-#endif
+}
+
+extension CheckedContinuation where T == Void, E == any Error {
+  /// Resumes with success, or with the send error.
+  func resumeOnSend(_ error: NWError?) {
+    if let error {
+      resume(throwing: error)
+    } else {
+      resume()
+    }
+  }
+}

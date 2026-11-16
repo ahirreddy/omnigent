@@ -33,7 +33,7 @@ struct SignInSheetTests {
     { url, callback throws(WebAuthenticationError) in try answer(url, callback) }
   }
 
-  private func controller(
+  func controller(
     _ server: AppServer, databricks: DatabricksOAuthSettings? = nil,
     sheet: @escaping SignInController.AuthenticateInSheet
   ) throws -> SignInController {
@@ -50,7 +50,7 @@ struct SignInSheetTests {
     return controller
   }
 
-  private func reason(_ controller: SignInController) -> String? {
+  func reason(_ controller: SignInController) -> String? {
     switch controller.state.phase {
     case .signInRequired(_, _, _, _, let reason): reason?.message
     case .failed(_, let error): error.message
@@ -141,7 +141,7 @@ struct SignInSheetTests {
   private let httpsSettings = DatabricksOAuthSettings(
     clientId: "omnigent", redirectUrl: "https://app.example/oauth/databricks")
 
-  private func databricksServer() -> AppServer {
+  func databricksServer() -> AppServer {
     let server = AppServer()
     server.route(
       "/oidc/.well-known/openid-configuration",
@@ -157,7 +157,7 @@ struct SignInSheetTests {
     return server
   }
 
-  private func startDatabricks(_ controller: SignInController) async throws {
+  func startDatabricks(_ controller: SignInController) async throws {
     await controller.connectNow(workspaceURL)
     try await eventually("the workspace sign-in") {
       if case .signInRequired = controller.store.phase { true } else { false }
