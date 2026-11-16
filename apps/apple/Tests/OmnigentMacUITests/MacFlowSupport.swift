@@ -78,6 +78,10 @@ extension MacLiveUITestSupport {
       XCTFail("no button \(title)\n\(app.debugDescription)", file: file, line: line)
       return
     }
+    // An open panel enables Open only once the folder it was sent to has loaded.
+    XCTAssertTrue(
+      waitUntil(timeout: 15) { button.isEnabled }, "\(title) stayed disabled", file: file,
+      line: line)
     button.click()
   }
 

@@ -27,6 +27,8 @@ final class WindowChromeUITests: XCTestCase {
       [
         "-OmnigentDemo", "YES", "-desktop.defaultServerURL", "http://127.0.0.1:6767",
         "-ApplePersistenceIgnoreState", "YES", "-OmnigentTabsDirectory", tabs.path,
+        // An unanswered notification request's banner covers the titlebar's trailing end.
+        "-OmnigentNoNotificationPrompt", "YES",
       ] + MacLiveUITestSupport.noLocalServerArguments + MacLiveUITestSupport.windowFrameArguments
     app.launch()
     defer { app.terminate() }

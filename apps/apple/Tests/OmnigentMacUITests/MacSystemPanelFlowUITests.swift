@@ -140,8 +140,12 @@ final class MacSystemPanelFlowUITests: XCTestCase {
       _ = picker.disappears(within: 6)
     }
     guard !picker.exists else {
-      pickerButton(picker, fromTrailingEdge: 140).click()
-      XCTAssertTrue(picker.disappears(within: 10), "Cancel left the photo picker")
+      // Cancel sits left of Add, or, while the picker has no photos, where Add goes.
+      for distance: CGFloat in [140, 50] where picker.exists {
+        pickerButton(picker, fromTrailingEdge: distance).click()
+        _ = picker.disappears(within: 5)
+      }
+      XCTAssertFalse(picker.exists, "Cancel left the photo picker")
       throw XCTSkip(
         "The picker opened and closed, and no more: Add stayed off, so this machine's photo "
           + "library has nothing in Recently Saved. Import one image with Photos.")
