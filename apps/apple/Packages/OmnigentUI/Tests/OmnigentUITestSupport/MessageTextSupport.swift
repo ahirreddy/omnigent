@@ -1,5 +1,6 @@
 #if os(macOS)
   import AppKit
+  import OmnigentViewTesting
   import SwiftUI
 
   @testable import OmnigentUIComponents
@@ -60,6 +61,12 @@
     static func weight(of font: NSFont) -> CGFloat {
       let traits = font.fontDescriptor.object(forKey: .traits) as? [NSFontDescriptor.TraitKey: Any]
       return (traits?[.weight] as? CGFloat) ?? 0
+    }
+
+    /// The text views a screen shows, top to bottom.
+    static func contentViews(in screen: OffscreenWindow<AnyView>) -> [MessageTextContentView] {
+      screen.allViews.compactMap { $0 as? MessageTextContentView }
+        .sorted { $0.convert($0.bounds, to: nil).maxY > $1.convert($1.bounds, to: nil).maxY }
     }
   }
 #endif

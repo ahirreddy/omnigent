@@ -60,7 +60,7 @@ struct UserPromptBody: View {
         AttachedPathChips(mentions: prompt.mentions)
       }
       if !prompt.text.isEmpty {
-        MarkdownView(collapsed.map { $0 + "\u{2026}" } ?? prompt.text, isStreaming: false)
+        MessageMarkdown(text: collapsed.map { $0 + "\u{2026}" } ?? prompt.text, fillsWidth: false)
           .environment(\.markdownFillsWidth, false)
           .fixedSize(horizontal: false, vertical: true)
       }
