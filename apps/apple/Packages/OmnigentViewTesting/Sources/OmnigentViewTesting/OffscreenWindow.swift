@@ -165,7 +165,7 @@
         let target = activeWindow
         // A destructive button ignores a first mouse; keying an inactive app's window steals nothing.
         target.makeKey()
-        press(down, releasedBy: mouseUp, in: target)
+        press(down, releasedBy: mouseUp, in: target) { unsafe opened != nil }
         // Tracking that ended early, as a closing menu's does, leaves the posted up queued. A
         // later button's tracking would end on it, and that button's action would never run.
         NSApp.discardEvents(matching: .leftMouseUp, before: nil)

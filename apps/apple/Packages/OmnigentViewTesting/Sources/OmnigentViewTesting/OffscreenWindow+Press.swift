@@ -14,34 +14,39 @@
     }
 
     /// Delivers a mouse down and then its up. A control that tracks the mouse inside its down
-    /// takes the up, posted as its tracking loop starts; any other control gets the up once the
-    /// down returns.
+    /// takes the up posted during that tracking; any other control gets the up once the down
+    /// returns, even when a busy main thread let the up's timer fire first.
     /// - Parameters:
     ///   - down: The mouse down.
     ///   - mouseUp: Its mouse up.
     ///   - target: The window both go to.
-    func press(_ down: NSEvent, releasedBy mouseUp: NSEvent, in target: NSWindow) {
+    ///   - isMenuOpen: Whether the down opened a menu, whose own tracking answers the up.
+    func press(
+      _ down: NSEvent, releasedBy mouseUp: NSEvent, in target: NSWindow,
+      isMenuOpen: () -> Bool
+    ) {
       // Post only inside tracking: stopping the runner's own loop would end the process with a
-      // false pass. Tracking runs the loop in its own mode, so its start is where to post; a
-      // timer there would fire late where timers are coarse.
+      // false pass. In the default mode nothing tracks, so the posted up waits in the queue.
       nonisolated(unsafe) let trackedUp = mouseUp
-      nonisolated(unsafe) var posted = false
-      let tracking = CFRunLoopObserverCreateWithHandler(
-        nil, CFRunLoopActivity.entry.rawValue, false, 0
-      ) { _, _ in
+      nonisolated(unsafe) var postedUntracked = false
+      let release = Timer(timeInterval: 0.01, repeats: false) { _ in
         MainActor.assumeIsolated {
-          unsafe posted = true
+          unsafe postedUntracked = RunLoop.current.currentMode == .default
           NSApp.postEvent(unsafe trackedUp, atStart: false)
         }
       }
-      let trackingMode = CFRunLoopMode(RunLoop.Mode.eventTracking.rawValue as CFString)
-      CFRunLoopAddObserver(CFRunLoopGetMain(), tracking, trackingMode)
+      RunLoop.main.add(release, forMode: .common)
       deliver(down, to: target)
-      CFRunLoopObserverInvalidate(tracking)
-      // A menu's tracking, or the control's, took the up.
-      guard unsafe !posted else { return }
-      MainLoop.settle(limit: 0.03, windows: [target])
-      deliver(mouseUp, to: target)
+      if release.isValid {
+        release.invalidate()
+        MainLoop.settle(limit: 0.03, windows: [target])
+        deliver(mouseUp, to: target)
+      } else if unsafe postedUntracked, !isMenuOpen(),
+        let waiting = NSApp.nextEvent(
+          matching: .leftMouseUp, until: .distantPast, inMode: .default, dequeue: true)
+      {
+        deliver(waiting, to: target)
+      }
     }
   }
 #endif

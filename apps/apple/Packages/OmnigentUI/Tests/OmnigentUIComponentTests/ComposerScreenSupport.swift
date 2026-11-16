@@ -229,10 +229,7 @@
     /// Lets `Task`s a view started run: they queue on the main actor, which a test holds until it
     /// suspends, so `settle` alone doesn't reach them.
     func drainTasks() async {
-      for _ in 0..<4 {
-        await Task.yield()
-        settle(0.03)
-      }
+      await settleTasks(limit: .milliseconds(150))
     }
 
     /// Clicks a button counting back from the last, as a sheet's own buttons come last.

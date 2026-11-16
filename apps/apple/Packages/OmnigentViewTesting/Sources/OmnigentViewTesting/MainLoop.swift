@@ -22,7 +22,8 @@
     /// Runs the main run loop until it is at rest, or until `limit` passes.
     ///
     /// It runs inside the caller's main actor job, so main actor tasks wait for the caller to
-    /// suspend; ``settleTasks(limit:windows:)`` lets them run too.
+    /// suspend; ``settleTasks(limit:windows:)`` lets them run too. A view's timed pause ending
+    /// before `limit` is waited out, so its task can run at the caller's next suspension.
     /// - Parameters:
     ///   - limit: The longest wait, in seconds.
     ///   - windows: The windows whose layout and drawing count, with their sheets and children.
@@ -37,7 +38,9 @@
       var idle = 0
       SettleTrace.begin()
       while idle < idleTurns, CFAbsoluteTimeGetCurrent() < deadline {
-        let activity = runTurn(until: deadline, windows: windows)
+        var activity = runTurn(until: deadline, windows: windows)
+        // Time passes as it did for a fixed wait: a view's pause ending within it ends first.
+        if PauseTracker.hasPause(endingBefore: deadline) { activity.insert(.pause) }
         SettleTrace.note(activity)
         idle = activity.isEmpty ? idle + 1 : 0
       }
