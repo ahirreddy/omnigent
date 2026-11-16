@@ -13,8 +13,6 @@
       static let drawing = Self(rawValue: 1 << 3)
       /// One of the views' timed pauses ends before the wait's limit.
       static let pause = Self(rawValue: 1 << 4)
-      /// A layer in a window runs an animation that ends, such as a list's rows sliding.
-      static let animation = Self(rawValue: 1 << 5)
     }
 
     /// Runs one short turn of the loop and finishes the windows' pending layout. Timers due in
@@ -41,13 +39,9 @@
         // The loop's own display pass draws a window; a flag that never clears is no work, as
         // with a transparent window off every display.
         if neededDrawing, !window.viewsNeedDisplay { activity.insert(.drawing) }
-        if let content = window.contentView, finishPendingLayout(content) {
+        if let root = frameView(of: window), finishPendingLayout(root) {
           activity.insert(.layout)
         }
-      }
-      // Only a turn that is otherwise idle looks through the layers.
-      if activity.isEmpty, watched.contains(where: hasEndingAnimation) {
-        activity.insert(.animation)
       }
       return activity
     }
@@ -95,21 +89,11 @@
       }
     }
 
-    /// Whether a layer of the window runs an animation that will end; a looping one, such as a
-    /// spinner's, is no work to wait for.
+    /// The view holding all of a window's views, its title bar and toolbar with its content.
     /// - Parameter window: The window.
-    /// - Returns: Whether one does.
-    static func hasEndingAnimation(in window: NSWindow) -> Bool {
-      guard let root = window.contentView?.layer else { return false }
-      var pending: [CALayer] = [root]
-      while let layer = pending.popLast() {
-        for key in layer.animationKeys() ?? [] {
-          guard let animation = layer.animation(forKey: key) else { continue }
-          if animation.repeatCount < 1_000, animation.repeatDuration < 1_000 { return true }
-        }
-        pending.append(contentsOf: layer.sublayers ?? [])
-      }
-      return false
+    /// - Returns: The frame view, or the content view of a window without one.
+    static func frameView(of window: NSWindow) -> NSView? {
+      unsafe window.contentView?.superview ?? window.contentView
     }
 
     /// The windows, each followed by the sheets over it and its child windows.
@@ -126,7 +110,7 @@
     }
 
     /// Lays out what a view and those under it have pending.
-    /// - Parameter content: A window's content view.
+    /// - Parameter content: A window's frame view.
     /// - Returns: Whether anything was pending.
     static func finishPendingLayout(_ content: NSView) -> Bool {
       guard hasPendingLayout(content) else { return false }

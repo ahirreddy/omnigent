@@ -44,7 +44,6 @@
       guard isOn else { return }
       let names: [(MainLoop.Activity, String)] = [
         (.source, "source"), (.layout, "layout"), (.drawing, "drawing"), (.pause, "pause"),
-        (.animation, "animation"),
       ]
       for (bit, name) in names where activity.contains(bit) { counts[name, default: 0] += 1 }
       if activity.isEmpty { counts["idle", default: 0] += 1 }
