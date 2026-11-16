@@ -251,7 +251,7 @@ extension WindowTabsActionsTests {
     #expect(!created(window.session.tabs.group("conv_a")))
   }
 
-  @Test("Show Terminal shows a ready agent terminal in the chat, else a shell, else starts one")
+  @Test("Show Terminal shows a ready agent terminal in the chat, else the newest shell, else one")
   func toggleTerminal() async throws {
     let window = try await window(terminalServer())
     window.session.tabs.open(.chat(sessionID: "conv_a"))
@@ -261,13 +261,17 @@ extension WindowTabsActionsTests {
 
     window.session.open("conv_a")
     let terminals = try #require(window.session.terminalStores["conv_a"]?.terminals)
-    let shell = TerminalRow(
-      terminal: TerminalResource(
-        id: "terminal_shell_2", sessionId: "conv_a", terminalName: "zsh", sessionKey: "1",
-        running: true, environment: nil, directAttachUrl: nil, isAgentTerminal: false,
-        displayLabel: "zsh"),
-      status: .idle)
-    terminals.apply(terminals: [shell], harness: .notTerminalFirst)
+    func shellRow(_ id: String) -> TerminalRow {
+      TerminalRow(
+        terminal: TerminalResource(
+          id: id, sessionId: "conv_a", terminalName: "zsh", sessionKey: id, running: true,
+          environment: nil, directAttachUrl: nil, isAgentTerminal: false, displayLabel: "zsh"),
+        status: .idle)
+    }
+    let shell = shellRow("terminal_shell_2")
+    // An older shell still running is a leftover, not the one shown.
+    terminals.apply(
+      terminals: [shellRow("terminal_shell_1"), shell], harness: .notTerminalFirst)
     window.session.tabs.showChat("conv_a")
     window.tabs.toggleTerminal("conv_a")
     #expect(

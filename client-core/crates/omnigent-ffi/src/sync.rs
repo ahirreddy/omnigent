@@ -270,6 +270,13 @@ impl ConversationSync {
         lock(&self.inner).history_paging()
     }
 
+    /// How many published rows belong in the transcript rather than the activity drawer.
+    pub(crate) fn transcript_row_count_raw(&self) -> usize {
+        lock(&self.inner)
+            .published()
+            .map_or(0, |snapshot| snapshot.transcript_rows().count())
+    }
+
     pub(crate) fn begin_older_history_raw(&self) -> Option<core::OlderHistoryRequest> {
         lock(&self.inner).begin_older_history()
     }

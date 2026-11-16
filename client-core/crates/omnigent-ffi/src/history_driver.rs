@@ -51,6 +51,18 @@ impl Engine {
         }
     }
 
+    /// Starts the read of the page above `session_id`'s rows when none of them belong in the
+    /// transcript, as with a newest page of terminal openings and closings.
+    pub(crate) fn read_older_if_empty(&self, session_id: &str) {
+        let empty = self
+            .drivers
+            .get(session_id)
+            .is_some_and(|driver| driver.sync.transcript_row_count_raw() == 0);
+        if empty {
+            self.read_older(session_id);
+        }
+    }
+
     /// Starts the read of the page above `session_id`'s rows; `false` when none started.
     fn read_older(&self, session_id: &str) -> bool {
         let Some((driver, request)) = self.drivers.get(session_id).and_then(|driver| {
@@ -94,14 +106,16 @@ impl Engine {
         };
         // A read that paging was restarted under is no longer waited for.
         let awaited = sync.history_paging_raw().is_loading;
+        let shown_before = sync.transcript_row_count_raw();
         let applied = result.map_err(CoreError::from).and_then(|page| {
             sync.finish_older_history_raw(request, &page.items, page.next_cursor.as_deref())
         });
         match applied {
             Ok(applied) => {
-                let shows_nothing = applied.change.is_none();
                 self.publish(session_id, applied);
-                // A page of hidden items gave the reader no rows: the read goes on above it.
+                // A page of hidden items or activity rows gave the reader nothing to read: the
+                // read goes on above it.
+                let shows_nothing = sync.transcript_row_count_raw() == shown_before;
                 if awaited && shows_nothing && self.read_older(session_id) {
                     return;
                 }
