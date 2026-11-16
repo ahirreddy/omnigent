@@ -238,6 +238,14 @@ struct WindowedSurfaceMouseTests {
   }
 }
 
+extension TerminalGridSize {
+  /// Fewer columns or rows and no more of either, as larger text gives. Cells are whole pixels,
+  /// so at 1x one point larger can leave the cell's width, and the columns, as they were.
+  fileprivate func isSmaller(than other: TerminalGridSize) -> Bool {
+    self != other && columns <= other.columns && rows <= other.rows
+  }
+}
+
 @Suite("The terminal in a window, by chord", .serialized)
 struct WindowedSurfaceKeyboardTests {
   private let inside = CGPoint(x: 100, y: 100)
@@ -254,7 +262,7 @@ struct WindowedSurfaceKeyboardTests {
 
     try surface.screen.click(inside)
     #expect(try surface.chord("=", keyCode: 24))
-    #expect(await surface.settles { (surface.ghosttyGrid?.columns ?? .max) < start.columns })
+    #expect(await surface.settles { surface.ghosttyGrid?.isSmaller(than: start) == true })
     let larger = try #require(surface.ghosttyGrid)
     #expect(await surface.settles { surface.connection.sizes.last == larger })
     #expect(surface.controller.gridSize == larger)
