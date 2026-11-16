@@ -29,6 +29,10 @@ final class MacSessionFlowUITests: XCTestCase {
       "one click did not open the session")
     XCTAssertFalse(live.element("session-row-rename-field", in: app).exists, "it began a rename")
     XCTAssertFalse(live.element("transcript-demo-notes", in: app).exists, "the old session stayed")
+    // The offline demo has no stream to wait for.
+    XCTAssertTrue(
+      live.element("composer-connection", in: app).disappears(within: 5),
+      "the demo composer waits on a connection")
   }
 
   /// A read-only session opens with its composer locked and saying why.
