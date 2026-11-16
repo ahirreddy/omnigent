@@ -67,7 +67,9 @@
           let image = try Self.hostRender(view, width: width, scheme: scheme)
           try Self.write(image, name: name)
           #expect(image.width >= Int(width.points), "\(name) is narrower than its frame")
-          #expect(image.height > 200, "\(name) rendered almost nothing")
+          // The frame fixes the width in points, so the width gives the display's scale.
+          let scale = CGFloat(image.width) / width.points
+          #expect(CGFloat(image.height) / scale > 100, "\(name) rendered almost nothing")
           #expect(Self.inkCoverage(image) > 0.02, "\(name) looks blank")
         }
       }
