@@ -33,8 +33,11 @@
       timeout: Duration = .seconds(10), idleRecheck: Duration? = nil,
       _ condition: () throws -> Bool
     ) async rethrows -> Bool {
-      try await MainLoop.waitUntil(
+      let held = try await MainLoop.waitUntil(
         timeout: timeout, windows: [window], idleRecheck: idleRecheck, condition)
+      // What made the condition hold, such as a model's change, is drawn before the test reads it.
+      settle(0.1)
+      return held
     }
 
     /// Runs the main run loop for all of `seconds`, for what needs real time to pass.
