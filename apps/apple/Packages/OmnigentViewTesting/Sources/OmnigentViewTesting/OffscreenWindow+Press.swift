@@ -25,30 +25,25 @@
       _ down: NSEvent, releasedBy mouseUp: NSEvent, in target: NSWindow,
       isMenuOpen: () -> Bool
     ) {
-      // Post only inside tracking: stopping the runner's own loop would end the process with a
-      // false pass. In the default mode nothing tracks, so the posted up waits in the queue.
+      // Post only inside tracking, which takes the up from the queue; the timer waits out any
+      // turn in the default mode, where nothing tracks. Otherwise the up goes to the window as the
+      // down did: taken from NSApp's queue it reaches what watches it, a transient popover too.
       nonisolated(unsafe) let trackedUp = mouseUp
-      nonisolated(unsafe) var postedUntracked = false
-      let release = Timer(timeInterval: 0.01, repeats: false) { _ in
+      nonisolated(unsafe) var posted = false
+      let release = Timer(timeInterval: 0.01, repeats: true) { _ in
         MainActor.assumeIsolated {
-          unsafe postedUntracked = RunLoop.current.currentMode == .default
+          guard RunLoop.current.currentMode != .default, !(unsafe posted) else { return }
+          unsafe posted = true
           NSApp.postEvent(unsafe trackedUp, atStart: false)
         }
       }
       RunLoop.main.add(release, forMode: .common)
       deliver(down, to: target)
-      if release.isValid {
-        release.invalidate()
-        // A menu that opened and closed within the down took the whole click.
-        guard !isMenuOpen() else { return }
-        MainLoop.settle(limit: 0.03, windows: [target])
-        deliver(mouseUp, to: target)
-      } else if unsafe postedUntracked, !isMenuOpen(),
-        let waiting = NSApp.nextEvent(
-          matching: .leftMouseUp, until: .distantPast, inMode: .default, dequeue: true)
-      {
-        deliver(waiting, to: target)
-      }
+      release.invalidate()
+      // Tracking took the posted up; a menu that opened and closed within the down took it all.
+      guard !(unsafe posted), !isMenuOpen() else { return }
+      MainLoop.settle(limit: 0.03, windows: [target])
+      deliver(mouseUp, to: target)
     }
   }
 #endif
