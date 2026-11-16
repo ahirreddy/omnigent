@@ -109,6 +109,8 @@ private struct ReadingPostureFocus: ViewModifier {
       guard (try? await Task.sleep(for: Theme.Timing.pause(.milliseconds(100)))) != nil else {
         return
       }
+      // A sleep whose timer fired just before the tab hid still returns normally.
+      guard !Task.isCancelled else { return }
       isFocused.wrappedValue = true
     }
   #endif
