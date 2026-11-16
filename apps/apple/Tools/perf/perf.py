@@ -13,6 +13,7 @@ permission. See apps/apple/docs/performance.md.
     perf.py shot --app <Omnigent.app> [<file.png>]
     perf.py drive --app <Omnigent.app> scroll-transcript  # or scroll-sidebar, toggle-panel...
     perf.py scroll --app <Omnigent.app> [--runs 3] [--style cli] [--fresh-state]  # the long chat
+    perf.py scroll --app <Omnigent.app> --variant base= --variant "big=-some:flag value"  # A/B
     perf.py suite --app <Omnigent.app> [--runs 3]   # every scenario, medians
     perf.py suite --app <Omnigent.app> --style cli    # the same with the CLI-style transcript
 """
@@ -191,6 +192,10 @@ class Busy:
             "busy_ms": sum(ordered),
             "passes": len(ordered),
             "over_8ms": sum(busy > FRAME_120_MS for busy in ordered),
+            # Of those passes, the share a 120 Hz frame could not hold.
+            "over_8ms_pct": 100
+            * sum(busy > FRAME_120_MS for busy in ordered)
+            / max(len(ordered), 1),
             # The busy time in those passes: what a 120 Hz frame could not hold.
             "over_8ms_ms": sum(busy for busy in ordered if busy > FRAME_120_MS),
             "over_16ms": sum(busy > FRAME_60_MS for busy in ordered),
@@ -420,9 +425,10 @@ def tabs_file(bundle_id: str) -> Path:
     return Path.home() / "Library/Application Support" / bundle_id / "Tabs" / f"{key}.json"
 
 
-def launch(app: Path, session_id: str | None) -> dict[str, float]:
+def launch(app: Path, session_id: str | None, extra: list[str] | None = None) -> dict[str, float]:
     """Quits the app, starts it with the hitch monitor on one window that opens ``session_id``
-    (else a New Tab), and reports time to window and settle."""
+    (else a New Tab), and reports time to window and settle. ``extra`` follows the launch
+    arguments (a variant's)."""
     libraries, probe = build_tools()
     quit_app(app)
     bundle_id = subprocess.run(
@@ -466,6 +472,7 @@ def launch(app: Path, session_id: str | None) -> dict[str, float]:
             "-ApplePersistenceIgnoreState",
             "YES",
             *LAUNCH_ARGS,
+            *(extra or []),
         ],
         check=True,
     )
@@ -763,24 +770,90 @@ def open_link(app: Path, link: str) -> None:
     print(f"open {link.split('/c/')[-1][:40]}: settled {wait_settled(start, 120):.0f}ms")
 
 
-def scroll_bench(app: Path, runs: int, scenarios: list[str], sample_seconds: int) -> None:
+@dataclass
+class Variant:
+    """A named set of extra launch arguments, compared with the others in one run."""
+
+    name: str
+    args: list[str]
+
+    @staticmethod
+    def parse(text: str) -> Variant:
+        """``NAME=ARGS``: the arguments split on spaces; ``NAME=`` launches with none."""
+        name, separator, args = text.partition("=")
+        if not separator or not name:
+            raise ValueError(f"a variant is NAME=ARGS, not {text!r}")
+        return Variant(name, args.split())
+
+
+def scroll_bench(
+    app: Path,
+    runs: int,
+    scenarios: list[str],
+    sample_seconds: int,
+    variants: list[Variant] | None = None,
+) -> None:
     """Each scroll scenario ``runs`` times on the long transcript, from a fresh launch each run:
     a cold pass (rows built for the first time since the chat opened), then the same steps again
     (warm); then the medians. A first launch, not counted, takes what a first run of the build
-    pays. With ``sample_seconds``, one more launch per scenario samples both passes."""
+    pays. With ``variants``, each run launches every variant in turn, so they share the
+    machine's state. With ``sample_seconds``, one more launch per scenario and variant samples
+    both passes."""
+    variants = variants or [Variant("", [])]
     session = long_session(0)
     launch(app, session)
-    results: dict[str, list[dict[str, float]]] = {}
+    results: dict[str, dict[str, list[dict[str, float]]]] = {}
     for name in scenarios:
         for _ in range(runs):
-            launch(app, session)
+            for variant in variants:
+                launch(app, session, variant.args)
+                if name in SETUPS:
+                    open_link(app, SETUPS[name](session))
+                for label in ("cold", "warm"):
+                    tag = f"{name} ({label}{', ' + variant.name if variant.name else ''})"
+                    results.setdefault(variant.name, {}).setdefault(f"{name} {label}", []).append(
+                        drive(app, tag, SCENARIOS[name])
+                    )
+    for variant in variants:
+        arguments = " ".join(LAUNCH_ARGS[-2:] + variant.args)
+        title = f"{variant.name}: " if variant.name else ""
+        print(f"\n{title}medians of {runs} runs ({app}, {arguments}):")
+        print_medians(results[variant.name])
+    if len(variants) > 1:
+        print_comparison(variants, results)
+    for name in scenarios if sample_seconds else []:
+        for variant in variants:
+            launch(app, session, variant.args)
             if name in SETUPS:
                 open_link(app, SETUPS[name](session))
             for label in ("cold", "warm"):
-                results.setdefault(f"{name} {label}", []).append(
-                    drive(app, f"{name} ({label})", SCENARIOS[name])
-                )
-    print(f"\nmedians of {runs} runs ({app}, {' '.join(LAUNCH_ARGS[-2:])}):")
+                suffix = f"-{variant.name}" if variant.name else ""
+                drive(app, f"{name}-{label}{suffix}-sampled", SCENARIOS[name], sampled=True)
+
+
+# What the comparison shows: 120 Hz frames missed, the slow tail, and the main thread's work.
+COMPARED = ("over_8ms_pct", "over_8ms", "p99_ms", "max_ms", "busy_ms", "hitch_ms_per_s")
+
+
+def print_comparison(
+    variants: list[Variant], results: dict[str, dict[str, list[dict[str, float]]]]
+) -> None:
+    """One line per scenario and variant: the medians of ``COMPARED``."""
+    print("\ncomparison (medians):")
+    for scenario in results[variants[0].name]:
+        for variant in variants:
+            rows = results[variant.name].get(scenario, [])
+            if not rows:
+                continue
+            medians = {key: statistics.median(row[key] for row in rows) for key in COMPARED}
+            print(
+                f"  {scenario:28s} {variant.name:10s} "
+                + "  ".join(f"{key}={value:.1f}" for key, value in medians.items())
+            )
+
+
+def print_medians(results: dict[str, list[dict[str, float]]]) -> None:
+    """Each scenario's medians, one line each."""
     keys = (
         "main_cpu_ms",
         "busy_ms",
@@ -789,6 +862,7 @@ def scroll_bench(app: Path, runs: int, scenarios: list[str], sample_seconds: int
         "dropped",
         "worst_frame_ms",
         "over_8ms",
+        "over_8ms_pct",
         "over_8ms_ms",
         "over_16ms",
         "p50_ms",
@@ -807,12 +881,6 @@ def scroll_bench(app: Path, runs: int, scenarios: list[str], sample_seconds: int
                 for key, value in medians.items()
             )
         )
-    for name in scenarios if sample_seconds else []:
-        launch(app, session)
-        if name in SETUPS:
-            open_link(app, SETUPS[name](session))
-        for label in ("cold", "warm"):
-            drive(app, f"{name}-{label}-sampled", SCENARIOS[name], sampled=True)
 
 
 def screenshot(app: Path, path: Path) -> None:
@@ -861,6 +929,14 @@ def main() -> None:
         help="scroll: the driven scenarios to run, comma-separated",
     )
     parser.add_argument(
+        "--variant",
+        action="append",
+        default=[],
+        metavar="NAME=ARGS",
+        help="scroll: also launch with these extra arguments, interleaved with the other variants "
+        "run by run (NAME= for none); repeat for each",
+    )
+    parser.add_argument(
         "--scrollers",
         choices=["overlay", "legacy"],
         help="launch with this scroller style: overlay as with a trackpad, legacy (always shown, "
@@ -892,7 +968,11 @@ def main() -> None:
         unknown = [name for name in names if name not in SCENARIOS]
         if unknown:
             raise SystemExit(f"unknown scenarios: {', '.join(unknown)}")
-        scroll_bench(app, args.runs, names, args.sample)
+        try:
+            variants = [Variant.parse(text) for text in args.variant]
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+        scroll_bench(app, args.runs, names, args.sample, variants)
     elif args.command == "shot":
         screenshot(app, Path(args.session or CACHE / "window.png"))
     elif args.session is None:

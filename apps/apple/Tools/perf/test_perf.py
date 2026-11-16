@@ -101,12 +101,28 @@ class BusyTests(unittest.TestCase):
         self.assertEqual(numbers["passes"], 4)
         self.assertEqual(numbers["busy_ms"], 35.0)
         self.assertEqual(numbers["over_8ms"], 2)
+        self.assertEqual(numbers["over_8ms_pct"], 50.0)
         self.assertEqual(numbers["over_16ms"], 1)
         self.assertEqual(numbers["p50_ms"], 9.0)
         self.assertEqual(numbers["max_ms"], 20.0)
 
     def test_an_empty_window_has_no_passes(self):
-        self.assertEqual(perf.parse_busy(BUSY, 3000, 4000).numbers["max_ms"], 0.0)
+        numbers = perf.parse_busy(BUSY, 3000, 4000).numbers
+        self.assertEqual(numbers["max_ms"], 0.0)
+        self.assertEqual(numbers["over_8ms_pct"], 0.0)
+
+
+class VariantTests(unittest.TestCase):
+    def test_a_variant_is_a_name_and_its_launch_arguments(self):
+        variant = perf.Variant.parse("textkit=-omnigent:message-text textkit")
+        self.assertEqual(variant.name, "textkit")
+        self.assertEqual(variant.args, ["-omnigent:message-text", "textkit"])
+        self.assertEqual(perf.Variant.parse("base=").args, [])
+
+    def test_a_variant_needs_a_name_and_an_equals_sign(self):
+        for text in ("textkit", "=-a b"):
+            with self.assertRaises(ValueError):
+                perf.Variant.parse(text)
 
 
 class SampleTests(unittest.TestCase):
