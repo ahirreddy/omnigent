@@ -318,6 +318,8 @@
       state.isLoadingMoreSessions = true
       let loading = bed.screen(state)
       defer { loading.close() }
+      // A busy machine can take more than one settle to draw the spinner's label.
+      _ = try MainLoop.settle(until: { try loading.shows("Loading\u{2026}") })
       #expect(try loading.shows("Loading\u{2026}"))
       #expect(log.entries == ["more"])
     }

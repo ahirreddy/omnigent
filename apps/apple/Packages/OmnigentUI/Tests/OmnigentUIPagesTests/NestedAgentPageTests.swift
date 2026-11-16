@@ -43,6 +43,8 @@
           title: "Add nested agent", message: "Loading source session\u{2026}", isWaiting: true
         ).frame(width: 600, height: 400), width: 600, height: 400)
       defer { waiting.close() }
+      // A busy machine can take more than one settle to draw the spinner's label.
+      _ = try MainLoop.settle(until: { try waiting.shows("Loading source session\u{2026}") })
       #expect(try waiting.shows("Loading source session\u{2026}"))
       #expect(waiting.allViews.contains { $0 is NSProgressIndicator })
       #expect(waiting.controlFrames.isEmpty, "nothing to click while it waits")

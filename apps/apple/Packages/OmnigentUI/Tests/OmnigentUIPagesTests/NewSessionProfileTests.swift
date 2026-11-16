@@ -87,6 +87,8 @@
     func profileStates() throws {
       let loading = list(SandboxProfilesState(isLoading: true))
       defer { loading.close() }
+      // A busy machine can take more than one settle to draw the spinner's label.
+      _ = try MainLoop.settle(until: { try loading.shows("Loading profiles\u{2026}") })
       #expect(try loading.shows("Loading profiles\u{2026}"))
 
       let none = list(SandboxProfilesState())

@@ -148,7 +148,7 @@ struct PullRequestPanelTests {
     let view = try #require(PullRequestPanelSlots.extras(panel, canEdit: true).changes)
     let shown = OffscreenWindow(view, width: 600, height: 400)
     defer { shown.close() }
-    #expect(try shown.shows("Loading changes"))
+    try await settle(shown, untilShowing: "Loading changes")
   }
 
   @Test("Labels, reviewers and merge methods read as chips, the repository's default first")

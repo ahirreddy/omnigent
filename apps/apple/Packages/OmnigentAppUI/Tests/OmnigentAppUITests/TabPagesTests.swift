@@ -82,8 +82,7 @@ struct TabPagesTests {
       session: session, sessionID: "conv_a", rowID: "row", showChat: {})
     let screen = OffscreenWindow(waiting, width: 500, height: 400)
     defer { screen.close() }
-    try await pause(screen)
-    #expect(try screen.shows("Loading the side chat\u{2026}"))
+    try await settle(screen, untilShowing: "Loading the side chat\u{2026}")
   }
 
   private func sideChatServer() -> AppServer {

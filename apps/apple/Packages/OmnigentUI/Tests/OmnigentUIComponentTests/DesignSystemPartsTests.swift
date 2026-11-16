@@ -169,6 +169,8 @@
         LoadingCaption(title: "Loading things\u{2026}").accessibilityIdentifier("caption"),
         width: 300, height: 200)
       defer { screen.close() }
+      // A busy machine can take more than one settle to draw the spinner's label.
+      _ = try MainLoop.settle(until: { try screen.shows("Loading things\u{2026}") })
       #expect(try screen.shows("Loading things\u{2026}"))
       let label = try screen.withAccessibilityTree {
         try screen.accessibilityElement("caption").value(forKey: "accessibilityLabel") as? String
