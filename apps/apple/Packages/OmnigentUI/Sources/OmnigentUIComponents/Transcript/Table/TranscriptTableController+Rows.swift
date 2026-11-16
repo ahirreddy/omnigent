@@ -52,9 +52,11 @@
 
     // MARK: Idle measuring
 
-    /// Measures rows away from the viewport while the reader is still, nearest first, a few
-    /// milliseconds a pass, so later scrolls find their heights known. It starts a while after
-    /// rows change or the reader stops scrolling; the transcript's own moves leave it running.
+    /// Measures rows around the viewport while the reader is still, nearest first, a few
+    /// milliseconds a pass, so the next scrolls find their heights known: out to
+    /// ``prefetchReach`` viewports either way, and the nearest in cells kept for them, so they
+    /// show without rendering again. It starts a while after rows change or the reader stops
+    /// scrolling; the transcript's own moves leave it running.
     func schedulePrefetch() {
       prefetchGeneration += 1
       let generation = prefetchGeneration
@@ -68,21 +70,24 @@
         model.width > 0, tableView.numberOfRows == model.rows.count
       else { return }
       var cursor = prefetchCursor ?? startingCursor()
+      let shown = clipView.bounds
+      let reach = shown.insetBy(dx: 0, dy: -shown.height * Self.prefetchReach)
+      let kept = shown.insetBy(dx: 0, dy: -shown.height * Self.keptReach)
       let deadline = CACurrentMediaTime() + Self.prefetchBudget
       var noted = IndexSet()
-      while CACurrentMediaTime() < deadline, cursor.above >= 0 || cursor.below < model.rows.count {
-        if cursor.below < model.rows.count {
-          if model.needsMeasure(at: cursor.below), measureAway(cursor.below) {
-            noted.insert(cursor.below)
-          }
-          cursor.below += 1
-        }
-        if cursor.above >= 0 {
-          if model.needsMeasure(at: cursor.above), measureAway(cursor.above) {
-            noted.insert(cursor.above)
-          }
-          cursor.above -= 1
-        }
+      // Measures row `index` if it needs it; `false` once rows are out of reach.
+      func visit(_ index: Int) -> Bool {
+        let rect = tableView.rect(ofRow: index)
+        guard rect.maxY >= reach.minY, rect.minY <= reach.maxY else { return false }
+        guard model.needsMeasure(at: index) else { return true }
+        let isNear = rect.maxY >= kept.minY && rect.minY <= kept.maxY
+        if isNear ? measureKeeping(index) : measureAway(index) { noted.insert(index) }
+        return true
+      }
+      let count = model.rows.count
+      while CACurrentMediaTime() < deadline, cursor.above >= 0 || cursor.below < count {
+        if cursor.below < count { cursor.below = visit(cursor.below) ? cursor.below + 1 : count }
+        if cursor.above >= 0 { cursor.above = visit(cursor.above) ? cursor.above - 1 : -1 }
       }
       prefetchCursor = cursor
       noteHeights(noted)

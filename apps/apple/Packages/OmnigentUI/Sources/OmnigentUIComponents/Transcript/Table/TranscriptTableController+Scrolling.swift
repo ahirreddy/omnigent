@@ -96,7 +96,12 @@
     func scrollPhaseChanged() {
       let isScrolling = isLiveScrolling || isWheeling
       if follow.scrollPhaseChanged(isUserScrolling: isScrolling) { pinBottom() }
-      if isScrolling { prefetchGeneration += 1 } else { schedulePrefetch() }
+      if isScrolling {
+        prefetchGeneration += 1
+        prefetchCursor = nil
+      } else {
+        schedulePrefetch()
+      }
     }
 
     /// The viewport's height that the bars over it leave the rows.

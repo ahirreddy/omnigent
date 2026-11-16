@@ -214,15 +214,16 @@
 
     var parkedCount: Int { parked.count }
 
-    /// A cell for `row`: the one that last showed it, else a spare of its kind, else the
-    /// oldest parked cell of its kind; `nil` when the pool has none.
+    /// A cell for `row`: the one that last showed it, else a spare of its kind, else, once the
+    /// pool is full, the oldest parked cell of its kind; `nil` for a new one.
     mutating func take(for row: TranscriptTableRow) -> TranscriptTableCell? {
       if let cell = parked.removeValue(forKey: row.id) {
         order.removeAll { $0 == row.id }
         return cell
       }
       if let cell = spares[row.kind]?.popLast() { return cell }
-      guard let id = order.first(where: { parked[$0]?.kind == row.kind }),
+      guard parked.count >= parkedLimit,
+        let id = order.first(where: { parked[$0]?.kind == row.kind }),
         let cell = parked.removeValue(forKey: id)
       else { return nil }
       order.removeAll { $0 == id }

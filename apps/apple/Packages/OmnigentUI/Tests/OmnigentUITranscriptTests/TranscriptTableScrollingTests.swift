@@ -38,9 +38,9 @@
       return actions
     }
 
-    /// Ten turns, then a short one that fits the window.
-    private func session(hasMore: Bool = false) -> LiveConversation {
-      var rows = TranscriptFixture.turns(10, startingAt: 10)
+    /// `turns` turns, then a short one that fits the window.
+    private func session(turns: Int = 10, hasMore: Bool = false) -> LiveConversation {
+      var rows = TranscriptFixture.turns(turns, startingAt: 10)
       rows += [
         TranscriptFixture.user("u-last", "Short?"),
         TranscriptFixture.answer("a-last", "Yes.", responseID: "r-last"),
@@ -160,15 +160,26 @@
 
     @Test("Rows are measured once: scrolling back over them and a streamed delta measure little")
     func measuresOnce() async throws {
-      let conversation = session()
+      let conversation = session(turns: 24)
       let (driver, controller) = try await screen(conversation)
       let window = driver.screen
       defer { window.close() }
-      // Idle measuring reaches every row of a short transcript.
+      // Idle measuring reaches the rows a few viewports around the reader, and stops short of
+      // the rest; its reach is judged by where rows were before it measured them.
       rest(window)
+      let shown = try #require(driver.scrollView).contentView.bounds
+      let reach = shown.insetBy(
+        dx: 0, dy: -shown.height * TranscriptTableController.prefetchReach)
+      var unmeasuredBeyond = 0
       for index in controller.model.rows.indices {
-        #expect(!controller.model.needsMeasure(at: index), "row \(index)")
+        let rect = controller.tableView.rect(ofRow: index)
+        if rect.minY >= reach.minY, rect.maxY <= reach.maxY {
+          #expect(!controller.model.needsMeasure(at: index), "row \(index)")
+        } else if rect.maxY < reach.minY, controller.model.needsMeasure(at: index) {
+          unmeasuredBeyond += 1
+        }
       }
+      #expect(unmeasuredBeyond > 0)
       let end = driver.offset
       let measured = controller.measurements
       for step in 1...6 { try scroll(window, driver, to: end - CGFloat(step) * 150) }

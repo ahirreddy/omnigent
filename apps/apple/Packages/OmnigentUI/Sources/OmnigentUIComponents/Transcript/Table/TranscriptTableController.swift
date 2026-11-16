@@ -30,6 +30,10 @@
     static let lookaheadBudget: CFTimeInterval = 0.003
     /// The main thread time one idle pass may spend measuring rows away from the viewport.
     static let prefetchBudget: CFTimeInterval = 0.004
+    /// How many viewports above and below idle measuring reaches.
+    static let prefetchReach: CGFloat = 5
+    /// How many viewports away idle measuring keeps the cells it measured in.
+    static let keptReach: CGFloat = 1.5
     /// How long after the last move idle measuring starts.
     static let prefetchDelay: TimeInterval = 0.3
     /// How long after its last step a wheel scroll counts as ended.
