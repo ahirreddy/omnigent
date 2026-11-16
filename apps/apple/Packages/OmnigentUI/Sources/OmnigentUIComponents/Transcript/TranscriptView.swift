@@ -14,7 +14,8 @@ public struct TranscriptView: View {
   private let scrollToLatestRequest: Int
 
   @State private var scroll = TranscriptScrollState()
-  /// The one part of the follow rules the body shows.
+  /// The one part of the follow rules the body shows. Opening's framing measures the rows its
+  /// render lays out, so it is read here rather than in a view of its own.
   @State private var pill = TranscriptFollow.Pill()
   @State private var layout = TranscriptLayoutMemo()
   @State private var environmentRelay = TranscriptEnvironmentRelay()
