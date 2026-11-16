@@ -1,5 +1,6 @@
 #if os(macOS)
   import AppKit
+  import IOSurface
   import SwiftUI
   import Testing
 
@@ -40,12 +41,14 @@
 
     /// The alpha of the pixel at `point` (in points, from the top left).
     private func alpha(at point: CGPoint, in raster: MessageTextRaster) throws -> UInt8 {
-      let image = try #require(raster.image)
-      let data = try #require(image.dataProvider?.data as Data?)
+      let surface = try #require(raster.surface)
+      _ = unsafe surface.lock(options: .readOnly, seed: nil)
+      defer { _ = unsafe surface.unlock(options: .readOnly, seed: nil) }
       let column = Int(point.x * raster.scale)
       let line = Int(point.y * raster.scale)
       // Premultiplied BGRA, little-endian: alpha is the fourth byte.
-      return data[line * image.bytesPerRow + column * 4 + 3]
+      let offset = line * surface.bytesPerRow + column * 4 + 3
+      return unsafe surface.baseAddress.load(fromByteOffset: offset, as: UInt8.self)
     }
 
     @Test("A drawn run measures and links as the live text view does at its width")
@@ -57,9 +60,9 @@
       #expect(drawn.size == MessageTextSize(height: measured.height, usedWidth: measured.usedWidth))
       #expect(drawn.links.map(\.url) == view.linkRects.map(\.url))
       #expect(drawn.links.map(\.rect) == view.linkRects.map(\.rect))
-      let image = try #require(drawn.image)
-      #expect(image.width == 1000)
-      #expect(image.height == Int(((drawn.size.height - drawn.topInset) * 2).rounded(.up)))
+      let surface = try #require(drawn.surface)
+      #expect(surface.width == 1000)
+      #expect(surface.height == Int(((drawn.size.height - drawn.topInset) * 2).rounded(.up)))
       #expect(!drawn.chromeFrames.isEmpty, "the code block's header has a place")
     }
 

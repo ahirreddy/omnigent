@@ -1,5 +1,6 @@
 #if os(macOS)
   import AppKit
+  import IOSurface
 
   /// A run of message text drawn ahead (``MessageTextRaster``), shown as layer contents, so
   /// scrolling moves it and draws nothing. A press in the text lays a live text view
@@ -38,7 +39,7 @@
     /// Shows `raster`, a drawing of this view's document.
     func show(_ raster: MessageTextRaster) {
       self.raster = raster
-      image.show(raster.image, scale: raster.scale)
+      image.show(raster.surface, scale: raster.scale)
       for (block, frame) in raster.chromeFrames {
         guard chromeViews[block] == nil, let chrome = document.chrome[block] else { continue }
         let view = Self.makeChrome(chrome, palette: document.palette)
@@ -157,7 +158,7 @@
 
   /// A bitmap shown as its layer's contents: the view never draws.
   final class MessageTextImageView: NSView {
-    private var image: CGImage?
+    private var image: IOSurface?
     private var scale: CGFloat = 1
 
     init() {
@@ -175,7 +176,7 @@
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func show(_ image: CGImage?, scale: CGFloat) {
+    func show(_ image: IOSurface?, scale: CGFloat) {
       self.image = image
       self.scale = scale
       updateLayer()

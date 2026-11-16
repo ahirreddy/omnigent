@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import IOSurface
 import Synchronization
 
 #if canImport(UIKit)
@@ -62,20 +63,21 @@ nonisolated struct MessageTextRasterStyle: @unchecked Sendable {
 /// scale, off the main actor, with what a cell needs to show it without a text view: its size,
 /// its links' rectangles and where its controls go. The bitmap holds the text and the layers
 /// behind it (code block surfaces, rules, table rules, quote bars); it starts below the run's
-/// top inset.
+/// top inset. It is an IOSurface, which a layer shows as its contents without the copy a
+/// `CGImage` costs the main thread when the layer is committed.
 nonisolated final class MessageTextRaster: @unchecked Sendable {
   let width: CGFloat
   let scale: CGFloat
   let size: MessageTextSize
   let topInset: CGFloat
   /// `nil` for a run with nothing to draw.
-  let image: CGImage?
+  let surface: IOSurface?
   let links: [MessageTextLinkArea]
   /// Each block's control (a code block's header, a table's menu), by block.
   let chromeFrames: [Int: CGRect]
 
   /// The bitmap's memory.
-  var byteCount: Int { image.map { $0.bytesPerRow * $0.height } ?? 0 }
+  var byteCount: Int { surface?.allocationSize ?? 0 }
 
   /// Draws `run` as `manager` lays it out (laying out what it has not yet).
   /// - Parameters:
@@ -112,7 +114,7 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
       height: (textHeight + run.topInset).rounded(.up), usedWidth: usedWidth.rounded(.up))
     chromeFrames = collector.chromeFrames
     links = Self.linkAreas(run.links, in: manager)
-    image = Self.draw(
+    surface = Self.draw(
       fragments, shapes: collector.shapes, size: CGSize(width: width, height: textHeight),
       scale: scale, style: style)
   }
@@ -179,20 +181,37 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
     return areas
   }
 
+  /// Premultiplied BGRA, as the layers' own backing stores are.
+  private static let pixelFormat: UInt32 = 0x4247_5241
+
   /// The layers, then the text, into a bitmap with its origin at the top left.
   private static func draw(
     _ fragments: [NSTextLayoutFragment], shapes: [MessageTextShape], size: CGSize,
     scale: CGFloat, style: MessageTextRasterStyle
-  ) -> CGImage? {
+  ) -> IOSurface? {
     let pixelWidth = Int((size.width * scale).rounded(.up))
     let pixelHeight = Int((size.height * scale).rounded(.up))
     guard pixelWidth > 0, pixelHeight > 0, let space = CGColorSpace(name: CGColorSpace.sRGB),
+      let surface = IOSurface(properties: [
+        IOSurfacePropertyKey(rawValue: "IOSurfaceWidth"): pixelWidth,
+        IOSurfacePropertyKey(rawValue: "IOSurfaceHeight"): pixelHeight,
+        IOSurfacePropertyKey(rawValue: "IOSurfaceBytesPerElement"): 4,
+        IOSurfacePropertyKey(rawValue: "IOSurfacePixelFormat"): pixelFormat,
+      ])
+    else { return nil }
+    if let profile = space.copyICCData() as Data? {
+      surface.setAttachment(profile, forKey: "IOSurfaceColorSpace")
+    }
+    _ = unsafe surface.lock(options: [], seed: nil)
+    defer { _ = unsafe surface.unlock(options: [], seed: nil) }
+    guard
       let context = unsafe CGContext(
-        data: nil, width: pixelWidth, height: pixelHeight, bitsPerComponent: 8, bytesPerRow: 0,
-        space: space,
+        data: surface.baseAddress, width: pixelWidth, height: pixelHeight, bitsPerComponent: 8,
+        bytesPerRow: surface.bytesPerRow, space: space,
         bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
           | CGBitmapInfo.byteOrder32Little.rawValue)
     else { return nil }
+    context.clear(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
     context.translateBy(x: 0, y: CGFloat(pixelHeight))
     context.scaleBy(x: scale, y: -scale)
     context.setShouldSmoothFonts(false)
@@ -208,7 +227,8 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
     for fragment in fragments {
       fragment.draw(at: fragment.layoutFragmentFrame.origin, in: context)
     }
-    return context.makeImage()
+    context.flush()
+    return surface
   }
 
   private static func roundedPath(_ rect: CGRect, radius: CGFloat) -> CGPath {
