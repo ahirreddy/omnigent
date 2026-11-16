@@ -13,6 +13,7 @@ permission. See apps/apple/docs/performance.md.
     perf.py shot --app <Omnigent.app> [<file.png>]
     perf.py drive --app <Omnigent.app> scroll-transcript  # or scroll-sidebar, toggle-panel...
     perf.py scroll --app <Omnigent.app> [--runs 3] [--style cli] [--fresh-state]  # the long chat
+    perf.py scroll --app <Omnigent.app> --lists stack,table  # the transcript lists, interleaved
     perf.py suite --app <Omnigent.app> [--runs 3]   # every scenario, medians
     perf.py suite --app <Omnigent.app> --style cli    # the same with the CLI-style transcript
 """
@@ -45,6 +46,8 @@ HITCH_MS = 33.0
 HANG_MS = 100.0
 # Extra launch arguments, for example the transcript style (`--style cli`).
 LAUNCH_ARGS: list[str] = []
+# The launch argument that picks the transcript's list (TranscriptListKind in the app).
+LIST_KEY = "-omnigent:transcript-list"
 # What the Mac UI tests launch with (MacLiveUITestSupport.freshStateArguments): no This Mac
 # server, no notification prompt, the right panel closed and a 1440 x 900 window.
 FRESH_STATE_ARGS = [
@@ -420,9 +423,12 @@ def tabs_file(bundle_id: str) -> Path:
     return Path.home() / "Library/Application Support" / bundle_id / "Tabs" / f"{key}.json"
 
 
-def launch(app: Path, session_id: str | None) -> dict[str, float]:
+def launch(
+    app: Path, session_id: str | None, extra_args: list[str] | None = None
+) -> dict[str, float]:
     """Quits the app, starts it with the hitch monitor on one window that opens ``session_id``
-    (else a New Tab), and reports time to window and settle."""
+    (else a New Tab), and reports time to window and settle. ``extra_args`` follow
+    ``LAUNCH_ARGS``."""
     libraries, probe = build_tools()
     quit_app(app)
     bundle_id = subprocess.run(
@@ -466,6 +472,7 @@ def launch(app: Path, session_id: str | None) -> dict[str, float]:
             "-ApplePersistenceIgnoreState",
             "YES",
             *LAUNCH_ARGS,
+            *(extra_args or []),
         ],
         check=True,
     )
@@ -763,56 +770,80 @@ def open_link(app: Path, link: str) -> None:
     print(f"open {link.split('/c/')[-1][:40]}: settled {wait_settled(start, 120):.0f}ms")
 
 
-def scroll_bench(app: Path, runs: int, scenarios: list[str], sample_seconds: int) -> None:
+def list_args(name: str | None) -> list[str]:
+    """The launch arguments that pick transcript list ``name``; none for the app's default."""
+    return [LIST_KEY, name] if name else []
+
+
+def bench_order(
+    scenarios: list[str], runs: int, lists: list[str | None]
+) -> list[tuple[str, str | None]]:
+    """The (scenario, list) launches of a scroll bench: each scenario's runs in turn, and within
+    each run every list, so the lists share the machine's state as evenly as one job can."""
+    return [(name, kind) for name in scenarios for _ in range(runs) for kind in lists]
+
+
+SCROLL_KEYS = (
+    "main_cpu_ms",
+    "busy_ms",
+    "hitch_ms_per_s",
+    "long_frames",
+    "dropped",
+    "worst_frame_ms",
+    "over_8ms",
+    "over_8ms_ms",
+    "over_16ms",
+    "p50_ms",
+    "p90_ms",
+    "p99_ms",
+    "max_ms",
+    "fps",
+    "scrolled_pt",
+)
+
+
+def scroll_bench(
+    app: Path,
+    runs: int,
+    scenarios: list[str],
+    sample_seconds: int,
+    lists: list[str | None] | None = None,
+) -> None:
     """Each scroll scenario ``runs`` times on the long transcript, from a fresh launch each run:
     a cold pass (rows built for the first time since the chat opened), then the same steps again
-    (warm); then the medians. A first launch, not counted, takes what a first run of the build
-    pays. With ``sample_seconds``, one more launch per scenario samples both passes."""
+    (warm); then the medians. With ``lists``, each run launches once per transcript list, one
+    after the other, and the medians are per list. A first launch, not counted, takes what a
+    first run of the build pays. With ``sample_seconds``, one more launch per scenario and list
+    samples both passes."""
+    lists = lists or [None]
     session = long_session(0)
     launch(app, session)
     results: dict[str, list[dict[str, float]]] = {}
-    for name in scenarios:
-        for _ in range(runs):
-            launch(app, session)
-            if name in SETUPS:
-                open_link(app, SETUPS[name](session))
-            for label in ("cold", "warm"):
-                results.setdefault(f"{name} {label}", []).append(
-                    drive(app, f"{name} ({label})", SCENARIOS[name])
-                )
+    for name, kind in bench_order(scenarios, runs, lists):
+        launch(app, session, list_args(kind))
+        if name in SETUPS:
+            open_link(app, SETUPS[name](session))
+        for label in ("cold", "warm"):
+            tag = f"{name} {label}" + (f" [{kind}]" if kind else "")
+            results.setdefault(tag, []).append(drive(app, tag, SCENARIOS[name]))
     print(f"\nmedians of {runs} runs ({app}, {' '.join(LAUNCH_ARGS[-2:])}):")
-    keys = (
-        "main_cpu_ms",
-        "busy_ms",
-        "hitch_ms_per_s",
-        "long_frames",
-        "dropped",
-        "worst_frame_ms",
-        "over_8ms",
-        "over_8ms_ms",
-        "over_16ms",
-        "p50_ms",
-        "p90_ms",
-        "p99_ms",
-        "max_ms",
-        "fps",
-        "scrolled_pt",
-    )
     for scenario, rows in results.items():
-        medians = {key: statistics.median(row[key] for row in rows) for key in keys}
+        medians = {key: statistics.median(row[key] for row in rows) for key in SCROLL_KEYS}
         print(
-            f"  {scenario:28s} "
+            f"  {scenario:36s} "
             + "  ".join(
                 f"{key}={value:.1f}" if key.startswith("p") else f"{key}={value:.0f}"
                 for key, value in medians.items()
             )
         )
     for name in scenarios if sample_seconds else []:
-        launch(app, session)
-        if name in SETUPS:
-            open_link(app, SETUPS[name](session))
-        for label in ("cold", "warm"):
-            drive(app, f"{name}-{label}-sampled", SCENARIOS[name], sampled=True)
+        for kind in lists:
+            launch(app, session, list_args(kind))
+            if name in SETUPS:
+                open_link(app, SETUPS[name](session))
+            for label in ("cold", "warm"):
+                suffix = f"-{kind}" if kind else ""
+                drive(app, f"{name}-{label}{suffix}-sampled", SCENARIOS[name], sampled=True)
 
 
 def screenshot(app: Path, path: Path) -> None:
@@ -861,6 +892,11 @@ def main() -> None:
         help="scroll: the driven scenarios to run, comma-separated",
     )
     parser.add_argument(
+        "--lists",
+        help="scroll: transcript lists to compare, comma-separated (stack, table), each run "
+        "launching once per list",
+    )
+    parser.add_argument(
         "--scrollers",
         choices=["overlay", "legacy"],
         help="launch with this scroller style: overlay as with a trackpad, legacy (always shown, "
@@ -892,7 +928,8 @@ def main() -> None:
         unknown = [name for name in names if name not in SCENARIOS]
         if unknown:
             raise SystemExit(f"unknown scenarios: {', '.join(unknown)}")
-        scroll_bench(app, args.runs, names, args.sample)
+        lists = args.lists.split(",") if args.lists else None
+        scroll_bench(app, args.runs, names, args.sample, lists)
     elif args.command == "shot":
         screenshot(app, Path(args.session or CACHE / "window.png"))
     elif args.session is None:
