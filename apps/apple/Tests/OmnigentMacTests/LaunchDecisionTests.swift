@@ -60,7 +60,10 @@ struct LaunchDecisionTests {
 
   struct ResumeCase: Sendable {
     let url: String?
+    var isDemo = false
     let isRunning: Bool
+    /// Another server answers at the window's loopback address.
+    var isServed = false
     let resumes: Bool
   }
 
@@ -72,12 +75,25 @@ struct LaunchDecisionTests {
     ResumeCase(url: "http://127.0.0.1:6767", isRunning: true, resumes: false),
     ResumeCase(url: "https://omnigent.example.com", isRunning: false, resumes: false),
     ResumeCase(url: "https://omnigent.example.com", isRunning: true, resumes: false),
+    // Terminal's or a test's server holds the address: the window stays on it.
+    ResumeCase(url: "http://127.0.0.1:6767", isRunning: false, isServed: true, resumes: false),
+    // The demo's server is offline; no window of it starts a real one.
+    ResumeCase(url: "http://127.0.0.1:6767", isDemo: true, isRunning: false, resumes: false),
+    ResumeCase(url: nil, isDemo: true, isRunning: false, resumes: false),
   ])
   func aWindowOnThisMacsStoppedServerGoesBackToIt(_ item: ResumeCase) {
-    #expect(
-      ServerWindowRoot.resumesLocalServer(
-        boundTo: item.url.flatMap(URL.init(string:)), localServerIsRunning: item.isRunning)
-        == item.resumes)
+    var asked: [String] = []
+    let resumes = ServerWindowRoot.resumesLocalServer(
+      boundTo: item.url.flatMap(URL.init(string:)), isDemo: item.isDemo,
+      localServerIsRunning: item.isRunning,
+      isServed: { url in
+        asked.append(url.absoluteString)
+        return item.isServed
+      })
+    #expect(resumes == item.resumes)
+    // Only a window on this Mac's stopped address has its port checked.
+    let checksPort = !item.isDemo && !item.isRunning && item.url?.hasSuffix(":6767") == true
+    #expect(asked == (checksPort ? [item.url ?? ""] : []))
   }
 }
 

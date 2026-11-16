@@ -61,7 +61,8 @@ final class AppServices {
   @ObservationIgnored private let asksForNotifications: Bool
   @ObservationIgnored private let flushDrafts: () -> Void
   @ObservationIgnored private let notificationPermission: any NotificationAuthorizing
-  @ObservationIgnored private let isDemo: Bool
+  /// Whether this launch runs the core's offline demo server (`-OmnigentDemo`).
+  @ObservationIgnored let isDemo: Bool
   @ObservationIgnored private let makeDemoSession: @MainActor () throws -> ServerSession
 
   /// Where UI tests and the test host keep saved tabs instead of Application Support.

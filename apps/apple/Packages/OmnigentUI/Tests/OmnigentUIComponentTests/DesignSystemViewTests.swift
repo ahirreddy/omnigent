@@ -33,10 +33,49 @@
     }
   }
 
+  /// Stands in for the button keyboard navigation focuses in an alert: it takes the keyboard.
+  private final class FocusTaker: NSView {
+    override var acceptsFirstResponder: Bool { true }
+  }
+
   @Suite("Design system views, clicked", .serialized)
   @MainActor
   struct DesignSystemViewTests {
     private let log = ActionLog()
+
+    @Test("an alert's text field takes the keyboard from what AppKit focused when it opened")
+    func alertFieldTakesTheKeyboard() async throws {
+      SystemSideEffects.reset()
+      SystemSideEffects.showAlertSheets()
+      defer { SystemSideEffects.reset() }
+      let screen = OffscreenWindow(
+        Color.clear.focusesAlertField(isPresented: true), width: 400, height: 300)
+      defer { screen.close() }
+      let field = NSTextField(string: "Old title")
+      let taker = FocusTaker()
+      let accessory = NSStackView(views: [taker, field])
+      accessory.frame = NSRect(x: 0, y: 0, width: 240, height: 60)
+      let alert = NSAlert()
+      alert.messageText = "Rename Session"
+      alert.accessoryView = accessory
+      alert.addButton(withTitle: "Rename")
+      alert.addButton(withTitle: "Cancel")
+      alert.window.initialFirstResponder = taker
+      alert.beginSheetModal(for: screen.window) { _ in }
+      defer {
+        if let sheet = screen.window.attachedSheet { screen.window.endSheet(sheet) }
+      }
+
+      let focused = await screen.waitUntil {
+        guard let editor = field.currentEditor() else { return false }
+        return screen.window.attachedSheet?.firstResponder === editor
+      }
+      #expect(
+        focused,
+        "first responder \(String(describing: screen.window.attachedSheet?.firstResponder))")
+      try screen.type("New")
+      #expect(field.stringValue == "New")
+    }
 
     @Test("a banner shows its message and action; the action runs once and hides it")
     func bannerAction() throws {

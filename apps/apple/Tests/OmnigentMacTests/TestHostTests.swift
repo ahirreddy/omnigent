@@ -48,14 +48,23 @@ struct TestHostLaunchWorkTests {
 
   @Test func aRealLaunchRunsAllItsWorkInOrder() {
     let calls = Calls()
-    work(calls).run(isTestHost: false)
+    work(calls).run(isTestHost: false, isDemo: false)
     #expect(calls.names == ["server", "chaos", "updater"])
   }
 
   @Test func aTestHostRunsNone() {
     let calls = Calls()
-    work(calls).run(isTestHost: true)
+    work(calls).run(isTestHost: true, isDemo: false)
     #expect(calls.names.isEmpty)
+    work(calls).run(isTestHost: true, isDemo: true)
+    #expect(calls.names.isEmpty)
+  }
+
+  /// The demo is offline: it neither adopts the user's server nor starts one.
+  @Test func aDemoLaunchLeavesTheLocalServerAlone() {
+    let calls = Calls()
+    work(calls).run(isTestHost: false, isDemo: true)
+    #expect(calls.names == ["chaos", "updater"])
   }
 }
 

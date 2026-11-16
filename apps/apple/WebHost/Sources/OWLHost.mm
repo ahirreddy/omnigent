@@ -134,11 +134,8 @@ class HostApp : public CefApp, public CefBrowserProcessHandler {
       command_line->AppendSwitch("use-mock-keychain");
     }
     if (process_type.empty()) {
-      // Chrome copies its bundle to a temporary "code sign clone" so in-place updates cannot
-      // break running helpers, then launches a detached --type=code-sign-clone-cleanup helper at
-      // exit. CEF helpers cannot run that type and crash. The host bundle is immutable inside
-      // the signed app, so the clone is unnecessary.
-      command_line->AppendSwitchWithValue("disable-features", "MacAppCodeSignClone");
+      // Code sign clones and system notifications; owl_chromium.h says why.
+      command_line->AppendSwitchWithValue("disable-features", OWL_CHROMIUM_DISABLED_FEATURES);
       // Without this, HTTP auth opens Chrome's own login dialog as a window in the host process
       // instead of calling CefRequestHandler::GetAuthCredentials.
       command_line->AppendSwitch("disable-chrome-login-prompt");

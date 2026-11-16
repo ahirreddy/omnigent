@@ -173,6 +173,43 @@
       #expect(one.id == ["a"])
     }
 
+    /// The header's Rename Session prompt on a window, open from the start.
+    private struct RenamePromptHost: View {
+      let renaming: EditedValue<SessionSummary?>
+      let text: EditedValue<String>
+
+      var body: some View {
+        Color.clear.sessionRenamePrompt(renaming.binding, text: text.binding, rename: nil)
+      }
+    }
+
+    /// The text field whose editor has the keyboard on the window's sheet, if any.
+    private func editingField(on window: NSWindow) -> NSTextField? {
+      guard let editor = window.attachedSheet?.firstResponder as? NSTextView, editor.isFieldEditor
+      else { return nil }
+      return editor.delegate as? NSTextField
+    }
+
+    @Test("the Rename Session prompt opens with the keyboard in its title, so typing renames")
+    func renamePromptFocusesTheTitle() async throws {
+      SystemSideEffects.reset()
+      SystemSideEffects.showAlertSheets()
+      defer { SystemSideEffects.reset() }
+      let host = RenamePromptHost(
+        renaming: EditedValue<SessionSummary?>(beta), text: EditedValue("Beta"))
+      let screen = OffscreenWindow(host, width: 400, height: 300)
+      defer { screen.close() }
+      defer {
+        if let sheet = screen.window.attachedSheet { screen.window.endSheet(sheet) }
+      }
+      let focused = await screen.waitUntil { editingField(on: screen.window) != nil }
+      #expect(
+        focused,
+        "first responder \(String(describing: screen.window.attachedSheet?.firstResponder))")
+      try screen.type("Gamma")
+      #expect(editingField(on: screen.window)?.stringValue == "Gamma")
+    }
+
     @Test("Remember my choice shows on the worktree prompt, not on the alerts of what it wraps")
     func rememberStaysOnThePrompt() throws {
       let spy = SidebarSpy(SidebarFixture.state)

@@ -86,6 +86,22 @@ struct LocalServerManagerTests {
     #expect(free.runner.launches.first?.arguments.suffix(2) == ["--port", "7101"])
   }
 
+  @Test("a loopback port something listens on counts as served, and a failed check says why")
+  func listening() throws {
+    let harness = try LocalServerHarness()
+    defer { harness.cleanUp() }
+    harness.runner.setBusy(6767)
+    #expect(try harness.manager.isListening(at: loopback(6767)))
+    #expect(try !harness.manager.isListening(at: loopback(6768)))
+    let noPort = try #require(URL(string: "http://localhost"))
+    #expect(try !harness.manager.isListening(at: noPort))
+
+    harness.runner.failPortChecks(with: .spawnSetupFailed("socket: denied"))
+    #expect(throws: LocalServerError.spawnSetupFailed("socket: denied")) {
+      try harness.manager.isListening(at: loopback(6767))
+    }
+  }
+
   @Test("an exit before ready fails with the last output lines and clears the record")
   func exitBeforeReady() async throws {
     let harness = try LocalServerHarness()

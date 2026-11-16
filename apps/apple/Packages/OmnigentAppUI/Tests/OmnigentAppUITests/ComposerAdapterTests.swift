@@ -122,6 +122,9 @@ struct ComposerAdapterTests {
     #expect(readOnly.isReadOnly)
     #expect(readOnly.availability.reason != nil)
     #expect(!ComposerAdapter.state(question, isStopping: false, dismissedError: nil).isReadOnly)
+    // The offline demo has no stream to wait for, so no composer says "Connecting…".
+    #expect(ComposerAdapter.connection(question) == nil, "link \(question.link)")
+    #expect(ComposerAdapter.connection(notes) == nil, "link \(notes.link)")
   }
 }
 

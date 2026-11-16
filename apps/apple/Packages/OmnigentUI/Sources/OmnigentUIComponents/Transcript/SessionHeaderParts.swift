@@ -26,6 +26,7 @@ extension View {
       .disabled(trimmed.isEmpty || trimmed.count > 120)
       Button("Cancel", role: .cancel) { renaming.wrappedValue = nil }
     }
+    .focusesAlertField(isPresented: renaming.wrappedValue != nil)
   }
 }
 

@@ -112,10 +112,20 @@ impl Engine {
             if let Some(driver) = self.drivers.get(session_id) {
                 let request = driver.sync.open_stream_raw();
                 self.spawn_hydration(session_id, None, request);
+                self.demo_link(session_id, ConnectionState::Live);
             }
         } else {
             self.stream_input(session_id, StreamInput::Start);
         }
+    }
+
+    /// The demo has no stream to wait for: an open session is live while the demo is connected
+    /// and stopped once it disconnects.
+    pub(crate) fn demo_link(&self, session_id: &str, state: ConnectionState) {
+        self.emit(CoreEvent::SessionLinkChanged {
+            session_id: session_id.to_owned(),
+            state: state.into(),
+        });
     }
 
     fn emit_reset(&mut self, session_id: &str) {
