@@ -402,6 +402,11 @@ pub struct SessionSettings {
     pub parent_id: Option<String>,
     /// The session a side chat was forked from (its labels); `None` for other sessions.
     pub side_chat_source_id: Option<String>,
+    /// A side chat by its labels, Codex's `/side` fork included (which names no source).
+    pub is_side_chat: bool,
+    /// The session takes no more messages (`omnigent.closed`): a closed sub-agent, or a side
+    /// chat that has ended.
+    pub closed: bool,
     /// `cost_control_mode_override` (for example `on` for smart routing).
     pub routing_mode: Option<String>,
     /// Whether the viewer may start side chats here (`side_chat_allowed`); `None` until a read

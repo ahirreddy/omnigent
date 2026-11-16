@@ -173,6 +173,13 @@ impl SettingsPatch {
             settings.side_chat_source_id = labels
                 .and_then(crate::session_tools::side_chat_source_id)
                 .map(str::to_owned);
+            let label = |key: &str| {
+                labels
+                    .and_then(|labels| labels.get(key))
+                    .map(String::as_str)
+            };
+            settings.is_side_chat = crate::session_tools::is_side_chat(label);
+            settings.closed = crate::session_tools::is_closed(label);
         }
         reported(&self.model_override, &mut settings.model_override);
         self.base_model.apply_to(&mut settings.base_model);

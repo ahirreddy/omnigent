@@ -70,12 +70,13 @@ struct ChildTabsTests {
   }
 
   /// A window showing `conv_a`, a Codex session (its side chats are forked by the agent from a
-  /// typed `/side`) whose messages the server accepts with `status`.
-  func window(sendStatus: UInt16 = 202) async throws -> Window {
+  /// typed `/side`) whose messages the server accepts with `status`; `labels` is its labels'
+  /// JSON object.
+  func window(sendStatus: UInt16 = 202, labels: String = "{}") async throws -> Window {
     SystemSideEffects.install()
     let server = threeSessionServer()
     let row =
-      #"{"id":"conv_a","status":"idle","created_at":1,"updated_at":30,"host_id":"mac","runner_id":"r1","runner_online":true,"host_online":true,"workspace":"/work/conv_a","permission_level":4,"harness":"codex-native"}"#
+      #"{"id":"conv_a","status":"idle","created_at":1,"updated_at":30,"host_id":"mac","runner_id":"r1","runner_online":true,"host_online":true,"workspace":"/work/conv_a","permission_level":4,"harness":"codex-native","labels":\#(labels)}"#
     server.route("/v1/sessions/conv_a", .json(row))
     server.route("/v1/sessions/conv_a/items", .json(#"{"data":[],"has_more":false}"#))
     server.route(

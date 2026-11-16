@@ -284,6 +284,12 @@ pub struct SessionSettings {
     /// The profile the session's sandbox launched with.
     #[uniffi(default)]
     pub sandbox_profile: Option<SandboxProfileName>,
+    /// A side chat by its labels, Codex's `/side` fork included (which names no source).
+    #[uniffi(default)]
+    pub is_side_chat: bool,
+    /// The session takes no more messages: a closed sub-agent, or a side chat that has ended.
+    #[uniffi(default)]
+    pub closed: bool,
 }
 
 /// Session metadata shown with the conversation.
@@ -519,6 +525,8 @@ impl From<core::SessionSettings> for SessionSettings {
             routing_mode: settings.routing_mode,
             side_chat_allowed: settings.side_chat_allowed,
             sandbox_profile: settings.sandbox_profile.map(Into::into),
+            is_side_chat: settings.is_side_chat,
+            closed: settings.closed,
         }
     }
 }

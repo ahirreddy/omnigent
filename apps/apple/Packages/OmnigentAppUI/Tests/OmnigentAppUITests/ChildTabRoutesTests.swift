@@ -224,6 +224,26 @@ extension ChildTabsTests {
     #expect(!WindowTabs.offersTerminal(named.content))
   }
 
+  @Test("A side chat that has ended shows as ended in its tab and takes no more messages")
+  func endedSideChat() async throws {
+    // `conv_a` stands in for a restored side chat whose fork went away with its runner.
+    let window = try await window(
+      labels:
+        #"{"omnigent.wrapper":"codex-native-ui-subagent","omnigent.codex_native.agent_nickname":"Side chat","omnigent.closed":"true"}"#
+    )
+    let conversation = window.conversation
+    #expect(conversation.header?.settings?.closed == true)
+    #expect(conversation.header?.settings?.isSideChat == true)
+    let tab = AppTab(content: .sideChatSession(parentID: "conv_b", childID: "conv_a"))
+    let item = TabAdapter.item(tab, session: window.session, browser: nil)
+    #expect(item.status == .exited, "not shown as live")
+    #expect(item.isReadOnly)
+    #expect(
+      ComposerAdapter.availability(conversation).reason
+        == "This side chat has ended and can't be continued.")
+    #expect(SessionToolsAdapter.sideChat(conversation, routes: window.chat.toolRoutes) == nil)
+  }
+
   @Test("Saved side chat and sub-agent tabs restore in their parent's strip, with their tabs")
   func restoredChildTabs() throws {
     let chat = AppTab(content: .chat(sessionID: "p"))

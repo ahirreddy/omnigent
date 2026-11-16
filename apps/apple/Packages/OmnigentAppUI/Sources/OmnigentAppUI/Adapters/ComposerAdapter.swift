@@ -78,10 +78,11 @@ enum ComposerAdapter {
     }
   }
 
-  /// Whether the session can never take a message from this viewer (read-only, archived or
-  /// closed), unlike a session still loading.
+  /// Whether the session can never take a message from this viewer (read-only, archived, closed
+  /// or ended), unlike a session still loading.
   static func isReadOnly(_ store: ConversationStore) -> Bool {
-    store.isClosed || store.header.map { $0.readOnly || $0.archived } ?? false
+    store.isClosed
+      || store.header.map { $0.readOnly || $0.archived || $0.settings?.closed == true } ?? false
   }
 
   /// The approval-mode chip from the core's menu: clear names, the harness's own names, risk.
@@ -194,6 +195,13 @@ enum ComposerAdapter {
 
   static func availability(_ store: ConversationStore) -> ComposerAvailability {
     if store.isClosed { return .unavailable(reason: "This session is no longer available.") }
+    if let settings = store.header?.settings, settings.closed {
+      // Web `SideChatPane` and `readOnlyReasonForSessionLabels`.
+      return .unavailable(
+        reason: settings.isSideChat
+          ? "This side chat has ended and can't be continued."
+          : "This sub-agent session is closed.")
+    }
     if let header = store.header {
       if header.readOnly { return .unavailable(reason: "You can read this session but not send.") }
       if header.archived { return .unavailable(reason: "This session is archived.") }
