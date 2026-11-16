@@ -1,5 +1,5 @@
 #if os(macOS)
-  import AppKit
+  public import AppKit
 
   extension OffscreenWindow {
     /// Sends an event from a run loop of its own. AppKit can stop the current loop while handling
@@ -21,7 +21,7 @@
     ///   - mouseUp: Its mouse up.
     ///   - target: The window both go to.
     ///   - isMenuOpen: Whether the down opened a menu, whose own tracking answers the up.
-    func press(
+    public func press(
       _ down: NSEvent, releasedBy mouseUp: NSEvent, in target: NSWindow,
       isMenuOpen: () -> Bool
     ) {
