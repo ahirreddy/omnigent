@@ -62,10 +62,10 @@
       #expect(try screen.shows("A step"), "open while the turn is on these steps")
 
       turn.isLive = false
-      #expect(try await waitUntil(screen) { try !screen.shows("A step") }, "closed once done")
+      #expect(try await screen.waitUntil { try !screen.shows("A step") }, "closed once done")
 
       try screen.clickControl(at: 0)
-      #expect(try await waitUntil(screen) { try screen.shows("A step") })
+      #expect(try await screen.waitUntil { try screen.shows("A step") })
       turn.isLive = true
       turn.isLive = false
       try await letTasksRun(screen, milliseconds: 400)

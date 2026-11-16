@@ -225,9 +225,10 @@
       #expect(model.trailingItems == 4, "the chat reports none of its own")
 
       model.shownID = "page"
-      try await letTasksRun(screen, milliseconds: 200)
+      #expect(
+        await screen.waitUntil { model.trailingItems == 5 },
+        "the session's, and the page's own")
       #expect(labels(screen) == Self.controls, "over a page")
-      #expect(model.trailingItems == 5, "the session's, and the page's own")
 
       model.split = TabSplitState(leadingID: "chat", trailingID: "page", focused: .trailing)
       try await letTasksRun(screen, milliseconds: 200)
@@ -246,8 +247,8 @@
 
       try click("toggle-inspector", in: screen)
       #expect(model.showsInspector, "the toggle answers over a page")
-      try await letTasksRun(screen, milliseconds: 300)
-      #expect(try screen.shows("files slot"))
+      #expect(try await screen.waitUntil { try screen.shows("files slot") })
+      #expect(await screen.waitUntil { panel(screen) != nil })
       let single = try #require(panel(screen))
       #expect(single.maxX == screen.host.bounds.maxX, "\(single)")
 
@@ -286,8 +287,8 @@
       #expect(model.mode == .chat)
 
       try click("header-share", in: screen)
-      try await letTasksRun(screen, milliseconds: 200)
-      #expect(screen.window.attachedSheet != nil, "the Share sheet")
+      #expect(
+        await screen.waitUntil { screen.window.attachedSheet != nil }, "the Share sheet")
       #expect(model.log.last == "share opened")
     }
 
@@ -313,7 +314,7 @@
       model.hasSession = false
       model.shownID = "page"
       // The split view lets the panel go a layout pass or more later on a busy machine.
-      _ = try await waitUntil(screen) { labels(screen).isEmpty && panel(screen) == nil }
+      _ = await screen.waitUntil { labels(screen).isEmpty && panel(screen) == nil }
       #expect(labels(screen).isEmpty)
       #expect(panel(screen) == nil)
       #expect(model.trailingItems == 1, "the page's own")
@@ -329,8 +330,7 @@
       #expect(screen.window.attachedSheet == nil)
       model.fork = ForkViewState(
         id: "f", kind: .anotherDirectory, agents: [], agentID: "", directory: "/work")
-      try await letTasksRun(screen, milliseconds: 300)
-      #expect(screen.window.attachedSheet != nil)
+      #expect(await screen.waitUntil { screen.window.attachedSheet != nil })
     }
 
     #if DEBUG
@@ -342,7 +342,7 @@
         defer { screen.close() }
         model.shownID = "page"
         // The switch has settled once a stretch of the run loop renders nothing.
-        let isQuiet = try await waitUntil(screen) {
+        let isQuiet = await screen.waitUntil {
           RenderTally.recording { screen.settle(0.3) }.isEmpty
         }
         try #require(isQuiet, "the window never stopped rendering")

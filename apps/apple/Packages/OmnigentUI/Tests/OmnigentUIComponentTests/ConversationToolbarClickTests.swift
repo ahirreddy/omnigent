@@ -106,11 +106,11 @@
       screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
       screen.host.sceneBridgingOptions = [.toolbars, .title]
       screen.window.contentView = screen.host
-      let hasItems = try await waitUntil(screen) { screen.window.toolbar?.items.isEmpty == false }
+      let hasItems = await screen.waitUntil { screen.window.toolbar?.items.isEmpty == false }
       try #require(hasItems, "the window has no toolbar items")
       // The toolbar places its items in the first layout pass after the window has them.
       screen.window.setContentSize(CGSize(width: 1_100, height: 701))
-      let arePlaced = try await waitUntil(screen) {
+      let arePlaced = await screen.waitUntil {
         screen.window.toolbar?.items.contains(where: \.isVisible) == true
       }
       try #require(arePlaced, "\(screen.toolbarDescription)")
@@ -127,7 +127,7 @@
       #expect(screen.window.attachedSheet == nil)
       try screen.click(share)
       #expect(
-        try await waitUntil(screen) { screen.window.attachedSheet != nil },
+        await screen.waitUntil { screen.window.attachedSheet != nil },
         "\(screen.toolbarDescription)")
       #expect(log.entries == ["share opened"])
     }
@@ -157,7 +157,7 @@
       #expect(screen.popoverWindow == nil)
       try screen.click(info)
       #expect(
-        try await waitUntil(screen) { screen.popoverWindow != nil },
+        await screen.waitUntil { screen.popoverWindow != nil },
         "\(screen.toolbarDescription)")
       let popover = try #require(screen.popoverWindow?.contentView)
       let shown = try screen.shownText(under: popover)
@@ -165,7 +165,7 @@
         #expect(shown.contains { $0.contains(text) }, "\(text) in \(shown)")
       }
       try screen.click(info)
-      #expect(try await waitUntil(screen) { screen.popoverWindow == nil })
+      #expect(await screen.waitUntil { screen.popoverWindow == nil })
     }
 
     @Test("Beside the tabs, the session menu's Share opens the same sheet")
@@ -180,7 +180,7 @@
       let menu = try screen.openMenu(screen.center(of: button))
       try screen.choose("Share", in: menu)
       #expect(
-        try await waitUntil(screen) { screen.window.attachedSheet != nil },
+        await screen.waitUntil { screen.window.attachedSheet != nil },
         "\(menuTitles(menu))")
       #expect(log.entries == ["share opened"])
     }

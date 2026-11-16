@@ -69,6 +69,9 @@
     private func open(_ pane: TranscriptPane, _ conversation: LiveConversation) async throws
       -> OffscreenWindow<AnyView>
     {
+      // These start from where the opening leaves the reader; its framing wait runs a tenth as long.
+      Theme.Timing.scale = 0.1
+      defer { Theme.Timing.scale = 1 }
       let window = transcriptScreen(
         DockedTranscriptHost(conversation: conversation, pane: pane), width: 1200, height: 800)
       window.settle(0.5)

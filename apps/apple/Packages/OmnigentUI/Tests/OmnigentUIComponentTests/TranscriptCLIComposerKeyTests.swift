@@ -26,8 +26,9 @@
       _ state: ComposerViewState, draft: String = ""
     ) async throws -> OffscreenWindow<AnyView> {
       let screen = try cliComposerScreen(state, actions: log.actions, draft: draft)
-      try await letTasksRun(screen, milliseconds: 200)
-      try #require(screen.window.firstResponder is NSTextView, "the editor has the keyboard")
+      try #require(
+        await screen.waitUntil { screen.window.firstResponder is NSTextView },
+        "the editor has the keyboard")
       return screen
     }
 

@@ -108,7 +108,7 @@
             // Long against a run-loop pass that ends late on a busy machine.
             TranscriptMessageFocus(
               state: state, pages: false, locate: { $0 }, loadOlder: {},
-              show: { shown.append($0) }, settle: .seconds(1))
+              show: { shown.append($0) }, settle: .milliseconds(300))
           )
           .environment(\.transcriptFocus, focus), width: 100, height: 100)
       defer { screen.close() }
@@ -175,7 +175,7 @@
         width: 500, height: 300)
       defer { screen.close() }
       // Past the opening's framing wait, so the transcript follows.
-      try await letTasksRun(screen, milliseconds: 700)
+      try await letOpeningEnd(screen)
       let driver = TranscriptScrollDriver(screen: screen)
       let scroll = try #require(driver.scrollView)
       let reading = driver.offset
@@ -184,7 +184,7 @@
       try await letTasksRun(screen, milliseconds: 200)
       #expect(driver.offset == reading, "nothing moves under the reader's finger")
       screen.liveScroll(scroll, began: false)
-      #expect(try await waitUntil(screen) { driver.offset > reading + 10 })
+      #expect(await screen.waitUntil { driver.offset > reading + 10 })
     }
   }
 #endif

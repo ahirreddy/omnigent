@@ -65,14 +65,16 @@
     private func pane(_ width: PaneWidth, _ tab: TabVisibility, reader: ResizedReader)
       async throws -> OffscreenWindow<AnyView>
     {
+      // These start from where the opening leaves the reader; its framing wait runs a tenth as long.
+      Theme.Timing.scale = 0.1
+      defer { Theme.Timing.scale = 1 }
       let conversation = LiveConversation(
         ConversationViewState(
           header: TranscriptFixture.header, rows: TranscriptFixture.turns(Self.turns)))
       let window = transcriptScreen(
         KeptTranscriptHost(conversation: conversation, width: width, tab: tab),
         width: WidthDrive.wide + 120, height: Self.height)
-      window.settle(0.5)
-      try await letTasksRun(window, milliseconds: 600)
+      try await letOpeningEnd(window)
       switch reader {
       case .atEnd:
         conversation.scrollRequest += 1

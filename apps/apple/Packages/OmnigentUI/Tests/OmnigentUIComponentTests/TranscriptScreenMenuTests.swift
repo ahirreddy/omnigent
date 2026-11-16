@@ -273,9 +273,9 @@
       defer { menu.close() }
       #expect(try !window.shows("terminal"))
       try menu.choose("Terminal", in: try menu.openMenu(control: 0))
-      #expect(try await waitUntil(window) { try window.shows("terminal") })
+      #expect(try await window.waitUntil { try window.shows("terminal") })
       try menu.choose("Chat", in: try menu.openMenu(control: 0))
-      #expect(try await waitUntil(window) { try !window.shows("terminal") })
+      #expect(try await window.waitUntil { try !window.shows("terminal") })
     }
 
     @Test(
