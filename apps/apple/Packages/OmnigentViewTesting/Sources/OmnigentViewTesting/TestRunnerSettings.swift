@@ -60,10 +60,12 @@
     static let animationsKey = "OmnigentDisableAnimations"
 
     /// What makes this process's windows and views reach their end state at once: Omnigent's own
-    /// animations, sheets sliding, window animations and animated scrolls are off.
+    /// animations, sheets sliding, window animations and animated scrolls are off. The views
+    /// also announce their timed pauses, for a wait to wait them out.
     static var quietMotionSettings: [String: Any] {
       [
         animationsKey: true,
+        "OmnigentReportsPauses": true,
         "NSWindowResizeTime": 0.001,
         "NSAutomaticWindowAnimationsEnabled": false,
         "NSScrollAnimationEnabled": false,

@@ -98,12 +98,24 @@ enum Theme {
   enum Timing {
     /// Multiplies every pause; 1 in the app, 0 for none.
     static var scale: Double = 1
+    /// Posted as a pause begins, with its length in seconds under ``secondsKey``, when the
+    /// process was launched with `-OmnigentReportsPauses YES`: a test's wait then waits it out.
+    static let pauseBegan = Notification.Name("OmnigentPauseBegan")
+    static let secondsKey = "seconds"
+    private static let reportsPauses = UserDefaults.standard.bool(forKey: "OmnigentReportsPauses")
 
     /// `duration`, scaled.
     /// - Parameter duration: The pause the app takes.
     /// - Returns: The pause to take now.
     static func pause(_ duration: Duration) -> Duration {
-      scale == 1 ? duration : duration * max(0, scale)
+      let scaled = scale == 1 ? duration : duration * max(0, scale)
+      if reportsPauses {
+        let (seconds, attoseconds) = scaled.components
+        let length = Double(seconds) + Double(attoseconds) / 1e18
+        NotificationCenter.default.post(
+          name: pauseBegan, object: nil, userInfo: [secondsKey: length])
+      }
+      return scaled
     }
   }
 

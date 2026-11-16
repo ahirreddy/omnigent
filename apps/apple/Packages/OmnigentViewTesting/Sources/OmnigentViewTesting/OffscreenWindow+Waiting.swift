@@ -13,7 +13,8 @@
     }
 
     /// Settles as ``settle(_:)`` does, suspending between turns so main actor tasks that are
-    /// ready run too. A task's later `Task.sleep` is not waited for.
+    /// ready run too. The views' timed pauses (`Theme.Timing`) that end before `limit` are
+    /// waited out; any other `Task.sleep` is not.
     /// - Parameter limit: The longest wait; reached only while work keeps coming.
     public func settleTasks(limit: Duration = .milliseconds(100)) async {
       host.layoutSubtreeIfNeeded()
