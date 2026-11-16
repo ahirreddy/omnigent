@@ -6,6 +6,8 @@
   final class MessageTextKitView: NSTextView {
     /// The link at a point in this view.
     var linkAt: ((CGPoint) -> URL?)?
+    /// Told when the view gives up the keyboard.
+    var resigned: (() -> Void)?
     private var pointerArea: NSTrackingArea?
 
     /// `omnigent:message-text-viewport full`: TextKit's viewport covers the whole text, so its
@@ -37,6 +39,7 @@
       if resigned, selected.length > 0 {
         setSelectedRange(NSRange(location: selected.location, length: 0))
       }
+      if resigned { self.resigned?() }
       return resigned
     }
 

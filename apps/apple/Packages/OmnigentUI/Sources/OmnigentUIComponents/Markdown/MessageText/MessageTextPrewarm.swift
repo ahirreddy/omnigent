@@ -28,9 +28,16 @@
     }
   }
 
+  nonisolated extension MessageTextDocument {
+    /// What a raster draws of it.
+    var run: MessageTextRun { MessageTextRun(text: text, topInset: topInset, links: links) }
+  }
+
   /// Builds and lays out settled answers off the main actor, newest first, once a TextKit answer
   /// has shown the style and width answers draw at: a row then only takes its laid-out text.
-  /// ``MarkdownWarmup`` offers each answer it parses.
+  /// With a raster style it also draws each answer ahead (``MessageTextRaster``).
+  /// ``MarkdownWarmup`` offers each answer it parses; the table transcript puts those about to
+  /// scroll into view first (``prioritize(_:)``).
   nonisolated final class MessageTextPrewarm: Sendable {
     static let shared = MessageTextPrewarm(limit: 256)
 
@@ -44,88 +51,91 @@
       return defaults.object(forKey: key) == nil || defaults.bool(forKey: key)
     }
 
-    /// The style and width answers draw at.
+    /// The style and width answers draw at, and, to draw them ahead, the scale and the layers'
+    /// colors.
     struct Context: Sendable {
       var palette: MessageTextPalette
       var width: CGFloat
+      var scale: CGFloat = 0
+      var raster: MessageTextRasterStyle?
     }
 
-    private struct State {
-      var context: Context?
-      /// Answers offered, newest first, to lay out again when the context changes.
-      var offered: [String] = []
-      var pending: [String] = []
-      var isRunning = false
-      var documents: BoundedCache<MessageTextDocumentKey, MessageTextDocument>
-    }
+    /// What it builds, shared with the queue's runs.
+    private final class Store: Sendable {
+      let documents: Mutex<BoundedCache<MessageTextDocumentKey, MessageTextDocument>>
+      let rasters: MessageTextRasters
 
-    private let limit: Int
-    private let state: Mutex<State>
-
-    init(limit: Int) {
-      self.limit = limit
-      state = Mutex(State(documents: BoundedCache(limit: limit)))
-    }
-
-    /// Notes the style and width an answer showed at; a change lays out the answers offered so
-    /// far again.
-    func note(palette: MessageTextPalette, width: CGFloat) {
-      let start = state.withLock { state -> Bool in
-        if let context = state.context, context.width == width,
-          context.palette.style == palette.style
-        {
-          return false
-        }
-        state.context = Context(palette: palette, width: width)
-        state.pending = state.offered
-        return Self.claimRun(&state)
+      init(limit: Int, rasters: MessageTextRasters) {
+        documents = Mutex(BoundedCache(limit: limit))
+        self.rasters = rasters
       }
-      if start { run() }
+    }
+
+    private let store: Store
+    private let queue: MessageTextPrewarmQueue<Context>
+    /// Drawing requests for runs built on the main actor, one at a time.
+    private let drawing = DispatchQueue(label: "omnigent.message-text.raster", qos: .utility)
+    private let drawingKeys = Mutex<Set<MessageTextRasterKey>>([])
+
+    init(limit: Int, rasters: MessageTextRasters = .shared) {
+      let store = Store(limit: limit, rasters: rasters)
+      self.store = store
+      queue = MessageTextPrewarmQueue(limit: limit) { text, context in
+        Self.prepare(text, context: context, store: store)
+      }
+    }
+
+    /// Notes the style and width an answer showed at, and the scale and colors to draw it
+    /// ahead at; a change lays out the answers offered so far again.
+    func note(
+      palette: MessageTextPalette, width: CGFloat, scale: CGFloat = 0,
+      raster: MessageTextRasterStyle? = nil
+    ) {
+      queue.setContext(
+        Context(palette: palette, width: width, scale: scale, raster: raster)
+      ) { current in
+        current.width == width && current.palette.style == palette.style
+          && current.scale == scale && (current.raster == nil) == (raster == nil)
+      }
     }
 
     /// Queues an answer's text to lay out.
     func offer(_ text: String) {
-      let start = state.withLock { state -> Bool in
-        if state.offered.count < limit { state.offered.append(text) }
-        guard state.context != nil, state.pending.count < limit else { return false }
-        state.pending.append(text)
-        return Self.claimRun(&state)
-      }
-      if start { run() }
+      queue.offer(text)
     }
+
+    /// Puts answers about to show at the front of the queue, in order.
+    func prioritize(_ texts: [String]) {
+      queue.prioritize(texts)
+    }
+
+    /// The texts waiting to lay out, first to last, for tests.
+    var pendingTexts: [String] { queue.pendingTexts }
 
     /// The document prepared for `key`, if one was.
     func takeDocument(for key: MessageTextDocumentKey) -> MessageTextDocument? {
-      state.withLock { $0.documents.cached(key) }
+      store.documents.withLock { $0.cached(key) }
     }
 
-    /// Whether this caller starts the run: nothing runs yet and there is work.
-    private static func claimRun(_ state: inout State) -> Bool {
-      guard !state.isRunning, !state.pending.isEmpty else { return false }
-      state.isRunning = true
-      return true
-    }
-
-    private func run() {
-      Task.detached(priority: .utility) { [self] in
-        while let work = next() {
-          prepare(work.text, context: work.context)
-        }
+    /// Draws `document` at `width` and `scale` off the main actor, unless it is drawn or being
+    /// drawn: for a run built on the main actor, which shows as a live text view until then.
+    func draw(
+      _ document: MessageTextDocument, width: CGFloat, scale: CGFloat,
+      style: MessageTextRasterStyle
+    ) {
+      let key = MessageTextRasterKey(document: document.serial, width: width, scale: scale)
+      guard !store.rasters.contains(key),
+        drawingKeys.withLock({ $0.insert(key).inserted })
+      else { return }
+      drawing.async { [self] in
+        let raster = MessageTextRaster.make(
+          document.run, width: width, scale: scale, style: style)
+        store.rasters.store(raster, for: key)
+        _ = drawingKeys.withLock { $0.remove(key) }
       }
     }
 
-    /// The next answer to lay out and the context to lay it out in; `nil` ends the run.
-    private func next() -> (text: String, context: Context)? {
-      state.withLock { state in
-        guard let context = state.context, !state.pending.isEmpty else {
-          state.isRunning = false
-          return nil
-        }
-        return (state.pending.removeFirst(), context)
-      }
-    }
-
-    private func prepare(_ text: String, context: Context) {
+    private static func prepare(_ text: String, context: Context, store: Store) {
       let style = context.palette.style
       let split = MessageTextSplit(MarkdownCache.shared.blocks(for: text), ramp: style.ramp)
       // Linked paths depend on the main actor's folder listings; those answers build there.
@@ -133,12 +143,32 @@
       for piece in split.pieces {
         guard case .text(let blocks) = piece.content else { continue }
         let key = MessageTextDocumentKey(text: text, piece: piece.id, style: style, linked: [])
-        guard state.withLock({ $0.documents.cached(key) }) == nil else { continue }
+        let built = store.documents.withLock { $0.cached(key) }
+        if let built {
+          drawAhead(built, context: context, store: store)
+          continue
+        }
         var builder = MessageTextBuilder(palette: context.palette)
         let document = builder.document(blocks)
-        document.offer(MessageTextPreparedLayout(text: document.text, width: context.width))
-        state.withLock { $0.documents.store(document, for: key) }
+        let layout = MessageTextPreparedLayout(text: document.text, width: context.width)
+        drawAhead(document, context: context, store: store)
+        document.offer(layout)
+        store.documents.withLock { $0.store(document, for: key) }
       }
+    }
+
+    /// Draws `document` into a raster when the context asks for one and none is kept.
+    private static func drawAhead(
+      _ document: MessageTextDocument, context: Context, store: Store
+    ) {
+      guard let style = context.raster, context.scale > 0 else { return }
+      let key = MessageTextRasterKey(
+        document: document.serial, width: context.width, scale: context.scale)
+      guard !store.rasters.contains(key) else { return }
+      // On a stack of its own: the prepared layout's links stay links for the live view.
+      let raster = MessageTextRaster.make(
+        document.run, width: context.width, scale: context.scale, style: style)
+      store.rasters.store(raster, for: key)
     }
   }
 #endif
