@@ -8,6 +8,20 @@
     var linkAt: ((CGPoint) -> URL?)?
     private var pointerArea: NSTrackingArea?
 
+    /// `omnigent:message-text-viewport full`: TextKit's viewport covers the whole text, so its
+    /// fragments draw once instead of being recycled and drawn again as the transcript scrolls.
+    static let viewportCoversText =
+      UserDefaults.standard.string(forKey: "omnigent:message-text-viewport") == "full"
+
+    override var visibleRect: NSRect {
+      Self.viewportCoversText ? bounds : super.visibleRect
+    }
+
+    override var preparedContentRect: NSRect {
+      get { Self.viewportCoversText ? bounds : super.preparedContentRect }
+      set { super.preparedContentRect = newValue }
+    }
+
     /// Copies as plain text, as a selection on the web does: of the types the text view writes,
     /// only its plain string (under its modern name or its legacy one).
     override var writablePasteboardTypes: [NSPasteboard.PasteboardType] {
