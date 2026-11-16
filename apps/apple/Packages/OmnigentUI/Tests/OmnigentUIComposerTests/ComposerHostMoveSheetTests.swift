@@ -62,12 +62,13 @@
     func switchHost() async throws {
       let screen = sheet(.switchHost(currentHostID: "old"), actions())
       defer { screen.close() }
-      await screen.drainTasks()
+      // The hosts and the first one's home load asynchronously; a busy machine takes longer.
+      #expect(await screen.waitUntil { log.homes == ["new"] }, "the new host's home was read")
       #expect(screen.window.attachedSheet != nil)
       try screen.tapButton(fromEnd: 0)
-      await screen.drainTasks()
+      #expect(await screen.waitUntil { !log.choices.isEmpty }, "the move was chosen")
       #expect(log.choices == [HostMoveChoice(hostID: "new", workspace: "/Users/me")])
-      #expect(log.closes == 1)
+      #expect(await screen.waitUntil { log.closes == 1 })
     }
 
     @Test("Cancel closes without moving")
