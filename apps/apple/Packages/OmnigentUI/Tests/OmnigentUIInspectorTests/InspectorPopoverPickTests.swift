@@ -24,8 +24,12 @@
 
     /// The middle of a row of the list in the open popover, in its window.
     fileprivate func popoverRowCenter(_ row: Int) throws -> CGPoint {
-      let list = try #require(popoverViews.lazy.compactMap { $0 as? NSTableView }.first)
-      let frame = list.convert(list.rect(ofRow: row), to: nil)
+      var list: NSTableView? { popoverViews.lazy.compactMap { $0 as? NSTableView }.first }
+      // A loaded machine can show the popover before its list has laid out the row.
+      let laidOut = MainLoop.settle(until: { list.map { !$0.rect(ofRow: row).isEmpty } ?? false })
+      try #require(laidOut, "the popover's list has no row \(row)")
+      let table = try #require(list)
+      let frame = table.convert(table.rect(ofRow: row), to: nil)
       return CGPoint(x: frame.midX, y: frame.midY)
     }
   }
