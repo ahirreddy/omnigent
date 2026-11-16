@@ -78,7 +78,7 @@ started=$(date +%s)
   -destination "platform=iOS Simulator,name=$simulator" -derivedDataPath "$derived" \
   "${offline[@]}" ${passed[@]+"${passed[@]}"}) > "$log" 2>&1
 status=$?
-grep -E "error:|^✘|^↳   |Test run with|Executed [0-9]+ test|Fatal error|\*\* .* (SUCCEEDED|FAILED) \*\*" "$log" \
+grep -E "error:|^✘|^✔ Test|^↳|Test run with|Executed [0-9]+ test|Fatal error|\*\* .* (SUCCEEDED|FAILED) \*\*" "$log" \
   | cut -c1-240 | awk '!seen[$0]++' | head -80
 echo "ios-package-test: exit $status in $(($(date +%s) - started))s"
 exit $status

@@ -17,7 +17,9 @@
   /// `log stream --predicate 'subsystem == "ai.omnigent.perf"'`.
   ///
   /// A display link measures when the main thread delivered each frame, so it sees main-thread
-  /// hitches, not the render server's; simulator numbers are not a device's.
+  /// hitches, not the render server's; simulator numbers are not a device's. Each line also has
+  /// the main run loop's pass times (``RunLoopPassStats``), which show the work a faster display
+  /// would miss.
   @MainActor
   public final class FrameMonitor: NSObject {
     /// The launch argument (a `UserDefaults` key) that starts the monitor.
@@ -31,10 +33,12 @@
     private(set) var link: CADisplayLink?
     private var previous: (timestamp: CFTimeInterval, expected: CFTimeInterval)?
     private(set) var second = FrameStats()
+    private var secondPasses = RunLoopPassStats()
     private var secondCounts: [String: Int] = [:]
     private struct Interval {
       let name: String
       var stats = FrameStats()
+      var passes = RunLoopPassStats()
       var counts: [String: Int] = [:]
       /// The main thread's CPU time when the interval began.
       let startCPU: TimeInterval
@@ -47,6 +51,9 @@
 
     private var interval: Interval?
     private var observers: [Int32] = []
+    private var runLoopObservers: [CFRunLoopObserver] = []
+    /// When the main run loop woke for the pass under way.
+    private var passStart: CFTimeInterval?
     private var activation: (any NSObjectProtocol)?
     private let metrics = MetricKitLog()
     private let commands = PerfCommandFile()
@@ -82,7 +89,7 @@
       shared.interval = nil
       let cpu = Int(((mainThreadCPU() - interval.startCPU) * 1000).rounded())
       logger.notice(
-        "interval \(interval.name, privacy: .public): \(interval.stats.summary, privacy: .public) cpu=\(cpu)ms\(Self.describe(interval.counts), privacy: .public)"
+        "interval \(interval.name, privacy: .public): \(interval.stats.summary, privacy: .public) cpu=\(cpu)ms \(interval.passes.summary, privacy: .public)\(Self.describe(interval.counts), privacy: .public)"
       )
     }
 
@@ -128,6 +135,7 @@
         DarwinNotifications.observe("ai.omnigent.perf.end") { Self.end() },
       ]
       commands.start()
+      observeRunLoopPasses()
       // Frames stop while the app is in the background; that pause is not a hang.
       #if os(iOS)
         let activated = UIApplication.didBecomeActiveNotification
@@ -155,10 +163,39 @@
       interval?.stats.record(interval: elapsed, expected: previous.expected)
       guard second.duration >= 1 else { return }
       Self.logger.notice(
-        "second: \(self.second.summary, privacy: .public)\(Self.describe(self.secondCounts), privacy: .public)"
+        "second: \(self.second.summary, privacy: .public) \(self.secondPasses.summary, privacy: .public)\(Self.describe(self.secondCounts), privacy: .public)"
       )
       second = FrameStats()
+      secondPasses = RunLoopPassStats()
       secondCounts = [:]
+    }
+
+    /// Times each pass of the main run loop: first after it wakes, last before it waits again,
+    /// after Core Animation's commit.
+    private func observeRunLoopPasses() {
+      let woke = CFRunLoopObserverCreateWithHandler(
+        nil, CFRunLoopActivity.afterWaiting.rawValue, true, CFIndex.min
+      ) { [weak self] _, _ in
+        MainActor.assumeIsolated { self?.passStart = CACurrentMediaTime() }
+      }
+      let waits = CFRunLoopObserverCreateWithHandler(
+        nil, CFRunLoopActivity.beforeWaiting.rawValue, true, CFIndex.max
+      ) { [weak self] _, _ in
+        MainActor.assumeIsolated { self?.passEnded(at: CACurrentMediaTime()) }
+      }
+      for observer in [woke, waits] {
+        guard let observer else { continue }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        runLoopObservers.append(observer)
+      }
+    }
+
+    /// The main run loop is about to wait: the pass since it woke is done.
+    func passEnded(at now: CFTimeInterval) {
+      guard let start = passStart else { return }
+      passStart = nil
+      secondPasses.record(now - start)
+      interval?.passes.record(now - start)
     }
 
     private static func describe(_ counts: [String: Int]) -> String {
