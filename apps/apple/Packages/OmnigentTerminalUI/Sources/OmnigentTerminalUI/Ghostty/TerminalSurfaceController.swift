@@ -13,6 +13,7 @@ import OmnigentGhosttyKit
 
 #if os(macOS)
   import AppKit
+  import Synchronization
 #else
   import UIKit
 #endif
@@ -36,6 +37,23 @@ private nonisolated func ghosttyIOWrite(
   let buffer = unsafe UnsafeRawBufferPointer(start: data, count: Int(length))
   sink.continuation.yield(unsafe Array(buffer))
 }
+
+#if os(macOS)
+  /// Frames each surface's renderer has begun, by its controller's address. Only registered
+  /// surfaces count; libghostty reports frames on its renderer thread.
+  private nonisolated let drawnFrameCounts = Mutex<[UInt: Int]>([:])
+
+  /// libghostty's `renderer_event_cb`: runs on the surface's renderer thread.
+  private nonisolated func ghosttyRendererEvent(
+    _ userdata: UnsafeMutableRawPointer?, _ event: ghostty_renderer_event_e
+  ) {
+    guard event == GHOSTTY_RENDERER_EVENT_DRAW_FRAME_BEGIN else { return }
+    let key = UInt(bitPattern: userdata)
+    drawnFrameCounts.withLock { counts in
+      if let count = counts[key] { counts[key] = count + 1 }
+    }
+  }
+#endif
 
 /// The state of the find bar.
 public struct TerminalSearch: Hashable, Sendable {
@@ -98,6 +116,8 @@ public final class TerminalSurfaceController {
   #if os(macOS)
     /// The view the surface renders into.
     @ObservationIgnored let view: TerminalSurfaceNSView
+    /// Output waiting for the frame in flight to reach the layer (``TerminalOutputPacer``).
+    @ObservationIgnored private var pacer: TerminalOutputPacer?
   #else
     /// The view the surface renders into.
     @ObservationIgnored let view: TerminalSurfaceUIView
@@ -138,6 +158,9 @@ public final class TerminalSurfaceController {
     unsafe try createSurface(newSurface)
     view.controller = self
     runtime.register(self)
+    #if os(macOS)
+      pacer = makePacer()
+    #endif
     startPumps(input: input)
     connection.start()
   }
@@ -151,6 +174,11 @@ public final class TerminalSurfaceController {
     if let surface = unsafe surface {
       unsafe ghostty_surface_free(surface)
     }
+    #if os(macOS)
+      // After the free: the renderer thread that counts frames has stopped.
+      let key = drawCountKey
+      drawnFrameCounts.withLock { $0[key] = nil }
+    #endif
   }
 
   private static func sharedRuntime() throws(GhosttyError) -> GhosttyRuntime {
@@ -177,6 +205,9 @@ public final class TerminalSurfaceController {
     unsafe config.io_mode = GHOSTTY_SURFACE_IO_MANUAL_MIRROR
     unsafe config.io_write_cb = unsafe ghosttyIOWrite
     unsafe config.io_write_userdata = unsafe Unmanaged.passUnretained(sink).toOpaque()
+    #if os(macOS)
+      unsafe config.renderer_event_cb = ghosttyRendererEvent
+    #endif
     guard let surface = unsafe newSurface(runtime.app, &config) else {
       throw .surfaceCreationFailed
     }
@@ -235,18 +266,32 @@ public final class TerminalSurfaceController {
       if outputBeforeFirstSize.count > heldOutputLimit { showHeldOutput() }
       return
     }
-    feed(bytes)
+    #if os(macOS)
+      if let pacer {
+        pacer.submit(bytes)
+        return
+      }
+    #endif
+    parse(bytes)
   }
 
   /// Parses what waited for the first size.
   private func showHeldOutput() {
     let held = outputBeforeFirstSize
     outputBeforeFirstSize = []
-    feed(held)
+    parse(held)
+  }
+
+  /// Parses and renders remote output now, after any output still waiting for a frame.
+  func feed(_ bytes: [UInt8]) {
+    #if os(macOS)
+      pacer?.flush()
+    #endif
+    parse(bytes)
   }
 
   /// Parses and renders remote output.
-  func feed(_ bytes: [UInt8]) {
+  private func parse(_ bytes: [UInt8]) {
     guard let surface = unsafe surface, !bytes.isEmpty else { return }
     bytes.withUnsafeBufferPointer { buffer in
       unsafe buffer.withMemoryRebound(to: CChar.self) { chars in
@@ -255,6 +300,28 @@ public final class TerminalSurfaceController {
     }
     view.requestRender()
   }
+
+  #if os(macOS)
+    /// This surface's key in `drawnFrameCounts`: the address its callbacks receive.
+    private var drawCountKey: UInt {
+      unsafe UInt(bitPattern: Unmanaged.passUnretained(self).toOpaque())
+    }
+
+    /// Paces output to the frames that reach the layer. Out of a window nothing is shown, so
+    /// output is parsed as it comes.
+    private func makePacer() -> TerminalOutputPacer {
+      let key = drawCountKey
+      drawnFrameCounts.withLock { $0[key] = 0 }
+      let view = view
+      let probe = TerminalFrameProbe(
+        drawnFrames: { drawnFrameCounts.withLock { $0[key] ?? 0 } },
+        shownFrame: { view.layer?.contents.map { ObjectIdentifier($0 as AnyObject) } },
+        isInWindow: { unsafe view.window != nil })
+      return TerminalOutputPacer(
+        probe: probe, feed: { [weak self] bytes in self?.parse(bytes) },
+        commit: { CATransaction.flush() })
+    }
+  #endif
 
   /// Renders one frame now. iOS only: the view's display link calls this when Ghostty asked
   /// for a frame (`GHOSTTY_ACTION_RENDER`).
