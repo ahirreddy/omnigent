@@ -21,6 +21,8 @@
     var markedText = NSMutableAttributedString()
     var trackingArea: NSTrackingArea?
     var focused = false
+    /// Follows the window to another display.
+    private var screenObserver: (any NSObjectProtocol)?
 
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { false }
@@ -52,7 +54,30 @@
 
     override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
+      followScreen()
       reportSize()
+    }
+
+    /// Tells Ghostty which display the window is on, now and whenever the window moves to
+    /// another, so its display link paces frames to that display's refreshes.
+    private func followScreen() {
+      if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+      screenObserver = nil
+      guard let window = unsafe window else { return }
+      screenObserver = NotificationCenter.default.addObserver(
+        forName: NSWindow.didChangeScreenNotification, object: window, queue: .main
+      ) { [weak self] _ in
+        MainActor.assumeIsolated { self?.reportScreen() }
+      }
+      reportScreen()
+    }
+
+    private func reportScreen() {
+      guard let screen = unsafe window?.screen,
+        let display = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
+          as? UInt32
+      else { return }
+      controller?.setDisplay(display)
     }
 
     override func viewDidChangeBackingProperties() {
@@ -63,6 +88,7 @@
         layer?.contentsScale = window.backingScaleFactor
         CATransaction.commit()
       }
+      reportScreen()
       reportSize()
     }
 

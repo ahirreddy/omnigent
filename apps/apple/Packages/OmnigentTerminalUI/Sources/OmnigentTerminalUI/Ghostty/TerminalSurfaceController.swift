@@ -367,6 +367,19 @@ public final class TerminalSurfaceController {
     return pixels < CGFloat(UInt32.max) ? UInt32(pixels) : UInt32.max
   }
 
+  #if os(macOS)
+    /// The display whose refreshes Ghostty paces this surface's frames to.
+    @ObservationIgnored private(set) var displayID: UInt32?
+
+    /// The window moved to the display `id`. Ghostty's display link otherwise follows the
+    /// main display, which can refresh at another rate and phase.
+    func setDisplay(_ id: UInt32) {
+      guard let surface = unsafe surface, id != displayID else { return }
+      displayID = id
+      unsafe ghostty_surface_set_display_id(surface, id)
+    }
+  #endif
+
   /// The view gained or lost keyboard focus.
   func setFocused(_ focused: Bool) {
     guard let surface = unsafe surface else { return }
