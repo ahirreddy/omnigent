@@ -251,5 +251,87 @@
       #expect(try !screen.shows("Ask in side chat"))
       #expect(try !screen.shows("Reply"))
     }
+
+    private static let longMessage = """
+      Characteristically deliberate paragraphs wrapping across several lines demonstrate where \
+      selection popups belong: immediately above whichever words somebody highlighted, however \
+      far down the transcript those highlighted words happen to appear.
+      """
+
+    /// A message `top` points down a scrolling transcript, and its selectable text's frame.
+    private func longMessageHost(top: CGFloat) throws -> (OffscreenWindow<AnyView>, CGRect) {
+      let screen = transcriptScreen(
+        ScrollView {
+          MarkdownView(Self.longMessage)
+            .padding(.top, top).padding(.horizontal, 60)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .transcriptSelectionPopup(reply: { _ in }, ask: { _ in }),
+        width: 460, height: 420)
+      restKeyboard(screen)
+      let selectable = screen.allViews.compactMap { $0 as? NSTextField }.first(
+        where: \.isSelectable)
+      let field = try #require(selectable)
+      return (screen, field.convert(field.bounds, to: screen.host))
+    }
+
+    /// The popup's frame: the host has no other controls.
+    private func popupFrame(in screen: OffscreenWindow<AnyView>) throws -> CGRect {
+      let union = screen.controlFrames.reduce(CGRect?.none) { popup, frame in
+        popup?.union(frame) ?? frame
+      }
+      return try #require(union, "no popup")
+    }
+
+    /// Double-clicks the word at `point`; returns the popup's frame and the selected range.
+    private func select(_ point: CGPoint, in screen: OffscreenWindow<AnyView>) async throws
+      -> (popup: CGRect, range: NSRange)
+    {
+      try screen.click(point, clickCount: 2)
+      try await announceSelection(screen)
+      let editor = try #require(screen.window.firstResponder as? NSTextView)
+      let word = try #require(Range(editor.selectedRange(), in: editor.string))
+      #expect(!editor.string[word].contains(" "), "one word: \(editor.string[word])")
+      #expect(editor.textLayoutManager != nil, "the field editor stays on TextKit 2")
+      return (try popupFrame(in: screen), editor.selectedRange())
+    }
+
+    /// Expects `popup` centered just above (or below) the word under `point`.
+    private func expectNext(
+      _ popup: CGRect, to point: CGPoint, in text: CGRect, below: Bool = false,
+      sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+      let detail = "popup \(popup), word at \(point), text \(text)"
+      #expect(abs(popup.midX - point.x) < 80, "centered: \(detail)", sourceLocation: sourceLocation)
+      let isNext =
+        below
+        ? popup.minY > point.y && popup.minY < point.y + 36
+        : popup.maxY < point.y && popup.maxY > point.y - 36
+      #expect(isNext, "\(below ? "below" : "above"): \(detail)", sourceLocation: sourceLocation)
+    }
+
+    @Test("The popup sits just above the selected word, follows it, and goes below near the top")
+    func selectionPopupPlacement() async throws {
+      let (screen, field) = try longMessageHost(top: 140)
+      defer { screen.close() }
+      // A word on a middle line, then one on the first line: the popup centers just above each.
+      let middle = CGPoint(x: field.midX, y: field.midY)
+      let first = CGPoint(x: field.midX, y: field.minY + 8)
+      let selected = try await select(middle, in: screen)
+      expectNext(selected.popup, to: middle, in: field)
+      expectNext(try await select(first, in: screen).popup, to: first, in: field)
+
+      // The selection changing with no click or key, as a drag does, moves the popup too.
+      let editor = try #require(screen.window.firstResponder as? NSTextView)
+      editor.setSelectedRange(selected.range)
+      try await letTasksRun(screen)
+      expectNext(try popupFrame(in: screen), to: middle, in: field)
+
+      // With no room above the selection, the popup goes just below it.
+      let (top, topField) = try longMessageHost(top: 12)
+      defer { top.close() }
+      let point = CGPoint(x: topField.midX, y: topField.minY + 8)
+      expectNext(try await select(point, in: top).popup, to: point, in: topField, below: true)
+    }
   }
 #endif

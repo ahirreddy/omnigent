@@ -20,9 +20,6 @@ import SwiftUI
     @State private var selection: TranscriptSelection?
     @State private var clearRequest = 0
 
-    /// Room the popup needs above a selection before it goes below it instead.
-    private static let headroom: CGFloat = 40
-
     func body(content: Content) -> some View {
       content
         .background {
@@ -35,17 +32,12 @@ import SwiftUI
         } action: { _, _ in
           if selection != nil { selection = nil }
         }
-        .overlay(alignment: .topLeading) {
+        .overlay {
+          // A layout places the popup; the overlay ignores alignment guides on a view in this `if`.
           if let selection, let reply {
-            let below = selection.rect.minY < Self.headroom
-            let gap = Theme.Spacing.small
-            buttons(selection.text, reply: reply)
-              .fixedSize()
-              .alignmentGuide(.leading) { $0[HorizontalAlignment.center] - selection.rect.midX }
-              .alignmentGuide(.top) { size in
-                below
-                  ? -(selection.rect.maxY + gap) : size[.bottom] - (selection.rect.minY - gap)
-              }
+            SelectionPopupPlacement(selection: selection.rect, gap: Theme.Spacing.small) {
+              buttons(selection.text, reply: reply)
+            }
           }
         }
     }
@@ -87,6 +79,32 @@ import SwiftUI
     }
   }
 
+  /// Centers the popup just above the selection, or just below it without room above, and keeps
+  /// it inside the transcript's width.
+  struct SelectionPopupPlacement: Layout {
+    let selection: CGRect
+    /// The space between the popup and the selection, and the transcript's edges.
+    let gap: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+      proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(
+      in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) {
+      for popup in subviews {
+        let size = popup.sizeThatFits(.unspecified)
+        let above = selection.minY - gap - size.height
+        let top = above >= 0 ? above : selection.maxY + gap
+        let widest = max(gap, bounds.width - gap - size.width)
+        let leading = min(max(selection.midX - size.width / 2, gap), widest)
+        popup.place(
+          at: CGPoint(x: bounds.minX + leading, y: bounds.minY + top), proposal: .init(size))
+      }
+    }
+  }
+
   /// Reports the selection in the transcript's selectable text. SwiftUI's selectable `Text` is an
   /// `NSTextField` that selects through the window's field editor, so a selection is the field
   /// editor of a non-editable field, inside this view's bounds.
@@ -118,6 +136,7 @@ import SwiftUI
       var changed: (@MainActor (TranscriptSelection?) -> Void)?
       var clearRequest = 0
       private var monitor: Any?
+      private var selectionObserver: (any NSObjectProtocol)?
 
       override var isFlipped: Bool { true }
 
@@ -137,11 +156,27 @@ import SwiftUI
           }
           return event
         }
+        // A drag or Shift-click changes the selection inside that tracking loop, which no
+        // monitor sees; the field editor's selection change moves the popup with it.
+        selectionObserver = NotificationCenter.default.addObserver(
+          forName: NSTextView.didChangeSelectionNotification, object: nil, queue: .main
+        ) { [weak self] note in
+          let sender = note.object.map { ObjectIdentifier($0 as AnyObject) }
+          MainActor.assumeIsolated {
+            // Only the text view selecting in this window, which `refresh` checks further.
+            guard let self, let window = unsafe self.window,
+              let responder = window.firstResponder, ObjectIdentifier(responder) == sender
+            else { return }
+            Task { @MainActor [weak self] in self?.refresh() }
+          }
+        }
       }
 
       func stop() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+        if let selectionObserver { NotificationCenter.default.removeObserver(selectionObserver) }
+        selectionObserver = nil
       }
 
       /// Ends the selection after the popup acted on it.
