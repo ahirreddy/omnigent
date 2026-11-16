@@ -89,22 +89,27 @@
     }
   }
 
-  /// One run of a text cell: a live TextKit view, or a drawing of the run made ahead.
+  /// One piece of a text cell: a run of text as a live TextKit view or a drawing made ahead,
+  /// or a block only SwiftUI draws, hosted on its own.
   enum TranscriptTableTextRun {
     case live(MessageTextContentView)
     case raster(MessageTextRasterView)
+    case block(TranscriptTableBlockView)
 
     var view: NSView {
       switch self {
       case .live(let view): view
       case .raster(let view): view
+      case .block(let view): view
       }
     }
 
-    var document: MessageTextDocument {
+    /// The text it shows; `nil` for a hosted block.
+    var document: MessageTextDocument? {
       switch self {
       case .live(let view): view.document
       case .raster(let view): view.document
+      case .block: nil
       }
     }
 
@@ -117,6 +122,8 @@
         let size = view.raster.size
         let hugs = !fillsWidth && !view.document.hasWideBlocks
         return CGSize(width: hugs ? min(width, size.usedWidth) : width, height: size.height)
+      case .block(let view):
+        return CGSize(width: width, height: view.idealHeight)
       }
     }
 
@@ -135,6 +142,8 @@
         return style.drawsAhead && view.raster.width == width && view.raster.scale == style.scale
       case .live(let view):
         return unsafe raster == nil || view.window?.firstResponder === view.textView
+      case .block:
+        return true
       }
     }
 
@@ -143,6 +152,7 @@
       switch self {
       case .live(let view): view.openURL = openURL
       case .raster(let view): view.openURL = openURL
+      case .block: break
       }
     }
 
@@ -152,6 +162,7 @@
       switch self {
       case .live(let view): MessageTextViews.shared.checkIn(view)
       case .raster(let view): view.deactivate()
+      case .block(let view): view.sizeChanged = nil
       }
     }
   }

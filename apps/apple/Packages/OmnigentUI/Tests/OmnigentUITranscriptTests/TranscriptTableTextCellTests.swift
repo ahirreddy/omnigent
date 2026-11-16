@@ -120,7 +120,7 @@
           == (bubble.frame.height + Theme.Spacing.extraSmall + Theme.Spacing.row).rounded(.up))
     }
 
-    @Test("Settled messages take text cells, measured by TextKit; other rows stay hosted")
+    @Test("Settled messages take text cells, a diagram hosted between their runs; others hosted")
     func cellKinds() async throws {
       var streaming = TranscriptFixture.answer("a-live", "Streaming", responseID: "r-live")
       streaming.isStreaming = true
@@ -141,7 +141,7 @@
       let controller = try #require(table.delegate as? TranscriptTableController)
       let expected: [String: TranscriptTableCellKind] = [
         "u1": .text(.userMessage), "a1": .text(.answer),
-        "a-diagram": .hosted(.answer), "a-live": .hosted(.answer),
+        "a-diagram": .text(.answer), "a-live": .hosted(.answer),
         TranscriptTableRow.footerID: .hosted(.footer),
       ]
       for (id, kind) in expected {
@@ -152,6 +152,15 @@
         // The table lays the row out at the height its cell measured.
         #expect(controller.model.height(at: index) == cell.idealHeight, "\(id)")
       }
+      let diagramRow = try #require(controller.model.index(of: "a-diagram"))
+      let diagram = try #require(
+        controller.realizedCell(at: diagramRow) as? TranscriptTableTextCell)
+      #expect(diagram.texts.count == 1, "the text before the diagram")
+      let hostsBlock = diagram.runs.contains {
+        if case .block = $0 { return true }
+        return false
+      }
+      #expect(hostsBlock)
     }
 
     @Test("A scroll hands the answers past its lookahead to the prewarm, nearest first")

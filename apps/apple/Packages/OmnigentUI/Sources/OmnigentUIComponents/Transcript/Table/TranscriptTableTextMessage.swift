@@ -3,8 +3,9 @@
   import SwiftUI
 
   /// A settled chat message a text cell draws in AppKit (``TranscriptTableTextCell``): an answer
-  /// or a user's prompt whose markdown is all TextKit text, with nothing beside it that only
-  /// SwiftUI draws (attachments, mentions, a collapsed prompt, a diagram, linked paths).
+  /// or a user's prompt as TextKit text runs, with the blocks only SwiftUI draws (math, a
+  /// diagram, an image, a wide table) hosted between them, and nothing beside it that only
+  /// SwiftUI draws (attachments, mentions, a collapsed prompt, linked paths).
   struct TranscriptTableTextMessage {
     enum Role {
       case user
@@ -45,8 +46,7 @@
         return nil
       }
       let split = MessageTextSplits.shared.split(markdown, ramp: ramp)
-      guard split.cited.isEmpty, !split.pieces.isEmpty, split.pieces.allSatisfy(\.isText)
-      else { return nil }
+      guard split.cited.isEmpty, !split.pieces.isEmpty else { return nil }
       return Self(
         role: role, row: message, decoration: decoration, markdown: markdown, split: split)
     }
@@ -64,13 +64,6 @@
         guard case .text(let blocks) = piece.content else { return nil }
         return Run(id: piece.id, gapAbove: piece.gapAbove, blocks: blocks)
       }
-    }
-  }
-
-  extension MessageTextPiece {
-    var isText: Bool {
-      if case .text = content { return true }
-      return false
     }
   }
 

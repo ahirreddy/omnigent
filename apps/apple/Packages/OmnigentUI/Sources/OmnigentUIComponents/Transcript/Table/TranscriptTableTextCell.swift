@@ -32,6 +32,8 @@
     private(set) var actionsLineHeight: CGFloat = 0
     private(set) var actionsTrailing: CGFloat = 0
     private var height: CGFloat = 0
+    /// The column and text width the cell last laid out at.
+    private var laidOut: (metrics: TranscriptTableTextMetrics, textWidth: CGFloat)?
     var isHovered = false
     var hoverArea: NSTrackingArea?
 
@@ -55,7 +57,7 @@
 
     func show(_ row: TranscriptTableRow, version: Int, width: CGFloat) {
       let next = TranscriptTableShown(id: row.id, version: version, width: width)
-      guard next != shown || styleSerial != style.serial else { return }
+      guard next != shown || styleSerial != style.serial || awaitsRasters else { return }
       // The same content in a new style may take another height, which the table then asks.
       let isRestyle = next == shown
       guard let message = TranscriptTableTextMessage.make(row, ramp: style.ramp),
@@ -68,8 +70,9 @@
       kind = .text(row.kind)
       styleSerial = style.serial
       self.message = message
-      let documents = message.runs.map { run in
-        MessageTextBlocksView.document(
+      var documents: [Int: MessageTextDocument] = [:]
+      for run in message.runs {
+        documents[run.id] = MessageTextBlocksView.document(
           source: MessageTextSource(text: message.markdown, piece: run.id), blocks: run.blocks,
           linked: [], style: textStyle, links: nil)
       }
@@ -77,7 +80,8 @@
         width: width, layoutWidth: style.layoutWidth, maxWidth: style.maxWidth)
       let textWidth =
         message.role == .answer ? metrics.columnWidth : metrics.promptWidth(style.layoutWidth)
-      adopt(documents, width: textWidth)
+      laidOut = (metrics, textWidth)
+      adopt(message.split.pieces, documents: documents, width: textWidth)
       let openURL = (style.environment.values?.openURL).map { open in
         { @MainActor (url: URL) in open(url) }
       }
@@ -93,14 +97,28 @@
       if isRestyle, abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
     }
 
-    /// Shows `documents` laid out `width` wide: each as a raster drawn ahead when the surface
-    /// draws runs ahead and one is kept, else as a live view borrowed from ``MessageTextViews``
-    /// (and drawn ahead for next time). Runs that already show a document stay.
-    private func adopt(_ documents: [MessageTextDocument], width: CGFloat) {
+    /// Shows `pieces` laid out `width` wide. A text run shows as a raster drawn ahead when the
+    /// surface draws runs ahead and one is kept, else as a live view borrowed from
+    /// ``MessageTextViews`` (and drawn ahead for next time); a block is hosted. Views that
+    /// already show a piece stay.
+    private func adopt(
+      _ pieces: [MessageTextPiece], documents: [Int: MessageTextDocument], width: CGFloat
+    ) {
       var kept: [UInt64: TranscriptTableTextRun] = [:]
-      for run in runs { kept[run.document.serial] = run }
+      var keptBlocks: [Int: TranscriptTableBlockView] = [:]
+      for run in runs {
+        if let document = run.document { kept[document.serial] = run }
+        if case .block(let view) = run { keptBlocks[view.piece] = view }
+      }
       var adopted: [TranscriptTableTextRun] = []
-      for document in documents {
+      for piece in pieces {
+        guard let document = documents[piece.id] else {
+          guard case .block(let block) = piece.content else { continue }
+          let view = keptBlocks.removeValue(forKey: piece.id) ?? makeBlockView()
+          view.show(block, piece: piece.id, width: width)
+          adopted.append(.block(view))
+          continue
+        }
         let raster = style.raster(for: document, width: width)
         if let run = kept.removeValue(forKey: document.serial) {
           if run.keeps(raster, width: width, style: style) {
@@ -109,22 +127,46 @@
           }
           run.release()
         }
-        if let raster {
-          let view = MessageTextRasterView(document: document, raster: raster)
-          addSubview(view)
-          adopted.append(.raster(view))
-        } else {
-          if style.drawsAhead, let rasterStyle = style.rasterStyle {
-            MessageTextPrewarm.shared.draw(
-              document, width: width, scale: style.scale, style: rasterStyle)
-          }
-          let view = MessageTextViews.shared.checkOut(document)
-          addSubview(view)
-          adopted.append(.live(view))
-        }
+        adopted.append(makeRun(document, raster: raster, width: width))
       }
       for run in kept.values { run.release() }
+      for view in keptBlocks.values { TranscriptTableTextRun.block(view).release() }
       runs = adopted
+    }
+
+    /// A new run for `document`: its raster, else a live view, drawn ahead for next time.
+    private func makeRun(
+      _ document: MessageTextDocument, raster: MessageTextRaster?, width: CGFloat
+    ) -> TranscriptTableTextRun {
+      if let raster {
+        let view = MessageTextRasterView(document: document, raster: raster)
+        addSubview(view)
+        return .raster(view)
+      }
+      if style.drawsAhead, let rasterStyle = style.rasterStyle {
+        MessageTextPrewarm.shared.draw(
+          document, width: width, scale: style.scale, style: rasterStyle)
+      }
+      let view = MessageTextViews.shared.checkOut(document)
+      addSubview(view)
+      return .live(view)
+    }
+
+    private func makeBlockView() -> TranscriptTableBlockView {
+      let view = TranscriptTableBlockView.make(environment: style.environment)
+      view.sizeChanged = { [weak self] in self?.blockSizeChanged() }
+      addSubview(view)
+      return view
+    }
+
+    /// A hosted block took another height: the cell lays out again and tells the table.
+    private func blockSizeChanged() {
+      guard let message, let laidOut else { return }
+      let previous = height
+      height = layOutContent(
+        metrics: laidOut.metrics, textWidth: laidOut.textWidth, message: message)
+      refreshActions()
+      if abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
     }
 
     /// Hands the text views back for the next cell that shows their documents.
@@ -136,6 +178,15 @@
     }
 
     var idealHeight: CGFloat { height }
+
+    /// Whether a run shows live while runs draw ahead: its drawing may have arrived since.
+    private var awaitsRasters: Bool {
+      style.drawsAhead
+        && runs.contains {
+          if case .live = $0 { return true }
+          return false
+        }
+    }
 
     /// Its height is the text's, known at show: nothing reports later.
     func settle() {}
@@ -156,7 +207,7 @@
     private func layOutAnswer(
       metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
     ) -> CGFloat {
-      let gaps = message.runs.map(\.gapAbove)
+      let gaps = message.split.pieces.map(\.gapAbove)
       bubbleView.isHidden = true
       if let palette = style.palette, textWidth >= MessageTextContentView.minimumWidth {
         // The answers after this one lay out (and draw) ahead at this width.
@@ -201,7 +252,7 @@
     private func layOutPrompt(
       metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
     ) -> CGFloat {
-      let gaps = message.runs.map(\.gapAbove)
+      let gaps = message.split.pieces.map(\.gapAbove)
       workedLabel?.isHidden = true
       var bottom: CGFloat = 0
       var used: CGFloat = 0
