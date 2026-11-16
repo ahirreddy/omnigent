@@ -97,7 +97,7 @@
       window.contentView = nil
       // AppKit queues run loop stops while windows change. Left for the test runner's own loop,
       // one would end the process early with exit code 0: a false pass.
-      _ = MainLoop.poll(until: CFAbsoluteTimeGetCurrent() + 0.01)
+      MainLoop.run(for: 0.01)
     }
 
     /// Clicks a point with a real mouse down and up.

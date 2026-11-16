@@ -39,6 +39,8 @@
       deliver(down, to: target)
       if release.isValid {
         release.invalidate()
+        // A menu that opened and closed within the down took the whole click.
+        guard !isMenuOpen() else { return }
         MainLoop.settle(limit: 0.03, windows: [target])
         deliver(mouseUp, to: target)
       } else if unsafe postedUntracked, !isMenuOpen(),
