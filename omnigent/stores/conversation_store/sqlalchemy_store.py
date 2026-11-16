@@ -355,6 +355,7 @@ def _to_conversation(
         runner_last_seen=meta.runner_last_seen if meta else None,
         background_work_running=meta.background_work_running if meta else None,
         blocked_on=meta.blocked_on if meta else None,
+        turns_started=meta.turns_started if meta else None,
         project_id=meta.project_id if meta else None,
         side_chat_parent_id=meta.side_chat_parent_id if meta else None,
         family_id=meta.family_id if meta else None,
@@ -4737,15 +4738,30 @@ class SqlAlchemyConversationStore(ConversationStore):
         from sqlalchemy import update
 
         encoded_status = encode_session_live_status(status)
+        working = [encode_session_live_status("running"), encode_session_live_status("waiting")]
 
         def write(session: Session) -> None:
-            session.execute(
-                update(SqlConversationMetadata)
-                .where(
-                    SqlConversationMetadata.workspace_id == current_workspace_id(),
-                    SqlConversationMetadata.id == conversation_id,
+            this_row = (
+                SqlConversationMetadata.workspace_id == current_workspace_id(),
+                SqlConversationMetadata.id == conversation_id,
+            )
+            if encoded_status in working:
+                # Reads the status this write replaces, so it runs first.
+                session.execute(
+                    update(SqlConversationMetadata)
+                    .where(
+                        *this_row,
+                        or_(
+                            SqlConversationMetadata.live_status.is_(None),
+                            SqlConversationMetadata.live_status.not_in(working),
+                        ),
+                    )
+                    .values(
+                        turns_started=func.coalesce(SqlConversationMetadata.turns_started, 0) + 1
+                    )
                 )
-                .values(live_status=encoded_status)
+            session.execute(
+                update(SqlConversationMetadata).where(*this_row).values(live_status=encoded_status)
             )
 
         run_write_transaction(self._session_immediate, "set_session_live_status", write)

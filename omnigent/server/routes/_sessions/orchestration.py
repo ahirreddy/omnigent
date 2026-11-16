@@ -1431,6 +1431,7 @@ def _build_session_list_item(
         ),
         background_work_running=conv.background_work_running is True,
         blocked_on=_blocked_on_for(conv.id, conv.blocked_on),
+        turns_started=conv.turns_started or 0,
         workspace=conv.workspace,
         git_branch=conv.git_branch,
         archived=conv.archived,

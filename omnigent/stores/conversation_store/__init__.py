@@ -1756,7 +1756,9 @@ class ConversationStore(ABC):
 
         Written by the replica whose SSE relay observed the transition
         (idle/running/waiting/failed) so any replica's session list can
-        serve it. Must NOT bump ``updated_at``.
+        serve it. Must NOT bump ``updated_at``. Moving from idle, failed or
+        no status to running or waiting also adds one to ``turns_started``,
+        atomically with the status change.
 
         :param conversation_id: Session/conversation identifier.
         :param status: One of ``enum_codecs.SESSION_LIVE_STATUS``.

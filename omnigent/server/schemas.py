@@ -3439,6 +3439,12 @@ class SessionListItem(BaseModel):
         128 characters. The sidebar shows such a session as needing input even
         when no web card exists for the prompt. ``None`` when it is not parked
         or its runner is offline.
+    :param turns_started: How many times the session has gone from idle or
+        failed to working, as recorded by the server. It only grows, so a
+        client that reads rows every few seconds can tell that a turn started,
+        and if ``status`` is now ``idle`` or ``failed`` also ended, between two
+        reads that never showed it running. ``0`` before the first recorded
+        turn.
     :param workspace: Absolute path on disk where the runner cd's,
         e.g. ``"/Users/corey/universe/src/foo"``. ``None`` for
         sessions that haven't been bound to a host workspace.
@@ -3513,6 +3519,7 @@ class SessionListItem(BaseModel):
     pending_elicitations_count: int = 0
     background_work_running: bool = False
     blocked_on: str | None = None
+    turns_started: int = 0
     workspace: str | None = None
     git_branch: str | None = None
     archived: bool = False
