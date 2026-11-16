@@ -14,7 +14,8 @@ public struct TranscriptView: View {
   private let scrollToLatestRequest: Int
 
   @State private var scroll = TranscriptScrollState()
-  /// The one part of the follow rules the body shows.
+  /// The one part of the follow rules the body shows. Opening's framing measures the rows its
+  /// render lays out, so it is read here rather than in a view of its own.
   @State private var pill = TranscriptFollow.Pill()
   @State private var layout = TranscriptLayoutMemo()
   @State private var environmentRelay = TranscriptEnvironmentRelay()
@@ -343,15 +344,12 @@ extension TranscriptView {
       loadOlder: loadOlder)
   }
 
-  /// Marks the turn owning the middle of the screen on the rail (only while it shows).
+  /// Marks the turn owning the middle of the screen on the rail (only while it shows). Rows
+  /// scrolling in and out cost the rows on screen: the order is the layout's kept array.
   private func updateActiveTurn() {
-    let turns = rail.turns
-    guard turns.count >= 2 else { return }
-    let order =
-      appearance.isCLI ? layout.blocks(for: shown).map(\.id) : layout.entries(for: shown).map(\.id)
+    guard rail.turns.count >= 2 else { return }
     rail.setActive(
-      TurnRailModel.activeTurn(
-        order: order, turns: Set(turns.map(\.id)), visible: position.visible))
+      order: layout.rowIDs(for: shown, isCLI: appearance.isCLI), visible: position.visible)
   }
 
   /// Scrolls to the message a `?message=` link points at; a page still landing must not put

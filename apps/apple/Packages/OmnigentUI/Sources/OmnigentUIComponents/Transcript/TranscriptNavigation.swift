@@ -149,6 +149,9 @@ struct MessageNavigationKeys: ViewModifier {
 private final class ScrollTopTracker {
   var lastOffset: CGFloat = 0
   var isScrolling = false
+  /// The latest scroll up, which the pill stays for ``JumpToTopReveal/scrollReveal`` after.
+  var lastRevealAt = ContinuousClock.now
+  /// One wait for a whole run of scrolls up: each moves the wait's end, not the task.
   var hideTask: Task<Void, Never>?
 }
 
@@ -253,21 +256,34 @@ struct JumpToTopReveal: ViewModifier {
     switch ScrollTopReveal.change(delta: delta, isAtTop: atTop, isRevealed: scrolledUp) {
     case .reveal:
       if !scrolledUp { scrolledUp = true }
-      tracker.hideTask?.cancel()
-      tracker.hideTask = Task { @MainActor in
-        do {
-          try await Task.sleep(for: Theme.Timing.pause(Self.scrollReveal))
-        } catch {
-          return  // Superseded by a newer scroll.
-        }
-        scrolledUp = false
-      }
+      tracker.lastRevealAt = .now
+      if tracker.hideTask == nil { tracker.hideTask = Task { await hideOnceStill() } }
     case .hide:
       tracker.hideTask?.cancel()
+      tracker.hideTask = nil
       scrolledUp = false
     case .unchanged:
       break
     }
+  }
+
+  /// Hides the pill ``scrollReveal`` after the latest scroll up, waiting on while scrolls up
+  /// during the wait move its end.
+  private func hideOnceStill() async {
+    var since = tracker.lastRevealAt
+    var end = since + Theme.Timing.pause(Self.scrollReveal)
+    while end > .now {
+      do {
+        try await Task.sleep(until: end, clock: .continuous)
+      } catch {
+        return  // The reader turned back down, which hid the pill already.
+      }
+      guard tracker.lastRevealAt != since else { break }
+      since = tracker.lastRevealAt
+      end = since + Theme.Timing.pause(Self.scrollReveal)
+    }
+    tracker.hideTask = nil
+    scrolledUp = false
   }
 
   /// Reads the last offset into ``isAtTop``: while scrolling, when a scroll ends, and when the

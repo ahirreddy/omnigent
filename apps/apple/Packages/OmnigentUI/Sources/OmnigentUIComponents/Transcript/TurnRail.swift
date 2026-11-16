@@ -15,6 +15,8 @@ final class TurnRailModel {
   private(set) var turns: [TranscriptTurn] = []
   /// The turn owning the middle of the screen.
   private(set) var activeID: String?
+  /// The rows' and turns' places in the last order the active turn was found in.
+  @ObservationIgnored private var places: TurnPlaces?
 
   func setTurns(_ turns: [TranscriptTurn]) {
     if turns != self.turns { self.turns = turns }
@@ -22,6 +24,18 @@ final class TurnRailModel {
 
   func setActive(_ id: String?) {
     if id != activeID { activeID = id }
+  }
+
+  /// Marks the turn owning the middle of the visible rows (``activeTurn(order:turns:visible:)``).
+  /// While `order` and the turns are the arrays of the last call, that costs the rows on screen.
+  /// - Parameters:
+  ///   - order: Every rendered row id, top to bottom.
+  ///   - visible: The ids on screen.
+  func setActive(order: [String], visible: Set<String>) {
+    if places?.order != order || places?.turns != turns {
+      places = TurnPlaces(order: order, turns: turns)
+    }
+    setActive(places?.activeTurn(visible: visible))
   }
 
   /// The turn owning the middle of the visible rows: the nearest user turn at or above it, or
@@ -57,6 +71,58 @@ final class TurnRailModel {
       if row.role == .assistant, !text.isEmpty { return String(text.prefix(240)) }
     }
     return ""
+  }
+}
+
+/// Where each row and each user turn sits in the transcript's order, so the active turn is found
+/// from the rows on screen instead of a walk over every row.
+nonisolated struct TurnPlaces {
+  let order: [String]
+  let turns: [TranscriptTurn]
+  /// Each row's place in ``order``.
+  private let places: [String: Int]
+  /// An id repeats in ``order``, so ``places`` holds only one of its places.
+  private let hasRepeats: Bool
+  /// The places of the rows that are turns, top to bottom.
+  private let turnPlaces: [Int]
+
+  init(order: [String], turns: [TranscriptTurn]) {
+    self.order = order
+    self.turns = turns
+    let turnIDs = Set(turns.map(\.id))
+    var places = [String: Int](minimumCapacity: order.count)
+    var turnPlaces: [Int] = []
+    var hasRepeats = false
+    for (place, id) in order.enumerated() {
+      if places.updateValue(place, forKey: id) != nil { hasRepeats = true }
+      if turnIDs.contains(id) { turnPlaces.append(place) }
+    }
+    self.places = places
+    self.hasRepeats = hasRepeats
+    self.turnPlaces = turnPlaces
+  }
+
+  /// The turn owning the middle of the visible rows, as
+  /// ``TurnRailModel/activeTurn(order:turns:visible:)`` finds it.
+  /// - Parameter visible: The ids on screen.
+  /// - Returns: The active turn, or `nil` with nothing on screen.
+  func activeTurn(visible: Set<String>) -> String? {
+    guard !hasRepeats else {
+      return TurnRailModel.activeTurn(
+        order: order, turns: Set(turns.map(\.id)), visible: visible)
+    }
+    let shown = visible.compactMap { places[$0] }.sorted()
+    guard !shown.isEmpty else { return nil }
+    let middle = shown[shown.count / 2]
+    // The first turn below the middle, by halving: the one before it owns the middle.
+    var low = 0
+    var high = turnPlaces.count
+    while low < high {
+      let probe = (low + high) / 2
+      if turnPlaces[probe] <= middle { low = probe + 1 } else { high = probe }
+    }
+    let owner = low > 0 ? turnPlaces[low - 1] : turnPlaces.first
+    return owner.map { order[$0] }
   }
 }
 
