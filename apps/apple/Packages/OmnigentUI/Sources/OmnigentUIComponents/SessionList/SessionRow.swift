@@ -275,7 +275,7 @@ private struct InlineTitleField: View {
       .task {
         // The list keeps the focus until the double-click that started this has finished.
         do {
-          try await Task.sleep(for: .milliseconds(100))
+          try await Task.sleep(for: Theme.Timing.pause(.milliseconds(100)))
         } catch {
           return
         }

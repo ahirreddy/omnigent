@@ -122,7 +122,7 @@ final class TranscriptRowsPacer {
     pending = Task { [weak self] in
       if delay > .zero {
         do {
-          try await Task.sleep(for: delay)
+          try await Task.sleep(for: Theme.Timing.pause(delay))
         } catch {
           // Cancelled by a newer schedule, which publishes instead.
           return
@@ -166,7 +166,7 @@ final class TranscriptRowsPacer {
         once.resume()
       }
       Task { @MainActor in
-        try? await Task.sleep(for: limit)
+        try? await Task.sleep(for: Theme.Timing.pause(limit))
         once.resume()
       }
     }

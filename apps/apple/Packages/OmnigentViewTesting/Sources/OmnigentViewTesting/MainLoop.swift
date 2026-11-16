@@ -7,8 +7,9 @@
   /// At rest means a few short run loop turns in a row did no work: no source or event was
   /// handled and the given windows had no layout pending and drew nothing. A turn never sleeps,
   /// so coarse timers (a VM's wake 15 to 90 ms late) don't stretch it. Work still to come at a
-  /// later time, a timer or a `Task.sleep`, is not waited for: wait for its effect with
-  /// ``waitUntil(timeout:_:)``, or for the time with ``run(for:)`` or `Task.sleep`.
+  /// later time, a timer or a `Task.sleep`, is not waited for, except that ``settleTasks`` waits
+  /// out the views' own timed pauses (`Theme.Timing`): wait for anything else's effect with
+  /// ``waitUntil(timeout:windows:idleRecheck:_:)``, or for the time with ``run(for:)``.
   /// `OMNIGENT_FIXED_WAITS=1` makes every wait take its whole limit again, to tell a flaky wait
   /// from a flaky test.
   @MainActor
@@ -45,7 +46,8 @@
     }
 
     /// Settles as ``settle(limit:windows:)`` does, suspending between turns so main actor tasks
-    /// that are ready run too.
+    /// that are ready run too, and waiting out the views' timed pauses (`Theme.Timing`) that end
+    /// before `limit`.
     /// - Parameters:
     ///   - limit: The longest wait.
     ///   - windows: The windows whose layout and drawing count, with their sheets and children.
@@ -63,8 +65,9 @@
       var idle = 0
       SettleTrace.begin()
       while idle < idleTurns, CFAbsoluteTimeGetCurrent() < deadline {
-        let activity = runTurn(until: deadline, windows: windows)
+        var activity = runTurn(until: deadline, windows: windows)
         await Task.yield()
+        if PauseTracker.hasPause(endingBefore: deadline) { activity.insert(.pause) }
         SettleTrace.note(activity)
         idle = activity.isEmpty ? idle + 1 : 0
       }
@@ -75,20 +78,33 @@
     /// Runs the loop and suspends until `condition` holds, checking it after every turn.
     /// - Parameters:
     ///   - timeout: How long the condition may take; only a failing wait takes it all.
+    ///   - windows: The windows whose work prompts a check of a costly condition.
+    ///   - idleRecheck: For a condition that costs more than a turn: check it only after a
+    ///     turn that did work, and this often otherwise. `nil` checks after every turn.
     ///   - condition: What to wait for.
     /// - Returns: Whether the condition held within `timeout`.
     public static func waitUntil(
-      timeout: Duration = .seconds(10), _ condition: () throws -> Bool
+      timeout: Duration = .seconds(10), windows: [NSWindow] = [], idleRecheck: Duration? = nil,
+      _ condition: () throws -> Bool
     ) async rethrows -> Bool {
       let start = CFAbsoluteTimeGetCurrent()
       let deadline = start + timeout.seconds
+      var checkedAt = start
+      var isDue = true
       while CFAbsoluteTimeGetCurrent() < deadline {
-        if try condition() {
-          WaitStats.record("waitUntil", since: start, reachedLimit: false)
-          return true
+        if isDue {
+          if try condition() {
+            WaitStats.record("waitUntil", since: start, reachedLimit: false)
+            return true
+          }
+          checkedAt = CFAbsoluteTimeGetCurrent()
         }
-        _ = runTurn(until: deadline, windows: [])
+        let activity = runTurn(until: deadline, windows: windows)
         await Task.yield()
+        isDue =
+          idleRecheck.map {
+            !activity.isEmpty || CFAbsoluteTimeGetCurrent() - checkedAt >= $0.seconds
+          } ?? true
       }
       WaitStats.record("waitUntil", since: start, reachedLimit: true)
       return try condition()

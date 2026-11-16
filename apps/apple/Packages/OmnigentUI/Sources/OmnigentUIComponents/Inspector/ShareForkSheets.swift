@@ -128,7 +128,7 @@ public struct ShareSheet: View {
               .task(id: copied) {
                 guard copied else { return }
                 do {
-                  try await Task.sleep(for: copiedDuration)
+                  try await Task.sleep(for: Theme.Timing.pause(copiedDuration))
                 } catch {
                   // Cancelled because the sheet closed; nothing to reset.
                   return

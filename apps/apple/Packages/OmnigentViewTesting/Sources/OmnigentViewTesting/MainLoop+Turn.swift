@@ -11,6 +11,8 @@
       static let layout = Self(rawValue: 1 << 2)
       /// A window drew what it had pending.
       static let drawing = Self(rawValue: 1 << 3)
+      /// One of the views' timed pauses ends before the wait's limit.
+      static let pause = Self(rawValue: 1 << 4)
     }
 
     /// Runs one short turn of the loop and finishes the windows' pending layout. Timers due in
@@ -51,7 +53,7 @@
     static func poll(until end: CFAbsoluteTime) -> Bool {
       var handled = false
       repeat {
-        if runPass() { handled = true }
+        if runPass(until: end) { handled = true }
         sched_yield()
       } while CFAbsoluteTimeGetCurrent() < end
       return handled
@@ -59,18 +61,20 @@
 
     /// Runs one pass of the main run loop, its observers' layout, display and commit before
     /// waiting included, and ends it there instead of letting it sleep.
+    /// - Parameter end: When to give up on reaching the observers: a source signalled on every
+    ///   pass keeps the loop from ever waiting.
     /// - Returns: Whether a source or event was handled.
-    static func runPass() -> Bool {
+    static func runPass(until end: CFAbsoluteTime) -> Bool {
       let main = CFRunLoopGetMain()
       // Last among the observers before waiting, it ends the pass and wakes the wait it ends.
-      let end = CFRunLoopObserverCreateWithHandler(
+      let passEnd = CFRunLoopObserverCreateWithHandler(
         nil, CFRunLoopActivity.beforeWaiting.rawValue, false, CFIndex.max
       ) { _, _ in
         CFRunLoopStop(main)
         CFRunLoopWakeUp(main)
       }
-      CFRunLoopAddObserver(main, end, .defaultMode)
-      defer { CFRunLoopObserverInvalidate(end) }
+      CFRunLoopAddObserver(main, passEnd, .defaultMode)
+      defer { CFRunLoopObserverInvalidate(passEnd) }
       var handled = false
       while true {
         switch CFRunLoopRunInMode(.defaultMode, 1, true) {
@@ -79,7 +83,9 @@
         @unknown default: return handled
         }
         // A source ended the pass before its wait; run on to the observers.
-        guard CFRunLoopObserverIsValid(end) else { return handled }
+        guard CFRunLoopObserverIsValid(passEnd), CFAbsoluteTimeGetCurrent() < end else {
+          return handled
+        }
       }
     }
 

@@ -46,7 +46,7 @@ struct TransientBannerPresenter: ViewModifier {
             .task(id: current.id) {
               AccessibilityNotification.Announcement(current.message).post()
               do {
-                try await Task.sleep(for: duration)
+                try await Task.sleep(for: Theme.Timing.pause(duration))
               } catch {
                 return  // Replaced or dismissed; the newer banner owns the timer.
               }

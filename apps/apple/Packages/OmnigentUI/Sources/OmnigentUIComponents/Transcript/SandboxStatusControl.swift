@@ -153,7 +153,7 @@ final class SandboxPanelModel {
     let delay = wantsOpen ? openDelay : closeDelay
     pending = Task { [weak self] in
       do {
-        try await Task.sleep(for: delay)
+        try await Task.sleep(for: Theme.Timing.pause(delay))
       } catch {
         // The pointer moved on before the delay ended.
         return

@@ -266,7 +266,7 @@ extension ComposerView {
   private func clearHUD() async {
     guard modeHUD != nil else { return }
     do {
-      try await Task.sleep(for: .seconds(1.6))
+      try await Task.sleep(for: Theme.Timing.pause(.seconds(1.6)))
     } catch {
       // Cancelled by a newer switch, which shows its own HUD.
       return
