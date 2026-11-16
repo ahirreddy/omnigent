@@ -256,13 +256,12 @@ struct ServerWindowRoot: View {
     switch route {
     case .home: selection = nil
     case .conversation(let sessionID):
-      // A link to a conversation shows its chat, whichever of its tabs was selected.
-      session.tabs.showChat(sessionID)
-      selection = .session(sessionID)
+      // A link to a conversation shows its chat, whichever of its tabs was selected; a
+      // sub-agent's or side chat's shows in the strip of the session it runs under.
+      Task { selection = await session.showLinkedSession(sessionID) }
     case .message(let sessionID, let messageID):
       session.transcriptFocus.focus(messageID, in: sessionID)
-      session.tabs.showChat(sessionID)
-      selection = .session(sessionID)
+      Task { selection = await session.showLinkedSession(sessionID) }
     case .page(let page): selection = DeepLinkDestinations.selection(for: page)
     case .settings(let section):
       openSettingsAt(
