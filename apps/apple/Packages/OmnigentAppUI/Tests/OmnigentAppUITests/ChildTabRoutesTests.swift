@@ -110,27 +110,12 @@ extension ChildTabsTests {
     let window = try await window(sendStatus: 400)
     let conversation = window.conversation
     conversation.composer.text = "/side why?"
-    #expect(SessionToolsAdapter.sendsForkingSideChat(conversation))
     await SessionToolsAdapter.send(conversation, newSession: nil, routes: window.chat.toolRoutes)
     #expect(conversation.composer.lastError != nil)
     #expect(!window.session.forkedSideChats.isAwaiting("conv_a"))
     #expect(conversation.composer.text == "/side why?", "the refused command is back in the field")
     try await window.reportChild("conv_worker")
     #expect(window.group.tabs.count == 1, "a later sub-agent is not taken for the side chat")
-
-    for draft in ["/side", "/side   ", "/sidebar now", "why /side this"] {
-      conversation.composer.text = draft
-      #expect(!SessionToolsAdapter.sendsForkingSideChat(conversation), "\(draft)")
-    }
-    // A tagged path goes ahead of the text, which is then an ordinary message.
-    conversation.composer.text = "/side why?"
-    conversation.composer.mentions = ["notes.md"]
-    #expect(!SessionToolsAdapter.sendsForkingSideChat(conversation))
-    // An agent whose side chats fork on the server is sent no `/side`.
-    let other = try await ConversationFixtures.store(
-      header: ConversationFixtures.header(settings: ConversationFixtures.settings()))
-    other.composer.text = "/side why?"
-    #expect(!SessionToolsAdapter.sendsForkingSideChat(other))
   }
 
   @Test("Forks pair with their waits oldest first; a withdrawn or closed wait takes none")

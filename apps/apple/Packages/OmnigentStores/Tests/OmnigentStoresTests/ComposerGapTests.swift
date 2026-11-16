@@ -137,6 +137,50 @@ struct ComposerGapTests {
     #expect(live.conversation.displayRows.map(\.text) == ["/side why this branch?"])
   }
 
+  @Test("A /side question awaits its fork as it goes out, typed or queued; a refusal withdraws it")
+  func sideChatQuestionAwaitsItsFork() async throws {
+    let live = try await LiveComposer(fields: codexFields)
+    let composer = live.composer
+    final class Log { var events: [String] = [] }
+    let log = Log()
+    composer.awaitSideChatFork = {
+      log.events.append("await after \(live.postedTexts.count)")
+      return { log.events.append("withdraw") }
+    }
+    live.acceptMessages()
+
+    // Queued while a turn runs: nothing is awaited until it goes out after the turn.
+    composer.text = "/side why?"
+    composer.queueDraft()
+    composer.text = "and then"
+    composer.queueDraft()
+    #expect(log.events.isEmpty)
+    await composer.drainQueue(isRunning: false)
+    #expect(live.postedTexts == ["/side why?"])
+    #expect(log.events == ["await after 0"], "awaited before the question was posted")
+    await composer.drainQueue(isRunning: false)
+    #expect(live.postedTexts == ["/side why?", "and then"])
+    #expect(log.events == ["await after 0"], "an ordinary message awaits nothing")
+
+    live.server.route(
+      "/v1/sessions/conv_a/events", method: "POST", .json(#"{"queued":false}"#, status: 400))
+    composer.text = "/side how?"
+    await composer.send()
+    #expect(composer.lastError != nil)
+    #expect(log.events == ["await after 0", "await after 2", "withdraw"])
+
+    // Only a `/side` question with nothing tagged asks the agent to fork.
+    let plain = MessageQueue.Extras()
+    for text in ["/side", "/side   ", "/sidebar now", "why /side this"] {
+      #expect(!composer.forksSideChat(text, extras: plain), "\(text)")
+    }
+    #expect(composer.forksSideChat("  /side why?", extras: plain))
+    let tagged = MessageQueue.Extras(mentions: ["notes.md"])
+    #expect(!composer.forksSideChat("/side why?", extras: tagged))
+    let claude = try await LiveComposer(fields: claudeFields("default"))
+    #expect(!claude.composer.forksSideChat("/side why?", extras: plain), "forked on the server")
+  }
+
   @Test("Steering follows the session's harness")
   func steering() async throws {
     let live = try await LiveComposer(fields: claudeFields("default"))

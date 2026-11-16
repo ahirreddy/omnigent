@@ -250,4 +250,29 @@ struct ChildTabsTests {
     try await window.reportChild("conv_later")
     #expect(group.tabs.count == 2)
   }
+
+  @Test("A /side queued while a turn runs opens its fork in a tab once it goes out")
+  func queuedSideChatOpensATab() async throws {
+    let window = try await window()
+    let group = window.group
+    let conversation = window.conversation
+    let composer = conversation.composer
+    let forks = window.session.forkedSideChats
+    // As the chat does when the window shows it.
+    SessionToolsAdapter.watchForks(conversation, routes: window.chat.toolRoutes)
+    composer.text = "/side why is the build slow?"
+    composer.queueDraft()
+    #expect(!forks.isAwaiting("conv_a"), "nothing is asked of the agent yet")
+    try await window.reportChild("conv_worker")
+    #expect(group.tabs.count == 1, "a sub-agent started meanwhile is not its fork")
+
+    await composer.drainQueue(isRunning: false)
+    #expect(try window.server.posted("/v1/sessions/conv_a/events").count == 1)
+    #expect(forks.isAwaiting("conv_a"))
+    try await window.reportSideChat("conv_side")
+    try await eventually("the side chat's tab") { group.tabs.count == 2 }
+    #expect(group.selected?.content == .sideChatSession(parentID: "conv_a", childID: "conv_side"))
+    #expect(window.strip.last?.title == "Side chat 1")
+    #expect(conversation.pendingMessages.rows.isEmpty)
+  }
 }

@@ -172,6 +172,7 @@ extension ComposerStore {
       refreshBlocked()
     }
     let pendingRow = showSending(message.text, extras: message.extras)
+    let withdrawFork = awaitsFork(message.text, extras: message.extras)
     do {
       let sent = try await core.sendQueuedMessage(
         sessionId: sessionID, text: message.text, hold: message.extras.holdID,
@@ -182,6 +183,7 @@ extension ComposerStore {
       followUps.remove(id)
       return true
     } catch {
+      withdrawFork?()
       transcript?.messageNotSent(pendingRow)
       let failure = coreError(error)
       if failure.isHostOffline {
