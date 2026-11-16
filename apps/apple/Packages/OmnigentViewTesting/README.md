@@ -8,8 +8,9 @@ clipboard, Finder, panels and windows away from the person using the Mac; `MainL
 
 A wait's duration is a limit, not a pause. Every wait returns once three short run loop turns
 (2 ms each) in a row did no work: no run loop source or event handled, and the watched windows
-(an `OffscreenWindow`'s own, with its title bar, sheets and child windows) had no layout pending,
-drew nothing and ran no short layer animation. An idle settle takes about 7 ms.
+(an `OffscreenWindow`'s own, with its title bar, sheets and child windows) had no layout pending
+and drew nothing. A turn runs run loop passes back to back without sleeping, so a machine's
+coarse timers can't stretch it; an idle settle takes about 7 ms.
 
 | Need | Use |
 | --- | --- |
@@ -61,8 +62,8 @@ Tests tagged `.slowLane` (the gallery's whole-catalog renders) are disabled wher
 - `OMNIGENT_WAIT_STATS=1` prints, at exit, each kind of wait's total time, calls and how many
   took their whole limit.
 - `OMNIGENT_SETTLE_TRACE=1` prints, for each wait that took its whole limit, what its turns did
-  (sources, layout by view, drawing by window, animations by key) and how long they took.
+  (sources, layout by view, drawing by window, pauses) and how long they took.
 - `OMNIGENT_FIXED_WAITS=1` makes every wait take its whole limit again, to tell a wait that
   returns too early from a flaky test.
-- `OMNIGENT_WAIT_TURNS=poll` makes turns poll instead of sleeping, for a machine whose timers
-  wake late (timer coalescing on).
+- `OMNIGENT_WAIT_TURNS=sleep` makes turns sleep in the run loop instead of polling, for
+  comparing their cost.
