@@ -1975,6 +1975,41 @@ fn a_turn_end_notifies_after_settling_and_a_viewed_session_does_not() {
 }
 
 #[test]
+fn a_turn_the_socket_never_showed_running_notifies() {
+    let mut harness = connected();
+    let (sink, _) = live_socket(&mut harness);
+    harness.core.set_notifications_allowed(true);
+    harness.pump();
+    let mut row = session_row("short_turn", "idle", 2);
+    row["turns_started"] = serde_json::json!(1);
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "snapshot", "items": [row.clone()]}),
+    );
+    row["turns_started"] = serde_json::json!(2);
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "changed", "items": [row]}),
+    );
+    harness.events.take();
+    harness.advance(10_000);
+    let shown: Vec<_> = harness
+        .events
+        .take()
+        .into_iter()
+        .filter_map(|event| match event {
+            CoreEvent::Notification { notification } => Some(notification),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(shown.len(), 1, "{shown:?}");
+    assert_eq!(shown[0].session_id, "short_turn");
+    assert_eq!(shown[0].kind, crate::events::NotificationKind::Completed);
+}
+
+#[test]
 fn an_elicitation_notifies_at_once_and_the_badge_follows() {
     let mut harness = connected();
     let (sink, _) = live_socket(&mut harness);

@@ -5,6 +5,8 @@
 //!   [`IDLE_SETTLE_MS`]. Agents that work in steps go idle between steps; going back to `running`
 //!   within the window cancels the cue, so a multi-step task notifies once at the end. After a
 //!   turn-end notification, further turn ends stay silent until the user views the session.
+//!   Snapshots come seconds apart, so a turn can start and end between two of them: an
+//!   `idle`/`failed` row whose `turns_started` grew since the last snapshot also ended a turn.
 //! - **Elicitation:** a rise in `pending_elicitations_count` notifies immediately and cancels any
 //!   deferred turn end for that session.
 //! - **Runner offline:** a session whose `runner_online` is `false` never notifies. With no live
@@ -79,6 +81,7 @@ struct DeferredTurnEnd {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AttentionTracker {
     statuses: BTreeMap<String, SessionStatus>,
+    turns_started: BTreeMap<String, u64>,
     elicitations: BTreeMap<String, u64>,
     deferred: BTreeMap<String, DeferredTurnEnd>,
     notified: BTreeSet<String>,
@@ -123,7 +126,7 @@ impl AttentionTracker {
         let turn_ends: Vec<AttentionNotification> = rows
             .iter()
             .filter(|row| !is_archived(row))
-            .filter(|row| self.statuses.get(&row.id) == Some(&SessionStatus::Running))
+            .filter(|row| self.was_running(row) || self.started_turn(row))
             .filter_map(|row| match row.status {
                 SessionStatus::Idle => Some(notification(row, NotificationKind::Completed)),
                 SessionStatus::Failed => Some(notification(row, NotificationKind::Failed)),
@@ -169,12 +172,30 @@ impl AttentionTracker {
         asks
     }
 
+    /// Whether the last snapshot showed `row`'s session running.
+    fn was_running(&self, row: &SessionListItem) -> bool {
+        self.statuses.get(&row.id) == Some(&SessionStatus::Running)
+    }
+
+    /// Whether `row`'s session started a turn since the last snapshot, seen running or not. A
+    /// session first seen now, or a server that does not count turns, has no prior count.
+    fn started_turn(&self, row: &SessionListItem) -> bool {
+        match (self.turns_started.get(&row.id), row.turns_started.value()) {
+            (Some(prior), Some(count)) => count > prior,
+            _ => false,
+        }
+    }
+
     /// Updates history from `rows` and drops state for sessions that left the list, resumed, or
     /// are being viewed.
     fn record(&mut self, rows: &[SessionListItem], view: &ViewContext) {
         self.statuses = rows
             .iter()
             .map(|row| (row.id.clone(), row.status.clone()))
+            .collect();
+        self.turns_started = rows
+            .iter()
+            .filter_map(|row| Some((row.id.clone(), *row.turns_started.value()?)))
             .collect();
         self.elicitations = rows
             .iter()

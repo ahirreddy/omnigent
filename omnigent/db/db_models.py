@@ -711,6 +711,9 @@ class SqlConversationMetadata(OmnigentBase):
     background_work_reported_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Why a running session's agent is parked on a terminal prompt; NULL = not parked.
     blocked_on: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # How often live_status went from idle/failed/NULL to running/waiting, so a
+    # client polling the row can tell a turn ran between two reads; NULL = never.
+    turns_started: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # First-class project membership. Relates to projects.id; no DB FK
     # (Rule R032). NULL = unfiled. Coexists with the implicit ``omni_project``
     # label via the store's dual-read until labels are consolidated.
@@ -746,6 +749,11 @@ class SqlConversationMetadata(OmnigentBase):
             "background_work_reported_at IS NULL "
             "OR typeof(background_work_reported_at) = 'integer'",
             name="ck_conversation_metadata_reported_at_integer",
+        ).ddl_if(callable_=_on_sqlite_family),
+        # SQLite stores any value in an INTEGER column, so it could hold a long string.
+        CheckConstraint(
+            "turns_started IS NULL OR typeof(turns_started) = 'integer'",
+            name="ck_conversation_metadata_turns_started_integer",
         ).ddl_if(callable_=_on_sqlite_family),
         # Supports list_conversations_by_runner_id and get_runner_ids.
         Index("ix_conversation_metadata_runner_id", "workspace_id", "runner_id", "id"),

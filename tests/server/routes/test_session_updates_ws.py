@@ -328,6 +328,33 @@ def test_title_change_pushes_changed_frame(app: FastAPI, stores, fast_rescan: No
         assert items[s1]["title"] == "after"
 
 
+def test_a_turn_between_rescans_still_changes_the_row(
+    app: FastAPI, stores, fast_rescan: None
+) -> None:
+    """
+    A turn that starts and ends between two rescans still reaches the client.
+
+    The rescans on either side both read ``idle``; only ``turns_started`` shows
+    that a turn ran, which is what the native app's notifications rely on.
+    """
+    conversation_store = stores[0]
+    s1 = _seed_session(stores, owner=ALICE, title="short turn")
+    with TestClient(app).websocket_connect(
+        "/v1/sessions/updates", headers={"X-Forwarded-Email": ALICE}
+    ) as ws:
+        ws.send_text(json.dumps({"type": "watch", "session_ids": [s1]}))
+        item = _recv_until(ws, {"snapshot"})["items"][0]  # type: ignore[index]
+        assert (item["status"], item["turns_started"]) == ("idle", 0)
+        conversation_store.set_session_live_status(s1, "running")
+        conversation_store.set_session_live_status(s1, "idle")
+        # A rescan may land between the two writes; the frame after it is idle.
+        for _ in range(5):
+            item = _recv_until(ws, {"changed"})["items"][0]  # type: ignore[index]
+            if item["status"] == "idle":
+                break
+        assert (item["status"], item["turns_started"]) == ("idle", 1)
+
+
 def test_share_change_pushes_owner_shared_flag(app: FastAPI, stores, fast_rescan: None) -> None:
     """Granting and revoking another user reaches the owner's watched row on rescan,
     with no other change to the session."""

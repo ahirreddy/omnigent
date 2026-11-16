@@ -513,6 +513,79 @@ fn turn_end_notifies_only_after_the_idle_settle_window() {
     assert_eq!(fired[0].kind, NotificationKind::Failed);
 }
 
+fn turns(count: u64) -> Value {
+    json!({ "turns_started": count })
+}
+
+#[test]
+fn a_turn_wholly_between_two_snapshots_notifies_once() {
+    let view = idle_view();
+    let mut tracker = AttentionTracker::new();
+    // First sight only seeds, whatever the count.
+    assert_eq!(
+        tracker.observe(&[row("a", "idle", &turns(3))], &view, 0, true),
+        []
+    );
+    assert_eq!(tracker.next_deadline_ms(), None);
+    // The turn started and ended between snapshots, so no snapshot showed it running.
+    assert_eq!(
+        tracker.observe(&[row("a", "idle", &turns(4))], &view, 4_000, true),
+        []
+    );
+    assert_eq!(tracker.next_deadline_ms(), Some(4_000 + IDLE_SETTLE_MS));
+    assert_eq!(
+        tracker.due(&view, 4_000 + IDLE_SETTLE_MS),
+        [AttentionNotification {
+            session_id: "a".to_owned(),
+            kind: NotificationKind::Completed,
+            title: Some("Title a".to_owned()),
+        }]
+    );
+    // The same count again is not another turn.
+    tracker.observe(&[row("a", "idle", &turns(4))], &view, 20_000, true);
+    assert_eq!(tracker.next_deadline_ms(), None);
+
+    // A turn seen running whose count grew by the next snapshot is one turn end, not two.
+    let mut tracker = AttentionTracker::new();
+    tracker.observe(&[row("b", "idle", &turns(0))], &view, 0, true);
+    tracker.observe(&[row("b", "running", &turns(0))], &view, 4_000, true);
+    tracker.observe(&[row("b", "failed", &turns(1))], &view, 8_000, true);
+    tracker.observe(&[row("b", "failed", &turns(1))], &view, 12_000, true);
+    let fired = tracker.due(&view, 60_000);
+    assert_eq!(fired.len(), 1);
+    assert_eq!(fired[0].kind, NotificationKind::Failed);
+    assert_eq!(tracker.next_deadline_ms(), None);
+}
+
+#[test]
+fn an_unseen_turn_respects_the_viewed_session_and_a_missing_count() {
+    let mut tracker = AttentionTracker::new();
+    let viewing_a = ViewContext {
+        active_session_id: Some("a".to_owned()),
+        window_focused: true,
+    };
+    // The session on screen never notifies; the count still advances, so leaving it later
+    // does not replay the turn.
+    tracker.observe(&[row("a", "idle", &turns(1))], &viewing_a, 0, true);
+    tracker.observe(&[row("a", "idle", &turns(2))], &viewing_a, 4_000, true);
+    tracker.observe(&[row("a", "idle", &turns(2))], &idle_view(), 8_000, true);
+    assert_eq!(tracker.due(&idle_view(), 60_000), []);
+
+    // Still working, a lower count, or a server that omits the count: no turn end.
+    let view = idle_view();
+    let none = json!({});
+    let mut tracker = AttentionTracker::new();
+    tracker.observe(&[row("b", "idle", &turns(5))], &view, 0, true);
+    tracker.observe(&[row("b", "running", &turns(6))], &view, 4_000, true);
+    assert_eq!(tracker.next_deadline_ms(), None);
+    let mut tracker = AttentionTracker::new();
+    tracker.observe(&[row("c", "idle", &turns(5))], &view, 0, true);
+    tracker.observe(&[row("c", "idle", &turns(2))], &view, 4_000, true);
+    tracker.observe(&[row("c", "idle", &none)], &view, 8_000, true);
+    tracker.observe(&[row("c", "idle", &turns(9))], &view, 12_000, true);
+    assert_eq!(tracker.next_deadline_ms(), None);
+}
+
 #[test]
 fn resuming_within_the_settle_window_cancels_the_turn_end() {
     let view = idle_view();

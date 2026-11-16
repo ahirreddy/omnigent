@@ -8221,6 +8221,51 @@ def test_live_state_columns_round_trip_without_bumping_updated_at(
     conversation_store.touch_runner_liveness([], now=1)
 
 
+def test_live_status_counts_each_turn_start(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    """
+    Going from idle, failed or no status to running or waiting counts one turn.
+
+    The session list reads rows every few seconds, so this count is how a client
+    learns of a turn that started and ended between two reads.
+    """
+    from omnigent.db.db_models import workspace_scope
+
+    conv = conversation_store.create_conversation(title="turns")
+    before = conversation_store.get_conversation(conv.id)
+    assert before is not None and before.turns_started is None
+
+    def turns() -> int | None:
+        current = conversation_store.get_conversation(conv.id)
+        assert current is not None
+        return current.turns_started
+
+    steps = [
+        ("running", 1),
+        ("running", 1),
+        ("waiting", 1),
+        ("running", 1),
+        ("idle", 1),
+        ("idle", 1),
+        ("waiting", 2),
+        ("failed", 2),
+        ("running", 3),
+    ]
+    for status, expected in steps:
+        conversation_store.set_session_live_status(conv.id, status)
+        assert (status, turns()) == (status, expected)
+    # The session list's batch read carries the count too.
+    assert conversation_store.get_conversations([conv.id])[conv.id].turns_started == 3
+
+    conversation_store.set_session_live_status(conv.id, "idle")
+    with workspace_scope(424242):
+        conversation_store.set_session_live_status(conv.id, "running")
+    assert turns() == 3
+    after = conversation_store.get_conversation(conv.id)
+    assert after is not None and after.updated_at == before.updated_at
+
+
 def test_background_flag_keeps_the_newest_report_and_resets_with_the_runner(
     conversation_store: SqlAlchemyConversationStore,
 ) -> None:

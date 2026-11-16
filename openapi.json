@@ -10230,6 +10230,13 @@
             "description": "Optional human-readable title.",
             "title": "Title"
           },
+          "turns_started": {
+            "default": 0,
+            "description": "How many times the session has gone from idle or failed to working, as recorded by the server. It only grows, so a client that reads rows every few seconds can tell that a turn started, and if `status` is now `idle` or `failed` also ended, between two reads that never showed it running. `0` before the first recorded turn.",
+            "format": "int64",
+            "title": "Turns Started",
+            "type": "integer"
+          },
           "updated_at": {
             "description": "Unix epoch seconds of last update.",
             "format": "int64",

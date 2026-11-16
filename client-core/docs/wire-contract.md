@@ -247,7 +247,10 @@ Content parts the clients see are `input_text`, `input_image`, `input_file`, `in
   - `changed` rows are pushed for sessions *not* in the watch set when they are created or shared
     elsewhere. NativeLab adds them to its watch set.
   - On `hosts_changed`, refetch `/v1/hosts`.
-  - Watched rows are re-read every 4 s (`_SESSION_UPDATES_RESCAN_INTERVAL_S`).
+  - Watched rows are re-read every 4 s (`_SESSION_UPDATES_RESCAN_INTERVAL_S`), so a turn that
+    starts and ends between two reads never shows `running`. A row's `turns_started` grows each
+    time the session goes from idle or failed to working; a row that is `idle` or `failed` with a
+    larger count than the last one seen ended a turn. Older servers omit the field.
   - Rows are full `SessionListItem` dumps with explicit nulls, so a null clears the field.
   - Frames may carry trace-context keys; ignore them.
 - **Client watchdog:** reconnect after 70 s of silence. On reconnect, re-send `watch` and refetch the

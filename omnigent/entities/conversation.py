@@ -327,12 +327,15 @@ class Conversation:
     # can judge runner liveness without a second connectivity query;
     # ``background_work_running`` is whether a background shell outlives the
     # ended turn (None = never written); ``blocked_on`` is why a running
-    # session's agent is parked on a terminal prompt (None = not parked).
+    # session's agent is parked on a terminal prompt (None = not parked);
+    # ``turns_started`` counts how often ``live_status`` went from resting to
+    # working (None = never).
     live_status: str | None = None
     pending_elicitation_count: int | None = None
     runner_last_seen: int | None = None
     background_work_running: bool | None = None
     blocked_on: str | None = None
+    turns_started: int | None = None
     project_id: str | None = None
     side_chat_parent_id: str | None = None
     family_id: str | None = None
