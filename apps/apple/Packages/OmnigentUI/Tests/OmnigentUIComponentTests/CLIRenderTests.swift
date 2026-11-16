@@ -4,6 +4,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   @Suite("CLI style rendering", .serialized)
   struct CLIRenderTests {

@@ -7,6 +7,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   private struct ChromeTab: Identifiable {
     let id: String

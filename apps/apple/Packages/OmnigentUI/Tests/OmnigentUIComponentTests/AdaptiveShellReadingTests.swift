@@ -6,6 +6,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   /// The sidebar's rows and the tabs a host holds, changed from the test.
   @MainActor

@@ -4,6 +4,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   /// Looping indicators draw with Core Animation; still, they must look like the SwiftUI marks
   /// they replace.

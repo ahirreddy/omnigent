@@ -6,6 +6,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   @Suite("Harness marks on session rows", .serialized)
   @MainActor

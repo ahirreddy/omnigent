@@ -5,6 +5,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   /// Marks where SwiftUI put a view, with an AppKit view whose frame a test reads.
   private struct FrameMarker: NSViewRepresentable {

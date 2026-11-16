@@ -5,6 +5,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   /// Dragging cards and pinching the board.
   @Suite("Canvas gestures", .serialized)

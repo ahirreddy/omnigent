@@ -4,6 +4,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   /// A Claude session's row with its mark in `style`.
   struct HarnessActivityRow: View {
