@@ -50,14 +50,26 @@
       -> Double
     {
       guard first.size == second.size else { return 1 }
+      // Renders stored alike compare their bytes, which differ exactly where the colors do.
+      let (firstImage, secondImage) = (first.image, second.image)
+      let storedAlike =
+        firstImage.bitsPerPixel == secondImage.bitsPerPixel
+        && firstImage.bytesPerRow == secondImage.bytesPerRow
+        && firstImage.colorSpace == secondImage.colorSpace
+      let stored = storedAlike ? AccentBudgetTests.StoredPixels(firstImage) : nil
+      let otherStored = stored == nil ? nil : AccentBudgetTests.StoredPixels(secondImage)
       var differing = 0
       var samples = 0
-      for row in stride(from: 0, to: first.image.pixelsHigh, by: 2) {
-        for column in stride(from: 0, to: first.image.pixelsWide, by: 2) {
+      for row in stride(from: 0, to: firstImage.pixelsHigh, by: 2) {
+        for column in stride(from: 0, to: firstImage.pixelsWide, by: 2) {
           samples += 1
-          if first.image.colorAt(x: column, y: row) != second.image.colorAt(x: column, y: row) {
-            differing += 1
-          }
+          let differs =
+            if let stored, let otherStored {
+              stored.key(column, row) != otherStored.key(column, row)
+            } else {
+              firstImage.colorAt(x: column, y: row) != secondImage.colorAt(x: column, y: row)
+            }
+          if differs { differing += 1 }
         }
       }
       return samples == 0 ? 0 : Double(differing) / Double(samples)

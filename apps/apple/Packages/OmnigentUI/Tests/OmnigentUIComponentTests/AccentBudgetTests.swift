@@ -39,6 +39,30 @@
       }
     }
 
+    /// A bitmap's stored bytes, which tell its pixels' colors apart without converting them.
+    struct StoredPixels {
+      let bytes: [UInt8]
+      let bytesPerRow: Int
+      let bytesPerPixel: Int
+
+      /// `nil` for a layout this doesn't read: planar, or not a byte a sample.
+      init?(_ image: NSBitmapImageRep) {
+        guard image.bitsPerSample == 8, !image.isPlanar, image.bitsPerPixel.isMultiple(of: 8),
+          image.bitsPerPixel <= 64, let data = unsafe image.bitmapData
+        else { return nil }
+        let count = image.bytesPerRow * image.pixelsHigh
+        bytes = unsafe Array(UnsafeBufferPointer(start: data, count: count))
+        bytesPerRow = image.bytesPerRow
+        bytesPerPixel = image.bitsPerPixel / 8
+      }
+
+      /// The pixel's stored bytes as one number.
+      func key(_ column: Int, _ row: Int) -> UInt64 {
+        let start = row * bytesPerRow + column * bytesPerPixel
+        return bytes[start..<start + bytesPerPixel].reduce(0) { $0 << 8 | UInt64($1) }
+      }
+    }
+
     /// Connected areas of probe color: pixels are bucketed into cells and touching cells merge,
     /// so a button or a word counts once. Small text in the darker brand probe needs larger
     /// cells to stay one area.
@@ -49,11 +73,22 @@
       let columns = (image.pixelsWide + cell - 1) / cell
       let rows = (image.pixelsHigh + cell - 1) / cell
       var hits = [Int](repeating: 0, count: columns * rows)
+      // A screen draws few colors: each stored color is converted and judged once.
+      let stored = StoredPixels(image)
+      var decided: [UInt64: Bool] = [:]
+      func matches(_ column: Int, _ row: Int) -> Bool {
+        let judge = {
+          image.colorAt(x: column, y: row)?.usingColorSpace(.sRGB).map(probe.matches) ?? false
+        }
+        guard let key = stored?.key(column, row) else { return judge() }
+        if let known = decided[key] { return known }
+        let result = judge()
+        decided[key] = result
+        return result
+      }
       for pixelRow in stride(from: 0, to: image.pixelsHigh, by: 2) {
-        for pixelColumn in stride(from: 0, to: image.pixelsWide, by: 2) {
-          guard let color = image.colorAt(x: pixelColumn, y: pixelRow)?.usingColorSpace(.sRGB),
-            probe.matches(color)
-          else { continue }
+        for pixelColumn in stride(from: 0, to: image.pixelsWide, by: 2)
+        where matches(pixelColumn, pixelRow) {
           hits[(pixelRow / cell) * columns + pixelColumn / cell] += 1
         }
       }

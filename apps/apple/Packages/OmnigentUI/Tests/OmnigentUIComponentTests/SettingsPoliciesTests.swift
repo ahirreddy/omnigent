@@ -82,8 +82,7 @@
           policies: [], templates: templates, actions: actions, errorMessage: errorMessage)
       }
       try screen.clickControl(at: 0)
-      screen.settle(0.3)
-      try #require(screen.window.attachedSheet != nil)
+      try #require(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       return screen
     }
 
@@ -106,9 +105,8 @@
       // Change Policy, Cancel, Add.
       try screen.clickButton(at: 2)
       try await screen.letTasksRun()
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.entries == [#"add budget [budget-1] ["limit=25"]"#])
-      #expect(screen.window.attachedSheet == nil)
     }
 
     @Test("a policy can't be added with a blank name, and spaces aren't a name")
@@ -212,15 +210,13 @@
       try chooseFirst(clicked)
       // Change Policy, Cancel, Add.
       try clicked.clickButton(at: 1)
-      clicked.settle(0.3)
-      #expect(clicked.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { clicked.window.attachedSheet == nil }))
       let escaped = try addSheet(templates: [template])
       defer { escaped.close() }
       try chooseFirst(escaped)
       _ = escaped.activeWindow.makeFirstResponder(nil)
       try escaped.press(keyCode: 53, characters: "\u{1B}")
-      escaped.settle(0.3)
-      #expect(escaped.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { escaped.window.attachedSheet == nil }))
       try await escaped.letTasksRun()
       #expect(log.entries.isEmpty)
     }
@@ -239,9 +235,8 @@
       _ = screen.activeWindow.makeFirstResponder(nil)
       try screen.press(keyCode: 36, characters: "\r")
       try await screen.letTasksRun()
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.entries == [#"add budget [budget-1] ["limit=10"]"#])
-      #expect(screen.window.attachedSheet == nil)
     }
 
     @Test("no templates yet says Loading; a template repeated by the registry doesn't crash")

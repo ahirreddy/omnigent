@@ -71,12 +71,15 @@
       _ pane: TranscriptPane, _ conversation: LiveConversation,
       limits: LayoutScrollBudget.Limits = .init()
     ) async throws -> OffscreenWindow<AnyView> {
+      // These start from where the opening leaves the reader; its framing wait runs a tenth as long.
+      Theme.Timing.scale = 0.1
+      defer { Theme.Timing.scale = 1 }
       TranscriptScrollState.layoutScrollLimits = limits
       let window = transcriptScreen(
         DockedTranscriptHost(conversation: conversation, pane: pane), width: Self.wide,
         height: Self.height)
       TranscriptScrollState.layoutScrollLimits = .init()
-      try await letTasksRun(window, milliseconds: 300)
+      try await letOpeningEnd(window)
       conversation.scrollRequest += 1
       try await letTasksRun(window, milliseconds: 300)
       return window
@@ -131,7 +134,7 @@
       let window = try await shortPane(pane, conversation)
       defer { window.close() }
       let viewport = TranscriptScrollDriver(screen: window)
-      #expect(try await waitUntil(window) { viewport.distanceToEnd() < 2 })
+      #expect(await window.waitUntil { viewport.distanceToEnd() < 2 })
       let before = HangTrace.tallies()
       resize(pane, in: window)
       pane.dock = 100
@@ -145,7 +148,7 @@
       try await letTasksRun(window, milliseconds: Int(FollowedHeights.memory * 1000) + 500)
       let late = HangTrace.tallies()
       conversation.append(TranscriptFixture.answer("late", "A late answer", responseID: "late"))
-      #expect(try await waitUntil(window) { try window.shows("A late answer") })
+      #expect(try await window.waitUntil { try window.shows("A late answer") })
       try await letTasksRun(window, milliseconds: 500)
       #expect(viewport.distanceToEnd() < 2, "\(churn(since: late))")
     }

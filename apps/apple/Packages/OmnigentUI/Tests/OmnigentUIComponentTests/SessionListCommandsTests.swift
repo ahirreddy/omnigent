@@ -108,7 +108,7 @@
         sessions: SessionListActions(), setDisplay: { written.append($0) })
       let screen = OffscreenWindow(AnyView(shell(actions, published)), width: 900, height: 600)
       defer { screen.close() }
-      let arrived = try await waitUntil(screen) { published.actions != nil }
+      let arrived = await screen.waitUntil { published.actions != nil }
       #expect(arrived)
       let display = try #require(published.actions)
       #expect(display.options == SidebarFixture.state.display)

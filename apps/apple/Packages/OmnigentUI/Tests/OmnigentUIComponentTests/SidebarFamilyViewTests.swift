@@ -45,17 +45,19 @@
       defer { screen.close() }
       #expect(try screen.shows("Implementation") && screen.shows("Review"))
       try screen.clickListElement("session-family-toggle-coord")
-      screen.settle(0.2)
       #expect(
-        spy.state.collapsedFamilies == [SidebarFamilyScope.section("Sessions").key(family: "coord")]
-      )
+        MainLoop.settle(until: {
+          spy.state.collapsedFamilies
+            == [SidebarFamilyScope.section("Sessions").key(family: "coord")]
+        }))
       #expect(try !screen.shows("Implementation") && !screen.shows("Review"))
       #expect(try screen.shows("Coordinator") && screen.shows("Solo"))
       #expect(spy.selection == nil, "the chevron is not the row")
       try screen.clickListElement("session-family-toggle-coord")
-      screen.settle(0.2)
-      #expect(spy.state.collapsedFamilies.isEmpty)
-      #expect(try screen.shows("Implementation") && screen.shows("Review"))
+      #expect(MainLoop.settle(until: { spy.state.collapsedFamilies.isEmpty }))
+      #expect(
+        try MainLoop.settle(until: { try screen.shows("Implementation") && screen.shows("Review") })
+      )
     }
 
     @Test(
@@ -207,10 +209,14 @@
       let chevron = SessionFamilyMetrics.chevronWidth + SessionFamilyMetrics.chevronSpacing
       #expect(abs(try rowFrame("coord", screen).minX - leading - chevron) < 1)
       try screen.clickListElement("session-family-toggle-coord")
-      screen.settle(0.2)
       #expect(
-        spy.state.collapsedFamilies == [SidebarFamilyScope.project("work").key(family: "coord")])
-      #expect(try !screen.shows("Implementation") && screen.shows("Coordinator"))
+        MainLoop.settle(until: {
+          spy.state.collapsedFamilies == [SidebarFamilyScope.project("work").key(family: "coord")]
+        }))
+      #expect(
+        try MainLoop.settle(until: {
+          try !screen.shows("Implementation") && screen.shows("Coordinator")
+        }))
       #expect(try screen.shows("Solo"), "the Sessions list keeps its own rows")
     }
 

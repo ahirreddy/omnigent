@@ -38,15 +38,14 @@
       #expect(try !screen.shows("A chart"))
       try screen.clickControl(at: 0)
       #expect(screen.window.attachedSheet != nil)
-      screen.settle(0.2)
+      _ = try MainLoop.settle(until: { try screen.shows("Done") })
       for title in ["Zoom Out", "Fit to Window", "Zoom In", "Done"] {
         #expect(try screen.shows(title), "\(title)")
       }
       let frames = screen.controlFrames
       #expect(frames.count == 5)
       try screen.clickControl(at: 4)
-      screen.settle(0.2)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
     }
 
     @Test("Bytes that aren't an image, or a read that fails, become the chip")
@@ -118,7 +117,7 @@
       SystemSideEffects.reset()
       let screen = transcriptScreen(MermaidBlockView(source: "graph TD; A-->B"))
       defer { screen.close() }
-      let drawn = try await waitUntil(screen) { try screen.shows("Diagram") }
+      let drawn = try await screen.waitUntil { try screen.shows("Diagram") }
       #expect(drawn)
       let frames = screen.controlFrames
       #expect(frames.count == 4)
@@ -137,7 +136,7 @@
     func mermaidDiagramEnlarges() async throws {
       let screen = transcriptScreen(MermaidBlockView(source: "graph TD; C-->D"))
       defer { screen.close() }
-      let drawn = try await waitUntil(screen) { try screen.shows("Diagram") }
+      let drawn = try await screen.waitUntil { try screen.shows("Diagram") }
       #expect(drawn)
       #expect(screen.window.attachedSheet == nil)
       try screen.clickControl(at: screen.controlFrames.count - 1)
@@ -149,7 +148,7 @@
       let source = "graph TD; A--"
       let screen = transcriptScreen(MermaidBlockView(source: source))
       defer { screen.close() }
-      let failed = try await waitUntil(screen) {
+      let failed = try await screen.waitUntil {
         try screen.shows("Mermaid couldn\u{2019}t render this diagram")
       }
       #expect(failed)

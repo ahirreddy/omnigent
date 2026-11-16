@@ -127,14 +127,12 @@
       #expect(toggles.count == 3)
       // AppKit shows these only while the pointer is over the header.
       toggles[2].performClick(nil)
-      screen.settle(0.3)
-      #expect(try #require(screen.list).numberOfRows == rows - 2)
+      #expect(MainLoop.settle(until: { screen.list?.numberOfRows == rows - 2 }))
       #expect(
         UserDefaults.standard.string(forKey: SidebarNavigationOrder.collapsedSectionsKey)
           == "Sessions")
       screen.sectionToggles[2].performClick(nil)
-      screen.settle(0.3)
-      #expect(try #require(screen.list).numberOfRows == rows)
+      #expect(MainLoop.settle(until: { screen.list?.numberOfRows == rows }))
       #expect(
         UserDefaults.standard.string(forKey: SidebarNavigationOrder.collapsedSectionsKey)?.isEmpty
           == true)

@@ -53,7 +53,7 @@
       let screen = OffscreenWindow(
         ComposerSheetHost(
           sheet: HostMoveSheet(kind: kind, actions: actions) { log.closes += 1 }))
-      screen.settle(0.5)
+      _ = MainLoop.settle(until: { screen.window.attachedSheet != nil })
       return screen
     }
 
@@ -143,9 +143,7 @@
       await screen.drainTasks()
       // The icon-only Browse button sits before Cancel and Switch Host.
       try screen.tapButton(fromEnd: 2)
-      screen.settle(0.5)
-      await screen.drainTasks()
-      #expect(log.browsed == ["new"])
+      #expect(await screen.waitUntil { log.browsed == ["new"] })
     }
 
     @Test("a failed host list, an empty one and the loading state each say so")
@@ -156,8 +154,7 @@
           actions: actions(hosts: .failure(FolderBrowseError(message: "Server down")))
         ) {})
       defer { failed.close() }
-      failed.settle(0.2)
-      #expect(try failed.shows("Server down"))
+      #expect(try MainLoop.settle(until: { try failed.shows("Server down") }))
 
       let none = OffscreenWindow(
         HostMoveSheet(
@@ -165,8 +162,7 @@
           actions: actions(hosts: .success([HostMoveTarget(id: "only", name: "O", isOnline: true)]))
         ) {})
       defer { none.close() }
-      none.settle(0.2)
-      #expect(try none.shows("No other hosts are online."))
+      #expect(try MainLoop.settle(until: { try none.shows("No other hosts are online.") }))
       #expect(try none.shows("Move this session to another connected machine."))
 
       let offline = OffscreenWindow(
@@ -175,8 +171,8 @@
           actions: actions(hosts: .success([]))
         ) {})
       defer { offline.close() }
-      offline.settle(0.2)
-      #expect(try offline.shows("None of your machines are online."))
+      #expect(
+        try MainLoop.settle(until: { try offline.shows("None of your machines are online.") }))
     }
 
     @Test("the switch warning says files stay behind; the home fills in once it loads")

@@ -98,12 +98,11 @@
       let screen = OffscreenWindow(row(.idle), width: 280, height: 32)
       defer { screen.close() }
       #expect(!RenderSupport.shows(orange, in: try RenderSupport.capture(screen.host)))
+      let showsOrange = { RenderSupport.shows(orange, in: try RenderSupport.capture(screen.host)) }
       screen.host.rootView = row(.working)
-      screen.settle(0.4)
-      #expect(RenderSupport.shows(orange, in: try RenderSupport.capture(screen.host)))
+      #expect(try MainLoop.settle(until: { try showsOrange() }))
       screen.host.rootView = row(.idle)
-      screen.settle(0.4)
-      #expect(!RenderSupport.shows(orange, in: try RenderSupport.capture(screen.host)))
+      #expect(try MainLoop.settle(until: { try !showsOrange() }))
     }
 
     @Test("A new session's agent shows its mark in color unless the setting says otherwise")

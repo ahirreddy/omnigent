@@ -82,7 +82,7 @@
         actions: PaletteActions { log.performed.append($0) }, initiallyPresented: true)
       let screen = OffscreenWindow(root, width: 640, height: 560)
       defer { screen.close() }
-      screen.settle(0.2)
+      _ = MainLoop.settle(until: { screen.window.attachedSheet != nil })
       let sheet = try #require(screen.window.attachedSheet?.contentView)
       let fields = screen.allViews.compactMap { $0 as? NSTextField }.filter(\.isEditable)
       let search = try #require(fields.first)
@@ -93,8 +93,7 @@
           abs($0.midY - searchFrame.midY) < 12 && $0.minX >= searchFrame.maxX - 1
         })
       try screen.click(CGPoint(x: close.midX, y: close.midY))
-      screen.settle(0.2)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.performed.isEmpty)
     }
   }

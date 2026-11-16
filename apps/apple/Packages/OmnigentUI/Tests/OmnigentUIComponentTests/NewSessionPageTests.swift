@@ -206,15 +206,14 @@
       let screen = bar(NewSessionOptions(folder: "/src/app"))
       defer { screen.close() }
       try screen.choose("Browse Folders\u{2026}", in: try screen.menu(at: 0))
-      screen.settle(0.5)
-      await screen.drainTasks()
+      // The browser reads the folder, then shows what it read.
+      #expect(await screen.waitUntil { log.events == ["browse:/src/app"] })
+      await screen.settleTasks()
       #expect(screen.window.attachedSheet != nil)
-      #expect(log.events == ["browse:/src/app"])
       #expect(try screen.shows("Choose a Folder"))
       try screen.tapButton(fromEnd: 0)
-      screen.settle(0.5)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.events.last == "folder:/src/app")
-      #expect(screen.window.attachedSheet == nil)
     }
 
     @Test("Canceling the browser chooses nothing")
@@ -222,12 +221,11 @@
       let screen = bar(NewSessionOptions(folder: "/src/app"))
       defer { screen.close() }
       try screen.choose("Browse Folders\u{2026}", in: try screen.menu(at: 0))
-      screen.settle(0.5)
-      await screen.drainTasks()
+      #expect(await screen.waitUntil { log.events == ["browse:/src/app"] })
+      await screen.settleTasks()
       try screen.tapButton(fromEnd: 1)
-      screen.settle(0.5)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.events == ["browse:/src/app"])
-      #expect(screen.window.attachedSheet == nil)
     }
 
     // MARK: Worktree
@@ -330,8 +328,8 @@
         ComposerSheetHost(
           sheet: ConnectHostSheet(serverURL: "https://a.test") { closes.count += 1 }))
       defer { screen.close() }
-      screen.settle(0.5)
-      #expect(try screen.shows("omni host --server https://a.test"))
+      #expect(
+        try MainLoop.settle(until: { try screen.shows("omni host --server https://a.test") }))
       #expect(try !screen.shows("Use This Mac"))
       try screen.tapButton(1)
       #expect(
@@ -349,8 +347,10 @@
           sheet: ConnectHostSheet(
             serverURL: "https://a.test", useThisMachine: { answers.next() }, close: {})))
       defer { screen.close() }
-      screen.settle(0.5)
-      #expect(try screen.shows("Runs the Omnigent host on this Mac for this server."))
+      #expect(
+        try MainLoop.settle(until: {
+          try screen.shows("Runs the Omnigent host on this Mac for this server.")
+        }))
       try screen.tapButton(fromEnd: 1)
       await screen.drainTasks()
       #expect(try screen.shows("Connected"))

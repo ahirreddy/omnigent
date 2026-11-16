@@ -38,7 +38,7 @@
       let screen = transcriptScreen(CodeBlockView(code: "let a = 1", language: "swift"))
       defer { screen.close() }
       try screen.clickControl(at: 1)
-      let saved = try await waitUntil(screen) { savedText(at: url) != nil }
+      let saved = await screen.waitUntil { savedText(at: url) != nil }
       #expect(saved, "panels shown: \(SystemSideEffects.record.panelCount)")
       #expect(savedText(at: url) == "let a = 1")
       #expect(SystemSideEffects.record.panelCount == 1)
@@ -52,7 +52,7 @@
       let screen = transcriptScreen(CodeBlockView(code: "let a = 1", language: "swift"))
       defer { screen.close() }
       try screen.clickControl(at: 1)
-      let asked = try await waitUntil(screen) { SystemSideEffects.record.panelCount == 1 }
+      let asked = await screen.waitUntil { SystemSideEffects.record.panelCount == 1 }
       #expect(asked)
       try await letTasksRun(screen, milliseconds: 200)
       #expect(savedText(at: url) == nil)
@@ -73,14 +73,15 @@
       let csv = try exportURL("table.csv")
       SystemSideEffects.answer(panel: .OK, panelURL: csv)
       try screen.choose("Download CSV", in: try screen.openMenu(download))
-      #expect(try await waitUntil(screen) { savedText(at: csv) != nil })
-      let rows = savedText(at: csv)?.split(whereSeparator: \.isNewline).map(String.init)
-      #expect(rows == ["Name,Size", "a,1", "b,2"])
+      let rows = { savedText(at: csv)?.split(whereSeparator: \.isNewline).map(String.init) }
+      #expect(await screen.waitUntil { rows() == ["Name,Size", "a,1", "b,2"] }, "\(rows() ?? [])")
+      // The exporter closes once the file is written; the next download needs it closed.
+      await screen.settleTasks()
 
       let markdown = try exportURL("table.md")
       SystemSideEffects.answer(panel: .OK, panelURL: markdown)
       try screen.choose("Download Markdown", in: try screen.openMenu(download))
-      #expect(try await waitUntil(screen) { savedText(at: markdown) != nil })
+      #expect(await screen.waitUntil { savedText(at: markdown) != nil })
       #expect(savedText(at: markdown)?.hasPrefix("| Name") == true)
       #expect(SystemSideEffects.record.panelCount == 2)
     }
@@ -95,7 +96,7 @@
             sheet: ImageLightbox(
               image: Image(systemName: "photo"), size: CGSize(width: 4_000, height: 3_000),
               title: "A chart"))), width: 1_000, height: 800)
-      screen.settle(0.3)
+      _ = MainLoop.settle(until: { screen.window.attachedSheet != nil })
       return screen
     }
 

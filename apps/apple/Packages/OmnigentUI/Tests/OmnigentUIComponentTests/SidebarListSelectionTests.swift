@@ -165,9 +165,10 @@ struct SidebarListSelectionTests {
       let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 900)
       defer { screen.close() }
       spy.state = OpenPinArrival.alone
-      screen.settle(0.3)
+      #expect(
+        MainLoop.settle(until: { screen.list?.selectedRow == SidebarFixture.pinnedRow }),
+        "told once Pinned is drawn")
       let list = try #require(screen.list)
-      #expect(list.selectedRow == SidebarFixture.pinnedRow, "told once Pinned is drawn")
 
       spy.state = OpenPinArrival.loaded
       screen.settle(0.3)
@@ -182,8 +183,7 @@ struct SidebarListSelectionTests {
 
       // Another session opens: only its row is selected, and nothing stays at the top of Pinned.
       spy.selection = .session("pin-3")
-      screen.settle(0.3)
-      #expect(list.selectedRow == SidebarFixture.pinnedRow + 2)
+      #expect(MainLoop.settle(until: { list.selectedRow == SidebarFixture.pinnedRow + 2 }))
       #expect(try rowsSharingASlot(screen) == 0)
     }
   }

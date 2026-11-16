@@ -103,13 +103,11 @@
       #expect(spy.calls.isEmpty)
       let rowsBefore = try #require(screen.list).numberOfRows
       try #require(screen.disclosures.first).performClick(nil)
-      screen.settle(0.2)
+      #expect(MainLoop.settle(until: { screen.list?.numberOfRows == rowsBefore + 1 }))
       #expect(spy.calls == ["load project p1"])
       #expect(expanded() == "p1")
-      #expect(try #require(screen.list).numberOfRows == rowsBefore + 1)
       try #require(screen.disclosures.first).performClick(nil)
-      screen.settle(0.2)
-      #expect(expanded()?.isEmpty == true)
+      #expect(MainLoop.settle(until: { expanded()?.isEmpty == true }))
     }
 
     @Test("a project's sessions line up with the sessions outside it")

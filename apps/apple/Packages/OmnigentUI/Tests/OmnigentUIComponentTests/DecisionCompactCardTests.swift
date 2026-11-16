@@ -162,8 +162,7 @@
           ).frame(minWidth: 480, minHeight: 560)
         ))
       defer { screen.close() }
-      screen.settle(0.5)
-      #expect(try screen.shows("line 10"))
+      #expect(try MainLoop.settle(until: { try screen.shows("line 10") }))
       #expect(try !screen.shows("Show all"))
       #expect(try screen.shows("Approve"))
       // A sheet's toolbar is along its bottom: Done, then the wrap switch.
@@ -183,14 +182,14 @@
       defer { screen.close() }
       // The button is the header's first control.
       try screen.tapButton(0)
-      screen.settle(0.5)
-      #expect(screen.window.attachedSheet != nil)
-      #expect(try screen.shows("line 10"))
+      #expect(
+        try MainLoop.settle(until: {
+          try screen.window.attachedSheet != nil && screen.shows("line 10")
+        }))
       let approve = try #require(screen.buttons.first { $0.minY > 60 })
       try screen.click(screen.clickPoint(approve))
-      screen.settle(0.5)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.responses == [.approve])
-      #expect(screen.window.attachedSheet == nil)
     }
 
     @Test("Done closes the review without answering")
@@ -198,11 +197,9 @@
       let screen = phone(largeCard)
       defer { screen.close() }
       try screen.tapButton(0)
-      screen.settle(0.5)
-      #expect(try screen.shows("Done"))
+      #expect(try MainLoop.settle(until: { try screen.shows("Done") }))
       try screen.tapButton(fromEnd: 1)
-      screen.settle(0.5)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.responses.isEmpty)
     }
 

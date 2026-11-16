@@ -75,15 +75,13 @@
       defer { screen.close() }
       #expect(try screen.shows("Host is offline \u{2014} reconnect\u{2026}"))
       try screen.tapButton(0)
-      screen.settle(0.5)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       #expect(sheets.shown == .reconnect)
-      #expect(screen.window.attachedSheet != nil)
       sheets.shown = .switchHost
       screen.settle(0.5)
       #expect(screen.window.attachedSheet != nil)
       sheets.shown = nil
-      screen.settle(0.5)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
     }
 
     @Test("with no store of its own the row keeps its sheet itself")
@@ -93,8 +91,7 @@
       defer { screen.close() }
       #expect(try screen.shows("Agent disconnected"))
       try screen.tapButton(0)
-      screen.settle(0.5)
-      #expect(screen.window.attachedSheet != nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
     }
 
     @Test("the sheet gives the command for an owner, none otherwise, and each way out")
@@ -134,7 +131,7 @@
             notice: notice(.hostOffline(isOwner: true)), actions: actions(switchHost: true)
           ) { shown.append($0) }))
       defer { screen.close() }
-      screen.settle(0.5)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       // The title bar's control, Copy Command, Switch Host, Check Again, Fork, then Done.
       SystemSideEffects.reset()
       try screen.tapButton(1)
@@ -161,9 +158,8 @@
           notice: notice(.stranded), actions: actions(resume: true, sheets: sheets)))
       defer { screen.close() }
       try screen.tapButton(0)
-      screen.settle(0.5)
+      #expect(try MainLoop.settle(until: { try screen.shows("Resume on a Machine\u{2026}") }))
       #expect(sheets.shown == .reconnect)
-      #expect(try screen.shows("Resume on a Machine\u{2026}"))
       #expect(try !screen.shows("Start Session"))
       // Resume on a Machine, Check Again, Fork Session, then Done.
       try screen.tapButton(fromEnd: 3)

@@ -47,11 +47,11 @@
       #expect(screen.textFields.isEmpty)
       try screen.clickControl(at: 0)
       #expect(log.entries == ["selected"])
+      #expect(MainLoop.settle(until: { screen.textFields.count == 1 }))
       // The disclosure animates; a click needs the row where it ends up.
-      screen.settle(0.5)
-      #expect(screen.textFields.count == 1)
-      try screen.clickControl(at: 0)
-      screen.settle(0.5)
+      let summary = try #require(screen.restingControlFrames().first)
+      try screen.click(CGPoint(x: summary.midX, y: summary.midY))
+      #expect(MainLoop.settle(until: { screen.textFields.isEmpty }))
       #expect(log.entries == ["selected", "selected"])
       #expect(try !screen.shows("Open session"))
       #expect(screen.textFields.isEmpty)
@@ -246,7 +246,7 @@
       #expect(screen.popoverWindow == nil)
       // The summary, Show full reply.
       try screen.clickControl(at: 1)
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { screen.popoverWindow?.contentView != nil }))
       let popover = try #require(screen.popoverWindow?.contentView)
       let shown = try screen.shownText(under: popover)
       #expect(shown.contains { $0.contains("The whole reply") }, "\(shown)")
@@ -373,11 +373,9 @@
       let screen = OffscreenWindow(InboxTriagePlayground(), width: 900, height: 900)
       defer { screen.close() }
       try screen.press(keyCode: 36, characters: "\r")
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet != nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       try screen.clickControl(at: 0)
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
     }
 
     @Test("E answers the selected request in place, and the session needs you until all are")

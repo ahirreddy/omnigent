@@ -161,8 +161,7 @@
         )
         .background { AssistiveClientReader(probe: probe) },
         width: 1200, height: height)
-      window.settle(0.5)
-      try await letTasksRun(window, milliseconds: 600)
+      try await letOpeningEnd(window)
       return window
     }
 

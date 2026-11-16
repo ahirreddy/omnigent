@@ -206,13 +206,11 @@
       screen.settle()
       let before = try #require(screen.list).numberOfRows
       screen.sectionToggles[2].performClick(nil)
-      screen.settle(0.3)
-      #expect(try #require(screen.list).numberOfRows < before)
+      #expect(MainLoop.settle(until: { (screen.list?.numberOfRows ?? before) < before }))
       #expect(
         UserDefaults.standard.string(forKey: SidebarNavigationOrder.collapsedSectionsKey) == nil)
       screen.sectionToggles[2].performClick(nil)
-      screen.settle(0.3)
-      #expect(try #require(screen.list).numberOfRows == before)
+      #expect(MainLoop.settle(until: { screen.list?.numberOfRows == before }))
     }
   }
 #endif

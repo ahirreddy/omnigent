@@ -1,5 +1,6 @@
 #if os(macOS)
   import AppKit
+  import OmnigentViewTesting
   import SwiftUI
   import Testing
 
@@ -23,21 +24,28 @@
         rootView: TabsPlayground(split: true).environment(\.sidebarToggle, toggle))
       window.setContentSize(CGSize(width: windowWidth, height: 800))
       defer { window.close() }
-      settle()
+      settle(window)
 
       let controller = try #require(window.contentView.flatMap(splitController(in:)))
       let sidebar = try #require(controller.splitViewItems.first { $0.behavior == .sidebar })
       let detail = try #require(controller.splitViewItems.first { $0.behavior == .default })
       expectBeside(sidebar: sidebar, detail: detail)
+      let shownWidth = sidebar.viewController.view.frame.width
 
       toggle()
-      settle()
-      #expect(sidebar.isCollapsed)
-      #expect(detail.viewController.view.frame.width == windowWidth)
+      #expect(
+        MainLoop.settle(until: {
+          window.contentView?.layoutSubtreeIfNeeded()
+          return sidebar.isCollapsed && detail.viewController.view.frame.width == windowWidth
+        }))
 
+      // Shown again once the sidebar is back at its width.
       toggle()
-      settle()
-      #expect(!sidebar.isCollapsed)
+      #expect(
+        MainLoop.settle(until: {
+          window.contentView?.layoutSubtreeIfNeeded()
+          return !sidebar.isCollapsed && sidebar.viewController.view.frame.width == shownWidth
+        }))
       expectBeside(sidebar: sidebar, detail: detail)
     }
 
@@ -49,8 +57,9 @@
         detailView.frame.width <= windowWidth - sidebar.viewController.view.frame.width)
     }
 
-    private func settle() {
-      RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+    /// Lets the never-shown window's split view finish laying out, as long as it keeps working.
+    private func settle(_ window: NSWindow) {
+      MainLoop.settle(limit: 0.6, windows: [window])
     }
 
     private func splitController(in view: NSView) -> NSSplitViewController? {

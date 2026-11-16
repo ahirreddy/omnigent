@@ -49,11 +49,9 @@
       #expect(try screen.shows("2"))
       let count = try #require(screen.chips.first)
       try screen.click(screen.clickPoint(count))
-      screen.settle(0.3)
-      #expect(screen.popoverWindow != nil)
+      #expect(MainLoop.settle(until: { screen.popoverWindow != nil }))
       model.state.tray?.indicators.backgroundTasks = 0
-      screen.settle(0.3)
-      #expect(screen.popoverWindow == nil)
+      #expect(MainLoop.settle(until: { screen.popoverWindow == nil }))
     }
 
     @Test("the pull request chip opens the tab; without a handler it can't be pressed")
@@ -102,8 +100,9 @@
 
       try screen.hover(screen.clickPoint(chip))
       try screen.endHover()
-      screen.settle(0.45)
-      await screen.drainTasks()
+      // Past the chip's delay before the preview opens, in real time.
+      try await Task.sleep(for: .milliseconds(450))
+      await screen.settleTasks()
       #expect(screen.popoverWindow == nil)
 
       try screen.hover(screen.clickPoint(chip))
@@ -122,8 +121,7 @@
       #expect(try screen.shows("Codex"))
       let row = try #require(screen.chips.first)
       try screen.click(screen.clickPoint(row))
-      screen.settle(0.3)
-      #expect(screen.popoverWindow != nil)
+      #expect(MainLoop.settle(until: { screen.popoverWindow != nil }))
     }
 
     @Test("the context details name every part and say what wasn't reported")
@@ -163,9 +161,8 @@
       let screen = openComposer(model, log.actions)
       defer { screen.close() }
       model.state.approvalPickerRequest += 1
-      screen.settle(0.5)
+      #expect(MainLoop.settle(until: { log.events == ["mode:approve-for-me"] }))
       #expect(SystemSideEffects.record.alertMessages == ["Codex approvals"])
-      #expect(log.events == ["mode:approve-for-me"])
     }
 
     @Test("Choose Model asks in a dialog and takes the default or a model")
@@ -177,12 +174,11 @@
       let screen = openComposer(model, log.actions)
       defer { screen.close() }
       model.state.modelPickerRequest += 1
-      screen.settle(0.5)
-      #expect(SystemSideEffects.record.alertMessages == ["Model"])
+      #expect(MainLoop.settle(until: { SystemSideEffects.record.alertMessages == ["Model"] }))
       SystemSideEffects.answer(alert: .alertSecondButtonReturn)
       model.state.modelPickerRequest += 1
-      screen.settle(0.5)
-      #expect(log.events == ["model:default", "model:gpt-5.2-codex"])
+      #expect(
+        MainLoop.settle(until: { log.events == ["model:default", "model:gpt-5.2-codex"] }))
     }
 
     @Test("a picker request with nothing to pick asks nothing")

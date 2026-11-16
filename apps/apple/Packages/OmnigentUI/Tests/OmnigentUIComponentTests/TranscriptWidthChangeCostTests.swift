@@ -47,9 +47,11 @@
     /// The conversation open in a narrow pane, at its end as opening leaves it.
     private func narrowPane(_ host: ResizedTranscriptHost) async throws -> OffscreenWindow<AnyView>
     {
+      // These start from where the opening leaves the reader; its framing wait runs a tenth as long.
+      Theme.Timing.scale = 0.1
+      defer { Theme.Timing.scale = 1 }
       let window = transcriptScreen(host, width: Self.wide, height: Self.height)
-      window.settle(0.5)
-      try await letTasksRun(window, milliseconds: 600)
+      try await letOpeningEnd(window)
       return window
     }
 

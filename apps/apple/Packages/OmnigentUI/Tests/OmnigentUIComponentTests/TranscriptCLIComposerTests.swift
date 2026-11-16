@@ -99,8 +99,7 @@
       let screen = try composer(ComposerViewState(placeholder: "Ask anything"))
       defer { screen.close() }
       #expect(try screen.shows("Ask anything"))
-      try await letTasksRun(screen, milliseconds: 200)
-      #expect(screen.window.firstResponder is NSTextView)
+      #expect(await screen.waitUntil { screen.window.firstResponder is NSTextView })
       try screen.press(keyCode: 36, characters: "\r")
       #expect(log.entries.isEmpty)
       try screen.type("hello")
@@ -114,7 +113,7 @@
     func plainTab() async throws {
       let screen = try composer(draft: "a")
       defer { screen.close() }
-      try await letTasksRun(screen, milliseconds: 200)
+      _ = await screen.waitUntil { screen.window.firstResponder is NSTextView }
       try screen.press(keyCode: 48, characters: "\t")
       #expect(log.entries.isEmpty)
     }
@@ -127,7 +126,7 @@
       let screen = try composer(actions: actions, draft: "ready")
       defer { screen.close() }
       // Focus shows the control too: the keyboard is given up to count the idle band.
-      try await letTasksRun(screen, milliseconds: 200)
+      _ = await screen.waitUntil { screen.window.firstResponder is NSTextView }
       _ = screen.window.makeFirstResponder(nil)
       screen.settle()
       let idle = screen.controlFrames.count
@@ -162,7 +161,7 @@
     func unavailableDoesNotSend() async throws {
       let screen = try composer(ComposerViewState(availability: .unavailable(reason: "Offline")))
       defer { screen.close() }
-      try await letTasksRun(screen, milliseconds: 200)
+      try await outlastFocusWait(screen)
       try screen.type("x")
       try screen.press(keyCode: 36, characters: "\r")
       #expect(log.entries.isEmpty)
@@ -175,20 +174,26 @@
     func unavailableEditorIsLocked() async throws {
       let screen = try composer(ComposerViewState(availability: .unavailable(reason: "Offline")))
       defer { screen.close() }
-      try await letTasksRun(screen, milliseconds: 200)
+      try await outlastFocusWait(screen)
       try screen.type("x")
       #expect(try editor(on: screen).string.isEmpty)
     }
 
     // MARK: Focus
 
+    /// Outlasts the composer's short wait before it takes the keyboard, in real time: a settle
+    /// returns before a product's sleep ends.
+    private func outlastFocusWait<Content: View>(_ screen: OffscreenWindow<Content>) async throws {
+      try await Task.sleep(for: .milliseconds(200))
+      await screen.settleTasks()
+    }
+
     @Test("The composer takes the keyboard when it comes on screen")
     func focusOnShowing() async throws {
       let screen = try composer()
       defer { screen.close() }
       #expect(!(screen.window.firstResponder is NSTextView))
-      try await letTasksRun(screen, milliseconds: 200)
-      #expect(screen.window.firstResponder is NSTextView)
+      #expect(await screen.waitUntil { screen.window.firstResponder is NSTextView })
     }
 
     @Test("A composer in a hidden tab or an inactive pane leaves the keyboard alone")
@@ -199,7 +204,7 @@
         let screen = transcriptScreen(
           FocusRequestHost(requests: requests).environment(\.isActiveTabPane, isActive))
         defer { screen.close() }
-        try await letTasksRun(screen, milliseconds: 200)
+        try await outlastFocusWait(screen)
         #expect(!(screen.window.firstResponder is NSTextView), "\(isHidden) \(isActive)")
       }
     }
@@ -210,7 +215,7 @@
       let screen = transcriptScreen(
         FocusRequestHost(requests: requests).environment(\.isActiveTabPane, false))
       defer { screen.close() }
-      try await letTasksRun(screen, milliseconds: 200)
+      try await outlastFocusWait(screen)
       #expect(!(screen.window.firstResponder is NSTextView))
       requests.count += 1
       try await letTasksRun(screen)
@@ -222,8 +227,7 @@
       let requests = FocusRequests()
       let screen = transcriptScreen(FocusRequestHost(requests: requests))
       defer { screen.close() }
-      try await letTasksRun(screen, milliseconds: 200)
-      #expect(screen.window.firstResponder is NSTextView)
+      #expect(await screen.waitUntil { screen.window.firstResponder is NSTextView })
       requests.isHidden = true
       try await letTasksRun(screen)
       #expect(!(screen.window.firstResponder is NSTextView))
@@ -238,7 +242,7 @@
       // time passes between the two: the update that hides the tab runs as this test next waits.
       for _ in 0..<3 { await Task.yield() }
       requests.isHidden = true
-      try await letTasksRun(screen, milliseconds: 200)
+      try await outlastFocusWait(screen)
       #expect(!(screen.window.firstResponder is NSTextView))
     }
 

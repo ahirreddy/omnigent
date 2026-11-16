@@ -58,7 +58,7 @@
       // Going to an earlier question is what stops following here; a scroll has no phases offscreen.
       let opened = viewport.offset
       #expect(
-        try await waitUntil(window) {
+        try await window.waitUntil {
           try pressMessageKey(.previous, on: window)
           return viewport.offset < opened
         })

@@ -153,11 +153,9 @@
       let expanded = try screen.pressShortcut(
         keyCode: 14, characters: "e", modifiers: [.command, .shift])
       #expect(expanded)
-      screen.settle(0.4)
-      #expect(editorHeight() > collapsed * 3)
+      #expect(MainLoop.settle(until: { editorHeight() > collapsed * 3 }))
       _ = try screen.pressShortcut(keyCode: 14, characters: "e", modifiers: [.command, .shift])
-      screen.settle(0.4)
-      #expect(editorHeight() < collapsed + 1)
+      #expect(MainLoop.settle(until: { editorHeight() < collapsed + 1 }))
     }
 
     @Test("the editor grows with its text and then stops growing")
@@ -168,9 +166,7 @@
       let editorHeight = { screen.textView?.enclosingScrollView?.frame.height ?? 0 }
       let one = editorHeight()
       model.draft = "1\n2\n3"
-      screen.settle(0.4)
-      let three = editorHeight()
-      #expect(three > one * 2)
+      #expect(MainLoop.settle(until: { editorHeight() > one * 2 }))
       model.draft = String(repeating: "line\n", count: 100)
       screen.settle(0.4)
       let capped = editorHeight()

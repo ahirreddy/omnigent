@@ -118,7 +118,7 @@
         }
         let screen = OffscreenWindow(AnyView(shell), width: 900, height: 600)
         defer { screen.close() }
-        let arrived = try await waitUntil(screen) { published.actions != nil }
+        let arrived = await screen.waitUntil { published.actions != nil }
         #expect(arrived)
         #expect(published.actions?.groups.count == groups)
         published.actions?.setGroupSort?(.project("work"), .name)

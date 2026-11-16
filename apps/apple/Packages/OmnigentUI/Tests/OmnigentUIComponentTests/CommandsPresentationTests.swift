@@ -64,8 +64,12 @@
   @MainActor
   struct CommandsPresentationTests {
     private func field<V: View>(_ screen: OffscreenWindow<V>) throws -> NSTextField {
-      let fields = screen.allViews.compactMap { $0 as? NSTextField }.filter(\.isEditable)
-      return try #require(fields.first)
+      try #require(searchField(screen))
+    }
+
+    /// The palette's search field, if it shows: a wait can ask without recording an issue.
+    private func searchField<V: View>(_ screen: OffscreenWindow<V>) -> NSTextField? {
+      screen.allViews.compactMap { $0 as? NSTextField }.first(where: \.isEditable)
     }
 
     private func open(_ log: CommandLog, publishes: Bool = true) throws
@@ -85,9 +89,8 @@
       defer { screen.close() }
       #expect(log.events.isEmpty)
       try screen.press(keyCode: 36, characters: "\r")
-      screen.settle(0.2)
+      #expect(MainLoop.settle(until: { log.events == ["perform session(\"a\")"] }))
       #expect(screen.window.attachedSheet == nil)
-      #expect(log.events == ["perform session(\"a\")"])
     }
 
     @Test("Escape closes it without running anything")
@@ -98,8 +101,7 @@
       defer { screen.close() }
       #expect(screen.window.attachedSheet != nil)
       try screen.press(keyCode: 53, characters: "\u{1B}")
-      screen.settle(0.2)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.events.isEmpty)
     }
 
@@ -117,8 +119,7 @@
         defer { screen.close() }
         for _ in 0..<downs { try screen.press(keyCode: 125, characters: "\u{F701}") }
         try screen.press(keyCode: 36, characters: "\r")
-        screen.settle(0.2)
-        #expect(log.events == [event], "\(downs)")
+        #expect(MainLoop.settle(until: { log.events == [event] }), "\(downs)")
       }
     }
 
@@ -131,8 +132,8 @@
       for _ in 0..<6 { try screen.press(keyCode: 125, characters: "\u{F701}") }
       #expect(screen.window.attachedSheet != nil)
       try screen.press(keyCode: 36, characters: "\r")
-      screen.settle(0.2)
-      #expect(try field(screen).placeholderString == "Find a server")
+      #expect(
+        MainLoop.settle(until: { searchField(screen)?.placeholderString == "Find a server" }))
       #expect(log.events.isEmpty)
       #expect(screen.window.attachedSheet != nil)
     }
@@ -144,23 +145,24 @@
       defer { screen.close() }
       let palette = try #require(log.palette)
       palette.findSession()
-      screen.settle(0.2)
-      #expect(try field(screen).placeholderString == "Search sessions by name")
+      #expect(
+        MainLoop.settle(until: {
+          searchField(screen)?.placeholderString == "Search sessions by name"
+        }))
       try screen.press(keyCode: 53, characters: "\u{1B}")
-      screen.settle(0.2)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       palette.openPalette()
-      screen.settle(0.2)
-      #expect(try field(screen).placeholderString == "Search sessions or run a command")
+      #expect(
+        MainLoop.settle(until: {
+          searchField(screen)?.placeholderString == "Search sessions or run a command"
+        }))
       try screen.press(keyCode: 53, characters: "\u{1B}")
-      screen.settle(0.2)
+      _ = MainLoop.settle(until: { screen.window.attachedSheet == nil })
       palette.openShortcuts()
-      screen.settle(0.2)
+      #expect(try MainLoop.settle(until: { try screen.shows("Keyboard shortcuts") }))
       #expect(screen.window.attachedSheet != nil)
-      #expect(try screen.shows("Keyboard shortcuts"))
       try screen.clickControl(at: screen.controlFrames.count - 1)
-      screen.settle(0.2)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
     }
 
     /// Presses a key as a real keyboard reports it: Option changes the characters but not the

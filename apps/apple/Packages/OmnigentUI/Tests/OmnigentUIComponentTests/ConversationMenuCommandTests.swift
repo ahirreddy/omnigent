@@ -170,7 +170,7 @@
       window.settle()
       #expect(!(window.window.firstResponder is NSTextView))
       #expect(try await pressKey(of: "Focus Composer", on: window))
-      #expect(try await waitUntil(window) { window.window.firstResponder is NSTextView })
+      #expect(await window.waitUntil { window.window.firstResponder is NSTextView })
     }
 
     @Test("Command-Down goes to the newest message from the top of a long transcript")
@@ -191,7 +191,7 @@
         "the reader is at \(start) of \(viewport.maximumOffset), not above the newest message")
       #expect(try await pressKey(of: "Jump to Latest", on: window))
       #expect(
-        try await waitUntil(window) { viewport.offset > start + 200 }, "at \(viewport.offset)")
+        await window.waitUntil { viewport.offset > start + 200 }, "at \(viewport.offset)")
     }
 
     private func modelChoices() -> (CommandScreenModel, ComposerActions) {
@@ -228,13 +228,13 @@
       let first = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
       SystemSideEffects.answer(alert: .alertSecondButtonReturn)
       #expect(try await pressKey(of: "Choose Model\u{2026}", on: window))
-      #expect(try await waitUntil(window) { SystemSideEffects.record.alertMessages == ["Model"] })
-      #expect(try await waitUntil(window) { log.entries == ["model fast"] }, "\(log.entries)")
+      #expect(await window.waitUntil { SystemSideEffects.record.alertMessages == ["Model"] })
+      #expect(await window.waitUntil { log.entries == ["model fast"] }, "\(log.entries)")
 
       SystemSideEffects.answer(alert: NSApplication.ModalResponse(rawValue: first + 3))
       #expect(try await pressKey(of: "Choose Model\u{2026}", on: window))
       #expect(
-        try await waitUntil(window) { SystemSideEffects.record.alertMessages.count == 2 })
+        await window.waitUntil { SystemSideEffects.record.alertMessages.count == 2 })
       try await letTasksRun(window, milliseconds: 200)
       #expect(log.entries == ["model fast"], "Cancel chooses nothing")
     }
@@ -255,7 +255,7 @@
       defer { window.close() }
       #expect(try await pressKey(of: "Rename Session\u{2026}", on: window))
       #expect(
-        try await waitUntil(window) { log.entries == ["rename session-1 to Old name"] },
+        await window.waitUntil { log.entries == ["rename session-1 to Old name"] },
         "\(log.entries) \(SystemSideEffects.record.alertMessages)")
       #expect(SystemSideEffects.record.alertMessages == ["Rename Session"])
     }
@@ -268,7 +268,7 @@
       SystemSideEffects.answer(alert: .alertSecondButtonReturn)
       #expect(try await pressKey(of: "Rename Session\u{2026}", on: window))
       #expect(
-        try await waitUntil(window) {
+        await window.waitUntil {
           SystemSideEffects.record.alertMessages == ["Rename Session"]
         })
       try await letTasksRun(window, milliseconds: 200)
@@ -281,11 +281,11 @@
       let window = try await screen(model)
       defer { window.close() }
       #expect(try await pressKey(of: "Command Palette\u{2026}", on: window))
-      #expect(try await waitUntil(window) { window.window.attachedSheet != nil })
+      #expect(await window.waitUntil { window.window.attachedSheet != nil })
       try window.type("Open Changes")
       try window.press(keyCode: 36, characters: "\r")
-      #expect(try await waitUntil(window) { window.window.attachedSheet == nil })
-      #expect(try await waitUntil(window) { model.showsInspector })
+      #expect(await window.waitUntil { window.window.attachedSheet == nil })
+      #expect(await window.waitUntil { model.showsInspector })
       #expect(model.inspectorTab == .changes)
     }
   }

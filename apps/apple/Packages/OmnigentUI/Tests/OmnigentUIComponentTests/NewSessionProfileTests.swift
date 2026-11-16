@@ -119,9 +119,7 @@
       #expect(try screen.shows("Search profiles"))
       #expect(try screen.shows("Stale"))
       try screen.type("hit", intoField: 0)
-      screen.settle(0.3)
-      await screen.drainTasks()
-      #expect(try screen.shows("Found"))
+      #expect(try await screen.eventually { try screen.shows("Found") })
       #expect(try !screen.shows("One"))
       #expect(try !screen.shows("Stale"))
       try screen.tapButton(1)
@@ -129,15 +127,11 @@
 
       screen.fields[0].currentEditor()?.selectAll(nil)
       try screen.type("miss", intoField: 0)
-      screen.settle(0.3)
-      await screen.drainTasks()
-      #expect(try screen.shows("No matching profiles."))
+      #expect(try await screen.eventually { try screen.shows("No matching profiles.") })
 
       screen.fields[0].currentEditor()?.selectAll(nil)
       try screen.type("boom", intoField: 0)
-      screen.settle(0.3)
-      await screen.drainTasks()
-      #expect(try screen.shows("Search failed"))
+      #expect(try await screen.eventually { try screen.shows("Search failed") })
     }
 
     @Test("A slow search answering late can't replace a newer one, or leave the list searching")
@@ -153,16 +147,12 @@
         })
       defer { screen.close() }
       try screen.type("slow", intoField: 0)
-      screen.settle(0.3)
-      await screen.drainTasks()
-      #expect(held.count == 1)
-      #expect(try screen.shows("Loading profiles"))
+      #expect(
+        try await screen.eventually { try held.count == 1 && screen.shows("Loading profiles") })
 
       screen.fields[0].currentEditor()?.selectAll(nil)
       try screen.type("quick", intoField: 0)
-      screen.settle(0.3)
-      await screen.drainTasks()
-      #expect(try screen.shows("Fresh"))
+      #expect(try await screen.eventually { try screen.shows("Fresh") })
 
       try #require(held.first).resume(returning: .success([late]))
       await screen.drainTasks()
@@ -180,9 +170,7 @@
         search: { _ in await withCheckedContinuation { held.append($0) } })
       defer { screen.close() }
       try screen.type("slow", intoField: 0)
-      screen.settle(0.3)
-      await screen.drainTasks()
-      #expect(try screen.shows("Loading profiles"))
+      #expect(try await screen.eventually { try screen.shows("Loading profiles") })
 
       screen.fields[0].currentEditor()?.selectAll(nil)
       try screen.press(keyCode: 51, characters: "\u{7F}")

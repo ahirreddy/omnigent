@@ -41,22 +41,53 @@
     private func clickJumpPill(on window: OffscreenWindow<AnyView>) async throws {
       let viewport = TranscriptScrollDriver(screen: window)
       try #require(
-        try await waitUntil(window) { try window.shows("Jump to latest") },
+        try await window.waitUntil { try window.shows("Jump to latest") },
         "No pill, at offset \(viewport.offset) of \(viewport.maximumOffset)")
       try window.click(jumpPill)
     }
 
+    /// Whether an animated scroll from `start` left it and stopped: the offset has stayed put
+    /// for 50 ms, however often it is read.
+    private func scrollRests(
+      from start: CGFloat, _ viewport: TranscriptScrollDriver, on window: OffscreenWindow<AnyView>
+    ) async throws -> Bool {
+      let clock = ContinuousClock()
+      var last = viewport.offset
+      var unchangedSince = clock.now
+      return await window.waitUntil {
+        let offset = viewport.offset
+        if offset != last {
+          last = offset
+          unchangedSince = clock.now
+        }
+        return offset != start && clock.now - unchangedSince >= .milliseconds(50)
+      }
+    }
+
     /// Whether a jump from `start` ended at the newest row, with only the list's bottom padding
-    /// past it. The jump is an animated scroll, so this waits for it to leave `start` and stop.
+    /// past it.
     private func jumpReachesEnd(
       from start: CGFloat, _ viewport: TranscriptScrollDriver, on window: OffscreenWindow<AnyView>
     ) async throws -> Bool {
-      var recent: [CGFloat] = []
-      let stopped = try await waitUntil(window) {
-        recent = recent.suffix(2) + [viewport.offset]
-        return recent.count == 3 && Set(recent).count == 1 && recent[0] != start
-      }
+      let stopped = try await scrollRests(from: start, viewport, on: window)
       return stopped && viewport.distanceToEnd() <= Theme.Spacing.extraLarge + 1
+    }
+
+    /// Whether output that arrived below the reader shows the New output pill; then one more
+    /// pass runs, in which a layout that moved the reader would have run.
+    private func newOutputShows(on window: OffscreenWindow<AnyView>) async throws -> Bool {
+      let shown = try await window.waitUntil { try window.shows("New output") }
+      try await letTasksRun(window)
+      return shown
+    }
+
+    /// Clicks the pill and waits for the jump to come to rest at the newest row.
+    private func jumpToLatest(
+      _ viewport: TranscriptScrollDriver, on window: OffscreenWindow<AnyView>
+    ) async throws -> Bool {
+      let start = viewport.offset
+      try await clickJumpPill(on: window)
+      return try await jumpReachesEnd(from: start, viewport, on: window)
     }
 
     @Test("Opening a session frames its latest question, so a long answer reads from its start")
@@ -66,7 +97,7 @@
       #expect(viewport.maximumOffset > 0)
       #expect(try window.shows("Question 7"))
       #expect(try window.shows("Line 0 of answer 7"))
-      #expect(try await waitUntil(window) { try window.shows("Jump to latest") })
+      #expect(try await window.waitUntil { try window.shows("Jump to latest") })
     }
 
     @Test("A busy main thread can't lose the pill, or leave output moving a reader framed earlier")
@@ -86,16 +117,15 @@
       busyLoop.stop()
       try await letTasksRun(window, milliseconds: 100)
       #expect(try window.shows("Line 0 of answer 7"))
-      #expect(try await waitUntil(window) { try window.shows("Jump to latest") })
+      #expect(try await window.waitUntil { try window.shows("Jump to latest") })
 
       let viewport = TranscriptScrollDriver(screen: window)
       let reading = viewport.offset
       var other = TranscriptFixture.user("theirs", "Someone else asks")
       other.author = "Sam"
       conversation.append(other)
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await newOutputShows(on: window))
       #expect(abs(viewport.offset - reading) < 2)
-      #expect(try window.shows("New output"))
     }
 
     @Test("A short conversation just keeps following")
@@ -115,13 +145,11 @@
       let conversation = longSession()
       let (window, viewport) = try await screen(conversation)
       defer { window.close() }
-      try await clickJumpPill(on: window)
-      try await letTasksRun(window, milliseconds: 400)
-      #expect(try !window.shows("Jump to latest"))
+      #expect(try await jumpToLatest(viewport, on: window))
+      #expect(try await window.waitUntil { try !window.shows("Jump to latest") })
       conversation.append(TranscriptFixture.answer("more", "Fresh output at the end"))
-      try await letTasksRun(window, milliseconds: 300)
-      #expect(viewport.distanceToEnd() < 80)
-      #expect(try window.shows("Fresh output at the end"))
+      #expect(try await window.waitUntil { try window.shows("Fresh output at the end") })
+      #expect(await window.waitUntil { viewport.distanceToEnd() < 80 })
     }
 
     @Test("Scrolling up keeps the reader in place while output arrives, and the pill leads back")
@@ -129,17 +157,16 @@
       let conversation = longSession()
       let (window, viewport) = try await screen(conversation)
       defer { window.close() }
-      try await clickJumpPill(on: window)
-      try await letTasksRun(window, milliseconds: 400)
+      #expect(try await jumpToLatest(viewport, on: window))
+      let end = viewport.offset
       try pressMessageKey(.previous, on: window)
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await scrollRests(from: end, viewport, on: window))
       let reading = viewport.offset
       #expect(try window.shows("Jump to latest"))
 
       conversation.append(TranscriptFixture.answer("more", "Fresh output at the end"))
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await newOutputShows(on: window))
       #expect(abs(viewport.offset - reading) < 2)
-      #expect(try window.shows("New output"))
 
       try window.click(jumpPill)
       #expect(try await jumpReachesEnd(from: reading, viewport, on: window))
@@ -168,7 +195,7 @@
       var other = TranscriptFixture.user("theirs", "Someone else asks")
       other.author = "Sam"
       conversation.append(other)
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await newOutputShows(on: window))
       #expect(viewport.distanceToEnd() > 80)
     }
 
@@ -177,10 +204,9 @@
       let conversation = longSession()
       let (window, viewport) = try await screen(conversation)
       defer { window.close() }
-      try await clickJumpPill(on: window)
-      try await letTasksRun(window, milliseconds: 400)
+      #expect(try await jumpToLatest(viewport, on: window))
       window.host.setFrameSize(NSSize(width: 600, height: Self.height))
-      #expect(try await waitUntil(window) { viewport.distanceToEnd() < 80 })
+      #expect(await window.waitUntil { viewport.distanceToEnd() < 80 })
     }
 
     // MARK: Message navigation
@@ -216,14 +242,15 @@
       defer { window.close() }
       let start = viewport.offset
       try pressMessageKey(.previous, on: window)
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await scrollRests(from: start, viewport, on: window))
       let onePrevious = viewport.offset
       #expect(onePrevious < start)
       try pressMessageKey(.previous, on: window)
-      try await letTasksRun(window, milliseconds: 300)
-      #expect(viewport.offset < onePrevious)
+      #expect(try await scrollRests(from: onePrevious, viewport, on: window))
+      let twoPrevious = viewport.offset
+      #expect(twoPrevious < onePrevious)
       try pressMessageKey(.next, on: window)
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await scrollRests(from: twoPrevious, viewport, on: window))
       #expect(viewport.offset > 0)
       #expect(viewport.offset <= start)
       #expect(try window.shows("Jump to latest"))
@@ -286,7 +313,7 @@
       defer { window.close() }
       try await sendFromTheTop(conversation, viewport, on: window)
       #expect(try window.shows("My new question"))
-      #expect(try await waitUntil(window) { try !window.shows("Jump to latest") })
+      #expect(try await window.waitUntil { try !window.shows("Jump to latest") })
     }
 
     @Test("After a send, a reply growing taller than the window keeps its end in view")
@@ -299,9 +326,9 @@
       for lines in [4, 12, 24] {
         let text = (0..<lines).map { "Reply line \($0)" }.joined(separator: "\n\n")
         conversation.stream("reply", text)
-        try await letTasksRun(window, milliseconds: 200)
+        #expect(try await window.waitUntil { try window.shows("Reply line \(lines - 1)") })
       }
-      #expect(viewport.distanceToEnd() < 80)
+      #expect(await window.waitUntil { viewport.distanceToEnd() < 80 })
       #expect(try !window.shows("Jump to latest"))
     }
 
@@ -311,16 +338,16 @@
       let (window, viewport) = try await screen(conversation)
       defer { window.close() }
       try await sendFromTheTop(conversation, viewport, on: window)
+      let sent = viewport.offset
       try pressMessageKey(.previous, on: window)
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await scrollRests(from: sent, viewport, on: window))
       let reading = viewport.offset
       #expect(try window.shows("Jump to latest"))
 
       conversation.echo("sending-1", as: TranscriptFixture.user("item-1", "My new question"))
       conversation.stream("reply", "The reply starts")
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await newOutputShows(on: window))
       #expect(abs(viewport.offset - reading) < 2)
-      #expect(try window.shows("New output"))
     }
 
     @Test("A message and a reply that arrive with no send leave a reader of earlier rows alone")
@@ -333,10 +360,9 @@
       // A user row with no author, as another agent's forward is on a single-user server.
       conversation.append(TranscriptFixture.user("forwarded", "A sub-agent's result"))
       conversation.stream("reply", "A reply to it")
-      try await letTasksRun(window, milliseconds: 300)
+      #expect(try await newOutputShows(on: window))
       #expect(abs(viewport.offset - reading) < 2)
       #expect(viewport.distanceToEnd() > 80)
-      #expect(try window.shows("New output"))
     }
   }
 #endif

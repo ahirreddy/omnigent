@@ -54,14 +54,15 @@
       let screen = OffscreenWindow(ComposerScreen(model: model, actions: log.actions))
       defer { screen.close() }
       // Showing asks for the keyboard a moment later, while the editor still takes no input.
+      // That wait is the composer's own sleep, which only real time outlasts.
       try await Task.sleep(for: .milliseconds(300))
-      screen.settle(0.02)
+      await screen.settleTasks()
       try screen.type("a")
       #expect(model.draft.isEmpty)
 
       model.state = ComposerSamples.idle
-      try await Task.sleep(for: .milliseconds(100))
-      screen.settle(0.05)
+      await screen.settleTasks()
+      _ = await screen.waitUntil { screen.window.firstResponder is NSTextView }
       try screen.type("b")
       #expect(model.draft == "b", "with no click on the editor")
     }

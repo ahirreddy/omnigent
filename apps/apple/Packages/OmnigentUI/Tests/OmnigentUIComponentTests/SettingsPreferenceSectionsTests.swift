@@ -173,8 +173,7 @@
       defer { screen.close() }
       try await screen.letTasksRun()
       try screen.clickButton(at: 0)
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet != nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       #expect(try screen.shows("Codex"))
       #expect(try screen.shows("Polly"))
       #expect(try screen.shows("Harnesses"))
@@ -194,8 +193,7 @@
       #expect(try !screen.shows("Harnesses"), "a section with no match goes")
       let done = try #require(screen.buttonFrames.last)
       try screen.click(CGPoint(x: done.midX, y: done.midY))
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
     }
 
     /// The setting over a source a test can replace, as switching servers does.

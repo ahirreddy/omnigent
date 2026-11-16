@@ -48,7 +48,7 @@
     private func openList(_ screen: OffscreenWindow<ComposerScreen>) throws -> NSView {
       let count = try #require(screen.chips.first)
       try screen.click(screen.clickPoint(count))
-      screen.settle(0.3)
+      _ = MainLoop.settle(until: { screen.popoverWindow?.contentView != nil })
       return try #require(screen.popoverWindow?.contentView)
     }
 
@@ -70,8 +70,7 @@
       try #require(rows.count == 2)
       try screen.clickInPopover(at: CGPoint(x: rows[1].midX, y: rows[1].midY))
       #expect(log.events == ["subagent:b"])
-      screen.settle(0.3)
-      #expect(screen.popoverWindow == nil)
+      #expect(MainLoop.settle(until: { screen.popoverWindow == nil }))
     }
 
     @Test("without a way to open sub-agents the list's rows can't be pressed")
@@ -93,8 +92,7 @@
       defer { screen.close() }
       _ = try openList(screen)
       model.state.tray?.indicators.subagents = []
-      screen.settle(0.3)
-      #expect(screen.popoverWindow == nil)
+      #expect(MainLoop.settle(until: { screen.popoverWindow == nil }))
       #expect(screen.chips.isEmpty)
     }
 
@@ -160,8 +158,7 @@
             ])
         ).frame(width: 360), width: 400, height: 300)
       defer { short.close() }
-      short.settle(0.3)
-      #expect(try short.shows("npm run dev"))
+      #expect(try MainLoop.settle(until: { try short.shows("npm run dev") }))
       #expect(short.controlFrames.isEmpty)
     }
   }

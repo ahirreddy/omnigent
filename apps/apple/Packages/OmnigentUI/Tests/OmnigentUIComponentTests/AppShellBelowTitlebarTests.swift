@@ -49,7 +49,7 @@
       screen.window.setFrame(frame, display: false)
       screen.host.sceneBridgingOptions = [.toolbars, .title]
       screen.window.contentView = screen.host
-      let hasTabs = try await waitUntil(screen) { screen.window.toolbar?.items.isEmpty == false }
+      let hasTabs = await screen.waitUntil { screen.window.toolbar?.items.isEmpty == false }
       #expect(hasTabs, "the toolbar holds the tab strip")
       return screen
     }
@@ -75,7 +75,7 @@
     private func expectAtTheTabs(
       _ screen: Screen, _ what: String, top: @MainActor () -> CGFloat?
     ) async throws {
-      let arrived = try await waitUntil(screen) { startsAtTheTabs(top(), screen) }
+      let arrived = await screen.waitUntil { startsAtTheTabs(top(), screen) }
       let found = top().map { "\($0)" } ?? "nothing"
       #expect(arrived, "\(what): its top \(found), the tabs' bottom \(tabsBottom(screen))")
     }
@@ -102,7 +102,7 @@
     func toolbarCoversTheContent() async throws {
       let screen = try await window(Color.clear)
       defer { screen.close() }
-      let covers = try await waitUntil(screen) {
+      let covers = await screen.waitUntil {
         frameInWindow(screen.host).maxY - tabsBottom(screen) > 40
       }
       #expect(covers, "by a title bar and a toolbar's height: \(tabsBottom(screen))")
@@ -129,7 +129,7 @@
 
       // Scrolled, its rows leave at the tabs' edge: the scroll view still ends there.
       scroll.contentView.scroll(to: CGPoint(x: 0, y: 500))
-      let scrolled = try await waitUntil(screen) {
+      let scrolled = await screen.waitUntil {
         frameInWindow(rows).maxY > tabsBottom(screen)
       }
       #expect(scrolled, "the rows moved up")

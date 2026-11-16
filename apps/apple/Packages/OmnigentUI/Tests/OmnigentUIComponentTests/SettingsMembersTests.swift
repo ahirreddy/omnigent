@@ -127,8 +127,7 @@
         MembersPane(members: [], actions: actions, errorMessage: errorMessage)
       }
       try screen.clickControl(at: 0)
-      screen.settle(0.3)
-      try #require(screen.window.attachedSheet != nil)
+      try #require(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       return screen
     }
 
@@ -148,8 +147,7 @@
       try screen.clickButton(at: 0)
       #expect(SystemSideEffects.pasteboard.string(forType: .string) == link.url)
       try screen.clickButton(at: 1)
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
     }
 
     @Test("a failed invite stays open to try again; Cancel closes it")
@@ -162,8 +160,7 @@
       #expect(screen.window.attachedSheet != nil)
       #expect(try screen.shows("The invite could not be created."))
       try screen.clickButton(at: 1)
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
     }
 
     @Test("Return creates the invite and then closes the link; Escape cancels before creating")
@@ -172,8 +169,7 @@
       let canceled = try inviteSheet(link: link)
       defer { canceled.close() }
       try canceled.press(keyCode: 53, characters: "\u{1B}")
-      canceled.settle(0.3)
-      #expect(canceled.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { canceled.window.attachedSheet == nil }))
       #expect(log.entries.isEmpty)
 
       let screen = try inviteSheet(link: link)
@@ -184,8 +180,7 @@
       #expect(try screen.shows(link.url))
       #expect(screen.window.attachedSheet != nil)
       try screen.press(keyCode: 36, characters: "\r")
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.entries == ["invite admin=false"], "Done creates nothing more")
     }
 

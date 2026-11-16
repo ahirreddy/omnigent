@@ -45,7 +45,7 @@
       let screen = OffscreenWindow(AnyView(section), width: 400, height: 300)
       defer { screen.close() }
       try screen.clickControl(at: 0)
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { (try? screen.popoverCheckBoxes())?.count == 2 }))
       #expect(spy.calls == ["load reviewers"])
       let boxes = try screen.popoverCheckBoxes()
       try #require(boxes.count == 2)
@@ -65,7 +65,7 @@
       let screen = OffscreenWindow(AnyView(section), width: 400, height: 300)
       defer { screen.close() }
       try screen.clickControl(at: 0)
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { (try? screen.popoverCheckBoxes())?.count == 2 }))
       let boxes = try screen.popoverCheckBoxes()
       try #require(boxes.count == 2)
       try screen.clickInPopover(boxes[1])
@@ -96,12 +96,10 @@
       // The profile chip is the form's only borderless button.
       try #require(screen.plainButtons.count == 1)
       try screen.click(screen.plainButtons[0])
-      screen.settle(0.3)
-      try #require(screen.popoverWindow != nil)
+      try #require(MainLoop.settle(until: { screen.popoverWindow != nil }))
       try screen.clickInPopover(at: try screen.popoverRowCenter(1))
       #expect(log.calls.last == "profile large")
-      screen.settle(0.3)
-      #expect(screen.popoverWindow == nil)
+      #expect(MainLoop.settle(until: { screen.popoverWindow == nil }))
     }
   }
 #endif

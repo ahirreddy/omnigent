@@ -45,8 +45,7 @@
         MCPPane(services: [service], actions: actions, errorMessage: errorMessage)
       }
       try screen.clickControl(at: 0)
-      screen.settle(0.3)
-      try #require(screen.window.attachedSheet != nil)
+      try #require(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       return screen
     }
 
@@ -78,8 +77,7 @@
       try screen.replaceText(in: field, with: "secret")
       try screen.clickButton(at: 1)
       try await screen.letTasksRun()
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
     }
 
     @Test("Return in the token field connects as the button does, and not without a token")
@@ -97,9 +95,8 @@
       _ = screen.activeWindow.makeFirstResponder(nil)
       try screen.press(keyCode: 36, characters: "\r")
       try await screen.letTasksRun()
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.entries == ["connect docs [secret]"])
-      #expect(screen.window.attachedSheet == nil)
     }
 
     @Test("a refused token says why beside the field, and typing clears it")
@@ -134,11 +131,10 @@
       let field = try #require(screen.secureFields.first)
       try screen.replaceText(in: field, with: "secret")
       try screen.clickButton(at: 0)
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.entries.isEmpty)
       try screen.clickControl(at: 0)
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       #expect(screen.secureFields.first?.stringValue.isEmpty == true)
     }
 

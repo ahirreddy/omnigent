@@ -22,8 +22,7 @@
     private func sheet(_ isShown: EditedValue<Bool>) throws -> OffscreenWindow<ShortcutsHost> {
       SystemSideEffects.reset()
       let screen = OffscreenWindow(ShortcutsHost(isShown: isShown), width: 800, height: 800)
-      screen.settle(0.3)
-      try #require(screen.window.attachedSheet != nil)
+      try #require(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       return screen
     }
 
@@ -35,9 +34,8 @@
       #expect(try screen.shows("Keyboard shortcuts"))
       // The toolbar's Done is the sheet's last control.
       try screen.click(try #require(screen.controlFrames.last).center)
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(!isShown.value)
-      #expect(screen.window.attachedSheet == nil)
     }
   }
 #endif
