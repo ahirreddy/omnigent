@@ -4,6 +4,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   /// Emphasis discipline, checked on rendered screens: the accent marks only the single primary
   /// action on a screen, and the brand accent only "needs you". Each screen renders with a probe

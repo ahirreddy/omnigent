@@ -5,6 +5,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   @Suite("Canvas page", .serialized)
   @MainActor

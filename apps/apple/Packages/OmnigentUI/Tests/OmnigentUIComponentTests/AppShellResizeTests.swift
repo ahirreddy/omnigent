@@ -5,6 +5,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   /// How often the toolbar put each trailing item's view into the window.
   @MainActor

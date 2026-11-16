@@ -3,6 +3,7 @@ import SwiftUI
 import Testing
 
 @testable import OmnigentUIComponents
+@testable import OmnigentUITestSupport
 
 @Suite("Themes")
 struct ThemeTests {

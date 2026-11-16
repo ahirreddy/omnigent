@@ -1,0 +1,92 @@
+#if os(macOS)
+  import AppKit
+  import OmnigentViewTesting
+  import OmnigentViewTextReading
+  import SwiftUI
+  import Testing
+
+  @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
+
+  /// Where the session runs, in the row under the pill, and the context ring.
+  @Suite("Composer: host, folder and context", .serialized)
+  @MainActor
+  struct ComposerTrayChipTests {
+    private let log = ComposerActionLog()
+
+    @Test("the host chip groups hosts, keeps offline ones in a submenu and selects any of them")
+    func hostMenu() throws {
+      let hosts = ComposerHosts(
+        hosts: [
+          ComposerHost(id: "cloud", name: "Cloud box", kind: .cloud, isOnline: true),
+          ComposerHost(id: "mac", name: "Mac", kind: .machine, isOnline: true),
+          ComposerHost(id: "gone", name: "Gone", kind: .machine, isOnline: false),
+        ], selectedID: "mac")
+      let model = ComposerScreenModel(state: ComposerViewState(hosts: hosts))
+      let screen = openComposer(model, log.actions)
+      defer { screen.close() }
+      let menu = try screen.chip(0)
+      let titles = menuTitles(menu)
+      #expect(titles.contains("Cloud"))
+      #expect(titles.contains("My machines"))
+      #expect(titles.contains("Offline hosts (1)"))
+      try screen.choose("Cloud box", in: menu)
+      try screen.choose("Gone", in: menu)
+      try screen.choose("Connect new host\u{2026}", in: menu)
+      #expect(log.events == ["host:cloud", "host:gone", "connectHost"])
+    }
+
+    @Test("a locked host names itself in the context line and has no chip")
+    func lockedHost() throws {
+      let hosts = ComposerHosts(
+        hosts: PreviewData.hosts.hosts, selectedID: "host_mbp", isLocked: true)
+      let model = ComposerScreenModel(state: ComposerViewState(hosts: hosts))
+      let screen = openComposer(model, log.actions)
+      defer { screen.close() }
+      #expect(screen.chips.isEmpty)
+    }
+
+    @Test("a session's folder and branch are labels: they are chosen when it starts")
+    func folderAndBranch() throws {
+      let state = ComposerViewState(
+        tray: ComposerTray(directory: "/src/universe", branch: "dev"))
+      let model = ComposerScreenModel(state: state)
+      let screen = openComposer(model, log.actions)
+      defer { screen.close() }
+      #expect(screen.chips.isEmpty)
+      #expect(try screen.shows("universe"))
+      #expect(try screen.shows("dev"))
+    }
+
+    // MARK: Context ring
+
+    @Test("the context ring's tooltip says the percent and, when known, the tokens")
+    func contextHelp() {
+      #expect(ComposerTrayView.contextHelp(0.38, tokens: nil) == "38% context used")
+      #expect(
+        ComposerTrayView.contextHelp(0.38, tokens: ContextTokens(used: 76_000, window: 200_000))
+          == "38% context used \u{00B7} 76K / 200K tokens")
+      #expect(
+        ComposerTrayView.contextHelp(1, tokens: ContextTokens(used: 1_500_000, window: 1_500_000))
+          == "100% context used \u{00B7} 1.5M / 1.5M tokens")
+    }
+
+    @Test("the ring fills with use, in the footer and on touch's tray")
+    func contextRing() throws {
+      for style in [ComposerLayoutStyle.card, .touch] {
+        let inks = try [0.0, 0.5, 1.0].map { fraction in
+          var state = ComposerViewState(tray: ComposerTray(contextFraction: fraction))
+          // Touch's bar shows the tray open on a new session.
+          state.purpose = .start
+          let view = ComposerView(draft: .constant(""), state: state, actions: log.actions)
+            .environment(\.composerLayoutStyle, style)
+          return try RenderSupport.render(
+            view, width: 700, height: 200, scheme: .light, layout: .regular
+          ).image.tiffRepresentation
+        }
+        #expect(inks[0] != inks[2], "\(style)")
+        #expect(inks[1] != inks[2], "\(style)")
+      }
+    }
+  }
+#endif

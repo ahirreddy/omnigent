@@ -6,6 +6,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   @Suite("Otto and painted surfaces", .serialized)
   @MainActor

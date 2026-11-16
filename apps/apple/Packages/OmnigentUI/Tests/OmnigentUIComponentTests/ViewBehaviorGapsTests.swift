@@ -7,6 +7,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   /// A window that says it's visible, so a view inside runs what only runs on screen. It's never
   /// ordered in.

@@ -2,6 +2,7 @@ import SwiftUI
 import Testing
 
 @testable import OmnigentUIComponents
+@testable import OmnigentUITestSupport
 
 /// WCAG contrast of the theme's text and label roles, for every palette (the built-ins, the
 /// default Custom and a hostile Custom), light and dark, standard and Increase Contrast.

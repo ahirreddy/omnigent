@@ -7,6 +7,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   /// A transient banner with the state a window keeps it in.
   private struct BannerHost: View {

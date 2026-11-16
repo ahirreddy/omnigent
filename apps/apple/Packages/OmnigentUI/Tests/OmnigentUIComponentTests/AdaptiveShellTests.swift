@@ -6,6 +6,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   /// The trailing items a detail reports, changed from the test, and how often the shell built
   /// its detail.

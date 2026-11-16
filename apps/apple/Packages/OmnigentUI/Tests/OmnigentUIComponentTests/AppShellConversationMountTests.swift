@@ -6,6 +6,7 @@
   import Testing
 
   @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
 
   private struct OpenTab: Identifiable {
     let id: String
