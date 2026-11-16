@@ -162,12 +162,14 @@ extension ConnectedWindowFlowTests {
     let saved = server.hold("/v1/sessions/conv_b", method: "DELETE")
     refused.release()
     try await settle(mounted.screen, untilShowing: "Beta")
-    // A loaded VM can take seconds to present it; a failure names the alerts that did show.
+    // A loaded VM can take seconds to present it. An earlier test's late alert can land in the
+    // same record, so only this one's count matters.
+    let refusal = "Could Not Update the Session"
     try await settle(mounted.screen, until: "the alert", timeout: .seconds(15)) {
-      !SystemSideEffects.record.alertMessages.isEmpty
+      SystemSideEffects.record.alertMessages.contains(refusal)
     }
     let alerts = SystemSideEffects.record.alertMessages
-    #expect(alerts == ["Could Not Update the Session"], "alerts: \(alerts)")
+    #expect(alerts.filter { $0 == refusal }.count == 1, "alerts: \(alerts)")
     try await Task.sleep(for: .milliseconds(60))
     #expect(tabs.groups["conv_b"] != nil, "a refused delete keeps the tabs")
 
