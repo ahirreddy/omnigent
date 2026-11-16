@@ -194,7 +194,16 @@
       }
     }
 
+    /// Clicks a toolbar control once it has a place: the toolbar places its items in a deferred
+    /// pass that a settle can't see, so this waits for a frame read twice alike.
     private func click(_ identifier: String, in screen: OffscreenWindow<AnyView>) throws {
+      var last: CGRect?
+      _ = MainLoop.settle(until: {
+        let current = try? self.frame(of: identifier, in: screen)
+        defer { last = current }
+        guard let current, !current.isEmpty else { return false }
+        return current == last
+      })
       let frame = try frame(of: identifier, in: screen)
       try screen.click(CGPoint(x: frame.midX, y: frame.midY))
     }
@@ -246,7 +255,7 @@
       #expect(panel(screen) == nil)
 
       try click("toggle-inspector", in: screen)
-      #expect(model.showsInspector, "the toggle answers over a page")
+      #expect(await screen.waitUntil { model.showsInspector }, "the toggle answers over a page")
       #expect(try await screen.waitUntil { try screen.shows("files slot") })
       #expect(await screen.waitUntil { panel(screen) != nil })
       let single = try #require(panel(screen))

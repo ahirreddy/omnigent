@@ -256,11 +256,7 @@
         let screen = bed.screen(state)
         defer { screen.close() }
         // A busy machine can take more than one settle to draw the spinner's label.
-        var settles = 0
-        while shown, try !screen.shows(text), settles < 30 {
-          screen.settle()
-          settles += 1
-        }
+        if shown { _ = try MainLoop.settle(until: { try screen.shows(text) }) }
         #expect(try screen.shows(text) == shown, "\(text)")
       }
     }
