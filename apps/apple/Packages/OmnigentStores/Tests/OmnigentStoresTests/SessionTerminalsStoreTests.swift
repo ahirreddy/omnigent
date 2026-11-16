@@ -67,4 +67,22 @@ struct SessionTerminalsStoreTests {
     #expect(terminals.harness == .startingUp)
     terminals.refresh()
   }
+
+  @Test("The newest live shell passes over exited shells and the agent's; none when all exited")
+  func newestLiveShell() async throws {
+    let terminals = try await terminals(RouteServer())
+    let exited = TerminalRow(terminal: resource("exited"), status: .exited)
+    terminals.apply(
+      terminals: [
+        TerminalRow(terminal: resource("leftover"), status: .active),
+        TerminalRow(terminal: resource("recent"), status: .idle),
+        exited,
+        TerminalRow(terminal: resource("agent", agent: true), status: .active),
+      ],
+      harness: .notTerminalFirst)
+    #expect(terminals.newestLiveShell?.terminal.id == "recent")
+
+    terminals.apply(terminals: [exited], harness: .notTerminalFirst)
+    #expect(terminals.newestLiveShell == nil)
+  }
 }

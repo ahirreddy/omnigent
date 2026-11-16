@@ -35,6 +35,9 @@ public final class SessionTerminalsStore {
   /// The user's shells: every terminal except the agent's own.
   public var userShells: [TerminalRow] { rows.filter { !$0.terminal.isAgentTerminal } }
 
+  /// The newest of ``userShells`` the runner does not report exited, ahead of older leftovers.
+  public var newestLiveShell: TerminalRow? { userShells.last { $0.status != .exited } }
+
   /// Re-reads the terminals; the result arrives through the core's events.
   public func refresh() {
     core.refreshTerminals(sessionId: sessionID)

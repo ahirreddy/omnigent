@@ -61,8 +61,8 @@ final class MacWorkflowUITests: XCTestCase {
     live.shot(app, "terminal")
 
     // From the shell to the chat, and on to the session's terminal: its own in the chat's
-    // Terminal view (the Omnigent REPL, once its runner hosts one), else its first shell, which
-    // an earlier flow may have left running.
+    // Terminal view (the Omnigent REPL, once its runner hosts one), else its newest live shell,
+    // the one opened here, not one an earlier flow left running.
     app.typeKey("`", modifierFlags: .control)
     XCTAssertTrue(live.element("transcript-\(session)", in: app).appears(within: 10))
     app.typeKey("`", modifierFlags: .control)

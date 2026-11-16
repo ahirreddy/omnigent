@@ -279,7 +279,7 @@ struct WindowTabs {
   }
 
   /// Control-`: from a session's chat to its terminal (the harness TUI in the chat's Terminal
-  /// view, else its first shell), and from a terminal back to the chat.
+  /// view, else its newest live shell, else a new one), and from a terminal back to the chat.
   func toggleTerminal(_ sessionID: String) {
     switch groups.group(sessionID).selected?.content {
     case .terminal:
@@ -289,7 +289,7 @@ struct WindowTabs {
       if case .ready = terminals?.harness {
         groups.setViewMode(
           groups.viewMode(sessionID) == .terminal ? .chat : .terminal, for: sessionID)
-      } else if let shell = terminals?.userShells.first {
+      } else if let shell = terminals?.newestLiveShell {
         open(.terminal(sessionID: sessionID, terminalID: shell.terminal.id))
       } else {
         Task { await newTerminal(in: sessionID, named: nil, replacing: nil) }
