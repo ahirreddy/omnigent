@@ -35,7 +35,7 @@
 
   /// Builds and lays out settled answers off the main actor, newest first, once a TextKit answer
   /// has shown the style and width answers draw at: a row then only takes its laid-out text.
-  /// With a raster style it also draws each answer ahead (``MessageTextRaster``).
+  /// With a raster style it also draws the answers asked for ahead (``MessageTextRaster``).
   /// ``MarkdownWarmup`` offers each answer it parses; the table transcript puts those about to
   /// scroll into view first (``prioritize(_:)``).
   nonisolated final class MessageTextPrewarm: Sendable {
@@ -64,12 +64,18 @@
     private final class Store: Sendable {
       let documents: Mutex<BoundedCache<MessageTextDocumentKey, MessageTextDocument>>
       let rasters: MessageTextRasters
+      /// Answers asked for ahead of the rest, which are drawn as well as laid out: drawing
+      /// every answer offered would spend the rasters' budget far from the reader.
+      let drawn = Mutex<Set<String>>([])
 
       init(limit: Int, rasters: MessageTextRasters) {
         documents = Mutex(BoundedCache(limit: limit))
         self.rasters = rasters
       }
     }
+
+    /// How many answers asked for ahead it remembers to draw.
+    private static let drawnLimit = 64
 
     private let store: Store
     private let queue: MessageTextPrewarmQueue<Context>
@@ -109,6 +115,11 @@
 
     /// Puts answers about to show at the front of the queue, in order.
     func prioritize(_ texts: [String]) {
+      guard !texts.isEmpty else { return }
+      store.drawn.withLock { drawn in
+        if drawn.count + texts.count > Self.drawnLimit { drawn.removeAll() }
+        drawn.formUnion(texts)
+      }
       queue.prioritize(texts)
     }
 
@@ -146,18 +157,19 @@
       let split = MessageTextSplit(MarkdownCache.shared.blocks(for: text), ramp: style.ramp)
       // Linked paths depend on the main actor's folder listings; those answers build there.
       guard split.cited.isEmpty else { return }
+      let draws = store.drawn.withLock { $0.remove(text) != nil }
       for piece in split.pieces {
         guard case .text(let blocks) = piece.content else { continue }
         let key = MessageTextDocumentKey(text: text, piece: piece.id, style: style, linked: [])
         let built = store.documents.withLock { $0.cached(key) }
         if let built {
-          drawAhead(built, context: context, store: store)
+          if draws { drawAhead(built, context: context, store: store) }
           continue
         }
         var builder = MessageTextBuilder(palette: context.palette)
         let document = builder.document(blocks)
         let layout = MessageTextPreparedLayout(text: document.text, width: context.width)
-        drawAhead(document, context: context, store: store)
+        if draws { drawAhead(document, context: context, store: store) }
         document.offer(layout)
         store.documents.withLock { $0.store(document, for: key) }
       }

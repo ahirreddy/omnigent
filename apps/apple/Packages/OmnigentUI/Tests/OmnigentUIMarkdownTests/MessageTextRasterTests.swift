@@ -102,6 +102,31 @@
       #expect(!prewarm.drawsAhead)
     }
 
+    @Test("The prewarm draws the answers asked for ahead, and only lays the others out")
+    func drawsWhatIsAskedFor() async throws {
+      let rasters = MessageTextRasters(byteLimit: 64 << 20)
+      let prewarm = MessageTextPrewarm(limit: 8, rasters: rasters)
+      let palette = MessageTextPalette(MessageTextFixture.style)
+      prewarm.note(palette: palette, width: 500, scale: 1, raster: style)
+      let offered = "An answer offered by the warmup, far from the reader."
+      let asked = "An answer about to scroll into view."
+      prewarm.offer(offered)
+      prewarm.prioritize([asked])
+      func document(_ text: String) -> MessageTextDocument? {
+        prewarm.takeDocument(
+          for: MessageTextDocumentKey(
+            text: text, piece: 0, style: MessageTextFixture.style, linked: []))
+      }
+      for _ in 0..<400 where document(offered) == nil || document(asked) == nil {
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      let drawnKey = { (text: String) -> MessageTextRasterKey? in
+        document(text).map { MessageTextRasterKey(document: $0.serial, width: 500, scale: 1) }
+      }
+      #expect(try rasters.contains(#require(drawnKey(asked))))
+      #expect(try !rasters.contains(#require(drawnKey(offered))))
+    }
+
     @Test("A press in a drawn run lays the live text view over it, and it goes once done")
     func liveOverlay() throws {
       let document = MessageTextFixture.document(Self.answer)
