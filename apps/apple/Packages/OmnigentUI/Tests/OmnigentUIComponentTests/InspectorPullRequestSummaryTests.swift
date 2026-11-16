@@ -75,8 +75,7 @@
       #expect(try screen.shows("2 passed"))
       #expect(try !screen.shows("lint"))
       try screen.clickControl(at: 0)
-      screen.settle(0.3)
-      #expect(try screen.shows("lint"))
+      #expect(try MainLoop.settle(until: { try screen.shows("lint") }))
       #expect(try screen.shows("test"))
       // The chevron and lint: test has no link, so it can't be chosen.
       #expect(screen.controlFrames.count == 2)

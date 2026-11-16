@@ -104,13 +104,11 @@
         let editor = try screen.accessibilityElement("composer-input")
         let expand = try screen.customAction("Expand Editor", of: editor)
         #expect(expand.handler?() == true)
-        screen.settle(0.3)
-        #expect(scroll.frame.height > usual)
+        #expect(MainLoop.settle(until: { scroll.frame.height > usual }))
         let expanded = try screen.accessibilityElement("composer-input")
         let collapse = try screen.customAction("Collapse Editor", of: expanded)
         #expect(collapse.handler?() == true)
-        screen.settle(0.3)
-        #expect(scroll.frame.height == usual)
+        #expect(MainLoop.settle(until: { scroll.frame.height == usual }))
       }
     }
 

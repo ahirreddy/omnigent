@@ -52,7 +52,7 @@
             log.closes += 1
           }))
       defer { screen.close() }
-      screen.settle(0.5)
+      _ = MainLoop.settle(until: { screen.window.attachedSheet != nil })
       await screen.drainTasks()
       let confirm = try #require(screen.buttons.last)
       try screen.click(screen.clickPoint(confirm))
@@ -71,7 +71,7 @@
         ComposerSheetHost(
           sheet: HostMoveSheet(kind: .switchHost(currentHostID: "old"), actions: actions()) {}))
       defer { screen.close() }
-      screen.settle(0.5)
+      _ = MainLoop.settle(until: { screen.window.attachedSheet != nil })
       await screen.drainTasks()
       // The icon-only Browse button sits before Cancel and Switch Host.
       try screen.tapButton(fromEnd: 2)
@@ -100,7 +100,7 @@
         ComposerSheetHost(
           sheet: HostMoveSheet(kind: .switchHost(currentHostID: "old"), actions: actions()) {}))
       defer { screen.close() }
-      screen.settle(0.5)
+      _ = MainLoop.settle(until: { screen.window.attachedSheet != nil })
       await screen.drainTasks()
       // The icon-only Browse button sits before Cancel and Switch Host.
       try screen.tapButton(fromEnd: 2)

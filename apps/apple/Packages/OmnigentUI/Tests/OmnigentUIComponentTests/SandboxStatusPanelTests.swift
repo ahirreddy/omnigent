@@ -109,7 +109,9 @@
       try screen.click(try screen.center(of: "sandbox-operation-wake"))
       #expect(try await screen.eventually { model.failure != nil })
       #expect(log.entries == ["wake"])
-      #expect(try screen.shows("Wake failed: No runner is available."))
+      // The panel draws the failure a pass after the model has it.
+      #expect(
+        try await screen.eventually { try screen.shows("Wake failed: No runner is available.") })
       #expect(try screen.hasElement("sandbox-operation-error"))
     }
 

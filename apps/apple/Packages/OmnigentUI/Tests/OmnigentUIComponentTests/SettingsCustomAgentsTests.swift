@@ -201,15 +201,13 @@
       #expect(try screen.shows("None"))
       // Back, Add.
       try screen.clickButton(at: 1)
-      screen.settle(0.3)
-      #expect(try screen.shows("Add MCP Server"))
+      #expect(try MainLoop.settle(until: { try screen.shows("Add MCP Server") }))
       try screen.replaceText(in: try #require(screen.textFields.first), with: "wiki")
       try screen.replaceText(
         in: try #require(screen.textFields.dropFirst().first), with: "https://w.test")
       let done = try #require(screen.sheetButtons.last)
       try screen.click(CGPoint(x: done.midX, y: done.midY))
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(try screen.shows("wiki"))
       #expect(try screen.shows("New"))
       #expect(try !screen.shows("None"))
@@ -225,18 +223,18 @@
       let screen = screen(editorState(empty))
       defer { screen.close() }
       try screen.clickButton(at: 1)
-      screen.settle(0.3)
+      #expect(try MainLoop.settle(until: { try screen.shows("Add MCP Server") }))
       try screen.replaceText(in: try #require(screen.textFields.first), with: "wiki")
       try screen.replaceText(
         in: try #require(screen.textFields.dropFirst().first), with: "https://w.test")
       try screen.click(try #require(screen.sheetButtons.last).center)
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       // Back, Add, then the added row's Edit.
       try screen.clickButton(at: 2)
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       try screen.replaceText(in: try #require(screen.textFields.first), with: "docs2")
       try screen.click(try #require(screen.sheetButtons.last).center)
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(try screen.shows("docs2"))
       #expect(try !screen.shows("wiki"))
       let save = try #require(screen.buttonFrames.last)
@@ -249,14 +247,12 @@
       let screen = screen(editorState())
       defer { screen.close() }
       try screen.clickButton(at: 2)
-      screen.settle(0.3)
-      #expect(try screen.shows("Edit docs"))
+      #expect(try MainLoop.settle(until: { try screen.shows("Edit docs") }))
       #expect(screen.textFields.first?.isEnabled == false)
       // The toolbar ends Cancel, Done.
       let cancel = try #require(screen.sheetButtons.suffix(2).first)
       try screen.click(CGPoint(x: cancel.midX, y: cancel.midY))
-      screen.settle(0.3)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
       #expect(log.entries.isEmpty)
     }
 

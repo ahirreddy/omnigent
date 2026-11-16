@@ -139,9 +139,8 @@
       defer { screen.close() }
       try screen.type("/permissions")
       try screen.pressReturn()
-      screen.settle(0.5)
+      #expect(MainLoop.settle(until: { log.events == ["mode:full-access"] }))
       #expect(SystemSideEffects.record.alertMessages == ["Codex approvals"])
-      #expect(log.events == ["mode:full-access"])
       #expect(model.draft.isEmpty)
     }
 
@@ -154,8 +153,8 @@
       defer { screen.close() }
       try screen.type("/permissions")
       try screen.pressReturn()
-      screen.settle(0.5)
-      #expect(SystemSideEffects.record.alertMessages == ["Codex approvals"])
+      #expect(
+        MainLoop.settle(until: { SystemSideEffects.record.alertMessages == ["Codex approvals"] }))
       #expect(log.events.isEmpty)
     }
   }

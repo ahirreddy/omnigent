@@ -122,9 +122,8 @@
           "Approve and don\u{2019}t ask again for ls this session",
         ])
       try screen.choose("Approve and use auto mode for this session", in: menu)
-      screen.settle(0.3)
+      #expect(MainLoop.settle(until: { log.responses == [.approveAutoMode] }))
       #expect(SystemSideEffects.record.alertMessages.contains("Change approval behavior?"))
-      #expect(log.responses == [.approveAutoMode])
     }
 
     @Test("Canceling the confirmation sends nothing, and the card can still be answered")
@@ -172,8 +171,8 @@
         let screen = open(widening(item.options))
         defer { screen.close() }
         try screen.choose(item.title, in: try screen.menu(at: 0))
-        screen.settle(0.3)
-        #expect(log.responses == [item.response], "\(item.title)")
+        #expect(
+          MainLoop.settle(until: { log.responses == [item.response] }), "\(item.title)")
       }
     }
 

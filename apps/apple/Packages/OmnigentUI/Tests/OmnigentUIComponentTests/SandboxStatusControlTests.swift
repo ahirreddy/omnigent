@@ -57,8 +57,9 @@
       // The pointer leaving does not close a panel a click opened.
       try screen.hover(point)
       try screen.endHover()
-      screen.settle(0.6)
-      await screen.drainTasks()
+      // Outlasts, in real time, the hover's delay, which would close a panel the hover opened.
+      try await Task.sleep(for: .milliseconds(600))
+      await screen.settleTasks()
       #expect(screen.popoverWindow != nil)
       try screen.click(point)
       #expect(try await screen.eventually { screen.popoverWindow == nil })
@@ -71,8 +72,9 @@
       let point = try screen.center(of: "header-sandbox")
       try screen.hover(point)
       try screen.endHover()
-      screen.settle(0.5)
-      await screen.drainTasks()
+      // Past the delay a resting pointer would have opened the panel after, in real time.
+      try await Task.sleep(for: .milliseconds(500))
+      await screen.settleTasks()
       #expect(screen.popoverWindow == nil)
 
       try screen.hover(point)
@@ -100,8 +102,7 @@
       screen.window.makeFirstResponder(nil)
       try screen.press(keyCode: 48, characters: "\t")
       try screen.press(keyCode: 49, characters: " ")
-      screen.settle(0.5)
-      await screen.drainTasks()
+      await screen.settleTasks(limit: .milliseconds(500))
       // Without the system's keyboard navigation a button is not in the key loop at all.
       withKnownIssue("Tab reaches a button only with keyboard navigation on") {
         #expect(screen.popoverWindow != nil)

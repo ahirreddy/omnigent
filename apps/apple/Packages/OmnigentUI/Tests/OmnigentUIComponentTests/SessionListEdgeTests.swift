@@ -80,8 +80,7 @@
       defer { screen.close() }
       let menu = try #require(try screen.menu(ofRow: SidebarFixture.betaRow))
       try screen.choose("New project\u{2026}", in: menu)
-      screen.settle(0.2)
-      #expect(screen.activeWindow !== screen.window)
+      #expect(MainLoop.settle(until: { screen.activeWindow !== screen.window }))
       // Filing waits for the name: nothing has moved yet.
       #expect(spy.calls.isEmpty)
     }
@@ -113,8 +112,7 @@
       #expect(expanded >= 1)
       // Pinned isn't here, so Projects comes first and Sessions second.
       screen.sectionToggles[1].performClick(nil)
-      screen.settle(0.3)
-      #expect(try !screen.shows("Beta"))
+      #expect(try MainLoop.settle(until: { try !screen.shows("Beta") }))
       // The row's spinner went with it; the section header now has the marker's.
       #expect(spinners() >= 1)
     }
@@ -207,11 +205,9 @@
       try screen.clickRow(SidebarFixture.betaRow)
       let delete = try #require(screen.controlFrames.last)
       try screen.click(CGPoint(x: delete.midX, y: delete.midY))
-      screen.settle(0.2)
-      #expect(
-        try screen.shows(
-          "Optionally delete the local git branches of these worktree sessions. This is irreversible."
-        ))
+      let warning =
+        "Optionally delete the local git branches of these worktree sessions. This is irreversible."
+      #expect(try MainLoop.settle(until: { try screen.shows(warning) }))
       #expect(try screen.shows("feature"))
       try screen.clickControl(at: screen.controlFrames.count - 1)
       #expect(spy.calls == ["delete beta branch false"])
@@ -225,7 +221,7 @@
       let point = try screen.center(ofRow: SidebarFixture.betaRow)
       try screen.click(point, clickCount: 1)
       try screen.click(point, clickCount: 2)
-      screen.settle(0.2)
+      _ = MainLoop.settle(until: { screen.firstTextField != nil })
       let field = try #require(screen.firstTextField)
       #expect(field.stringValue == "Beta")
       try screen.click(field)

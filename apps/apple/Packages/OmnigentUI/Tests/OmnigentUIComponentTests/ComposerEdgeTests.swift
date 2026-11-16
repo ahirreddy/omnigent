@@ -130,14 +130,14 @@
       let detail = try #require(
         ComposerSamples.codexModes().options.first { $0.id == "full-access" }?.detail)
       let model = ComposerScreenModel(state: ComposerSamples.idle)
+      // The note stays a tenth of the composer's 1.6 seconds, still past the press's own wait.
+      Theme.Timing.scale = 0.1
+      defer { Theme.Timing.scale = 1 }
       let screen = openComposer(model, log.actions)
       defer { screen.close() }
       try screen.pressTab(.shift)
       #expect(try screen.shows(detail))
-      screen.settle(1.8)
-      await screen.drainTasks()
-      screen.settle(0.3)
-      #expect(try !screen.shows(detail))
+      #expect(try await screen.waitUntil { try !screen.shows(detail) })
     }
 
     @Test("a dragged message lands before its target, or after it when dragged down")

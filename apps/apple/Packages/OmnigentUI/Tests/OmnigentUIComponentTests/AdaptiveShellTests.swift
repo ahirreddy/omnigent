@@ -81,11 +81,9 @@
       let screen = shell(ShellHarness(spy: spy, toggle: toggle))
       defer { screen.close() }
       toggle()
-      screen.settle(0.3)
-      #expect(item(screen).first?.isCollapsed == true)
+      #expect(MainLoop.settle(until: { item(screen).first?.isCollapsed == true }))
       toggle()
-      screen.settle(0.3)
-      #expect(item(screen).first?.isCollapsed == false)
+      #expect(MainLoop.settle(until: { item(screen).first?.isCollapsed == false }))
     }
 
     @Test("Content fills its own column: nothing draws under the sidebar")
@@ -224,7 +222,7 @@
       let rowsBefore = try sidebarRows()
       tracker.mouseMoved(with: edge)
       // The panel draws the sidebar's rows once the pointer has rested, however late timers run.
-      #expect(try await waitUntil(screen) { try sidebarRows() > rowsBefore })
+      #expect(try await screen.waitUntil { try sidebarRows() > rowsBefore })
       screen.settle(0.3)
       let peekMarker = screen.allViews.contains {
         $0.frame.width == SidebarPeekOverlay<EmptyView>.panelWidth

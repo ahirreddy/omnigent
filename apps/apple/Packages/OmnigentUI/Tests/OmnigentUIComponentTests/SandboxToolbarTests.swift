@@ -48,11 +48,11 @@
       screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
       screen.host.sceneBridgingOptions = [.toolbars, .title]
       screen.window.contentView = screen.host
-      let hasItems = try await waitUntil(screen) { screen.window.toolbar?.items.isEmpty == false }
+      let hasItems = await screen.waitUntil { screen.window.toolbar?.items.isEmpty == false }
       try #require(hasItems, "the window has no toolbar items")
       // The toolbar places its items in the first layout pass after the window has them.
       screen.window.setContentSize(CGSize(width: 1_100, height: 701))
-      let arePlaced = try await waitUntil(screen) {
+      let arePlaced = await screen.waitUntil {
         screen.window.toolbar?.items.contains(where: \.isVisible) == true
       }
       try #require(arePlaced, "no toolbar item was placed")
@@ -102,7 +102,7 @@
       #expect(item.identifiers.contains("sandbox-mark-resting"))
       #expect(screen.popoverWindow == nil)
       try screen.click(item.view)
-      #expect(try await waitUntil(screen) { screen.popoverWindow != nil })
+      #expect(await screen.waitUntil { screen.popoverWindow != nil })
       let panel = try #require(screen.popoverWindow?.contentView)
       let shown = try screen.shownText(under: panel)
       for text in ["Modal Sandbox", "Asleep", "The next message wakes it.", "Wake", "Stop Agent"] {

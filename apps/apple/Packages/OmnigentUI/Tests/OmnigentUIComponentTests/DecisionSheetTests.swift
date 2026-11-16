@@ -36,14 +36,12 @@
       #expect(try !screen.shows("Do two"))
       #expect(try !screen.shows("Show 1 more"))
       try screen.tapButton(0)
-      screen.settle(0.5)
+      #expect(try MainLoop.settle(until: { try screen.shows("Do two") }))
       #expect(screen.window.attachedSheet != nil)
       #expect(screen.activeWindow.frame.height >= 560)
-      #expect(try screen.shows("Do two"))
       // Done is the sheet's toolbar button.
       try screen.tapButton(fromEnd: 0)
-      screen.settle(0.5)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
     }
 
     @Test("A row opens its request straight in the sheet, whose answer goes to the host")
@@ -52,10 +50,9 @@
       defer { screen.close() }
       // The row's own button.
       try screen.tapButton(0)
-      screen.settle(0.5)
+      #expect(try MainLoop.settle(until: { try screen.shows("Command approval") }))
       #expect(screen.window.attachedSheet != nil)
       #expect(screen.activeWindow.frame.height >= 560)
-      #expect(try screen.shows("Command approval"))
     }
 
     @Test("When nothing is left waiting the sheet closes")
@@ -63,10 +60,9 @@
       let (screen, host) = phone(.requests([request("one"), request("two")]))
       defer { screen.close() }
       try screen.tapButton(0)
-      screen.settle(0.5)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       host.state = .requests([request("one", answered: true), request("two", answered: true)])
-      screen.settle(0.5)
-      #expect(screen.window.attachedSheet == nil)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet == nil }))
     }
 
     private struct SheetHost: View {
@@ -94,7 +90,8 @@
     ) -> (OffscreenWindow<SheetHost>, DecisionDockModelHost) {
       let host = DecisionDockModelHost(state)
       let screen = OffscreenWindow(SheetHost(host: host, actions: log.actions, start: start))
-      screen.settle(0.5)
+      // The sheet is up once it shows the path its appearance set.
+      _ = try? MainLoop.settle(until: { try screen.shows("path \(start) closes 0") })
       return (screen, host)
     }
 
@@ -131,14 +128,12 @@
       #expect(try !screen.shows("Approval required"))
       // 0 is the first request's row, 1 the second's.
       try screen.clickRow(1)
-      screen.settle(0.5)
+      #expect(try MainLoop.settle(until: { try screen.shows("Approval required") }))
       #expect(try screen.shows("path [\"two\"] closes 0"))
-      #expect(try screen.shows("Approval required"))
       // Back comes first, before the card's own buttons.
       try screen.tapButton(0)
-      screen.settle(0.5)
+      #expect(try MainLoop.settle(until: { try !screen.shows("Approval required") }))
       #expect(try screen.shows("path [] closes 0"))
-      #expect(try !screen.shows("Approval required"))
       #expect(log.responses.isEmpty)
     }
 
@@ -156,11 +151,9 @@
       defer { screen.close() }
       #expect(try screen.shows("path [\"one\"] closes 0"))
       host.state = .requests([request("one", answered: true), request("two")])
-      screen.settle(0.5)
-      #expect(try screen.shows("path [] closes 0"))
+      #expect(try MainLoop.settle(until: { try screen.shows("path [] closes 0") }))
       host.state = .requests([request("one", answered: true), request("two", answered: true)])
-      screen.settle(0.5)
-      #expect(try screen.shows("path [] closes 1"))
+      #expect(try MainLoop.settle(until: { try screen.shows("path [] closes 1") }))
     }
 
     @Test("Another request being answered leaves the open one where it is")

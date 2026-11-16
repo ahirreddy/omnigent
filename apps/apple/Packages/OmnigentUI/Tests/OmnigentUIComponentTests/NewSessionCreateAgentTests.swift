@@ -39,7 +39,7 @@
             isSaving: isSaving, errorMessage: errorMessage, problem: problem,
             save: { log.saved.append($0) }, importBundle: importBundle,
             cancel: { log.cancels += 1 })))
-      screen.settle(0.5)
+      _ = MainLoop.settle(until: { screen.window.attachedSheet != nil })
       return screen
     }
 
@@ -183,8 +183,7 @@
         screen.buttons.last { abs($0.midY - row.midY) < 16 && $0.minX > row.maxX })
       try screen.click(screen.clickPoint(remove))
       // The form animates the row out.
-      screen.settle(0.3)
-      #expect(screen.fields.count == before)
+      #expect(MainLoop.settle(until: { screen.fields.count == before }))
       #expect(try !screen.shows("Server name"))
       try screen.tapButton(fromEnd: 0)
       #expect(log.saved.last?.mcpServers.isEmpty == true)

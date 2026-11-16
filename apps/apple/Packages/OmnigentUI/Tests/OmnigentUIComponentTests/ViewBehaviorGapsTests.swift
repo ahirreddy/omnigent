@@ -150,11 +150,10 @@
       let screen = OffscreenWindow(
         AnyView(Color.clear.sheet(isPresented: .constant(true)) { shown }), width: 700, height: 700)
       defer { screen.close() }
-      screen.settle(0.2)
+      #expect(MainLoop.settle(until: { screen.window.attachedSheet != nil }))
       try screen.clickControl(at: screen.controlFrames.count - 3)
       #expect(try screen.shows("Copied!"))
-      try await screen.letTasksRun(passes: 8)
-      #expect(try !screen.shows("Copied!"))
+      #expect(try await screen.waitUntil { try !screen.shows("Copied!") })
       #expect(try screen.shows("Copy link"))
     }
 
@@ -192,7 +191,7 @@
           .frame(width: 800, height: 600, alignment: .top))
       defer { screen.close() }
       try screen.choose("New Worktree\u{2026}", in: try screen.menu(at: 1))
-      screen.settle(0.2)
+      #expect(MainLoop.settle(until: { screen.popoverWindow != nil }))
       try screen.clickPopoverButton(fromRight: 0)
       #expect(chosen == [.new(branch: "feature/x", base: "main")])
       #expect(screen.popoverWindow == nil)
