@@ -38,6 +38,8 @@ pub const SIDE_CHAT_LABEL: &str = "omnigent.side_chat";
 /// The session a side chat was forked from.
 pub const SIDE_CHAT_SOURCE_LABEL: &str = "omnigent.side_chat.source_id";
 const FORK_SOURCE_LABEL: &str = "omnigent.fork.source_id";
+/// The name the Codex runner gives a child: [`SIDE_CHAT_TITLE`] for its `/side` fork.
+const CODEX_NICKNAME_LABEL: &str = "omnigent.codex_native.agent_nickname";
 const CODEX_NATIVE_WRAPPER: &str = "codex-native-ui";
 const COLLABORATION_LABEL: &str = "omnigent.codex_native.collaboration_mode";
 const PLAN: &str = "plan";
@@ -148,6 +150,16 @@ pub fn side_chat_source_id(labels: &BTreeMap<String, String>) -> Option<&str> {
         })
         .map(String::as_str)
         .filter(|id| !id.is_empty())
+}
+
+/// Whether a session's labels, read through `label`, make it a side chat: a server fork, or
+/// the Codex runner's `/side` fork, which is listed as a sub-agent (server
+/// `is_side_chat_child`).
+#[must_use]
+pub fn is_side_chat<'a>(label: impl Fn(&str) -> Option<&'a str>) -> bool {
+    label(CODEX_NICKNAME_LABEL) == Some(SIDE_CHAT_TITLE)
+        || label(SIDE_CHAT_SOURCE_LABEL).is_some_and(|id| !id.is_empty())
+        || label(SIDE_CHAT_LABEL) == Some("1")
 }
 
 /// When a server-forked side chat began: the history it copied from its parent was created

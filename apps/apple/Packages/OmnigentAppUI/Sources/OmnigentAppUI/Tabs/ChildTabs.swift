@@ -7,32 +7,45 @@ import OmnigentUIComponents
 // A session's sub-agents and forked side chats show in tabs of that session's strip, beside its
 // chat, as the web shows them in the parent's panel. They never take the window as a session.
 
+/// A session the stream reported under another, as its row shows it.
+nonisolated struct ListedChild: Hashable, Sendable {
+  let id: String
+  let name: String
+  /// A side chat the session's agent forked, rather than a sub-agent.
+  let isSideChat: Bool
+}
+
 extension ConversationStore {
   /// The sessions the stream reported under this one (sub-agents, an agent's own side-chat
-  /// forks), in the order they started, with the names their rows show.
-  var listedChildren: [(id: String, name: String)] {
+  /// forks), in the order they started.
+  var listedChildren: [ListedChild] {
     sections.compactMap { section in
       guard section.id.hasPrefix("child-"), let id = section.sessionId else { return nil }
-      return (id, section.title)
+      let isSideChat = section.details.contains { $0.id == "kind" && $0.text == "side_chat" }
+      return ListedChild(id: id, name: section.title, isSideChat: isSideChat)
     }
   }
 }
 
-/// What a group's open conversations know of the sessions under them: each one's parent and the
-/// name it is listed under (the stream's child rows, the Agents tab's tree).
+/// What a group's open conversations know of the sessions under them: each one's parent, the
+/// name it is listed under and which are side chats (the stream's child rows, the Agents tab's
+/// tree).
 struct KnownChildren {
   private(set) var parents: [String: String] = [:]
   private(set) var names: [String: String] = [:]
+  private(set) var sideChats: Set<String> = []
 
   init(_ conversations: [ConversationStore]) {
     for conversation in conversations {
       for child in conversation.listedChildren {
         parents[child.id] = conversation.sessionID
         names[child.id] = child.name
+        if child.isSideChat { sideChats.insert(child.id) }
       }
       for node in conversation.tools.agentTree?.nodes ?? [] {
         if let parentID = node.parentId { parents[node.sessionId] = parentID }
         names[node.sessionId] = node.name
+        if node.isSideChat { sideChats.insert(node.sessionId) }
       }
     }
   }
@@ -184,26 +197,26 @@ extension WindowTabs {
   }
 
   /// Opens a sub-agent or forked side chat that runs under `ownerID`: the tab already showing
-  /// it, else a window of its own when `apart` is given, else a new tab in `ownerID`'s strip.
+  /// it, else a sub-agent's window of its own when `apart` is given, else a new tab in
+  /// `ownerID`'s strip.
   /// - Parameters:
   ///   - childID: The child session.
-  ///   - sourceID: The conversation that listed it, for its name.
+  ///   - sourceID: The conversation that listed it, for its name and kind.
   ///   - ownerID: The session whose tabs it joins.
-  ///   - apart: Opens it in another window (Settings › Open sub-agents in a new window).
+  ///   - apart: Opens a sub-agent in another window (Settings › Open sub-agents in a new
+  ///     window).
   func openChild(
     _ childID: String, from sourceID: String, in ownerID: String,
     apart: (@MainActor (String) -> Void)? = nil
   ) {
-    let group = groups.group(ownerID)
-    if let shown = group.tabs.first(where: { $0.content.conversationID == childID }) {
-      group.select(shown.id)
-    } else if let apart {
+    let known = knownChildren(of: ownerID, and: sourceID)
+    let isSideChat = known.sideChats.contains(childID)
+    let isShown = groups.group(ownerID).tabs.contains { $0.content.conversationID == childID }
+    if let apart, !isSideChat, !isShown {
       apart(childID)
       return
-    } else {
-      let name = knownChildren(of: ownerID, and: sourceID).names[childID]
-      group.open(.subagent(parentID: ownerID, childID: childID), title: name)
     }
+    groups.openChild(childID, in: ownerID, isSideChat: isSideChat, name: known.names[childID])
     groups.show(.session(ownerID))
   }
 
@@ -260,18 +273,30 @@ extension WindowTabs {
     return session.forkedSideChats.awaitFork(
       of: conversation,
       gaveUp: { fail("The agent didn't report a side chat for your /side question.") },
-      forked: { childID in
-        let group = groups.group(ownerID)
-        if let shown = group.tabs.first(where: { $0.content.conversationID == childID }) {
-          group.select(shown.id)
-        } else {
-          group.open(.sideChatSession(parentID: ownerID, childID: childID))
-        }
-      })
+      forked: { groups.openChild($0, in: ownerID, isSideChat: true, name: nil) })
   }
 
   private func knownChildren(of ownerID: String, and sourceID: String) -> KnownChildren {
     let connection = session.connection
     return KnownChildren(Set([ownerID, sourceID]).compactMap(connection.openConversation))
+  }
+}
+
+extension SessionTabGroups {
+  /// Selects the tab of `childID`, a sub-agent or side chat that runs under `ownerID`, in that
+  /// session's strip, opening one when none shows it: a side chat's as "Side chat N", a
+  /// sub-agent's under `name`. The window's page is left as it is.
+  /// - Returns: The tab.
+  @discardableResult
+  func openChild(_ childID: String, in ownerID: String, isSideChat: Bool, name: String?)
+    -> AppTab
+  {
+    let group = group(ownerID)
+    if let shown = group.tabs.first(where: { $0.content.conversationID == childID }) {
+      group.select(shown.id)
+      return shown
+    }
+    if isSideChat { return group.open(.sideChatSession(parentID: ownerID, childID: childID)) }
+    return group.open(.subagent(parentID: ownerID, childID: childID), title: name)
   }
 }

@@ -9,13 +9,18 @@
 //! disconnected or idle.
 //!
 //! Each child becomes a `child-<id>` section: the status label is its summary and the details
-//! carry stable ids (`state`, `goal`, `activity`, `agent`, `error`, `pending`, `started`, `id`).
+//! carry stable ids (`state`, `goal`, `activity`, `agent`, `error`, `pending`, `started`, `id`,
+//! and `kind` for a side chat).
 
 use serde_json::{Map, Value};
 
 use super::presentation::{EventSection, SUMMARY_CHARS, bounded};
 use super::state::DetailSection;
 use crate::agent_tree::{AgentStatus, ChildSessionRow};
+use crate::session_tools::is_side_chat;
+
+/// The `kind` detail of a child that is a side chat, not a sub-agent.
+const SIDE_CHAT_KIND: &str = "side_chat";
 
 /// Where the child stands, from the fields the stream merged for it. A child the stream only
 /// announced (`session.created`) has no summary yet and reads idle, as the web's list does.
@@ -73,6 +78,9 @@ pub(super) fn child_section(id: &str, fields: &Map<String, Value>) -> EventSecti
         .map(|seconds| seconds.to_string());
     add("started", "Started", started.as_deref());
     details.push(DetailSection::new("id", "Session ID", id, false));
+    if is_side_chat(|key| label(fields, key)) {
+        details.push(DetailSection::new("kind", "Kind", SIDE_CHAT_KIND, false));
+    }
     let mut section = EventSection::new(&format!("child-{id}"), title, status.label);
     section.details = details;
     section.session_id = Some(id.to_owned());
@@ -98,6 +106,15 @@ pub(super) fn ordered<'a>(
 
 fn string<'a>(fields: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
     fields.get(key).and_then(Value::as_str)
+}
+
+/// One of the child's labels, as its summary reports them.
+fn label<'a>(fields: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
+    fields
+        .get("labels")
+        .and_then(Value::as_object)
+        .and_then(|labels| labels.get(key))
+        .and_then(Value::as_str)
 }
 
 fn pending_count(fields: &Map<String, Value>) -> u64 {
@@ -229,6 +246,29 @@ mod tests {
         assert_eq!(created.summary, "Idle");
         assert_eq!(detail(&created, "state"), Some("idle"));
         assert_eq!(detail(&created, "goal"), None);
+        assert_eq!(detail(&section, "kind"), None, "a sub-agent has no kind");
+    }
+
+    #[test]
+    fn a_codex_side_chat_is_marked_by_its_labels() {
+        let side_chat = fields(json!({
+            "tool": "Side chat",
+            "labels": {
+                "omnigent.wrapper": "codex-native-ui-subagent",
+                "omnigent.codex_native.agent_nickname": "Side chat",
+            },
+        }));
+        assert_eq!(
+            detail(&child_section("conv_s", &side_chat), "kind"),
+            Some(SIDE_CHAT_KIND)
+        );
+        let worker = fields(json!({
+            "labels": {"omnigent.codex_native.agent_nickname": "Euclid"},
+        }));
+        assert_eq!(detail(&child_section("conv_w", &worker), "kind"), None);
+        // Labels that are not an object say nothing.
+        let odd = fields(json!({"labels": ["Side chat"]}));
+        assert_eq!(detail(&child_section("conv_o", &odd), "kind"), None);
     }
 
     #[test]

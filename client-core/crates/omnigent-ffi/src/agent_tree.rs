@@ -109,6 +109,9 @@ pub struct AgentNode {
     pub routed_model: Option<String>,
     /// Sub-agents listed under it.
     pub child_count: u32,
+    /// A side chat (Codex's `/side` fork) rather than a sub-agent; never the root.
+    #[uniffi(default)]
+    pub is_side_chat: bool,
 }
 
 impl From<core::AgentNode> for AgentNode {
@@ -126,6 +129,7 @@ impl From<core::AgentNode> for AgentNode {
             preview: node.preview,
             routed_model: node.routed_model,
             child_count: node.child_count,
+            is_side_chat: node.is_side_chat,
         }
     }
 }

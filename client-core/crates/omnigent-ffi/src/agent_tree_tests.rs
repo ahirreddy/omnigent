@@ -68,7 +68,8 @@ fn a_tree_is_read_from_its_root_with_every_field() {
                "current_task_status":"completed","last_message_preview":"All green",
                "routed_model":"claude-sonnet"},
               {"id":"conv_c","title":"researcher:c","tool":"researcher","busy":false,
-               "last_task_error":{"code":"tool_error","message":"boom"}}
+               "last_task_error":{"code":"tool_error","message":"boom"},
+               "labels":{"omnigent.codex_native.agent_nickname":"Side chat"}}
             ]}"#,
         ),
     );
@@ -101,8 +102,10 @@ fn a_tree_is_read_from_its_root_with_every_field() {
             preview: Some("All green".into()),
             routed_model: Some("claude-sonnet".into()),
             child_count: 0,
+            is_side_chat: false,
         }
     );
+    assert!(tree.nodes[2].is_side_chat);
     assert_eq!(tree.nodes[2].activity, AgentActivity::Failed);
     assert_eq!(tree.nodes[2].status_detail.as_deref(), Some("boom"));
     assert!(!tree.nodes[2].is_settled);
