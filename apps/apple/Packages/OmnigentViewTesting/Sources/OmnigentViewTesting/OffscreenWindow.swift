@@ -59,9 +59,13 @@
     ///   - width: The window's width.
     ///   - height: The window's height.
     ///   - appearance: Light or dark, set here so a result never follows the system's setting.
+    ///   - styleMask: The window's style; a title bar gives a toolbar and a title somewhere to go.
+    ///   - sceneBridging: What the view hands its window, such as its toolbar; SwiftUI's default
+    ///     when `nil`.
     public init(
       _ view: Content, width: CGFloat = 800, height: CGFloat = 600,
-      appearance: NSAppearance.Name = .darkAqua
+      appearance: NSAppearance.Name = .darkAqua, styleMask: NSWindow.StyleMask = [.borderless],
+      sceneBridging: NSHostingSceneBridgingOptions? = nil
     ) {
       SystemSideEffects.install()
       let app = NSApplication.shared
@@ -74,9 +78,12 @@
       host = NSHostingView(rootView: view)
       // The test chooses the size; the view's ideal size would otherwise resize the window.
       host.sizingOptions = []
+      if let sceneBridging { host.sceneBridgingOptions = sceneBridging }
+      let frame = CGRect(origin: Self.origin, size: CGSize(width: width, height: height))
       window = AlwaysKeyWindow(
-        contentRect: CGRect(origin: Self.origin, size: CGSize(width: width, height: height)),
-        styleMask: [.borderless], backing: .buffered, defer: false)
+        contentRect: frame, styleMask: styleMask, backing: .buffered, defer: false)
+      // A title bar would make the window taller than asked; the frame is the size.
+      window.setFrame(frame, display: false)
       window.isReleasedWhenClosed = false
       window.appearance = NSAppearance(named: appearance)
       window.contentView = host

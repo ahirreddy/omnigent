@@ -144,6 +144,17 @@
       #expect(screen.window.frame == frame)
     }
 
+    @Test("a window made with a title bar is the size asked for, off every display")
+    func titledFromTheStart() {
+      let screen = OffscreenWindow(
+        Text("Still"), width: 300, height: 200, styleMask: [.titled, .fullSizeContentView],
+        sceneBridging: [.toolbars, .title])
+      defer { screen.close() }
+      #expect(screen.window.frame.size == CGSize(width: 300, height: 200))
+      #expect(screen.window.frame.maxX < 0)
+      #expect(screen.host.sceneBridgingOptions == [.toolbars, .title])
+    }
+
     @Test("opening a menu where there is none is an error")
     func noMenu() {
       let screen = OffscreenWindow(Text("Still"), width: 100, height: 100)
