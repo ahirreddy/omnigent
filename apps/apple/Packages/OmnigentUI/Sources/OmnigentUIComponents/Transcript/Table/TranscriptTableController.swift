@@ -81,6 +81,7 @@
     var olderRequested = false
     var historyReads = 0
     var isShown = true
+    var cursorRectsPaused = false
 
     var isAdjusting = false
     var isMeasuring = false

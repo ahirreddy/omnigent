@@ -98,6 +98,26 @@
       }
     }
 
+    // MARK: Cursor rects
+
+    /// `omnigent:transcript-cursor-rects paused`: the window stops rebuilding cursor rects at
+    /// each step of a reader's scroll, and rebuilds them once it ends.
+    static let pausesCursorRects =
+      UserDefaults.standard.string(forKey: "omnigent:transcript-cursor-rects") == "paused"
+
+    func pauseCursorRects(_ paused: Bool) {
+      guard Self.pausesCursorRects, paused != cursorRectsPaused,
+        let window = unsafe scrollView.window
+      else { return }
+      cursorRectsPaused = paused
+      if paused {
+        window.disableCursorRects()
+      } else {
+        window.enableCursorRects()
+        window.resetCursorRects()
+      }
+    }
+
     // MARK: Prewarm
 
     /// How many viewports past the measured lookahead a scroll lays answers out ahead.

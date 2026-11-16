@@ -106,6 +106,7 @@
     /// The reader started or stopped scrolling: idle measuring waits until they stop.
     func scrollPhaseChanged() {
       let isScrolling = isLiveScrolling || isWheeling
+      pauseCursorRects(isScrolling)
       if follow.scrollPhaseChanged(isUserScrolling: isScrolling) { pinBottom() }
       if isScrolling {
         prefetchGeneration += 1

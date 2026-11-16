@@ -779,6 +779,7 @@ LIST_EXTRAS = {
     "textkit": ["-omnigent:message-text", "textkit"],
     "full": ["-omnigent:message-text-viewport", "full"],
     "raster": ["-omnigent:message-text-surface", "raster"],
+    "nocursor": ["-omnigent:transcript-cursor-rects", "paused"],
 }
 
 
