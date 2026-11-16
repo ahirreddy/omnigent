@@ -3,7 +3,8 @@ import SwiftUI
 /// The transcript over live rows. Its row list reads them in its own body
 /// (``TranscriptRowsContent``), so row changes re-render only the list. The rows arrive paced
 /// (``TranscriptRowsPacer``), and a kept tab out of view keeps the rows it last showed, so
-/// streaming into it costs nothing until it shows again.
+/// streaming into it costs nothing until it shows again. On the Mac,
+/// `omnigent:transcript-list table` shows it in a table instead (``TableTranscriptView``).
 struct LiveTranscript: View {
   let state: ConversationViewState
   let liveRows: LiveTranscriptRows?
@@ -11,6 +12,20 @@ struct LiveTranscript: View {
   let scrollToLatestRequest: Int
 
   var body: some View {
+    #if os(macOS)
+      if TranscriptListKind.current == .table {
+        TableTranscriptView(
+          state: state, liveRows: liveRows, actions: actions,
+          scrollToLatestRequest: scrollToLatestRequest)
+      } else {
+        stack
+      }
+    #else
+      stack
+    #endif
+  }
+
+  private var stack: some View {
     TranscriptView(
       state: state, liveRows: liveRows, actions: actions,
       scrollToLatestRequest: scrollToLatestRequest)

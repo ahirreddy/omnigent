@@ -143,7 +143,7 @@ struct CLITranscriptRows<Header: View>: View {
 }
 
 /// One CLI block; equatable so unchanged rows skip re-rendering while output streams.
-private struct CLIBlockView: View, Equatable {
+struct CLIBlockView: View, Equatable {
   let block: CLIBlock
   let decorations: [String: MessageDecoration]
 
