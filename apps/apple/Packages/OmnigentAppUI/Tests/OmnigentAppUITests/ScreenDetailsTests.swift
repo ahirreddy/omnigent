@@ -70,7 +70,8 @@ struct ScreenDetailsTests {
     let signingIn = ServerSession(
       connection: ConnectionStore(core: core), opener: ExternalURLOpener { _ in true })
     await signingIn.signIn.connectNow("http://127.0.0.1:6767")
-    #expect(signingIn.targetURL?.host() == "127.0.0.1")
+    // The window's phase follows the core's event, which can land after `connectNow` returns.
+    try await eventually("the signing-in phase") { signingIn.targetURL?.host() == "127.0.0.1" }
   }
 
   @Test("A bundle picked in the importer installs, and an importer failure is reported")
