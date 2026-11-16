@@ -1,9 +1,12 @@
-#if os(macOS)
-  import AppKit
-  import OmnigentViewTesting
+#if os(macOS) || os(iOS)
   import SwiftUI
 
   @testable import OmnigentUIComponents
+#endif
+
+#if os(macOS)
+  import AppKit
+  import OmnigentViewTesting
 
   /// Hosts a piece of the transcript off screen, with animations off so a click's result is there
   /// when the click returns.
@@ -127,7 +130,9 @@
   func titles(of menu: NSMenu) -> [String] {
     menu.items.map(\.title).filter { !$0.isEmpty }
   }
+#endif
 
+#if os(macOS) || os(iOS)
   /// What the views under test asked the host to do, in order.
   @MainActor
   final class HostLog {
