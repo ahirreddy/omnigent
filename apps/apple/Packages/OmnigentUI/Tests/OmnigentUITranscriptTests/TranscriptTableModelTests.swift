@@ -86,6 +86,21 @@ struct TranscriptTableModelTests {
     #expect(model.needsMeasure(at: second))
   }
 
+  @Test("A row keeps the height the list was given while its kind's estimates move")
+  func givenHeightsStay() throws {
+    var model = TranscriptTableModel()
+    _ = model.replaceRows(rows(state(turns: 3)))
+    _ = model.setWidth(600)
+    let far = try #require(model.index(of: "a0"))
+    let given = model.givenHeight(at: far)
+    let near = try #require(model.index(of: "a2"))
+    model.record(model.height(at: near) * 3, at: near)
+    #expect(model.height(at: far) > given * 2)
+    #expect(model.givenHeight(at: far) == given)
+    let fresh = try #require(model.index(of: "u0"))
+    #expect(model.givenHeight(at: fresh) == model.height(at: fresh))
+  }
+
   @Test("A new text size measures every row again, the old heights standing in")
   func heightsInvalidated() throws {
     var model = TranscriptTableModel()

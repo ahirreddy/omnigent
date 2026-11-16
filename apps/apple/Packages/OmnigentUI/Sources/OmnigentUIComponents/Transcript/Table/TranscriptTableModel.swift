@@ -359,6 +359,13 @@ nonisolated struct TranscriptTableModel: Sendable {
     return height
   }
 
+  /// The height the list was last given for row `index`, so laying rows out again after others
+  /// arrive keeps theirs while estimates move; a row never given one gets its height now.
+  mutating func givenHeight(at index: Int) -> CGFloat {
+    if let given = provided[rows[index].id] { return given }
+    return provideHeight(at: index)
+  }
+
   /// Whether row `index` needs measuring: never measured, or for other content or width.
   func needsMeasure(at index: Int) -> Bool {
     !heights.isCurrent(rows[index].id, version: version(at: index), width: width)

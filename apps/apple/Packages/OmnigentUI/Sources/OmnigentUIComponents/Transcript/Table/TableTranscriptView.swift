@@ -1,11 +1,25 @@
-#if os(macOS)
-  import AppKit
+#if os(macOS) || os(iOS)
   import Observation
   import SwiftUI
 
-  /// The transcript as a table (`omnigent:transcript-list table`): an `NSTableView` whose rows
-  /// are reused cells hosting the stack's row views, with heights measured once per row, content
-  /// version and width (``TranscriptTableController``). It keeps the stack's follow rules,
+  #if os(macOS)
+    import AppKit
+  #else
+    import UIKit
+  #endif
+
+  #if os(macOS)
+    /// The list's AppKit side.
+    typealias TranscriptListController = TranscriptTableController
+  #else
+    /// The list's UIKit side.
+    typealias TranscriptListController = TranscriptCollectionController
+  #endif
+
+  /// The transcript as a list of reused cells (`omnigent:transcript-list table`): an
+  /// `NSTableView` on the Mac (``TranscriptTableController``), a `UICollectionView` on iPhone and
+  /// iPad (``TranscriptCollectionController``). Cells host the stack's row views, with heights
+  /// measured once per row, content version and width. It keeps the stack's follow rules,
   /// paging, Jump to latest, linked messages, the turn rail and the selection popup.
   struct TableTranscriptView: View {
     let state: ConversationViewState
@@ -13,7 +27,7 @@
     let actions: ConversationActions
     let scrollToLatestRequest: Int
 
-    @State private var controller = TranscriptTableController()
+    @State private var controller = TranscriptListController()
     @State private var layout = TranscriptLayoutMemo()
     @State private var environmentRelay = TranscriptEnvironmentRelay()
     @State private var pacer = TranscriptRowsPacer()
@@ -31,8 +45,13 @@
       )
       .environment(\.conversationActions, actions)
       .environment(\.openURL, environmentRelay.openURL)
-      // The rows scroll under the bars around them, which the scroll view insets them by.
-      .ignoresSafeArea(.container, edges: .vertical)
+      // The rows scroll under the bars around them, which the scroll view insets them by; on
+      // iPhone and iPad under the keyboard too.
+      #if os(macOS)
+        .ignoresSafeArea(.container, edges: .vertical)
+      #else
+        .ignoresSafeArea(edges: .vertical)
+      #endif
       .onGeometryChange(for: EdgeInsets.self) {
         $0.safeAreaInsets
       } action: { insets in
@@ -118,7 +137,7 @@
     let liveRows: LiveTranscriptRows?
     let pacer: TranscriptRowsPacer
     let layout: TranscriptLayoutMemo
-    let controller: TranscriptTableController
+    let controller: TranscriptListController
     let actions: ConversationActions
     let rail: TurnRailModel
     @Environment(\.transcriptAppearance) private var appearance
@@ -135,8 +154,7 @@
         rows: rows, state: state, actions: actions, isCLI: isCLI, controller: controller
       )
       .background {
-        TranscriptTableEnvironmentFeed(environment: controller.environment)
-          .frame(width: 0, height: 0)
+        TranscriptTableEnvironmentFeed(controller: controller).frame(width: 0, height: 0)
       }
       .onChange(of: layout.turns(for: state), initial: true) { _, turns in rail.setTurns(turns) }
       .modifier(PacedWhileShown(pacer: pacer))
@@ -158,7 +176,7 @@
 
   /// Tells the controller when the tab hides and shows, without the row list reading it.
   private struct TableShownWatch: ViewModifier {
-    let controller: TranscriptTableController
+    let controller: TranscriptListController
     @Environment(\.isTabContentHidden) private var isHidden
 
     func body(content: Content) -> some View {
@@ -170,30 +188,55 @@
 
   /// Hands the cells the transcript's environment when it changes. On its own, apart from the
   /// rows, so new rows do not hand every cell on screen the same environment again.
-  private struct TranscriptTableEnvironmentFeed: NSViewRepresentable {
-    let environment: TranscriptTableEnvironment
-
-    func makeNSView(context: Context) -> NSView { NSView() }
-
-    func updateNSView(_ view: NSView, context: Context) {
-      environment.values = context.environment
-    }
+  private struct TranscriptTableEnvironmentFeed {
+    let controller: TranscriptListController
   }
 
   /// The controller's scroll view in the SwiftUI tree; each update hands it the rows.
-  private struct TranscriptTableList: NSViewRepresentable {
+  private struct TranscriptTableList {
     let rows: [TranscriptTableRow]
     let state: ConversationViewState
     let actions: ConversationActions
     let isCLI: Bool
-    let controller: TranscriptTableController
+    let controller: TranscriptListController
 
-    func makeNSView(context: Context) -> NSScrollView { controller.scrollView }
-
-    func updateNSView(_ view: NSScrollView, context: Context) {
+    func update(in environment: EnvironmentValues) {
       controller.update(
-        rows: rows, state: state, actions: actions, isCLI: isCLI,
-        environment: context.environment)
+        rows: rows, state: state, actions: actions, isCLI: isCLI, environment: environment)
     }
   }
+
+  #if os(macOS)
+    extension TranscriptTableEnvironmentFeed: NSViewRepresentable {
+      func makeNSView(context: Context) -> NSView { NSView() }
+
+      func updateNSView(_ view: NSView, context: Context) {
+        controller.environment.values = context.environment
+      }
+    }
+
+    extension TranscriptTableList: NSViewRepresentable {
+      func makeNSView(context: Context) -> NSScrollView { controller.scrollView }
+
+      func updateNSView(_ view: NSScrollView, context: Context) {
+        update(in: context.environment)
+      }
+    }
+  #else
+    extension TranscriptTableEnvironmentFeed: UIViewRepresentable {
+      func makeUIView(context: Context) -> UIView { UIView() }
+
+      func updateUIView(_ view: UIView, context: Context) {
+        controller.environmentChanged(context.environment)
+      }
+    }
+
+    extension TranscriptTableList: UIViewRepresentable {
+      func makeUIView(context: Context) -> UICollectionView { controller.collectionView }
+
+      func updateUIView(_ view: UICollectionView, context: Context) {
+        update(in: context.environment)
+      }
+    }
+  #endif
 #endif
