@@ -65,8 +65,7 @@ final class MacSessionFlowUITests: XCTestCase {
     XCTAssertTrue(prompt.appears(within: 10), "no rename prompt")
     XCTAssertFalse(
       prompt.checkBoxes.firstMatch.exists, "the rename prompt offers another prompt's checkbox")
-    // With keyboard navigation on, the prompt opens with Cancel focused, not the title.
-    live.click(prompt.textFields.firstMatch, "the title field")
+    // The title has the keyboard as the prompt opens, even with keyboard navigation on.
     app.typeKey("a", modifierFlags: .command)
     app.typeText(title)
     live.clickDialogButton("Rename", in: app)

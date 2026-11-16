@@ -41,6 +41,7 @@ struct SessionDialogs: ViewModifier {
           .disabled(trimmed.isEmpty || renameText.count > Self.maxTitleLength)
           Button("Cancel", role: .cancel) { renaming = nil }
         }
+        .focusesAlertField(isPresented: renaming != nil)
     )
     .confirmationDialog(
       "Leave this session?",
