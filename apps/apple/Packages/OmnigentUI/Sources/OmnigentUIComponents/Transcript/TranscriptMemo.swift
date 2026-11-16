@@ -313,34 +313,6 @@ final class TranscriptLayoutMemo {
   }
 }
 
-/// Keeps the transcript's environment values stable across updates, as ``FocusedActionsRelay``
-/// does for focused values: a new `ConversationActions` or `OpenURLAction` in the environment
-/// would re-render every row that reads it on every streamed delta.
-@MainActor
-final class TranscriptEnvironmentRelay {
-  private let relay = FocusedActionsRelay<ConversationActions>()
-  private var openLink: (@MainActor (URL) -> Void)?
-
-  /// Opens links through the latest actions' `openURL`, or the system when there is none.
-  private(set) lazy var openURL = OpenURLAction { [weak self] url in
-    guard let open = self?.openLink else { return .systemAction }
-    open(url)
-    return .handled
-  }
-
-  /// How many times new actions were published, for tests.
-  var publications: Int { relay.publications }
-
-  /// The actions to put in the environment: the last value while the same actions exist, with
-  /// closures that call `actions`'.
-  /// - Parameter actions: The current actions.
-  /// - Returns: The stable actions.
-  func publish(_ actions: ConversationActions) -> ConversationActions {
-    openLink = actions.openURL
-    return relay.publish(actions) ?? actions
-  }
-}
-
 extension ConversationActions: FocusedActions {
   /// Which actions exist; rows show or hide controls by it.
   public var menuSignature: [Bool] {

@@ -143,7 +143,9 @@ struct TranscriptMemoTests {
       ConversationActions(openSession: { opened.append("second \($0)") }))
     #expect(relay.publications == 1)
     published.openSession?("child")
-    #expect(opened == ["second child"])
+    // The environment writer reads the published value back from the relay.
+    relay.actions.openSession?("tab")
+    #expect(opened == ["second child", "second tab"])
 
     _ = relay.publish(ConversationActions(openSession: { _ in }, retry: {}))
     #expect(relay.publications == 2)
