@@ -13,6 +13,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// The switches the host's browser process always runs with, which the client's tests read.
+#include "owl_chromium.h"
+
 #define OWL_PROTOCOL_MAJOR 1
 #define OWL_PROTOCOL_MINOR 6
 
