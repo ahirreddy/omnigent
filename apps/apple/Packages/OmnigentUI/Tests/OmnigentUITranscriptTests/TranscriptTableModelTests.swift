@@ -86,6 +86,46 @@ struct TranscriptTableModelTests {
     #expect(model.needsMeasure(at: second))
   }
 
+  @Test("A new text size measures every row again, the old heights standing in")
+  func heightsInvalidated() throws {
+    var model = TranscriptTableModel()
+    _ = model.replaceRows(rows(state(turns: 2)))
+    _ = model.setWidth(600)
+    for index in model.rows.indices { model.record(100, at: index) }
+    let answer = try #require(model.index(of: "a1"))
+    let version = model.version(at: answer)
+    model.invalidateHeights()
+    #expect(model.rows.indices.allSatisfy { model.needsMeasure(at: $0) })
+    #expect(model.version(at: answer) == version + 1)
+    #expect(model.height(at: answer) == 100)
+  }
+
+  @Test("Rows stack at their heights; a change lays out only the rows from it down")
+  func rowOffsets() {
+    var offsets = TranscriptRowOffsets()
+    #expect(offsets.row(at: 10) == nil)
+    #expect(offsets.rows(from: 0, to: 100).isEmpty)
+    var heights: [CGFloat] = [10, 20, 30, 40]
+    offsets.rebuild(count: heights.count) { heights[$0] }
+    #expect(offsets.contentHeight == 100)
+    #expect(offsets.top(of: 2) == 30)
+    #expect(offsets.height(of: 3) == 40)
+    #expect(offsets.row(at: -5) == 0)
+    #expect(offsets.row(at: 30) == 2)
+    #expect(offsets.row(at: 29.5) == 1)
+    #expect(offsets.row(at: 500) == 3)
+    #expect(offsets.rows(from: 15, to: 30) == 1..<2)
+    #expect(offsets.rows(from: 15, to: 31) == 1..<3)
+    #expect(offsets.rows(from: -50, to: 0).isEmpty)
+    #expect(offsets.rows(from: 100, to: 200).isEmpty)
+    #expect(offsets.rows(from: 90, to: 200) == 3..<4)
+    heights[1] = 70
+    offsets.update(from: 1) { heights[$0] }
+    #expect(offsets.top(of: 1) == 10)
+    #expect(offsets.top(of: 3) == 110)
+    #expect(offsets.contentHeight == 150)
+  }
+
   @Test("Rows that leave forget their heights")
   func removedRowsForget() throws {
     var model = TranscriptTableModel()

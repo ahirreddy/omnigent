@@ -339,6 +339,12 @@ nonisolated struct TranscriptTableModel: Sendable {
     return true
   }
 
+  /// Every row is measured again, its old height standing in until then: the text's size changed
+  /// (Dynamic Type), which changes every row's height without changing its content.
+  mutating func invalidateHeights() {
+    for id in ids { versions[id, default: 0] += 1 }
+  }
+
   func index(of id: String) -> Int? { indexByID[id] }
 
   func version(at index: Int) -> Int { versions[rows[index].id] ?? 0 }

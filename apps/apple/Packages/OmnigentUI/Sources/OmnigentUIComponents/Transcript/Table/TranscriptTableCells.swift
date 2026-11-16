@@ -1,5 +1,4 @@
-#if os(macOS)
-  import AppKit
+#if os(macOS) || os(iOS)
   import Observation
   import SwiftUI
 
@@ -154,6 +153,11 @@
     }
   }
 
+#endif
+
+#if os(macOS)
+  import AppKit
+
   /// A table cell: a hosting view showing one row, which reports when its content's ideal size
   /// changes (a fold opening, an image or a diagram arriving) instead of asking Auto Layout.
   final class TranscriptTableCell: NSHostingView<TranscriptTableCellRoot> {
@@ -213,25 +217,39 @@
     }
   }
 
+  extension TranscriptTableCell: TranscriptPooledCell {
+    var shownID: String? { shown?.id }
+  }
+#endif
+
+#if os(macOS) || os(iOS)
+  /// What the pool keeps: a view showing one row at a time.
+  @MainActor
+  protocol TranscriptPooledCell: AnyObject {
+    /// The row it shows, if any.
+    var shownID: String? { get }
+    var kind: TranscriptTableRowKind? { get }
+  }
+
   /// Cells not in the table, kept by the row they last showed so a row that comes back shows
   /// without rendering again, and handed to rows of the same kind once the oldest are evicted.
   @MainActor
-  struct TranscriptTableCellPool {
+  struct TranscriptTableCellPool<Cell: TranscriptPooledCell> {
     /// How many parked cells keep their row.
     var parkedLimit = 48
     /// How many spare cells of each kind are kept beyond those.
     var spareLimit = 4
 
-    private var parked: [String: TranscriptTableCell] = [:]
+    private var parked: [String: Cell] = [:]
     /// Parked row ids, oldest first.
     private var order: [String] = []
-    private var spares: [TranscriptTableRowKind: [TranscriptTableCell]] = [:]
+    private var spares: [TranscriptTableRowKind: [Cell]] = [:]
 
     var parkedCount: Int { parked.count }
 
     /// A cell for `row`: the one that last showed it, else a spare of its kind, else, once the
     /// pool is full, the oldest parked cell of its kind; `nil` for a new one.
-    mutating func take(for row: TranscriptTableRow) -> TranscriptTableCell? {
+    mutating func take(for row: TranscriptTableRow) -> Cell? {
       if let cell = parked.removeValue(forKey: row.id) {
         order.removeAll { $0 == row.id }
         return cell
@@ -246,8 +264,8 @@
     }
 
     /// Keeps a cell that left the table, under the row it shows.
-    mutating func park(_ cell: TranscriptTableCell) {
-      guard let id = cell.shown?.id else {
+    mutating func park(_ cell: Cell) {
+      guard let id = cell.shownID else {
         spare(cell)
         return
       }
@@ -269,7 +287,7 @@
       order.removeAll { !ids.contains($0) }
     }
 
-    private mutating func spare(_ cell: TranscriptTableCell) {
+    private mutating func spare(_ cell: Cell) {
       guard let kind = cell.kind else { return }
       if spares[kind, default: []].count < spareLimit { spares[kind, default: []].append(cell) }
     }
