@@ -42,6 +42,21 @@ struct ChildTabsTests {
       }
     }
 
+    /// The agent reports a side chat it forked under `conv_a`, as Codex lists its `/side` fork:
+    /// a child whose summary names it "Side chat".
+    func reportSideChat(_ childID: String) async throws {
+      try await reportChild(childID, agent: "Side chat")
+      let child =
+        #"{"id":"\#(childID)","parent_session_id":"conv_a","title":"codex-native-ui-subagent:t","tool":"Side chat","created_at":2,"updated_at":2,"busy":true,"labels":{"omnigent.wrapper":"codex-native-ui-subagent","omnigent.codex_native.agent_nickname":"Side chat"}}"#
+      let event =
+        #"{"type":"session.child_session.updated","conversation_id":"conv_a","child_session_id":"\#(childID)","child":\#(child)}"#
+      stream.chunk(bytes: Data("event: session.child_session.updated\ndata: \(event)\n\n".utf8))
+      let conversation = conversation
+      try await eventually("the side chat \(childID)") {
+        conversation.listedChildren.contains { $0.id == childID && $0.isSideChat }
+      }
+    }
+
     /// `conv_a`'s chat as the window mounts it, routed to this window's tabs.
     var chat: ConversationContainer {
       ConversationContainer(
@@ -55,12 +70,13 @@ struct ChildTabsTests {
   }
 
   /// A window showing `conv_a`, a Codex session (its side chats are forked by the agent from a
-  /// typed `/side`) whose messages the server accepts with `status`.
-  func window(sendStatus: UInt16 = 202) async throws -> Window {
+  /// typed `/side`) whose messages the server accepts with `status`; `labels` is its labels'
+  /// JSON object.
+  func window(sendStatus: UInt16 = 202, labels: String = "{}") async throws -> Window {
     SystemSideEffects.install()
     let server = threeSessionServer()
     let row =
-      #"{"id":"conv_a","status":"idle","created_at":1,"updated_at":30,"host_id":"mac","runner_id":"r1","runner_online":true,"host_online":true,"workspace":"/work/conv_a","permission_level":4,"harness":"codex-native"}"#
+      #"{"id":"conv_a","status":"idle","created_at":1,"updated_at":30,"host_id":"mac","runner_id":"r1","runner_online":true,"host_online":true,"workspace":"/work/conv_a","permission_level":4,"harness":"codex-native","labels":\#(labels)}"#
     server.route("/v1/sessions/conv_a", .json(row))
     server.route("/v1/sessions/conv_a/items", .json(#"{"data":[],"has_more":false}"#))
     server.route(
@@ -133,6 +149,41 @@ struct ChildTabsTests {
     #expect(group.selectedID == chat.id)
   }
 
+  @Test("A Codex side chat opened from the agent list, again after its tab closed, is Side chat 1")
+  func sideChatReopenedFromTheAgentList() async throws {
+    final class Windows { var sessions: [String] = [] }
+    let windows = Windows()
+    var window = try await window()
+    window.tabs.openInNewWindow = { windows.sessions.append($0) }
+    let group = window.group
+    let chat = try #require(group.selected)
+    try await window.reportSideChat("conv_side")
+    try await window.reportChild("conv_worker")
+
+    // A side chat stays in its parent's strip even where sub-agents open in windows.
+    let routes = window.tabs.routes(for: "conv_a", subagentsApart: true)
+    routes.openSession("conv_side")
+    #expect(windows.sessions.isEmpty)
+    let tab = try #require(group.selected)
+    #expect(tab.content == .sideChatSession(parentID: "conv_a", childID: "conv_side"))
+    #expect(window.strip.last?.title == "Side chat 1")
+    #expect(window.strip.last?.kind == .sideChat)
+
+    group.requestClose(tab.id)
+    #expect(group.selectedID == chat.id)
+    routes.openSession("conv_side")
+    let reopened = try #require(group.selected)
+    #expect(reopened.content == .sideChatSession(parentID: "conv_a", childID: "conv_side"))
+    #expect(window.strip.map(\.title).last == "Side chat 1", "not named as a sub-agent")
+    #expect(window.session.tabs.page == .session("conv_a"))
+
+    // A sub-agent of the same session still opens as one.
+    routes.openSession("conv_worker")
+    #expect(windows.sessions == ["conv_worker"])
+    window.tabs.routes(for: "conv_a", subagentsApart: false).openSession("conv_worker")
+    #expect(group.selected?.content == .subagent(parentID: "conv_a", childID: "conv_worker"))
+  }
+
   @Test("Move Tab to New Window on a sub-agent's tab opens it in a window and takes the tab away")
   func movingASubagentToAWindow() async throws {
     final class Windows { var sessions: [String] = [] }
@@ -199,5 +250,30 @@ struct ChildTabsTests {
     // One `/side` opens one tab: the next child the agent starts is a plain sub-agent.
     try await window.reportChild("conv_later")
     #expect(group.tabs.count == 2)
+  }
+
+  @Test("A /side queued while a turn runs opens its fork in a tab once it goes out")
+  func queuedSideChatOpensATab() async throws {
+    let window = try await window()
+    let group = window.group
+    let conversation = window.conversation
+    let composer = conversation.composer
+    let forks = window.session.forkedSideChats
+    // As the chat does when the window shows it.
+    SessionToolsAdapter.watchForks(conversation, routes: window.chat.toolRoutes)
+    composer.text = "/side why is the build slow?"
+    composer.queueDraft()
+    #expect(!forks.isAwaiting("conv_a"), "nothing is asked of the agent yet")
+    try await window.reportChild("conv_worker")
+    #expect(group.tabs.count == 1, "a sub-agent started meanwhile is not its fork")
+
+    await composer.drainQueue(isRunning: false)
+    #expect(try window.server.posted("/v1/sessions/conv_a/events").count == 1)
+    #expect(forks.isAwaiting("conv_a"))
+    try await window.reportSideChat("conv_side")
+    try await eventually("the side chat's tab") { group.tabs.count == 2 }
+    #expect(group.selected?.content == .sideChatSession(parentID: "conv_a", childID: "conv_side"))
+    #expect(window.strip.last?.title == "Side chat 1")
+    #expect(conversation.pendingMessages.rows.isEmpty)
   }
 }

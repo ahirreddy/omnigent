@@ -126,6 +126,28 @@ struct ComposerAdapterTests {
     #expect(ComposerAdapter.connection(question) == nil, "link \(question.link)")
     #expect(ComposerAdapter.connection(notes) == nil, "link \(notes.link)")
   }
+
+  @Test("A side chat that has ended, or a closed sub-agent, takes no more messages and says why")
+  @MainActor
+  func endedSession() async throws {
+    typealias Fixtures = ConversationFixtures
+    var settings = Fixtures.settings(harness: "codex-native")
+    settings.isSideChat = true
+    settings.closed = true
+    let ended = try await Fixtures.store(header: Fixtures.header(settings: settings))
+    #expect(
+      ComposerAdapter.availability(ended).reason
+        == "This side chat has ended and can't be continued.")
+    #expect(ComposerAdapter.isReadOnly(ended))
+    settings.isSideChat = false
+    let closed = try await Fixtures.store(header: Fixtures.header(settings: settings))
+    #expect(ComposerAdapter.availability(closed).reason == "This sub-agent session is closed.")
+    settings.closed = false
+    settings.isSideChat = true
+    let live = try await Fixtures.store(header: Fixtures.header(settings: settings))
+    #expect(ComposerAdapter.availability(live) == .available)
+    #expect(!ComposerAdapter.isReadOnly(live))
+  }
 }
 
 @Suite("Message links")

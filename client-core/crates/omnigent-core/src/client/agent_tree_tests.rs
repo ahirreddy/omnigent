@@ -113,6 +113,13 @@ fn names_prefer_the_task_and_native_sub_agents_use_their_type() {
     let added = row(&json!({"title": "ui:codex:helper", "tool": "codex",
         "session_name": "helper", "labels": {"omnigent.wrapper": "codex-native-ui-subagent"}}));
     assert_eq!(added.display_name(), "helper");
+    assert!(!codex.is_side_chat() && !added.is_side_chat());
+    let side_chat = row(
+        &json!({"title": "codex-native-ui-subagent:1b2c", "tool": "Side chat",
+        "labels": {"omnigent.wrapper": "codex-native-ui-subagent",
+            "omnigent.codex_native.agent_nickname": "Side chat"}}),
+    );
+    assert!(side_chat.is_side_chat());
 }
 
 #[test]
@@ -384,6 +391,34 @@ fn a_child_listing_itself_is_not_walked_forever() {
     let tree = block_on(core.agent_tree("conv_r")).unwrap();
     assert_eq!(tree.nodes.len(), 3, "{:?}", tree.nodes);
     assert_eq!(tree.nodes[2].child_count, 0);
+}
+
+#[test]
+fn a_codex_side_chat_in_the_tree_is_marked_as_one() {
+    let transport = lone_root(children(&json!([
+        {"id": "conv_w", "busy": false, "tool": "Euclid",
+            "labels": {"omnigent.wrapper": "codex-native-ui-subagent"}},
+        {"id": "conv_s", "busy": false, "tool": "Side chat",
+            "labels": {"omnigent.wrapper": "codex-native-ui-subagent",
+                "omnigent.codex_native.agent_nickname": "Side chat"}},
+    ])));
+    for leaf in ["conv_w", "conv_s"] {
+        respond(
+            &transport,
+            &format!("/v1/sessions/{leaf}/child_sessions"),
+            children(&json!([])),
+        );
+    }
+    let tree = block_on(connected(transport).agent_tree("conv_r")).unwrap();
+    let marked: Vec<(&str, bool)> = tree
+        .nodes
+        .iter()
+        .map(|node| (node.session_id.as_str(), node.is_side_chat))
+        .collect();
+    assert_eq!(
+        marked,
+        [("conv_r", false), ("conv_w", false), ("conv_s", true)]
+    );
 }
 
 #[test]

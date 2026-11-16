@@ -634,6 +634,38 @@ fn the_servers_side_chat_answer_stands_until_a_read_gives_another() {
 }
 
 #[test]
+fn a_side_chat_that_ended_is_closed_by_its_labels() {
+    let settings = |header: &SessionHeader| header.settings.clone().unwrap();
+    let live = header_from_snapshot(
+        &minimal_session(&serde_json::json!({"labels": {
+            "omnigent.wrapper": "codex-native-ui-subagent",
+            "omnigent.codex_native.agent_nickname": "Side chat",
+        }})),
+        None,
+    )
+    .unwrap();
+    assert!(settings(&live).is_side_chat && !settings(&live).closed);
+    let ended = header_from_snapshot(
+        &minimal_session(&serde_json::json!({"labels": {
+            "omnigent.codex_native.agent_nickname": "Side chat", "omnigent.closed": "true",
+        }})),
+        Some(&live),
+    )
+    .unwrap();
+    assert!(settings(&ended).is_side_chat && settings(&ended).closed);
+    // A read that reports no labels keeps what is known.
+    let kept =
+        header_from_snapshot(&minimal_session(&serde_json::json!({})), Some(&ended)).unwrap();
+    assert!(settings(&kept).closed);
+    let sub_agent = header_from_snapshot(
+        &minimal_session(&serde_json::json!({"labels": {"omnigent.closed": "true"}})),
+        None,
+    )
+    .unwrap();
+    assert!(settings(&sub_agent).closed && !settings(&sub_agent).is_side_chat);
+}
+
+#[test]
 fn null_fields_clear_to_safe_defaults_and_absent_ones_keep_the_previous_value() {
     let earlier = header_from_snapshot(
         &minimal_session(&serde_json::json!({

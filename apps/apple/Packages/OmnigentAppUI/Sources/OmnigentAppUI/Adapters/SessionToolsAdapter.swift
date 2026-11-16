@@ -107,8 +107,7 @@ enum SessionToolsAdapter {
   static func send(
     _ store: ConversationStore, newSession: (@MainActor () -> Void)?, routes: Routes
   ) async {
-    // The wait is queued before the message goes, as a side chat tab's own wait is.
-    let withdrawWait = sendsForkingSideChat(store) ? routes.awaitForkedSideChat?() : nil
+    watchForks(store, routes: routes)
     switch await store.composer.send() {
     case .handled: break
     case .newSession: newSession?()
@@ -116,18 +115,12 @@ enum SessionToolsAdapter {
       // A typed `/side` is done once its side chat opens.
       if startSideChat(store, routes: routes, question: question) { store.composer.text = "" }
     }
-    // A message the server did not take forks nothing.
-    if store.composer.lastError != nil { withdrawWait?() }
   }
 
-  /// Whether the draft is a message that an agent forking its own side chats takes as the
-  /// request to fork one (web `isSideChatCommand` with `usesNativeSideChatFork`).
-  static func sendsForkingSideChat(_ store: ConversationStore) -> Bool {
-    let composer = store.composer
-    // Tagged paths go ahead of the text, which is then an ordinary message.
-    return composer.mentions.isEmpty
-      && messageForksSideChat(
-        harness: store.header?.settings?.harness, text: composer.draftMessage)
+  /// Opens in this window the side chat that each `/side` message asks the agent to fork, sent
+  /// now or later from the queue: the composer asks for the wait as the message goes out.
+  static func watchForks(_ store: ConversationStore, routes: Routes) {
+    store.composer.awaitSideChatFork = routes.awaitForkedSideChat
   }
 
   /// Opens a new side chat next to this chat, whatever the harness; its first message creates

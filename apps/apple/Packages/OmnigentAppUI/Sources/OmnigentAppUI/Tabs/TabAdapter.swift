@@ -152,7 +152,12 @@ enum TabAdapter {
       item.title = TabKind.sideChat.label
       item.subtitle = summary?.title
       item.canDuplicate = false
-      if let childID, connection.openConversation(childID)?.isRunning == true {
+      let child = childID.flatMap(connection.openConversation)
+      if child?.header?.settings?.closed == true {
+        // A side chat that has ended reads as ended, not live.
+        item.status = .exited
+        item.isReadOnly = true
+      } else if child?.isRunning == true {
         item.status = .running
       }
     case .subagent(_, let childID):

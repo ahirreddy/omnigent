@@ -13,6 +13,7 @@ use serde_json::{Map, Value};
 
 use super::json::{as_object, opt_array, opt_object, opt_str, opt_u64};
 use super::requests::validate_identifier;
+use super::session_tools::is_side_chat;
 use super::{ClientCore, SessionError, lock};
 use crate::config::session::{canonical_harness, harness_label};
 use crate::http::HttpTransport;
@@ -284,6 +285,12 @@ impl ChildSessionRow {
             .and_then(|(_, key)| self.label(key));
         AgentRole::of(role_label.or(self.tool.as_deref()))
     }
+
+    /// Whether it is a side chat (Codex's `/side` fork), listed among the sub-agents.
+    #[must_use]
+    pub fn is_side_chat(&self) -> bool {
+        is_side_chat(|key| self.label(key))
+    }
 }
 
 /// One agent in the tree.
@@ -307,6 +314,8 @@ pub struct AgentNode {
     pub routed_model: Option<String>,
     /// Sub-agents listed under it.
     pub child_count: u32,
+    /// A side chat rather than a sub-agent; never the root.
+    pub is_side_chat: bool,
 }
 
 /// The spawn tree: the root first, then each agent followed by its own sub-agents.
@@ -453,6 +462,7 @@ impl<T: HttpTransport> ClientCore<T> {
             preview: self.latest_message(&root.id).await?,
             routed_model: None,
             child_count: u32::try_from(top.len()).unwrap_or(u32::MAX),
+            is_side_chat: false,
         }];
         let mut lists = 1;
         // Depth first: `levels` holds the unvisited rows of each open level, reversed.
@@ -481,6 +491,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 preview: child.last_message_preview.clone(),
                 routed_model: child.routed_model.clone(),
                 child_count: u32::try_from(grandchildren.len()).unwrap_or(u32::MAX),
+                is_side_chat: child.is_side_chat(),
                 session_id: child.id.clone(),
             });
             if !grandchildren.is_empty() {

@@ -100,7 +100,9 @@
         SupervisionConnections.key(server) == SupervisionConnections.key(payload.serverURL)
       else { return }
       supervision.pendingOpen = nil
-      selection = .session(payload.openSessionID)
+      // A sub-agent or side chat shows in the strip of the session it runs under.
+      guard let session else { return }
+      Task { selection = await session.showLinkedSession(payload.openSessionID) }
     }
 
     private func openPairingCode(_ url: URL) {

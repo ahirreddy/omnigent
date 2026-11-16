@@ -115,6 +115,8 @@ struct ConversationContainer: View {
     .task {
       if shareStore == nil { shareStore = makeShareStore?() }
       composer.searchMentions = workspace.map(Self.mentionSearch)
+      // A queued `/side` asks for its fork's tab when it goes out after the turn.
+      SessionToolsAdapter.watchForks(conversation, routes: toolRoutes)
       await composer.loadConfiguration()
       if let agentID = composer.configuration?.agentId {
         await conversation.loadAgentInfo(agentID: agentID)

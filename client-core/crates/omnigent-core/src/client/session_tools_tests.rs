@@ -430,6 +430,27 @@ fn a_side_chat_names_its_source_from_its_labels() {
     assert_eq!(side_chat_inherited_before(None, None, 7), None);
 }
 
+#[test]
+fn a_side_chat_is_told_from_a_sub_agent_by_its_labels() {
+    let side_chat = |pairs: &[(&str, &str)]| {
+        let labels: BTreeMap<&str, &str> = pairs.iter().copied().collect();
+        is_side_chat(|key| labels.get(key).copied())
+    };
+    // Codex lists its `/side` fork as a sub-agent named "Side chat".
+    let nickname = "omnigent.codex_native.agent_nickname";
+    assert!(side_chat(&[
+        ("omnigent.wrapper", "codex-native-ui-subagent"),
+        (nickname, "Side chat"),
+    ]));
+    assert!(side_chat(&[(SIDE_CHAT_SOURCE_LABEL, "conv_a")]));
+    assert!(side_chat(&[(SIDE_CHAT_LABEL, "1")]));
+    // Other Codex sub-agents, and labels that name no source, are not side chats.
+    assert!(!side_chat(&[(nickname, "Euclid")]));
+    assert!(!side_chat(&[(SIDE_CHAT_SOURCE_LABEL, "")]));
+    assert!(!side_chat(&[(SIDE_CHAT_LABEL, "0")]));
+    assert!(!side_chat(&[]));
+}
+
 /// One row this client cannot read must not hide the other sessions in the same frame.
 #[test]
 fn an_unreadable_row_leaves_the_rest_of_its_frame_applied() {

@@ -258,10 +258,12 @@
 
     private func pending(
       isStarting: Bool = false, failure: String? = nil, asked: String? = nil,
-      calls: @escaping @MainActor (String) -> Void
+      isLate: Bool = false, calls: @escaping @MainActor (String) -> Void
     ) -> OffscreenWindow<AnyView> {
-      let view = PendingHost(isStarting: isStarting, failure: failure, asked: asked, calls: calls)
-        .frame(width: 600, height: 500)
+      let view = PendingHost(
+        isStarting: isStarting, failure: failure, asked: asked, isLate: isLate, calls: calls
+      )
+      .frame(width: 600, height: 500)
       return OffscreenWindow(AnyView(view), width: 600, height: 500)
     }
 
@@ -277,6 +279,15 @@
       try screen.type("hello")
       try screen.press(keyCode: 36, characters: "\r")
       #expect(calls.isEmpty, "nothing more is sent until the side chat is there")
+    }
+
+    @Test("A side chat the agent is slow to start says it is still waited for")
+    func pendingLate() throws {
+      let screen = pending(isStarting: true, asked: "Why is it slow?", isLate: true) { _ in }
+      defer { screen.close() }
+      #expect(try screen.shows("Why is it slow?"))
+      #expect(try screen.shows(SideChatCopy.stillStarting))
+      #expect(try !screen.shows("Starting the side chat\u{2026}"))
     }
 
     @Test("A new side chat explains itself and names its parent")
@@ -334,13 +345,14 @@
     let isStarting: Bool
     let failure: String?
     var asked: String?
+    var isLate = false
     let calls: @MainActor (String) -> Void
     @State private var draft = ""
 
     var body: some View {
       PendingSideChatView(
         draft: $draft, parent: CreatingSession(id: "p", title: "Parent"), isStarting: isStarting,
-        failure: failure, asked: asked, send: { calls("send \(draft)") },
+        failure: failure, asked: asked, isLate: isLate, send: { calls("send \(draft)") },
         dismissFailure: { calls("dismiss") }, openParent: { calls("open \($0)") })
     }
   }

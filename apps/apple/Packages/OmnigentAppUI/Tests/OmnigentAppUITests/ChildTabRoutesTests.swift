@@ -110,27 +110,12 @@ extension ChildTabsTests {
     let window = try await window(sendStatus: 400)
     let conversation = window.conversation
     conversation.composer.text = "/side why?"
-    #expect(SessionToolsAdapter.sendsForkingSideChat(conversation))
     await SessionToolsAdapter.send(conversation, newSession: nil, routes: window.chat.toolRoutes)
     #expect(conversation.composer.lastError != nil)
     #expect(!window.session.forkedSideChats.isAwaiting("conv_a"))
     #expect(conversation.composer.text == "/side why?", "the refused command is back in the field")
     try await window.reportChild("conv_worker")
     #expect(window.group.tabs.count == 1, "a later sub-agent is not taken for the side chat")
-
-    for draft in ["/side", "/side   ", "/sidebar now", "why /side this"] {
-      conversation.composer.text = draft
-      #expect(!SessionToolsAdapter.sendsForkingSideChat(conversation), "\(draft)")
-    }
-    // A tagged path goes ahead of the text, which is then an ordinary message.
-    conversation.composer.text = "/side why?"
-    conversation.composer.mentions = ["notes.md"]
-    #expect(!SessionToolsAdapter.sendsForkingSideChat(conversation))
-    // An agent whose side chats fork on the server is sent no `/side`.
-    let other = try await ConversationFixtures.store(
-      header: ConversationFixtures.header(settings: ConversationFixtures.settings()))
-    other.composer.text = "/side why?"
-    #expect(!SessionToolsAdapter.sendsForkingSideChat(other))
   }
 
   @Test("Forks pair with their waits oldest first; a withdrawn or closed wait takes none")
@@ -165,31 +150,41 @@ extension ChildTabsTests {
     #expect(!forks.isAwaiting("conv_a"))
   }
 
-  @Test("A fork that is never reported gives up, and a late one is then nobody's")
-  func forkNeverReported() async throws {
+  @Test("A wait past its patience is late: it takes the side chat reported then, not a sub-agent")
+  func lateForks() async throws {
     let window = try await window()
     let forks = window.session.forkedSideChats
     forks.patience = .milliseconds(50)
     final class Log { var events: [String] = [] }
     let log = Log()
     forks.awaitFork(
-      of: window.conversation, gaveUp: { log.events.append("gave up") },
-      forked: { log.events.append($0) })
-    try await eventually("the wait to give up") { log.events == ["gave up"] }
+      of: window.conversation, late: { log.events.append("late") },
+      gaveUp: { log.events.append("gave up") }, forked: { log.events.append($0) })
+    try await eventually("the wait to be late") { log.events == ["late"] }
+    #expect(forks.isAwaiting("conv_a"), "a late wait goes on")
+    try await window.reportChild("conv_worker")
+    #expect(log.events == ["late"], "a sub-agent the agent started is not the fork")
+    // Reported as a child first, then marked a side chat by its summary.
+    try await window.reportSideChat("conv_side")
+    try await eventually("the late fork") { log.events == ["late", "conv_side"] }
     #expect(!forks.isAwaiting("conv_a"))
-    try await window.reportChild("conv_late")
-    #expect(log.events == ["gave up"])
 
-    // A typed /side whose fork never comes tells the window, and opens no tab.
+    // A typed /side whose fork comes late still opens it in a tab; nothing is said meanwhile.
     final class Failures { var messages: [String] = [] }
     let failures = Failures()
     let tabs = WindowTabs(
       session: window.session, context: TabWindowContext(), showAll: {},
       fail: { failures.messages.append($0) })
-    #expect(tabs.awaitForkedSideChat(of: "conv_a", in: "conv_a") != nil)
-    try await eventually("the window to be told") { failures.messages.count == 1 }
-    #expect(failures.messages.first?.contains("didn't report a side chat") == true)
+    let wait = try #require(tabs.awaitForkedSideChat(of: "conv_a", in: "conv_a"))
+    try await eventually("the typed wait to be late") { forks.isLate(wait, of: "conv_a") }
+    try await window.reportChild("conv_helper")
     #expect(window.group.tabs.count == 1)
+    try await window.reportSideChat("conv_typed")
+    try await eventually("the late side chat's tab") { window.group.tabs.count == 2 }
+    #expect(
+      window.group.selected?.content
+        == .sideChatSession(parentID: "conv_a", childID: "conv_typed"))
+    #expect(failures.messages.isEmpty)
     #expect(tabs.awaitForkedSideChat(of: "conv_closed", in: "conv_a") == nil, "not open")
   }
 
@@ -227,6 +222,26 @@ extension ChildTabsTests {
     let staysBuilt = places.take(named.content)
     #expect(staysBuilt)
     #expect(!WindowTabs.offersTerminal(named.content))
+  }
+
+  @Test("A side chat that has ended shows as ended in its tab and takes no more messages")
+  func endedSideChat() async throws {
+    // `conv_a` stands in for a restored side chat whose fork went away with its runner.
+    let window = try await window(
+      labels:
+        #"{"omnigent.wrapper":"codex-native-ui-subagent","omnigent.codex_native.agent_nickname":"Side chat","omnigent.closed":"true"}"#
+    )
+    let conversation = window.conversation
+    #expect(conversation.header?.settings?.closed == true)
+    #expect(conversation.header?.settings?.isSideChat == true)
+    let tab = AppTab(content: .sideChatSession(parentID: "conv_b", childID: "conv_a"))
+    let item = TabAdapter.item(tab, session: window.session, browser: nil)
+    #expect(item.status == .exited, "not shown as live")
+    #expect(item.isReadOnly)
+    #expect(
+      ComposerAdapter.availability(conversation).reason
+        == "This side chat has ended and can't be continued.")
+    #expect(SessionToolsAdapter.sideChat(conversation, routes: window.chat.toolRoutes) == nil)
   }
 
   @Test("Saved side chat and sub-agent tabs restore in their parent's strip, with their tabs")

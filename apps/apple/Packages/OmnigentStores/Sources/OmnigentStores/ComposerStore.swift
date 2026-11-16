@@ -101,6 +101,10 @@ public final class ComposerStore {
   @ObservationIgnored var draftStored: ((SavedDraft) -> Void)?
   /// What `/context`, `/mcp` and held sends read from the conversation.
   @ObservationIgnored var conversationFacts: (@MainActor () -> ConversationFacts?)?
+  /// Called as a message that asks the session's agent to fork a side chat goes out, typed or
+  /// from the queue, so the window opens the fork when the session reports it. Returns what
+  /// withdraws that wait when the server does not take the message.
+  @ObservationIgnored public var awaitSideChatFork: (@MainActor () -> (@MainActor () -> Void)?)?
   /// The approval mode the harness last reported on the stream.
   @ObservationIgnored var reportedApprovalMode: String?
   /// The conversation that shows a message as soon as it is sent. It owns this composer.

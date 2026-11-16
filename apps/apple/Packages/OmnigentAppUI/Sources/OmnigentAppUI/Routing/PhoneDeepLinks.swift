@@ -190,10 +190,11 @@
     }
 
     /// Shows the session's chat. A side chat or terminal of the session already selects it at
-    /// compact widths, so the selection alone would not change; its chat tab is focused too.
+    /// compact widths, so the selection alone would not change; its chat tab is focused too. A
+    /// sub-agent or side chat shows in the strip of the session it runs under.
     private func showChat(_ sessionID: String) {
-      session?.tabs.showChat(sessionID)
-      selection = .session(sessionID)
+      guard let session else { return }
+      Task { selection = await session.showLinkedSession(sessionID) }
     }
 
     /// Pairing codes, valid or not, belong to the pairing confirmation.

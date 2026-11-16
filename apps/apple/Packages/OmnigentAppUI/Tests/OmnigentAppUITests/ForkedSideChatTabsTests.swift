@@ -105,22 +105,57 @@ extension ChildTabsTests {
     #expect(window.conversation.pendingMessages.rows.isEmpty)
   }
 
-  @Test("A fork the agent never reports gives the question back; words typed meanwhile stay")
-  func unreportedForkGivesTheQuestionBack() async throws {
+  @Test("A fork the agent reports late still opens in its tab, which says it is still waiting")
+  func lateForkOpensInItsTab() async throws {
     let window = try await window()
     let drafts = window.session.sideChatDrafts
     window.session.forkedSideChats.patience = .milliseconds(200)
     let tab = try pendingTab(window, question: "why?")
     send(window, tab)
     drafts.update(tab.id) { $0.text = "and how?" }
-    try await eventually("the wait to give up") { drafts.draft(tab.id).failure != nil }
+    try await eventually("the wait to be late") { drafts.draft(tab.id).isLate }
+    let draft = drafts.draft(tab.id)
+    #expect(draft.asked == "why?" && draft.isStarting, "the question stays asked")
+    #expect(draft.failure == nil && draft.text == "and how?")
+    try await window.reportChild("conv_worker")
+    #expect(isPending(tab, in: window), "a sub-agent started meanwhile is not the fork")
+
+    try await window.reportSideChat("conv_late")
+    try await eventually("the tab to show the fork") { shows("conv_late", in: tab, of: window) }
+    #expect(window.group.tabs.count == 2)
+    #expect(window.strip.last?.title == "Side chat 1")
+    #expect(drafts.drafts[tab.id] == nil)
+  }
+
+  @Test("A conversation that closes before its fork is reported gives the question back")
+  func closedSessionGivesTheQuestionBack() async throws {
+    let window = try await window()
+    let drafts = window.session.sideChatDrafts
+    let tab = try pendingTab(window, question: "why?")
+    send(window, tab)
+    try await eventually("the question") { textsSent(window).count == 1 }
+    window.session.close("conv_a")
     let draft = drafts.draft(tab.id)
     #expect(draft.failure?.contains("didn't report a side chat") == true)
-    #expect(draft.text == "why?\n\nand how?")
-    #expect(draft.asked == nil && !draft.isStarting)
-    try await window.reportChild("conv_late")
-    #expect(isPending(tab, in: window))
-    #expect(window.group.tabs.count == 2)
+    #expect(draft.text == "why?" && draft.asked == nil && !draft.isStarting && !draft.isLate)
+  }
+
+  @Test("A side chat whose tab closed while it waited opens in a tab of its own, behind")
+  func forkOfAClosedTab() async throws {
+    let window = try await window()
+    let group = window.group
+    let chat = try #require(group.tabs.first)
+    let tab = try pendingTab(window, question: "why?")
+    send(window, tab)
+    try await eventually("the question") { textsSent(window).count == 1 }
+    group.requestClose(tab.id)
+    #expect(group.selectedID == chat.id)
+
+    try await window.reportSideChat("conv_side")
+    try await eventually("the side chat's tab") { group.tabs.count == 2 }
+    #expect(group.tabs.last?.content == .sideChatSession(parentID: "conv_a", childID: "conv_side"))
+    #expect(group.selectedID == chat.id, "it does not take the selection")
+    #expect(!window.session.forkedSideChats.isAwaiting("conv_a"))
   }
 
   @Test("Two new side chats and a typed /side take the forks in the order they asked")

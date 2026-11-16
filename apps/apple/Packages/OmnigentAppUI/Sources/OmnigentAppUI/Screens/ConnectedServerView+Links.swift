@@ -25,6 +25,7 @@ extension ConnectedServerView {
       let settingsServer: String? = nil
     #endif
     let selection = selectionBinding
+    let session = session
     let focus = session.transcriptFocus
     return ExternalURLOpener { url in
       guard let server, let route = DeepLinkRoute(webURL: url, server: server) else {
@@ -34,10 +35,10 @@ extension ConnectedServerView {
       case .home, .register:
         selection.wrappedValue = nil
       case .conversation(let sessionID):
-        selection.wrappedValue = .session(sessionID)
+        selection.wrappedValue = await session.showLinkedSession(sessionID)
       case .message(let sessionID, let messageID):
         focus.focus(messageID, in: sessionID)
-        selection.wrappedValue = .session(sessionID)
+        selection.wrappedValue = await session.showLinkedSession(sessionID)
       case .page(let page):
         selection.wrappedValue = DeepLinkDestinations.selection(for: page)
       case .settings(let section):

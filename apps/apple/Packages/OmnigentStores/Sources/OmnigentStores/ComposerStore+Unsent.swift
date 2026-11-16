@@ -25,6 +25,7 @@ extension ComposerStore {
     }
     let unsent = UnsentSend(draft: draft, extras: extras)
     let pendingRow = showSending(message, extras: extras)
+    let withdrawFork = awaitsFork(message, extras: extras)
     let failure = await deliver(unsent) { core, session in
       let sent = try await core.sendQueuedMessage(
         sessionId: session, text: message, hold: extras.holdID,
@@ -35,6 +36,8 @@ extension ComposerStore {
       await sendFollowUps()
       return
     }
+    // A message held for the host waits for it again when it goes out from the queue.
+    withdrawFork?()
     transcript?.messageNotSent(pendingRow)
     guard failure.isHostOffline else {
       giveBack(unsent, failure: failure)
@@ -51,13 +54,24 @@ extension ComposerStore {
   /// asks the agent to fork a side chat is never echoed here, so it gets no row.
   /// - Returns: The row's id, or `nil` when there is no row.
   func showSending(_ message: String, extras: MessageQueue.Extras) -> String? {
-    let harness = transcript?.header?.settings?.harness
-    // Tagged paths go ahead of the text, which is then an ordinary message.
-    if extras.mentions.isEmpty, messageForksSideChat(harness: harness, text: message) {
-      return nil
-    }
+    if forksSideChat(message, extras: extras) { return nil }
     return transcript?.showSending(
       message, attachments: extras.files.map(PendingMessages.attachment))
+  }
+
+  /// Whether a message asks the session's agent to fork a side chat (web `isSideChatCommand`
+  /// with `usesNativeSideChatFork`).
+  func forksSideChat(_ message: String, extras: MessageQueue.Extras) -> Bool {
+    let harness = transcript?.header?.settings?.harness
+    // Tagged paths go ahead of the text, which is then an ordinary message.
+    return extras.mentions.isEmpty && messageForksSideChat(harness: harness, text: message)
+  }
+
+  /// Starts the window's wait for the side chat a message going out asks the agent to fork.
+  /// - Returns: What withdraws the wait; `nil` for any other message.
+  func awaitsFork(_ message: String, extras: MessageQueue.Extras) -> (@MainActor () -> Void)? {
+    guard forksSideChat(message, extras: extras) else { return nil }
+    return awaitSideChatFork?()
   }
 
   /// Sends the draft as a command the server runs (a skill, `/compact`). A command does not
