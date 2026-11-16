@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import OmnigentStores
 import OmnigentUIComponents
+import SwiftUI
 
 /// What a window keeps of a session's toolbar controls and right panel: whether the panel shows
 /// and on which tab, and the session menu's Fork, Share and Export. Kept for the window's life,
@@ -78,14 +79,18 @@ extension SessionTabGroups {
     return chrome
   }
 
-  /// Whether the shown session's right panel shows; never on a page without a session. The
-  /// window's panel binds here, not to one session's state: SwiftUI's inspector may still write
-  /// the binding it had after the session changed, and that must not reach the session left.
-  var shownPanelIsShown: Bool {
-    get { currentSessionID.map { chrome($0).panel.isShown } ?? false }
-    set {
-      if let sessionID = currentSessionID { chrome(sessionID).panel.isShown = newValue }
-    }
+  /// The window panel's binding: the shown session's own choice, so whatever the panel writes
+  /// back through it reaches that session and no other; on a page without a session, a panel
+  /// that never shows.
+  var shownPanel: Binding<Bool> {
+    guard let sessionID = currentSessionID else { return Bindable(self).pagePanelIsShown }
+    return Bindable(chrome(sessionID).panel).isShown
+  }
+
+  /// A page without a session has no right panel; a write to it is dropped.
+  var pagePanelIsShown: Bool {
+    get { false }
+    set { _ = newValue }
   }
 
   /// Brings a session's chat on screen unless a pane already shows it.

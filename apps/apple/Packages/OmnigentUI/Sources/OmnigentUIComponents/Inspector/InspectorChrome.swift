@@ -34,6 +34,9 @@ private struct InspectorColumn<Panel: View>: ViewModifier {
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// The sheet's binding at regular width (`.constant` counts as changed on every update).
     @State private var sheetHidden = false
+  #else
+    /// Takes the inspector's late reports of a collapse or expand.
+    @State private var relay = InspectorColumnRelay()
   #endif
 
   func body(content: Content) -> some View {
@@ -55,7 +58,7 @@ private struct InspectorColumn<Panel: View>: ViewModifier {
         panel().presentationDetents([.medium, .large])
       }
     #else
-      content.inspector(isPresented: $isPresented) {
+      content.inspector(isPresented: relay.hand($isPresented)) {
         panel().inspectorColumnWidth(min: 260, ideal: 360, max: 600)
       }
       #if DEBUG

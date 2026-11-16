@@ -1,6 +1,7 @@
 import Foundation
 import OmnigentTestSupport
 import OmnigentUIComponents
+import SwiftUI
 import Testing
 
 @testable import OmnigentAppUI
@@ -43,24 +44,28 @@ struct SessionTabGroupsTests {
     #expect(groups.tab(page.id)?.sessionID == "a", "a browser tab joins the shown session")
   }
 
-  @Test("The window's panel is the shown session's; a write after a switch leaves the one left")
+  @Test("The window's panel is the shown session's; a late write reaches only the one it was for")
   func shownPanel() {
     let groups = SessionTabGroups()
     groups.show(.session("a"))
-    groups.shownPanelIsShown = true
+    let handedToA = groups.shownPanel
+    handedToA.wrappedValue = true
     #expect(groups.chrome("a").panel.isShown)
     groups.show(.session("b"))
-    groups.chrome("b").panel.isShown = false
-    #expect(!groups.shownPanelIsShown, "b's own choice")
-    // The inspector writing the state it closed with, late, as the session changed.
-    groups.shownPanelIsShown = false
+    #expect(!groups.shownPanel.wrappedValue, "b's own panel, closed by default")
+    // The inspector writing what it showed for a, late, as the session changed.
+    handedToA.wrappedValue = true
+    #expect(groups.chrome("b").panel.choice == nil, "b chose nothing")
+    groups.shownPanel.wrappedValue = false
     #expect(groups.chrome("a").panel.isShown, "a's panel stays as it was left")
     groups.show(.usage)
-    #expect(!groups.shownPanelIsShown, "a page has no panel")
-    groups.shownPanelIsShown = true
-    #expect(!groups.shownPanelIsShown, "and takes none")
+    let handedToPage = groups.shownPanel
+    #expect(!handedToPage.wrappedValue, "a page has no panel")
+    handedToPage.wrappedValue = true
+    #expect(!groups.shownPanel.wrappedValue, "and takes none")
     groups.show(.session("a"))
-    #expect(groups.shownPanelIsShown)
+    handedToPage.wrappedValue = false
+    #expect(groups.shownPanel.wrappedValue, "nor does a write from the page reach a")
   }
 
   @Test("The session shown last keeps its tabs for the strip while a page covers it")
