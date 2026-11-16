@@ -801,6 +801,71 @@ fn a_page_of_hidden_history_reads_on_to_the_rows_above_it() {
     );
 }
 
+/// A newest-first `/items` page of terminal openings and closings.
+fn terminal_page(ids: &[&str], has_more: bool) -> String {
+    let data: Vec<serde_json::Value> = ids
+        .iter()
+        .enumerate()
+        .map(|(index, id)| {
+            let event = if index % 2 == 0 { "created" } else { "deleted" };
+            serde_json::json!({"id": id, "type": "resource_event",
+                "event_type": format!("session.resource.{event}"), "resource_type": "terminal",
+                "resource_id": format!("terminal_{id}")})
+        })
+        .collect();
+    serde_json::json!({"data": data, "has_more": has_more, "last_id": ids.last()}).to_string()
+}
+
+#[test]
+fn a_newest_page_of_terminal_events_reads_on_to_the_messages_above_it() {
+    let mut harness = connected();
+    route_session(&harness);
+    let items = format!("/v1/sessions/{SESSION}/items");
+    let newest = harness.http.hold(&items);
+    let terminals_above = harness.http.hold(&items);
+    let messages_above = harness.http.hold(&items);
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+
+    harness
+        .http
+        .route(&items, json(200, &terminal_page(&["term_4", "term_3"], true)));
+    newest.send(()).unwrap();
+    harness.pump();
+    // Its rows all belong in the activity drawer, so the page above is read unasked.
+    let rows = rows_from(&harness.events.all(), SESSION);
+    assert!(rows.iter().all(|row| row.is_activity_only), "{rows:?}");
+    let above = lock(&harness.http.requests).last().cloned().unwrap();
+    assert!(above.url.contains("after=term_3"), "{}", above.url);
+
+    harness
+        .http
+        .route(&items, json(200, &terminal_page(&["term_2", "term_1"], true)));
+    terminals_above.send(()).unwrap();
+    harness.pump();
+    let next = lock(&harness.http.requests).last().cloned().unwrap();
+    assert!(next.url.contains("after=term_1"), "{}", next.url);
+
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["msg_1"], false)));
+    messages_above.send(()).unwrap();
+    harness.pump();
+    assert_eq!(
+        row_ids(&harness),
+        ["msg_1", "term_1", "term_2", "term_3", "term_4"]
+    );
+    // One read from the open to the message, never an empty page with more above it.
+    assert_eq!(
+        paging_events(&harness.events.all()),
+        [(false, false), (true, true), (false, false)]
+    );
+}
+
 const HEARTBEAT: &[u8] = b"event: session.heartbeat\ndata: {\"type\":\"session.heartbeat\"}\n\n";
 
 fn offline() -> crate::http::TransportError {

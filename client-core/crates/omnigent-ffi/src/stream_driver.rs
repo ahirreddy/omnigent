@@ -549,6 +549,9 @@ impl Engine {
                             session_id: session_id.to_owned(),
                         });
                     }
+                    // Before reporting paging, so a page with nothing to read never shows as
+                    // done with more above it.
+                    self.read_older_if_empty(session_id);
                     self.emit_paging(session_id);
                     self.terminals_after_hydration(session_id);
                     return;
