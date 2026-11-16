@@ -13,8 +13,6 @@
       static let drawing = Self(rawValue: 1 << 3)
       /// One of the views' timed pauses ends before the wait's limit.
       static let pause = Self(rawValue: 1 << 4)
-      /// A layer in a window runs an animation that ends, such as a list's rows sliding.
-      static let animation = Self(rawValue: 1 << 5)
     }
 
     /// Runs one short turn of the loop and finishes the windows' pending layout. Timers due in
@@ -44,10 +42,6 @@
         if let root = frameView(of: window), finishPendingLayout(root) {
           activity.insert(.layout)
         }
-      }
-      // Only a turn that is otherwise idle looks through the layers.
-      if activity.isEmpty, watched.contains(where: hasEndingAnimation) {
-        activity.insert(.animation)
       }
       return activity
     }
@@ -93,27 +87,6 @@
           return handled
         }
       }
-    }
-
-    /// Whether a layer of the window runs a short animation, a list's rows sliding; a looping
-    /// or long one, such as a spinner's or a caret's, is no work to wait for.
-    /// - Parameter window: The window.
-    /// - Returns: Whether one does.
-    static func hasEndingAnimation(in window: NSWindow) -> Bool {
-      guard let root = frameView(of: window)?.layer else { return false }
-      var pending: [CALayer] = [root]
-      while let layer = pending.popLast() {
-        for key in layer.animationKeys() ?? [] {
-          guard let animation = layer.animation(forKey: key) else { continue }
-          let length = animation.duration * Double(max(1, animation.repeatCount))
-          if length <= 1, animation.repeatDuration <= 1 {
-            SettleTrace.note(animation: key, in: layer)
-            return true
-          }
-        }
-        pending.append(contentsOf: layer.sublayers ?? [])
-      }
-      return false
     }
 
     /// The view holding all of a window's views, its title bar and toolbar with its content.

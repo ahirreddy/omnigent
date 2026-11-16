@@ -30,15 +30,6 @@
       turnTime += seconds
     }
 
-    /// Names a layer animation a turn waited for.
-    /// - Parameters:
-    ///   - key: The animation's key.
-    ///   - layer: The layer running it.
-    static func note(animation key: String, in layer: CALayer) {
-      guard isOn else { return }
-      details["animation \(key) on \(type(of: layer))", default: 0] += 1
-    }
-
     /// Names a window whose drawing stayed pending through its own display pass.
     /// - Parameter window: The window.
     static func note(stuckDrawingIn window: NSWindow) {
@@ -53,7 +44,6 @@
       guard isOn else { return }
       let names: [(MainLoop.Activity, String)] = [
         (.source, "source"), (.layout, "layout"), (.drawing, "drawing"), (.pause, "pause"),
-        (.animation, "animation"),
       ]
       for (bit, name) in names where activity.contains(bit) { counts[name, default: 0] += 1 }
       if activity.isEmpty { counts["idle", default: 0] += 1 }
