@@ -16,6 +16,8 @@
     static let secondsKey = "seconds"
     private static let ends = OSAllocatedUnfairLock(initialState: [CFAbsoluteTime]())
     private static let installation = OSAllocatedUnfairLock(initialState: false)
+    /// How long past its end a pause still counts: on a busy machine the paused work wakes late.
+    static let wakeGrace: Double = 0.05
 
     /// Starts listening, once.
     static func install() {
@@ -32,7 +34,7 @@
     /// - Parameter note: The views' announcement.
     private static func notePause(_ note: Notification) {
       guard let seconds = note.userInfo?[secondsKey] as? Double, seconds > 0 else { return }
-      noteEnd(CFAbsoluteTimeGetCurrent() + seconds)
+      noteEnd(CFAbsoluteTimeGetCurrent() + seconds + wakeGrace)
     }
 
     /// Keeps an end, dropping those already passed.
