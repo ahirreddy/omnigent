@@ -4,6 +4,7 @@
   import OmnigentViewTextReading
   import SwiftUI
   import Testing
+  import os
 
   @testable import OmnigentUIComponents
   @testable import OmnigentUITestSupport
@@ -125,6 +126,45 @@
         transcriptRenders(returning).allSatisfy { $0.value <= once[$0.key, default: 0] },
         "\(returning)")
       #expect(try !window.shows("Jump to latest"))
+    }
+
+    /// The top of the transcript, where Jump to top shows, as drawn now.
+    private func topEdge(of window: OffscreenWindow<AnyView>) throws -> [UInt32] {
+      let rendered = try RenderSupport.capture(window.host)
+      let pixels = try #require(RenderSupport.Pixels(rendered.image))
+      let scale = CGFloat(pixels.width) / window.host.bounds.width
+      let columns = Int((Self.width / 2 - 20) * scale)..<Int((Self.width / 2 + 20) * scale)
+      return (0..<Int(48 * scale)).flatMap { row in columns.map { pixels.key($0, row) } }
+    }
+
+    @Test("A run of scrolls up shows Jump to top with one wait to hide it, not one a step")
+    func scrollUpWaitsOnce() async throws {
+      let (window, viewport) = try await open()
+      defer { window.close() }
+      let scrollView = try #require(viewport.scrollView)
+      Theme.Timing.scale = 0.1
+      defer { Theme.Timing.scale = 1 }
+      let reveal = Double(JumpToTopReveal.scrollReveal.components.seconds) * Theme.Timing.scale
+      let waits = OSAllocatedUnfairLock(initialState: 0)
+      let observer = NotificationCenter.default.addObserver(
+        forName: Theme.Timing.pauseBegan, object: nil, queue: nil
+      ) { note in
+        guard let seconds = note.userInfo?[Theme.Timing.secondsKey] as? Double else { return }
+        if abs(seconds - reveal) < 0.001 { waits.withLock { $0 += 1 } }
+      }
+      defer { NotificationCenter.default.removeObserver(observer) }
+
+      window.liveScroll(scrollView, began: true)
+      scroll(viewport, by: -Self.step)
+      let revealed = try topEdge(of: window)
+      window.liveScroll(scrollView, began: false)
+      try await letTasksRun(window, milliseconds: 100)
+      #expect(waits.withLock { $0 } == 1)
+
+      // The pill goes once the reader has not scrolled up for the reveal's time.
+      try await Task.sleep(for: .seconds(reveal * 2))
+      try await letTasksRun(window)
+      #expect(try topEdge(of: window) != revealed)
     }
   }
 #endif
