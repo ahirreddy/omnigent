@@ -68,8 +68,10 @@ struct KnownChildren {
 
 /// The side chats asked of a session's own agent that it has not reported yet (web
 /// `awaitingSideChatFor` and `awaitingPendingIdsRef`). A fork is reported as a new child with
-/// nothing to pair it on, so each wait takes the next child the session did not have, oldest
-/// wait first.
+/// nothing to pair it on, so each wait takes the next child the session did not have when it
+/// was queued, oldest wait first. A wait not answered within ``patience`` is late: it waits on,
+/// but takes only a child the core marks as a side chat, so a late fork still opens and a
+/// sub-agent the agent starts meanwhile is never taken for it.
 final class ForkedSideChats {
   typealias WaitID = UUID
   /// Withdraws a wait whose request was not sent.
@@ -77,33 +79,42 @@ final class ForkedSideChats {
 
   private struct Wait {
     let id: WaitID
+    /// The children the session had when the wait was queued.
+    let before: Set<String>
     let forked: @MainActor (String) -> Void
+    let late: @MainActor () -> Void
     let gaveUp: @MainActor () -> Void
     let timeout: Task<Void, Never>
+    var isLate = false
+
+    func takes(_ child: ListedChild) -> Bool {
+      !before.contains(child.id) && (!isLate || child.isSideChat)
+    }
   }
 
   private struct Parent {
-    /// The children the session had before its oldest wait, and those paired since.
-    var known: Set<String>
+    /// The children paired with a wait.
+    var paired: Set<String> = []
     var waits: [Wait] = []
     var watch: Task<Void, Never>?
   }
 
   private var parents: [String: Parent] = [:]
-  /// How long a fork may take to be reported before its wait gives up.
+  /// How long a fork may take to be reported before its wait is late.
   var patience: Duration = .seconds(60)
 
   /// Queues a wait for the next new child of `conversation`. Call it before the request that
   /// asks for the fork, so waits pair in the order their requests went.
   /// - Parameters:
   ///   - conversation: The session whose agent forks.
-  ///   - gaveUp: No fork was reported in time, or the session closed.
+  ///   - late: No fork was reported within ``patience``; the wait goes on.
+  ///   - gaveUp: The session closed, so no fork can be seen.
   ///   - forked: The fork's session.
   /// - Returns: The wait, to ``cancel(_:of:)`` when the request is refused.
   @discardableResult
   func awaitFork(
-    of conversation: ConversationStore, gaveUp: @escaping @MainActor () -> Void,
-    forked: @escaping @MainActor (String) -> Void
+    of conversation: ConversationStore, late: @escaping @MainActor () -> Void = {},
+    gaveUp: @escaping @MainActor () -> Void, forked: @escaping @MainActor (String) -> Void
   ) -> WaitID {
     let parentID = conversation.sessionID
     let id = WaitID()
@@ -115,10 +126,13 @@ final class ForkedSideChats {
         // Paired or withdrawn meanwhile.
         return
       }
-      if self?.remove(id, of: parentID) == true { gaveUp() }
+      self?.lapse(id, of: parentID)
     }
-    var parent = parents[parentID] ?? Parent(known: Set(conversation.listedChildren.map(\.id)))
-    parent.waits.append(Wait(id: id, forked: forked, gaveUp: gaveUp, timeout: timeout))
+    var parent = parents[parentID] ?? Parent()
+    parent.waits.append(
+      Wait(
+        id: id, before: Set(conversation.listedChildren.map(\.id)), forked: forked, late: late,
+        gaveUp: gaveUp, timeout: timeout))
     if parent.watch == nil { parent.watch = watch(conversation) }
     parents[parentID] = parent
     return id
@@ -126,7 +140,11 @@ final class ForkedSideChats {
 
   /// Withdraws a wait whose request was not sent: no fork comes for it.
   func cancel(_ id: WaitID, of parentID: String) {
-    remove(id, of: parentID)
+    guard var parent = parents[parentID],
+      let index = parent.waits.firstIndex(where: { $0.id == id })
+    else { return }
+    parent.waits.remove(at: index).timeout.cancel()
+    keep(parent, for: parentID)
   }
 
   /// The session closed: its forks can no longer be seen, so every wait gives up.
@@ -142,23 +160,31 @@ final class ForkedSideChats {
   /// Whether a fork of `parentID` is awaited.
   func isAwaiting(_ parentID: String) -> Bool { parents[parentID] != nil }
 
+  /// Whether the wait `id` for a fork of `parentID` is past its patience.
+  func isLate(_ id: WaitID, of parentID: String) -> Bool {
+    parents[parentID]?.waits.contains { $0.id == id && $0.isLate } == true
+  }
+
   private func watch(_ conversation: ConversationStore) -> Task<Void, Never> {
     let parentID = conversation.sessionID
     return Task { [weak self] in
-      for await children in Observations({ conversation.listedChildren.map(\.id) }) {
+      // A child's side-chat mark can come after the child, so the marks are watched too.
+      for await children in Observations({ conversation.listedChildren }) {
         guard !Task.isCancelled, let self else { return }
         pair(children, of: parentID)
       }
     }
   }
 
-  /// Hands each child the session did not have to the oldest wait, in the order they started.
-  private func pair(_ children: [String], of parentID: String) {
+  /// Hands each child not paired yet to the oldest wait that takes it, in the order they
+  /// started.
+  private func pair(_ children: [ListedChild], of parentID: String) {
     guard var parent = parents[parentID] else { return }
     var paired: [(wait: Wait, childID: String)] = []
-    for childID in children where !parent.known.contains(childID) && !parent.waits.isEmpty {
-      parent.known.insert(childID)
-      paired.append((parent.waits.removeFirst(), childID))
+    for child in children where !parent.paired.contains(child.id) {
+      guard let index = parent.waits.firstIndex(where: { $0.takes(child) }) else { continue }
+      parent.paired.insert(child.id)
+      paired.append((parent.waits.remove(at: index), child.id))
     }
     keep(parent, for: parentID)
     for (wait, childID) in paired {
@@ -167,14 +193,14 @@ final class ForkedSideChats {
     }
   }
 
-  @discardableResult
-  private func remove(_ id: WaitID, of parentID: String) -> Bool {
+  /// A wait's patience ran out: from now on it takes only a child marked as a side chat.
+  private func lapse(_ id: WaitID, of parentID: String) {
     guard var parent = parents[parentID],
       let index = parent.waits.firstIndex(where: { $0.id == id })
-    else { return false }
-    parent.waits.remove(at: index).timeout.cancel()
-    keep(parent, for: parentID)
-    return true
+    else { return }
+    parent.waits[index].isLate = true
+    parents[parentID] = parent
+    parent.waits[index].late()
   }
 
   /// Stores the session's waits, or stops watching it once none are left.
@@ -263,16 +289,16 @@ extension WindowTabs {
   }
 
   /// A `/side` typed in `sessionID`'s composer is going to an agent that forks the side chat
-  /// itself: the fork arrives as a new child of `sessionID` and opens in a tab of `ownerID`.
+  /// itself: the fork arrives as a new child of `sessionID` and opens in a tab of `ownerID`,
+  /// however long it takes (web `awaitingSideChatFor`).
   /// - Returns: The wait, to withdraw when the message is not sent; `nil` when the
   ///   conversation is not open.
   func awaitForkedSideChat(of sessionID: String, in ownerID: String) -> ForkedSideChats.WaitID? {
     guard let conversation = session.connection.openConversation(sessionID) else { return nil }
     let groups = groups
-    let fail = fail
+    // Nothing shows for it until the fork opens; a closed session has no fork to show.
     return session.forkedSideChats.awaitFork(
-      of: conversation,
-      gaveUp: { fail("The agent didn't report a side chat for your /side question.") },
+      of: conversation, gaveUp: {},
       forked: { groups.openChild($0, in: ownerID, isSideChat: true, name: nil) })
   }
 
@@ -283,20 +309,28 @@ extension WindowTabs {
 }
 
 extension SessionTabGroups {
-  /// Selects the tab of `childID`, a sub-agent or side chat that runs under `ownerID`, in that
-  /// session's strip, opening one when none shows it: a side chat's as "Side chat N", a
-  /// sub-agent's under `name`. The window's page is left as it is.
+  /// Selects the tab of a sub-agent or side chat in its owner's strip, opening one when none
+  /// shows it. The window's page is left as it is.
+  /// - Parameters:
+  ///   - childID: The sub-agent or side chat.
+  ///   - ownerID: The session it runs under, whose strip it joins.
+  ///   - isSideChat: It opens as a side chat, "Side chat N", rather than a sub-agent.
+  ///   - name: A sub-agent's name, as the agent list shows it.
+  ///   - select: Selects the tab; otherwise a new one opens behind the selected tab.
   /// - Returns: The tab.
   @discardableResult
-  func openChild(_ childID: String, in ownerID: String, isSideChat: Bool, name: String?)
-    -> AppTab
-  {
+  func openChild(
+    _ childID: String, in ownerID: String, isSideChat: Bool, name: String?, select: Bool = true
+  ) -> AppTab {
     let group = group(ownerID)
     if let shown = group.tabs.first(where: { $0.content.conversationID == childID }) {
-      group.select(shown.id)
+      if select { group.select(shown.id) }
       return shown
     }
-    if isSideChat { return group.open(.sideChatSession(parentID: ownerID, childID: childID)) }
-    return group.open(.subagent(parentID: ownerID, childID: childID), title: name)
+    let content: AppTabContent =
+      isSideChat
+      ? .sideChatSession(parentID: ownerID, childID: childID)
+      : .subagent(parentID: ownerID, childID: childID)
+    return group.open(content, select: select, title: isSideChat ? nil : name)
   }
 }

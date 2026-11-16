@@ -15,6 +15,8 @@ final class SideChatDrafts {
     var failure: String?
     /// The first message, while the session's own agent forks the side chat for it.
     var asked: String?
+    /// The agent has taken longer than ``ForkedSideChats/patience`` to report the fork.
+    var isLate = false
 
     /// The side chat did not start: the message is back in the field, with the reason.
     mutating func giveBack(_ reason: String) {
@@ -23,6 +25,7 @@ final class SideChatDrafts {
       }
       asked = nil
       isStarting = false
+      isLate = false
       failure = reason
     }
   }
@@ -72,6 +75,7 @@ struct PendingSideChatTab: View {
       parent: CreatingSession(
         id: parentID, title: session.connection.sessionList.sessionWithoutActivity(parentID)?.title),
       isStarting: draft.isStarting, failure: draft.failure, asked: draft.asked,
+      isLate: draft.isLate,
       send: { Self.start(session: session, tabID: tabID, parentID: parentID, fail: fail) },
       dismissFailure: { drafts.update(tabID) { $0.failure = nil } },
       openParent: { session.tabs.showChat($0) })
@@ -98,6 +102,7 @@ struct PendingSideChatTab: View {
     let asksAgent = sideChatStart(harness: harness, quote: nil).delivery == .sendToParent
     drafts.update(tabID) {
       $0.isStarting = true
+      $0.isLate = false
       $0.failure = nil
       if asksAgent {
         $0.asked = text
@@ -129,8 +134,9 @@ struct PendingSideChatTab: View {
     }
   }
 
-  /// Queues the tab for the next child `parent` reports: the tab then shows that side chat. A
-  /// fork that is not reported in time gives the question back with the reason.
+  /// Queues the tab for the next child `parent` reports: the tab then shows that side chat,
+  /// however long the agent takes, and says so once it is late. A session that closes first
+  /// gives the question back with the reason.
   private static func awaitFork(
     of parent: ConversationStore, session: ServerSession, tabID: String
   ) -> ForkedSideChats.WaitID {
@@ -138,6 +144,7 @@ struct PendingSideChatTab: View {
     let parentID = parent.sessionID
     return session.forkedSideChats.awaitFork(
       of: parent,
+      late: { drafts.update(tabID) { $0.isLate = true } },
       gaveUp: {
         drafts.update(tabID) {
           $0.giveBack(
@@ -157,9 +164,13 @@ struct PendingSideChatTab: View {
 
 extension SessionTabGroups {
   /// Shows the side chat `childID` in the new side chat's tab `tabID`. When another tab of the
-  /// strip already shows it, that one is selected and the new tab closes.
+  /// strip already shows it, that one is selected and the new tab closes. A tab closed while it
+  /// waited leaves the side chat a tab of its own, behind the selected one.
   func bindSideChat(_ tabID: String, to childID: String, of parentID: String) {
-    guard let (ownerID, _) = tab(tabID) else { return }
+    guard let (ownerID, _) = tab(tabID) else {
+      openChild(childID, in: parentID, isSideChat: true, name: nil, select: false)
+      return
+    }
     let group = group(ownerID)
     if let shown = group.tabs.first(where: { $0.content.conversationID == childID }) {
       let wasSelected = group.selectedID == tabID

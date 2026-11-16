@@ -8,6 +8,9 @@ nonisolated public enum SideChatCopy {
   public static let detail = "Ask a question here without affecting the main conversation."
   /// The composer's placeholder.
   public static let placeholder = "Ask a side question\u{2026}"
+  /// The agent is taking long to start a side chat it was asked for.
+  public static let stillStarting =
+    "Still waiting for the agent to start the side chat. It opens here when it does."
 }
 
 /// A side chat with nothing in it yet: what it is for, under the side chat icon.
@@ -32,9 +35,10 @@ struct SideChatIntro: View {
 }
 
 /// A side question that went to the session's own agent, which has not reported the side chat
-/// it forks for it yet: the question as sent, and that it is starting.
+/// it forks for it yet: the question as sent, and that it is starting, or still waited for.
 struct SideChatAsked: View {
   let question: String
+  var isLate = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
@@ -44,7 +48,7 @@ struct SideChatAsked: View {
       TurnStatusRow {
         TypingIndicator()
       } label: {
-        Text("Starting the side chat\u{2026}")
+        Text(isLate ? SideChatCopy.stillStarting : "Starting the side chat\u{2026}")
       }
       .frame(minHeight: Theme.Control.target)
       .accessibilityIdentifier("sidechat-starting")
@@ -61,6 +65,7 @@ public struct PendingSideChatView: View {
   private let isStarting: Bool
   private let failure: String?
   private let asked: String?
+  private let isLate: Bool
   private let send: @MainActor () -> Void
   private let dismissFailure: @MainActor () -> Void
   private let openParent: @MainActor (String) -> Void
@@ -73,12 +78,13 @@ public struct PendingSideChatView: View {
   ///   - failure: Why creating it failed; the draft is kept.
   ///   - asked: The first message, once the session's own agent was asked to fork the side
   ///     chat for it and until it reports the fork.
+  ///   - isLate: The agent is taking long to report that fork.
   ///   - send: Creates the side chat with the draft as its first message.
   ///   - dismissFailure: Hides the failure.
   ///   - openParent: Shows the parent's chat.
   public init(
     draft: Binding<String>, parent: CreatingSession, isStarting: Bool, failure: String?,
-    asked: String? = nil,
+    asked: String? = nil, isLate: Bool = false,
     send: @escaping @MainActor () -> Void, dismissFailure: @escaping @MainActor () -> Void,
     openParent: @escaping @MainActor (String) -> Void
   ) {
@@ -87,6 +93,7 @@ public struct PendingSideChatView: View {
     self.isStarting = isStarting
     self.failure = failure
     self.asked = asked
+    self.isLate = isLate
     self.send = send
     self.dismissFailure = dismissFailure
     self.openParent = openParent
@@ -96,7 +103,7 @@ public struct PendingSideChatView: View {
   public var body: some View {
     ScrollView {
       Group {
-        if let asked { SideChatAsked(question: asked) } else { SideChatIntro() }
+        if let asked { SideChatAsked(question: asked, isLate: isLate) } else { SideChatIntro() }
       }
       .frame(maxWidth: Theme.transcriptWidth)
       .frame(maxWidth: .infinity)

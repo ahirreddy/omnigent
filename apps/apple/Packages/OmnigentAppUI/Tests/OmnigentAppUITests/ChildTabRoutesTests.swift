@@ -150,31 +150,41 @@ extension ChildTabsTests {
     #expect(!forks.isAwaiting("conv_a"))
   }
 
-  @Test("A fork that is never reported gives up, and a late one is then nobody's")
-  func forkNeverReported() async throws {
+  @Test("A wait past its patience is late: it takes the side chat reported then, not a sub-agent")
+  func lateForks() async throws {
     let window = try await window()
     let forks = window.session.forkedSideChats
     forks.patience = .milliseconds(50)
     final class Log { var events: [String] = [] }
     let log = Log()
     forks.awaitFork(
-      of: window.conversation, gaveUp: { log.events.append("gave up") },
-      forked: { log.events.append($0) })
-    try await eventually("the wait to give up") { log.events == ["gave up"] }
+      of: window.conversation, late: { log.events.append("late") },
+      gaveUp: { log.events.append("gave up") }, forked: { log.events.append($0) })
+    try await eventually("the wait to be late") { log.events == ["late"] }
+    #expect(forks.isAwaiting("conv_a"), "a late wait goes on")
+    try await window.reportChild("conv_worker")
+    #expect(log.events == ["late"], "a sub-agent the agent started is not the fork")
+    // Reported as a child first, then marked a side chat by its summary.
+    try await window.reportSideChat("conv_side")
+    try await eventually("the late fork") { log.events == ["late", "conv_side"] }
     #expect(!forks.isAwaiting("conv_a"))
-    try await window.reportChild("conv_late")
-    #expect(log.events == ["gave up"])
 
-    // A typed /side whose fork never comes tells the window, and opens no tab.
+    // A typed /side whose fork comes late still opens it in a tab; nothing is said meanwhile.
     final class Failures { var messages: [String] = [] }
     let failures = Failures()
     let tabs = WindowTabs(
       session: window.session, context: TabWindowContext(), showAll: {},
       fail: { failures.messages.append($0) })
-    #expect(tabs.awaitForkedSideChat(of: "conv_a", in: "conv_a") != nil)
-    try await eventually("the window to be told") { failures.messages.count == 1 }
-    #expect(failures.messages.first?.contains("didn't report a side chat") == true)
+    let wait = try #require(tabs.awaitForkedSideChat(of: "conv_a", in: "conv_a"))
+    try await eventually("the typed wait to be late") { forks.isLate(wait, of: "conv_a") }
+    try await window.reportChild("conv_helper")
     #expect(window.group.tabs.count == 1)
+    try await window.reportSideChat("conv_typed")
+    try await eventually("the late side chat's tab") { window.group.tabs.count == 2 }
+    #expect(
+      window.group.selected?.content
+        == .sideChatSession(parentID: "conv_a", childID: "conv_typed"))
+    #expect(failures.messages.isEmpty)
     #expect(tabs.awaitForkedSideChat(of: "conv_closed", in: "conv_a") == nil, "not open")
   }
 
