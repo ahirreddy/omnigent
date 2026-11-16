@@ -184,7 +184,9 @@ struct TurnRail: View {
         .padding(.vertical, Self.fade)
         .padding(.leading, Theme.Spacing.small)
       }
-      .scrollIndicators(.hidden)
+      // Never, not hidden: hidden still shows a bar where bars take room (a mouse). That bar
+      // leaves the ticks 7 of the gutter's 24 pt and lays the rail out again on every pass.
+      .scrollIndicators(.never)
       .frame(width: Self.width)
       .frame(height: railHeight)
       .mask(TurnRailFadeMask())
