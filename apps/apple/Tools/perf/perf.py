@@ -12,6 +12,7 @@ permission. See apps/apple/docs/performance.md.
     perf.py type --app <Omnigent.app> [<session-id>] [--sample 1]  # 20 keystrokes, then deletes
     perf.py shot --app <Omnigent.app> [<file.png>]
     perf.py drive --app <Omnigent.app> scroll-transcript  # or scroll-sidebar, toggle-panel...
+    perf.py scroll --app <Omnigent.app> [--runs 3] [--style cli] [--fresh-state]  # the long chat
     perf.py suite --app <Omnigent.app> [--runs 3]   # every scenario, medians
     perf.py suite --app <Omnigent.app> --style cli    # the same with the CLI-style transcript
 """
@@ -37,12 +38,39 @@ CACHE = Path(os.environ.get("TMPDIR", tempfile.gettempdir())) / "omnigent-perf"
 LOG = CACHE / "hitches.log"
 FRAMES = CACHE / "frames.log"
 DRIVE = CACHE / "drive.txt"
+BUSY = CACHE / "busy.log"
 SERVER = "http://127.0.0.1:6767"
 # Waits of at least this long miss two frames at 60 Hz; 100 ms reads as a stall.
 HITCH_MS = 33.0
 HANG_MS = 100.0
 # Extra launch arguments, for example the transcript style (`--style cli`).
 LAUNCH_ARGS: list[str] = []
+# What the Mac UI tests launch with (MacLiveUITestSupport.freshStateArguments): no This Mac
+# server, no notification prompt, the right panel closed and a 1440 x 900 window.
+FRESH_STATE_ARGS = [
+    "-desktop.defaultServerURL",
+    SERVER,
+    "-OmnigentNoNotificationPrompt",
+    "YES",
+    "-omnigent:default-workspace-panel",
+    "collapsed",
+    "-desktop.localServer.cliPath",
+    "/var/empty/no-omnigent-cli",
+    "-desktop.localServer.dataDirectory",
+    "/var/empty/no-omnigent-data",
+    *[
+        word
+        for module in ("OmnigentMac", "OmnigentMacAppStore")
+        for word in (
+            "-NSWindow Frame SwiftUI.PresentedWindowContent<OmnigentDesktop.ServerWindowID, "
+            f"OmnigentDesktop.WindowMinimumSize<{module}.ServerWindowRoot>>-1-AppWindow-1",
+            "0 0 1440 900 0 0 1440 900 ",
+        )
+    ],
+]
+# A main run-loop pass over this misses a 120 Hz frame; over the next, a 60 Hz one.
+FRAME_120_MS = 1000 / 120
+FRAME_60_MS = 1000 / 60
 
 
 @dataclass
@@ -144,6 +172,67 @@ def parse_frames(text: str, start_ms: float, end_ms: float) -> Frames:
             if start_ms <= stamp < end_ms:
                 long.append(interval)
     return Frames((end_ms - start_ms) / 1000, frames, period, long, windows * 0.25)
+
+
+@dataclass
+class Busy:
+    """Main run-loop passes of 1 ms or more inside a time window (driver.m's busy log)."""
+
+    passes: list[float]
+
+    @property
+    def numbers(self) -> dict[str, float]:
+        ordered = sorted(self.passes)
+
+        def percentile(share: float) -> float:
+            return ordered[min(len(ordered) - 1, int(share * len(ordered)))] if ordered else 0.0
+
+        return {
+            "busy_ms": sum(ordered),
+            "passes": len(ordered),
+            "over_8ms": sum(busy > FRAME_120_MS for busy in ordered),
+            # The busy time in those passes: what a 120 Hz frame could not hold.
+            "over_8ms_ms": sum(busy for busy in ordered if busy > FRAME_120_MS),
+            "over_16ms": sum(busy > FRAME_60_MS for busy in ordered),
+            "p50_ms": percentile(0.5),
+            "p90_ms": percentile(0.9),
+            "p99_ms": percentile(0.99),
+            "max_ms": ordered[-1] if ordered else 0.0,
+        }
+
+    @property
+    def summary(self) -> str:
+        n = self.numbers
+        return (
+            f"run-loop passes >=1ms {n['passes']:.0f} ({n['busy_ms']:.0f}ms), "
+            f">8.3ms {n['over_8ms']:.0f} ({n['over_8ms_ms']:.0f}ms), "
+            f">16.7ms {n['over_16ms']:.0f}, "
+            f"p50 {n['p50_ms']:.1f} p90 {n['p90_ms']:.1f} p99 {n['p99_ms']:.1f} "
+            f"max {n['max_ms']:.1f}ms"
+        )
+
+
+def parse_busy(text: str, start_ms: float, end_ms: float) -> Busy:
+    """The run-loop passes in ``text`` (driver.m busy lines) that began inside [start, end)."""
+    passes = []
+    for line in current(text):
+        if line.startswith("#"):
+            continue
+        began, busy = map(float, line.split())
+        if start_ms <= began < end_ms:
+            passes.append(busy)
+    return Busy(passes)
+
+
+def scrolled(text: str, start_ms: float, end_ms: float) -> list[tuple[float, float, float]]:
+    """(from, to, document height) of each scroll the driver reported inside [start, end)."""
+    moves = []
+    for line in current(text):
+        if line.startswith("# scrolled"):
+            stamp, start, end, height = map(float, line.split()[2:6])
+            if start_ms <= stamp < end_ms:
+                moves.append((start, end, height))
+    return moves
 
 
 def settle_time(text: str, start_ms: float, quiet_ms: float = 1000.0) -> float:
@@ -351,6 +440,7 @@ def launch(app: Path, session_id: str | None) -> dict[str, float]:
     tabs_file(bundle_id).write_text(json.dumps(saved_tabs()))
     LOG.write_text("")
     FRAMES.write_text("")
+    BUSY.write_text("")
     start = now_ms()
     target = (
         f"omnigent://127.0.0.1:6767/c/{session_id}" if session_id else "omnigent://127.0.0.1:6767"
@@ -370,6 +460,8 @@ def launch(app: Path, session_id: str | None) -> dict[str, float]:
             f"OMNIGENT_FRAME_LOG={FRAMES}",
             "--env",
             f"OMNIGENT_DRIVE_FILE={DRIVE}",
+            "--env",
+            f"OMNIGENT_BUSY_LOG={BUSY}",
             "--args",
             "-ApplePersistenceIgnoreState",
             "YES",
@@ -412,6 +504,13 @@ def quit_app(app: Path) -> None:
 def long_session(index: int) -> str:
     """The id seed-large-fixtures.py gives its long transcript ``index``."""
     return hashlib.sha256(f"perf-long/{index}".encode()).hexdigest()[:32]
+
+
+def first_answer_link(session: str) -> str:
+    """A link to the first answer seed-large-fixtures.py stores in ``session`` (its response id):
+    the chat pages in all of its history to show it."""
+    response = "resp_" + hashlib.sha256(f"{session}/resp/1".encode()).hexdigest()[:32]
+    return f"omnigent://127.0.0.1:6767/c/{session}?message={response}"
 
 
 def require_monitored(app: Path) -> int:
@@ -508,6 +607,17 @@ def type_burst(app: Path, sampled: bool = False, count: int = 20) -> dict[str, f
 # Driven scenarios (driver.m steps). Fractions of the window: the sidebar is the left fifth.
 SCENARIOS = {
     "scroll-transcript": ["scroll 0.6 0.5 -60 90", "scroll 0.6 0.5 60 90"],
+    # A chat opens at its last turn, so these go up into rows not built yet, then back down.
+    "scroll-transcript-up": ["scroll 0.6 0.5 60 90", "scroll 0.6 0.5 -60 90"],
+    "scroll-transcript-fast": ["scroll 0.6 0.5 150 60", "scroll 0.6 0.5 -150 60"],
+    # From the first answer with the whole history read (SETUPS): rows not built yet, no paging.
+    "scroll-loaded": ["scroll 0.6 0.5 -60 90", "scroll 0.6 0.5 60 90"],
+    # Three trackpad flicks up, each about 2,300 pt with its momentum, then three down.
+    "swipe-transcript": [*["swipe 0.6 0.5 60 8"] * 3, *["swipe 0.6 0.5 -60 8"] * 3],
+    # Up and down 60 pt among rows already built: what a scroll frame costs with no new row.
+    "jiggle-transcript": ["scroll 0.6 0.5 30 2", "scroll 0.6 0.5 -30 2"] * 60,
+    # The AppKit views in the transcript's document, by class.
+    "count-views": ["views 0.6 0.5"],
     "scroll-sidebar": ["scroll 0.08 0.6 -60 90", "scroll 0.08 0.6 60 90"],
     "toggle-sidebar": ["key s ct", "wait 700", "key s ct"],
     "toggle-panel": ["key ] co", "wait 900", "key ] co"],
@@ -528,6 +638,10 @@ SCENARIOS = {
 }
 
 
+# Links a scenario opens before it starts, for the long transcript's session.
+SETUPS = {"scroll-loaded": first_answer_link}
+
+
 def drive(app: Path, name: str, steps: list[str], sampled: bool = False) -> dict[str, float]:
     """Runs driver steps in the app and reports the main thread and frames meanwhile."""
     pid = require_monitored(app)
@@ -544,10 +658,32 @@ def drive(app: Path, name: str, steps: list[str], sampled: bool = False) -> dict
     # Work that outlasts the steps counts until the main thread is quiet.
     end = max(now_ms(), start + wait_settled(start))
     hitches = parse_log(LOG.read_text(), start, end)
-    frames = parse_frames(FRAMES.read_text(), start, end)
+    frame_text = FRAMES.read_text()
+    frames = parse_frames(frame_text, start, end)
+    busy = parse_busy(BUSY.read_text(), start, end) if BUSY.exists() else Busy([])
     cpu = main_cpu_ms(pid) - cpu
-    print(f"{name}: main thread CPU {cpu:.0f}ms; {hitches.summary}; {frames.summary}")
-    return {"main_cpu_ms": cpu, **hitches.numbers, **frames.numbers}
+    moves = scrolled(frame_text, start, end)
+    distance = sum(abs(to - start) for start, to, _ in moves)
+    print(
+        f"{name}: main thread CPU {cpu:.0f}ms; {hitches.summary}; {frames.summary}; "
+        f"{busy.summary}; scrolled {distance:.0f}pt in {len(moves)} moves"
+        + (
+            f", {moves[0][0]:.0f} -> {moves[0][1]:.0f} first, ends at {moves[-1][1]:.0f} "
+            f"of {moves[-1][2]:.0f}"
+            if moves
+            else ""
+        )
+    )
+    for line in current(frame_text):
+        if line.startswith("# views") and start <= float(line.split()[2]) < end:
+            print(f"  views in the transcript: {' '.join(line.split()[3:])}")
+    return {
+        "main_cpu_ms": cpu,
+        **hitches.numbers,
+        **frames.numbers,
+        **busy.numbers,
+        "scrolled_pt": distance,
+    }
 
 
 def step_seconds(step: str) -> float:
@@ -558,6 +694,12 @@ def step_seconds(step: str) -> float:
         return float(parts[1]) / 1000
     if parts[0] == "scroll":
         return frame * (int(parts[4]) + 1)
+    if parts[0] == "swipe":
+        # The gesture, its momentum-shaped tail down to half a point (0.967 a frame), its end.
+        speed, momentum = abs(float(parts[3])), 0
+        while speed >= 0.5:
+            speed, momentum = speed * 0.967, momentum + 1
+        return frame * (int(parts[4]) + momentum + 2)
     if parts[0] == "resize":
         return frame * int(parts[3])
     return 0.05
@@ -613,6 +755,66 @@ def suite(app: Path, runs: int, sessions: list[str]) -> None:
         )
 
 
+def open_link(app: Path, link: str) -> None:
+    """Opens ``link`` in the running app and waits for its main thread to be quiet."""
+    require_monitored(app)
+    start = now_ms()
+    subprocess.run(["open", "-a", app, link], check=True)
+    print(f"open {link.split('/c/')[-1][:40]}: settled {wait_settled(start, 120):.0f}ms")
+
+
+def scroll_bench(app: Path, runs: int, scenarios: list[str], sample_seconds: int) -> None:
+    """Each scroll scenario ``runs`` times on the long transcript, from a fresh launch each run:
+    a cold pass (rows built for the first time since the chat opened), then the same steps again
+    (warm); then the medians. A first launch, not counted, takes what a first run of the build
+    pays. With ``sample_seconds``, one more launch per scenario samples both passes."""
+    session = long_session(0)
+    launch(app, session)
+    results: dict[str, list[dict[str, float]]] = {}
+    for name in scenarios:
+        for _ in range(runs):
+            launch(app, session)
+            if name in SETUPS:
+                open_link(app, SETUPS[name](session))
+            for label in ("cold", "warm"):
+                results.setdefault(f"{name} {label}", []).append(
+                    drive(app, f"{name} ({label})", SCENARIOS[name])
+                )
+    print(f"\nmedians of {runs} runs ({app}, {' '.join(LAUNCH_ARGS[-2:])}):")
+    keys = (
+        "main_cpu_ms",
+        "busy_ms",
+        "hitch_ms_per_s",
+        "long_frames",
+        "dropped",
+        "worst_frame_ms",
+        "over_8ms",
+        "over_8ms_ms",
+        "over_16ms",
+        "p50_ms",
+        "p90_ms",
+        "p99_ms",
+        "max_ms",
+        "fps",
+        "scrolled_pt",
+    )
+    for scenario, rows in results.items():
+        medians = {key: statistics.median(row[key] for row in rows) for key in keys}
+        print(
+            f"  {scenario:28s} "
+            + "  ".join(
+                f"{key}={value:.1f}" if key.startswith("p") else f"{key}={value:.0f}"
+                for key, value in medians.items()
+            )
+        )
+    for name in scenarios if sample_seconds else []:
+        launch(app, session)
+        if name in SETUPS:
+            open_link(app, SETUPS[name](session))
+        for label in ("cold", "warm"):
+            drive(app, f"{name}-{label}-sampled", SCENARIOS[name], sampled=True)
+
+
 def screenshot(app: Path, path: Path) -> None:
     """Saves the app's first window (only that window) to ``path``."""
     pid = require_monitored(app)
@@ -629,7 +831,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "command",
-        choices=["launch", "open", "stream", "idle", "type", "shot", "suite", "drive"],
+        choices=["launch", "open", "stream", "idle", "type", "shot", "suite", "drive", "scroll"],
     )
     parser.add_argument("session", nargs="?")
     parser.add_argument("--app", type=Path, required=True, help="the Omnigent.app to measure")
@@ -646,8 +848,31 @@ def main() -> None:
         choices=["chat", "cli"],
         help="launch with this transcript style (a launch argument; the saved setting is kept)",
     )
+    parser.add_argument(
+        "--fresh-state",
+        action="store_true",
+        help="launch as the Mac UI tests do (no This Mac server or notification prompt, the right "
+        "panel closed, a 1440 x 900 window); for a test VM",
+    )
+    parser.add_argument(
+        "--scenarios",
+        default="scroll-transcript,scroll-transcript-fast,scroll-loaded,swipe-transcript,"
+        "jiggle-transcript",
+        help="scroll: the driven scenarios to run, comma-separated",
+    )
+    parser.add_argument(
+        "--scrollers",
+        choices=["overlay", "legacy"],
+        help="launch with this scroller style: overlay as with a trackpad, legacy (always shown, "
+        "taking width) as with a mouse; a VM without a trackpad has legacy ones by default",
+    )
     args = parser.parse_args()
     app = args.app.resolve()
+    if args.fresh_state:
+        LAUNCH_ARGS.extend(FRESH_STATE_ARGS)
+    if args.scrollers:
+        shown = {"overlay": "WhenScrolling", "legacy": "Always"}[args.scrollers]
+        LAUNCH_ARGS.extend(["-AppleShowScrollBars", shown])
     if args.style:
         LAUNCH_ARGS.extend(["-omnigent:transcript-style", args.style])
     if args.command == "launch":
@@ -662,6 +887,12 @@ def main() -> None:
         if args.session not in SCENARIOS:
             raise SystemExit(f"drive needs one of: {', '.join(SCENARIOS)}")
         drive(app, args.session, SCENARIOS[args.session], args.sample > 0)
+    elif args.command == "scroll":
+        names = args.scenarios.split(",")
+        unknown = [name for name in names if name not in SCENARIOS]
+        if unknown:
+            raise SystemExit(f"unknown scenarios: {', '.join(unknown)}")
+        scroll_bench(app, args.runs, names, args.sample)
     elif args.command == "shot":
         screenshot(app, Path(args.session or CACHE / "window.png"))
     elif args.session is None:
