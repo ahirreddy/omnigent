@@ -90,6 +90,18 @@
       #expect(rasters.byteCount <= one.byteCount * 2)
     }
 
+    @Test("A note without drawing keeps the prewarm drawing ahead; another width does not")
+    func noteKeepsDrawing() {
+      let prewarm = MessageTextPrewarm(limit: 4, rasters: MessageTextRasters(byteLimit: 1 << 20))
+      let palette = MessageTextPalette(MessageTextFixture.style)
+      prewarm.note(palette: palette, width: 500, scale: 2, raster: style)
+      #expect(prewarm.drawsAhead)
+      prewarm.note(palette: palette, width: 500)
+      #expect(prewarm.drawsAhead, "a SwiftUI row's note at the same width")
+      prewarm.note(palette: palette, width: 400)
+      #expect(!prewarm.drawsAhead)
+    }
+
     @Test("A press in a drawn run lays the live text view over it, and it goes once done")
     func liveOverlay() throws {
       let document = MessageTextFixture.document(Self.answer)

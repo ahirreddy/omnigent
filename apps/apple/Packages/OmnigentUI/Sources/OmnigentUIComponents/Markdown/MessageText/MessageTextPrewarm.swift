@@ -94,8 +94,11 @@
       queue.setContext(
         Context(palette: palette, width: width, scale: scale, raster: raster)
       ) { current in
-        current.width == width && current.palette.style == palette.style
-          && current.scale == scale && (current.raster == nil) == (raster == nil)
+        guard current.width == width, current.palette.style == palette.style else {
+          return false
+        }
+        // A note without drawing (a SwiftUI row's) keeps the drawing a text cell asked for.
+        return raster == nil || (current.raster != nil && current.scale == scale)
       }
     }
 
@@ -111,6 +114,9 @@
 
     /// The texts waiting to lay out, first to last, for tests.
     var pendingTexts: [String] { queue.pendingTexts }
+
+    /// Whether it draws answers ahead as it lays them out.
+    var drawsAhead: Bool { queue.context?.raster != nil }
 
     /// The document prepared for `key`, if one was.
     func takeDocument(for key: MessageTextDocumentKey) -> MessageTextDocument? {
