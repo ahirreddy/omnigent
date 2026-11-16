@@ -204,6 +204,30 @@
       }
     }
 
+    @Test("Idle measuring leaves answers to the prewarm, then measures every row in reach")
+    func idleMeasuringWaitsForPrewarm() async throws {
+      let conversation = LiveConversation(
+        ConversationViewState(
+          header: TranscriptFixture.header, rows: TranscriptFixture.turns(30, startingAt: 200)))
+      let window = transcriptScreen(Host(conversation: conversation), width: Self.width)
+      defer { window.close() }
+      try await letTasksRun(window, milliseconds: 200)
+      let driver = TranscriptScrollDriver(screen: window)
+      let table = try #require(driver.scrollView?.documentView as? NSTableView)
+      let controller = try #require(table.delegate as? TranscriptTableController)
+      window.run(
+        for: TranscriptTableController.prefetchDelay + TranscriptTableController.prewarmPatience
+          + 1)
+      let shown = try #require(driver.scrollView).contentView.bounds
+      let reach = shown.insetBy(
+        dx: 0, dy: -shown.height * TranscriptTableController.prefetchReach)
+      for index in controller.model.rows.indices {
+        let rect = table.rect(ofRow: index)
+        guard rect.minY >= reach.minY, rect.maxY <= reach.maxY else { continue }
+        #expect(!controller.model.needsMeasure(at: index), "row \(index)")
+      }
+    }
+
     @Test("Prioritized answers go to the front of the queue in order, once each")
     func prioritizeOrder() {
       let prewarm = MessageTextPrewarm(limit: 3)

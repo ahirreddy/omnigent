@@ -129,6 +129,9 @@
     /// Whether it draws answers ahead as it lays them out.
     var drawsAhead: Bool { queue.context?.raster != nil }
 
+    /// Whether it lays answers out: a row has shown the width they lay out at.
+    var hasContext: Bool { queue.context != nil }
+
     /// The document prepared for `key`, if one was.
     func takeDocument(for key: MessageTextDocumentKey) -> MessageTextDocument? {
       store.documents.withLock { $0.cached(key) }

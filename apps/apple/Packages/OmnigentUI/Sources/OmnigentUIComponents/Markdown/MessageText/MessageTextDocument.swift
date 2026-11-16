@@ -88,5 +88,10 @@
     ) -> MessageTextDocument {
       entries.value(for: key, make: make)
     }
+
+    /// The document built for `key`, if one was.
+    func cached(_ key: MessageTextDocumentKey) -> MessageTextDocument? {
+      entries.cached(key)
+    }
   }
 #endif

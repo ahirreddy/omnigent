@@ -82,6 +82,8 @@
     var historyReads = 0
     var isShown = true
     var cursorRectsPaused = false
+    /// The answer idle measuring waits for the prewarm to lay out, and since when.
+    var prewarmAwaited: (id: String, since: CFTimeInterval)?
 
     var isAdjusting = false
     var isMeasuring = false
