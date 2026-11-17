@@ -7,6 +7,8 @@
   enum TranscriptTableAccessory: Hashable {
     /// The message's attachments: uploaded images inline, everything else as chips.
     case attachments([Attachment])
+    /// A prompt's @-mentioned workspace files and folders, as chips above its text.
+    case mentions([UserPrompt.Mention])
   }
 
   /// One accessory at the width its stack offers it, sized as that stack sizes it: as wide as
@@ -23,6 +25,7 @@
       TranscriptTableOfferedWidth(width: max(0, width)) {
         switch accessory {
         case .attachments(let attachments): AttachmentStrip(attachments: attachments)
+        case .mentions(let mentions): AttachedPathChips(mentions: mentions)
         case nil: EmptyView()
         }
       }

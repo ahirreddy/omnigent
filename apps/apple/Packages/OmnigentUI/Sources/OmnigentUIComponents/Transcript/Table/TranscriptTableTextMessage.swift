@@ -5,7 +5,7 @@
   /// A settled chat message a text cell draws in AppKit (``TranscriptTableTextCell``): an answer
   /// or a user's prompt as TextKit text runs, with the blocks only SwiftUI draws (math, a
   /// diagram, an image, a wide table) hosted between them, and the parts beside the text that
-  /// SwiftUI draws (attachments) hosted where the message row stacks them.
+  /// SwiftUI draws (attachments, mentions) hosted where the message row stacks them.
   struct TranscriptTableTextMessage {
     enum Role {
       case user
@@ -57,13 +57,16 @@
         entries = (text.isEmpty ? [.empty] : text) + attachments
       case .user:
         let prompt = UserPrompt.parse(message.text)
-        guard !decoration.showsAvatar, prompt.mentions.isEmpty,
-          UserPrompt.collapsed(prompt.text) == nil
-        else { return nil }
+        guard !decoration.showsAvatar, UserPrompt.collapsed(prompt.text) == nil else {
+          return nil
+        }
         role = .user
         markdown = prompt.text
-        // Attachments lead the bubble; a prompt of attachments alone has no body.
-        var body = Self.pieces(of: markdown, ramp: ramp)
+        // Attachments lead the bubble, then the body: its mentions' chips above its text. A
+        // prompt of attachments alone has no body.
+        let mentions: [Entry] =
+          prompt.mentions.isEmpty ? [] : [.accessory(.mentions(prompt.mentions))]
+        var body = mentions + Self.pieces(of: markdown, ramp: ramp)
         if body.isEmpty, !message.text.isEmpty { body = [.empty] }
         entries = attachments + body
       case .tool:

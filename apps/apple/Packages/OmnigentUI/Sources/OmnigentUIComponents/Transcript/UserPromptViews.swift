@@ -78,7 +78,8 @@ struct UserPromptBody: View {
   }
 }
 
-private struct AttachedPathChips: View {
+/// A prompt's @-mentioned workspace paths as chips.
+struct AttachedPathChips: View {
   let mentions: [UserPrompt.Mention]
 
   var body: some View {

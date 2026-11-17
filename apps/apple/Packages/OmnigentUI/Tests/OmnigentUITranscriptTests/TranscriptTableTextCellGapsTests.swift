@@ -249,5 +249,37 @@
       try screen.click(strip)
       #expect(opened == ["f1"])
     }
+
+    // MARK: Mentions
+
+    @Test("A prompt's mentions are chips above its text, as tall as SwiftUI's row")
+    func mentionsMatchSwiftUI() throws {
+      let environment = environment()
+      let mentioned = "[Attached: src/app.swift]\n[Attached: docs/]\nWhat do these do?"
+      let cell = try shownMatchingSwiftUI(
+        row(Row(id: "u-mention", role: .user, text: mentioned)), environment)
+      let chips = try #require(cell.accessoryViews.first)
+      #expect(
+        chips.accessory
+          == .mentions([
+            UserPrompt.Mention(path: "src/app.swift", isFolder: false),
+            UserPrompt.Mention(path: "docs", isFolder: true),
+          ]))
+      let text = try #require(cell.runs.first?.view)
+      #expect(chips.frame.maxY + Theme.Spacing.small <= text.frame.minY + 0.5)
+      #expect(cell.message?.markdown == "What do these do?", "the markers leave the text")
+      // Mentions alone, and after attachments.
+      let alone = try shownMatchingSwiftUI(
+        row(Row(id: "u-mention-only", role: .user, text: "[Attached: src/app.swift]")),
+        environment)
+      #expect(alone.runs.isEmpty && alone.accessoryViews.count == 1)
+      let both = try shownMatchingSwiftUI(
+        row(
+          Row(
+            id: "u-mention-file", role: .user, text: mentioned, attachments: [Self.attachment])),
+        environment)
+      #expect(both.accessoryViews.map(\.accessory).count == 2)
+      #expect(both.accessoryViews.first?.accessory == .attachments([Self.attachment]))
+    }
   }
 #endif
