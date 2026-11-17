@@ -5,10 +5,11 @@
 # ios_perf.py's scenarios on each simulator, once per transcript list in each run, and prints
 # medians (see apps/apple/docs/performance.md). From the repository root:
 #
-#   bash apps/apple/Tools/perf/ios-scroll-bench.sh [--runs N] [--lists "stack table"]
+#   bash apps/apple/Tools/perf/ios-scroll-bench.sh [--runs N] [--lists "stack table text"]
 #        [--devices "iPhone 18 Pro;iPad Pro 11-inch (M5)"] [--scenarios "open scroll stream"]
 #        [--style chat|cli] [--sample] [--skip-build]
 #
+# The lists are ios_perf.py's: `text` is the table with settled messages drawn as text rows.
 # Each device also runs a width change: the iPhone turns, the iPad hides and shows its sidebar.
 # --sample samples the main thread during each scenario; a run that fails prints the app's
 # newest crash report.
