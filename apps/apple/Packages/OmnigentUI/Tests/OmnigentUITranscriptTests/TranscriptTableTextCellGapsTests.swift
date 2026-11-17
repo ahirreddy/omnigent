@@ -144,7 +144,7 @@
       id: "f1", kind: .file, title: "notes.txt", reference: "file-1", mimeType: "text/plain")
 
     /// The links the cell's text runs hold.
-    private func links(in cell: TranscriptTableTextCell) -> [URL] {
+    private func linkedURLs(in cell: TranscriptTableTextCell) -> [URL] {
       cell.runs.compactMap(\.document).flatMap { MessageTextDocument.links(in: $0.text) }
         .map(\.url)
     }
@@ -176,9 +176,9 @@
       ]) { $0.workspaceFileLinks = links }
       defer { screen.close() }
       let cell = try textCell("a-cite", in: screen)
-      #expect(try await waitUntil(screen) { !self.links(in: cell).isEmpty })
+      #expect(try await waitUntil(screen) { !self.linkedURLs(in: cell).isEmpty })
       #expect(listed == ["src"], "the cited file's folder is listed once")
-      let url = try #require(links(in: cell).first)
+      let url = try #require(linkedURLs(in: cell).first)
       let open = try #require(openURL(of: cell))
       open(url)
       #expect(opened == [WorkspaceFileTarget(path: "src/a.ts")])
@@ -197,7 +197,7 @@
       let index = try #require(controller.model.index(of: "a-missing"))
       #expect(controller.cellKind(at: index) == .text(.answer))
       try await letTasksRun(screen, milliseconds: 200)
-      #expect(links(in: try textCell("a-missing", in: screen)).isEmpty)
+      #expect(linkedURLs(in: try textCell("a-missing", in: screen)).isEmpty)
     }
 
     // MARK: Attachments
