@@ -133,9 +133,19 @@
     /// Jump to latest's scroll ended: rows that grew at the end meanwhile moved the end past it.
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
       isJumpingToEnd = false
-      if follow.layoutGrew(), maximumOffset - collectionView.contentOffset.y >= 0.5 {
-        pinBottom()
-      }
+      landAtEnd()
+    }
+
+    /// How long after Jump to latest starts its scroll a follower short of the end is put there:
+    /// the scroll may be cut short, or still under way on a main thread held up elsewhere.
+    static let jumpLanding: TimeInterval = 0.6
+
+    /// Puts a follower short of the end there, unless the reader's finger moves the list.
+    func landAtEnd() {
+      guard follow.layoutGrew(), !collectionView.isDragging, !collectionView.isDecelerating,
+        maximumOffset - collectionView.contentOffset.y >= 0.5
+      else { return }
+      pinBottom()
     }
 
     /// A tap on the status bar scrolls to the top: the reader asked for earlier rows.
@@ -284,7 +294,12 @@
       let isNear =
         maximumOffset - collectionView.contentOffset.y < visibleHeight * Self.animatedJumpReach
       let reducesMotion = environment.values?.accessibilityReduceMotion ?? false
-      pinBottom(animated: isNear && !reducesMotion)
+      let animated = isNear && !reducesMotion
+      pinBottom(animated: animated)
+      guard animated else { return }
+      MainRunLoop.perform(after: Self.jumpLanding) { [weak self] in
+        MainActor.assumeIsolated { self?.landAtEnd() }
+      }
     }
 
     /// Scrolls row `id` into view; a row the list does not have yet is shown once it does.
@@ -325,7 +340,6 @@
         bottom: edges.bottom, right: isRightToLeft ? edges.leading : edges.trailing)
       guard next != insets else { return }
       let anchor = readingAnchor()
-      let grew = next.bottom > insets.bottom
       let sidesChanged = next.left != insets.left || next.right != insets.right
       alongsideKeyboard {
         self.insets = next
@@ -335,7 +349,9 @@
           top: next.top, left: 0, bottom: next.bottom, right: next.right)
         if sidesChanged, self.syncWidth() {
           self.widthChanged(keeping: anchor)
-        } else if grew, self.follow.layoutGrew() {
+        } else if self.follow.layoutGrew() {
+          // A follower stays at the end, mid-jump too: the row read before the jump would
+          // stop its scroll there.
           self.pinBottom()
         } else {
           self.restore(anchor)

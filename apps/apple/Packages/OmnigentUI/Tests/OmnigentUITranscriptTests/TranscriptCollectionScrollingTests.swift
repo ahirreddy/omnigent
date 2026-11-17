@@ -181,6 +181,42 @@
       #expect(screen.controller.follow.follows)
     }
 
+    @Test("Jump to latest lands at the end when the bars below change during its scroll")
+    func jumpLandsThroughInsets() async throws {
+      let conversation = collectionSession()
+      let screen = try await collectionScreen(conversation)
+      defer { screen.window.close() }
+      await screen.drag(to: screen.offset - 600)
+      conversation.append(TranscriptFixture.user("u-next", "And then?"))
+      // Idle measuring done, so nothing but the jump moves the list.
+      await screen.restUntilMeasured()
+      #expect(!screen.controller.follow.follows)
+      screen.controller.jumpToLatest()
+      #expect(screen.controller.isJumpingToEnd)
+      // The composer shrinks, or a keyboard hides, before the scroll gets there.
+      screen.surroundings.dock = 60
+      await screen.settle(.milliseconds(100))
+      #expect(screen.isAtEnd, "\(screen.offset) of \(screen.controller.maximumOffset)")
+      #expect(screen.controller.follow.follows)
+    }
+
+    @Test("A jump whose scroll is cut short still lands at the end")
+    func jumpLandsWhenCutShort() async throws {
+      let conversation = collectionSession()
+      let screen = try await collectionScreen(conversation)
+      defer { screen.window.close() }
+      await screen.drag(to: screen.offset - 600)
+      await screen.restUntilMeasured()
+      let start = screen.offset
+      screen.controller.jumpToLatest()
+      // Something stops the animated scroll where it started, without its end being reported.
+      screen.list.setContentOffset(CGPoint(x: 0, y: start), animated: false)
+      #expect(!screen.isAtEnd)
+      let landing = Int(TranscriptCollectionController.jumpLanding * 1000)
+      await screen.settle(.milliseconds(landing + 200))
+      #expect(screen.isAtEnd, "\(screen.offset) of \(screen.controller.maximumOffset)")
+    }
+
     @Test("Older rows landing above keep the reader on the row they were reading")
     func pagingKeepsPosition() async throws {
       let conversation = collectionSession(hasMore: true)
