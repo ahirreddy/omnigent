@@ -116,6 +116,55 @@
       #expect(log.entries == [expected])
     }
 
+    /// The menu a real right click at `point` opens, closed as soon as it tracks.
+    private func rightClickMenu(_ screen: OffscreenWindow<AnyView>, at point: CGPoint) throws
+      -> NSMenu?
+    {
+      nonisolated(unsafe) var opened: NSMenu?
+      let observer = NotificationCenter.default.addObserver(
+        forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil
+      ) { note in
+        nonisolated(unsafe) let menu = note.object as? NSMenu
+        unsafe opened = menu
+        let tracking = CFRunLoopMode(RunLoop.Mode.eventTracking.rawValue as CFString)
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), tracking.rawValue) {
+          MainActor.assumeIsolated { unsafe menu?.cancelTrackingWithoutAnimation() }
+        }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
+      }
+      defer { NotificationCenter.default.removeObserver(observer) }
+      let event = try #require(
+        NSEvent.mouseEvent(
+          with: .rightMouseDown, location: screen.host.convert(point, to: nil),
+          modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: screen.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+          pressure: 1))
+      screen.window.makeKey()
+      screen.window.sendEvent(event)
+      screen.settle()
+      return unsafe opened
+    }
+
+    @Test("A right click with nothing selected opens the row's menu; on a selection, the text's")
+    func rightClick() throws {
+      let row = TranscriptFixture.answer("a1", "Some words to right click on, in a row.")
+      let screen = transcriptScreen(
+        MessageRowView(row: row, decoration: MessageDecoration())
+          .environment(\.messageTextRenderer, .textKit), width: 600, height: 300)
+      defer { screen.close() }
+      let text = try #require(MessageTextFixture.contentViews(in: screen).first).textView
+      let point = text.convert(CGPoint(x: 12, y: 8), to: screen.host)
+      let rowMenu = try #require(try rightClickMenu(screen, at: point), "no menu opened")
+      let rowTitles = rowMenu.items.map(\.title)
+      #expect(rowTitles.contains("Copy Message ID"), "\(rowTitles)")
+      screen.window.makeFirstResponder(text)
+      text.setSelectedRange(NSRange(location: 0, length: 4))
+      let textMenu = try #require(try rightClickMenu(screen, at: point), "no menu opened")
+      let textTitles = textMenu.items.map(\.title)
+      #expect(
+        textTitles.contains("Copy") && !textTitles.contains("Copy Message ID"), "\(textTitles)")
+    }
+
     @Test("An answer row draws its text in one TextKit view with the TextKit renderer")
     func messageRow() throws {
       let row = TranscriptFixture.answer("a1", "First paragraph.\n\n- an item\n\nLast paragraph.")
