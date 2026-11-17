@@ -1242,12 +1242,10 @@ impl ClientCore {
         session_id: String,
         text: String,
     ) -> Result<MessageSent, CoreError> {
-        let sent = self
-            .inner
-            .sessions
-            .send_message(&session_id, &text)
-            .await
-            .map_err(CoreError::from)?;
+        let sent = self.inner.sessions.send_message(&session_id, &text).await;
+        // A refused send's working state is gone by the time it answers.
+        self.events_published().await;
+        let sent = sent.map_err(CoreError::from)?;
         if self.inner.demo.is_some() {
             self.inner.post(Msg::DemoKick);
         }
@@ -1276,8 +1274,9 @@ impl ClientCore {
             .inner
             .sessions
             .send_message_mentioning(&session_id, &text, harness.as_deref(), &paths)
-            .await
-            .map_err(CoreError::from)?;
+            .await;
+        self.events_published().await;
+        let sent = sent.map_err(CoreError::from)?;
         if self.inner.demo.is_some() {
             self.inner.post(Msg::DemoKick);
         }

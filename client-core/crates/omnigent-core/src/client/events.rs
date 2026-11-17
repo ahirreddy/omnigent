@@ -742,6 +742,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 key,
             }
         };
+        let expectation = self.expect_turn(session_id);
         let result = self
             .deliver(session_id, text, payload, &gate, require_live_stream)
             .await;
@@ -750,6 +751,9 @@ impl<T: HttpTransport> ClientCore<T> {
             Err(error) => error.submission_outcome(),
         };
         let mut state = lock(&self.state);
+        if outcome != SubmissionOutcome::Accepted {
+            state.end_turn_expectation(session_id, expectation);
+        }
         let current = state
             .composer
             .get(&(gate.key.scope.clone(), gate.key.session_id.clone()))
@@ -771,6 +775,23 @@ impl<T: HttpTransport> ClientCore<T> {
             submission,
             draft: resolution.draft,
         })
+    }
+
+    /// Tells the host a message to `session_id` is leaving, before it does, so the open
+    /// conversation shows working (see [`ClientEvent::TurnExpected`]). Returns the expectation.
+    fn expect_turn(&self, session_id: &str) -> u64 {
+        let expectation = {
+            let mut state = lock(&self.state);
+            state.turn_expectations += 1;
+            let expectation = state.turn_expectations;
+            state.events.push(ClientEvent::TurnExpected {
+                session_id: session_id.to_owned(),
+                expectation,
+            });
+            expectation
+        };
+        self.dispatch();
+        expectation
     }
 
     #[allow(
