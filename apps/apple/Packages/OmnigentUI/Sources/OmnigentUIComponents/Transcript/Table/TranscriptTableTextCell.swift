@@ -308,19 +308,6 @@
 
     /// Takes the drawn runs' bitmaps back from the rasters' cache.
     /// - Returns: Whether every run shows its drawing again, with none left live.
-    /// Whether a run shown live has its drawing kept now, which showing the cell again would
-    /// take: not one the reader is selecting in.
-    var hasArrivedDrawing: Bool {
-      guard style.drawsAhead, let laidOut else { return false }
-      return runs.contains { run in
-        guard case .live(let view) = run, unsafe view.window?.firstResponder !== view.textView
-        else { return false }
-        return MessageTextRasters.shared.contains(
-          MessageTextRasterKey(
-            document: view.document.serial, width: laidOut.textWidth, scale: style.scale))
-      }
-    }
-
     fileprivate func takeBitmapsBack() -> Bool {
       var shown = true
       for run in runs {

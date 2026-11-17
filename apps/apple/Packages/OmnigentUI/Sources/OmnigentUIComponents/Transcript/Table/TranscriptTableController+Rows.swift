@@ -69,7 +69,6 @@
       guard generation == prefetchGeneration, isShown, !follow.isUserScrolling,
         model.width > 0, tableView.numberOfRows == model.rows.count
       else { return }
-      let swapped = showArrivedDrawings()
       var cursor = prefetchCursor ?? startingCursor()
       let shown = clipView.bounds
       let reach = shown.insetBy(dx: 0, dy: -shown.height * Self.prefetchReach)
@@ -107,33 +106,11 @@
       }
       prewarmAnswers(in: kept)
       MessageTextPrewarm.shared.prioritize(awaited, at: awaitedAt)
-      // Another row on screen may yet take its drawing on the next pass.
-      guard cursor.above >= 0 || cursor.below < model.rows.count || swapped else { return }
+      guard cursor.above >= 0 || cursor.below < model.rows.count else { return }
       // An answer being laid out ahead is measured once it is, a moment later.
       MainRunLoop.perform(after: awaited.isEmpty ? 0 : Self.prewarmWait) { [weak self] in
         MainActor.assumeIsolated { self?.prefetch(generation) }
       }
-    }
-
-    /// Shows the drawings that arrived for runs on screen shown live meanwhile (rows that
-    /// showed before their drawings), one row a pass so no pass runs long: a live text view
-    /// lays out and draws as the transcript scrolls, a drawing doesn't. A run the reader is
-    /// selecting in stays live.
-    /// - Returns: Whether a row took its drawings, so the next pass looks again.
-    @discardableResult
-    func showArrivedDrawings() -> Bool {
-      var swapped = false
-      tableView.enumerateAvailableRowViews { _, row in
-        guard !swapped, model.rows.indices.contains(row),
-          let cell = realizedCell(at: row) as? TranscriptTableTextCell, cell.hasArrivedDrawing
-        else { return }
-        let live = cell.texts.count
-        let height = cell.idealHeight
-        cell.show(model.rows[row], version: model.version(at: row), width: model.width)
-        swapped = cell.texts.count < live
-        if abs(cell.idealHeight - height) >= 0.5 { scheduleRemeasure(cell) }
-      }
-      return swapped
     }
 
     /// Visits the row at one side of the idle measuring's cursor and moves that side on.
