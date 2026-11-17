@@ -7,6 +7,14 @@
     /// The link at a point in this view.
     var linkAt: ((CGPoint) -> URL?)?
     private var pointerArea: NSTrackingArea?
+    /// Where the pointer is in the window; tests give their own, the real one is far away.
+    var pointerLocation: (() -> NSPoint)?
+    /// Puts the hand back as each turn ends while the pointer rests on a link.
+    private(set) lazy var turns = LinkHandTurns { [weak self] in self?.turnEnded() }
+    /// Whether the hand is up for a link under the pointer.
+    private(set) var isOverLinkNow = false {
+      didSet { turns.isWatching = isOverLinkNow }
+    }
 
     /// `omnigent:message-text-viewport full`: TextKit's viewport covers the whole text, so its
     /// fragments draw once instead of being recycled and drawn again as the transcript scrolls.
@@ -88,7 +96,10 @@
       // One area that follows the visible rect, so scrolling rebuilds nothing.
       guard pointerArea == nil else { return }
       let area = NSTrackingArea(
-        rect: .zero, options: [.mouseMoved, .cursorUpdate, .activeInKeyWindow, .inVisibleRect],
+        rect: .zero,
+        options: [
+          .mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow, .inVisibleRect,
+        ],
         owner: self)
       addTrackingArea(area)
       pointerArea = area
@@ -96,20 +107,61 @@
 
     override func mouseMoved(with event: NSEvent) {
       super.mouseMoved(with: event)
-      if isOverLink(event.locationInWindow) { NSCursor.pointingHand.set() }
+      pointerMoved(to: event.locationInWindow)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+      super.mouseExited(with: event)
+      pointerMoved(to: event.locationInWindow)
     }
 
     override func cursorUpdate(with event: NSEvent) {
       if isOverLink(event.locationInWindow) {
+        isOverLinkNow = true
         NSCursor.pointingHand.set()
       } else {
         super.cursorUpdate(with: event)
       }
     }
 
-    /// Whether a link is under `location`, in the window's coordinates.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+      super.viewWillMove(toWindow: newWindow)
+      if newWindow == nil, isOverLinkNow {
+        isOverLinkNow = false
+        NSCursor.arrow.set()
+      }
+    }
+
+    /// The hand over a link this view shows, as ``LinkPointerAreas`` shows it over a `Text`:
+    /// put back as each turn ends while the pointer rests there, then the I-beam over the text
+    /// or the arrow off it.
+    private func pointerMoved(to location: NSPoint) {
+      if isOverLink(location) {
+        isOverLinkNow = true
+        if NSCursor.current != NSCursor.pointingHand { NSCursor.pointingHand.set() }
+      } else if isOverLinkNow {
+        isOverLinkNow = false
+        (isOwnText(at: location) ? NSCursor.iBeam : NSCursor.arrow).set()
+      }
+    }
+
+    private func turnEnded() {
+      guard let location = unsafe turns.restingLocation(in: window, given: pointerLocation)
+      else { return }
+      pointerMoved(to: location)
+    }
+
+    /// Whether a link is under `location`, in the window's coordinates, and nothing covers it.
     func isOverLink(_ location: NSPoint) -> Bool {
-      linkAt?(convert(location, from: nil)) != nil
+      linkAt?(convert(location, from: nil)) != nil && isOwnText(at: location)
+    }
+
+    /// Whether a click at `location`, in the window's coordinates, would reach this text.
+    private func isOwnText(at location: NSPoint) -> Bool {
+      // AppKit declares `window` and `superview` unowned(unsafe); both are only read here.
+      guard let content = unsafe window?.contentView else { return false }
+      let hit = unsafe content.hitTest(content.superview?.convert(location, from: nil) ?? location)
+      return hit.map { $0 === self || $0.isDescendant(of: self) } ?? false
     }
 
     /// Sets the view up to show message text: read-only and selectable, transparent, with no
