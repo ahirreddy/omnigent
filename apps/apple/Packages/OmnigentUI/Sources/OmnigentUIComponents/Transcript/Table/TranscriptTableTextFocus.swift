@@ -28,7 +28,7 @@
 
     override func becomeFirstResponder() -> Bool {
       let became = super.becomeFirstResponder()
-      if became { refreshActions() }
+      if became { refreshActions(animated: true) }
       return became
     }
 
@@ -42,7 +42,7 @@
     /// The actions show again or hide once focus has moved, here or within them.
     func focusMoved() {
       MainRunLoop.perform { [weak self] in
-        MainActor.assumeIsolated { self?.refreshActions() }
+        MainActor.assumeIsolated { self?.refreshActions(animated: true) }
       }
     }
 

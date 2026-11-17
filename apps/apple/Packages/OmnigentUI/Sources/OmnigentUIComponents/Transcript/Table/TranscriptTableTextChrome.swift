@@ -14,10 +14,12 @@
         || Self.assistive.voiceOverIsOn()
     }
 
-    /// Builds the actions' row once it first shows, and places or hides it.
-    func refreshActions() {
+    /// Builds the actions' row once it first shows, and places or hides it; `animated` fades it
+    /// in or out, as SwiftUI's row does when hover or focus reveals it.
+    func refreshActions(animated: Bool = false) {
+      let fades = animated && !(style.environment.values?.accessibilityReduceMotion ?? false)
       guard let message, revealsActions, let values = style.environment.values else {
-        actionsView?.isHidden = true
+        actionsView?.setShown(false, animated: fades)
         return
       }
       let view = actionsView ?? makeActionsView()
@@ -31,7 +33,7 @@
         ? actionsTop + ((actionsLineHeight - size.height) / 2).rounded() : actionsTop
       view.frame = CGRect(
         x: actionsTrailing - size.width, y: top, width: size.width, height: size.height)
-      view.isHidden = false
+      view.setShown(true, animated: fades)
     }
 
     private func makeActionsView() -> TranscriptMessageActionsView {
@@ -55,12 +57,12 @@
 
     override func mouseEntered(with event: NSEvent) {
       isHovered = true
-      refreshActions()
+      refreshActions(animated: true)
     }
 
     override func mouseExited(with event: NSEvent) {
       isHovered = false
-      refreshActions()
+      refreshActions(animated: true)
     }
 
     /// The message's menu, as ``MessageContextMenu`` builds it: its actions (one that doesn't
@@ -187,6 +189,37 @@
       var title: String
       var identifier: String
       var unavailableReason: String?
+    }
+
+    /// Whether the row is to show, which a fade out still under way may not show yet.
+    private(set) var isShown = false
+
+    /// Shows or hides the row, fading over SwiftUI's feedback animation when `animated` and
+    /// motion is on.
+    func setShown(_ shown: Bool, animated: Bool) {
+      guard shown != isShown || (shown && (isHidden || alphaValue < 1)) else { return }
+      isShown = shown
+      guard animated, Theme.Motion.isEnabled else {
+        alphaValue = 1
+        isHidden = !shown
+        return
+      }
+      if shown, isHidden {
+        alphaValue = 0
+        isHidden = false
+      }
+      NSAnimationContext.runAnimationGroup { context in
+        context.duration = TranscriptMessageActionButton.hoverFade
+        context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        animator().alphaValue = shown ? 1 : 0
+      } completionHandler: { [weak self] in
+        MainActor.assumeIsolated {
+          // A row shown again meanwhile stays.
+          guard let self, !self.isShown else { return }
+          self.isHidden = true
+          self.alphaValue = 1
+        }
+      }
     }
 
     /// Shows `items`' buttons and the timestamp; an enabled button under the pointer takes

@@ -173,6 +173,28 @@
       #expect(buttons[1].layer?.backgroundColor?.alpha ?? 0 == 0, "a disabled action takes none")
     }
 
+    @Test("Hover fades a message's actions in and out, as SwiftUI's row animates them")
+    func actionsFade() async throws {
+      let wasEnabled = Theme.Motion.isEnabled
+      defer { Theme.Motion.isEnabled = wasEnabled }
+      let screen = try await textTableScreen(turns, actions: everyAction())
+      defer { screen.close() }
+      restKeyboard(screen)
+      let cell = try textCell("a1", in: screen)
+      Theme.Motion.isEnabled = true
+      cell.mouseEntered(with: try #require(pointerEvent(.mouseEntered)))
+      let actions = try #require(cell.actionsView)
+      #expect(actions.isShown && !actions.isHidden)
+      cell.mouseExited(with: try #require(pointerEvent(.mouseExited)))
+      #expect(!actions.isShown)
+      #expect(try await waitUntil(screen) { actions.isHidden }, "hidden once faded out")
+      #expect(actions.alphaValue == 1, "ready to show again")
+      // Showing a row again, as scrolling does, doesn't fade.
+      cell.mouseEntered(with: try #require(pointerEvent(.mouseEntered)))
+      cell.refreshActions()
+      #expect(actions.alphaValue == 1 && !actions.isHidden)
+    }
+
     // MARK: VoiceOver
 
     @Test("VoiceOver gets the message's actions that apply, by title, and each one runs")
