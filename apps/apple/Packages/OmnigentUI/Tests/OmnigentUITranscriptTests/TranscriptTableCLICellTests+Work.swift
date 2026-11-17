@@ -1,13 +1,14 @@
 #if os(macOS)
   import AppKit
+  import OmnigentViewTesting
   import SwiftUI
   import Testing
 
   @testable import OmnigentUIComponents
   @testable import OmnigentUITestSupport
 
-  /// A turn's tool work in CLI text cells: the long transcript's kinds of tool call, and the
-  /// reader opening and collapsing them.
+  /// A turn's tool work in CLI text cells: the long transcript's kinds of tool call, the reader
+  /// opening and collapsing them, and the prewarm laying CLI texts out while the reader is still.
   extension TranscriptTableCLICellTests {
     /// A tool call and its result, as the long transcript records them.
     static func tool(
@@ -65,6 +66,41 @@
               ])
           ]),
       ]
+    }
+
+    @Test("While the reader is still, the CLI rows around the viewport are built and measured")
+    func idleMeasuring() async throws {
+      let conversation = LiveConversation(
+        ConversationViewState(
+          header: TranscriptFixture.header, rows: TranscriptFixture.turns(30, startingAt: 300)))
+      let window = transcriptScreen(Host(conversation: conversation), width: Self.width)
+      defer { window.close() }
+      try await letTasksRun(window, milliseconds: 200)
+      let driver = TranscriptScrollDriver(screen: window)
+      let table = try #require(driver.scrollView?.documentView as? NSTableView)
+      let controller = try #require(table.delegate as? TranscriptTableController)
+      window.run(for: TranscriptTableController.prefetchDelay)
+      // Rows well inside the idle reach: its edge moves as the rows inside it are measured.
+      let shown = try #require(driver.scrollView).contentView.bounds
+      let near = shown.insetBy(dx: 0, dy: -shown.height * 3)
+      let rows = controller.model.rows.indices.filter {
+        let rect = table.rect(ofRow: $0)
+        return rect.minY >= near.minY && rect.maxY <= near.maxY
+      }
+      let width = controller.cli.style.column(width: controller.model.width).width
+      func isDone(_ index: Int) -> Bool {
+        guard !controller.model.needsMeasure(at: index) else { return false }
+        guard let text = controller.cliText(at: index) else { return true }
+        return controller.cli.style.builtDocument(for: text.spec, width: width) != nil
+      }
+      // Idle passes measure the rows nearest first, each once the prewarm has laid it out.
+      for _ in 0..<50 where !rows.allSatisfy(isDone) {
+        window.run(for: 0.1)
+      }
+      for index in rows {
+        #expect(isDone(index), "row \(index)")
+      }
+      #expect(rows.contains { controller.cliText(at: $0) != nil })
     }
 
     @Test("Tool work is built off the main actor too, looked up by its key")

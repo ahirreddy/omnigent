@@ -18,7 +18,7 @@
       SystemSideEffects.reset()
     }
 
-    private struct Host: View {
+    struct Host: View {
       let conversation: LiveConversation
       var rendering: OutputRendering = .styled
 

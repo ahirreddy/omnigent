@@ -54,6 +54,17 @@ nonisolated final class CLITextPrewarm: Sendable {
 
   /// Asks for texts about to show, at their places in the transcript, the nearest first.
   func prioritize(_ specs: [CLITextSpec], at positions: [Double]) {
+    queue.prioritize(register(specs), at: positions)
+  }
+
+  /// Queues texts to lay out, not draw, behind those asked for ahead, in order.
+  func offer(_ specs: [CLITextSpec]) {
+    for key in register(specs) { queue.offer(key) }
+  }
+
+  /// Keeps the specs whose keys don't spell them out, for the workers.
+  /// - Returns: Their keys.
+  private func register(_ specs: [CLITextSpec]) -> [String] {
     let keys = specs.map(\.key)
     self.specs.entries.withLock { kept in
       // A bounded table: the oldest asks are the queue's to drop too.
@@ -62,7 +73,7 @@ nonisolated final class CLITextPrewarm: Sendable {
         kept[key] = spec
       }
     }
-    queue.prioritize(keys, at: positions)
+    return keys
   }
 
   /// Where the reader is and which way they scroll (+1 down, -1 up, 0 still).

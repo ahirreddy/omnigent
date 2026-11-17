@@ -103,6 +103,7 @@
       // The reader is still: answers nearest the viewport, either way, go first.
       focusPrewarms(at: Double(shown.midY), direction: 0)
       prewarmAnswers(in: kept)
+      offerCLI(in: reach, around: shown.midY)
       prioritizeAwaited(awaited, at: awaitedAt)
       guard cursor.above >= 0 || cursor.below < model.rows.count else { return }
       // An answer being laid out ahead is measured once it is, a moment later.

@@ -20,6 +20,8 @@
     }
     /// Texts handed to the prewarm, by row id and version.
     var prewarmed: [String: Int] = [:]
+    /// Texts offered to the prewarm to lay out while the reader is still, by row id and version.
+    var offered: [String: Int] = [:]
     /// The text idle measuring waits for the prewarm to lay out, and since when.
     var awaited: (id: String, since: CFTimeInterval)?
     /// The specs of the texts idle measuring waits for, by their prewarm keys.
@@ -33,6 +35,7 @@
     func forget() {
       texts = [:]
       prewarmed = [:]
+      offered = [:]
     }
   }
 
@@ -84,6 +87,39 @@
       }
       CLITextPrewarm.shared.prioritize(specs, at: positions)
     }
+
+    /// While the reader is still, offers the prewarm the CLI texts in `rect` not built yet,
+    /// nearest `position` first, for a couple of milliseconds a pass: they lay out behind those
+    /// asked for ahead, so a scroll later finds them built.
+    func offerCLI(in rect: NSRect, around position: CGFloat) {
+      guard isCLI, cli.style.isEnabled, CLITextPrewarm.shared.context != nil,
+        tableView.numberOfRows > 0
+      else { return }
+      let range = tableView.rows(in: rect)
+      guard range.length > 0 else { return }
+      let center = max(range.location, tableView.row(at: NSPoint(x: 1, y: position)))
+      let indexes = (range.location..<(range.location + range.length)).sorted {
+        abs($0 - center) < abs($1 - center)
+      }
+      let width = cli.style.column(width: model.width).width
+      let deadline = CACurrentMediaTime() + Self.offerBudget
+      var specs: [CLITextSpec] = []
+      for index in indexes where model.rows.indices.contains(index) {
+        guard CACurrentMediaTime() < deadline else { break }
+        let id = model.rows[index].id
+        let version = model.version(at: index)
+        guard cli.offered[id] != version else { continue }
+        cli.offered[id] = version
+        guard let text = cliText(at: index),
+          cli.style.builtDocument(for: text.spec, width: width) == nil
+        else { continue }
+        specs.append(text.spec)
+      }
+      CLITextPrewarm.shared.offer(specs)
+    }
+
+    /// The main thread time one idle pass may spend offering CLI texts.
+    static let offerBudget: CFTimeInterval = 0.002
 
     /// The prewarm key of CLI row `index` when the prewarm lays it out and it is not built
     /// yet: idle measuring leaves it to the prewarm rather than build it here, for a while.
