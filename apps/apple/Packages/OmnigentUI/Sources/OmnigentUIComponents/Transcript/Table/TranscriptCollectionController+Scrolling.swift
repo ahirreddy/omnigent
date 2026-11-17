@@ -125,6 +125,13 @@
       scrollPhaseChanged(isScrolling: false)
     }
 
+    /// Jump to latest's scroll ended: rows that grew at the end meanwhile moved the end past it.
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+      if follow.layoutGrew(), maximumOffset - collectionView.contentOffset.y >= 0.5 {
+        pinBottom()
+      }
+    }
+
     /// A tap on the status bar scrolls to the top: the reader asked for earlier rows.
     func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
       follow.readEarlier()
@@ -174,8 +181,13 @@
       let point = CGPoint(x: collectionView.contentOffset.x, y: target)
       if animated {
         collectionView.setContentOffset(point, animated: true)
-      } else {
+      } else if collectionView.isDragging || collectionView.isDecelerating {
+        // Setting the offset this way leaves the reader's drag or fling going.
         collectionView.contentOffset = point
+        laidOutOffset = target
+      } else {
+        // This way also stops a scroll animation that would land on its own, older target.
+        collectionView.setContentOffset(point, animated: false)
         laidOutOffset = target
       }
       follow.geometryChanged(isNearBottom: isNearBottom)
