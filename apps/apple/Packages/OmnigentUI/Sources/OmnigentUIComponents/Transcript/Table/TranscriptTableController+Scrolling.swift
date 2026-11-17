@@ -253,10 +253,13 @@
       noteHeightsInPlace(noted)
     }
 
-    /// Opening frames the latest user message at the top, as the stack does, so a long answer
-    /// reads from its start; a turn that fits keeps following the end.
+    /// Opening frames the latest user message at the top, so a long answer reads from its start;
+    /// a turn that fits keeps following the end. A session waiting on a request opens at the end,
+    /// where its card's actions are, as the stack does once its rows arrive after it shows.
     func frameLatestTurn() {
-      guard !isCLI, let latest = model.rows.lastIndex(where: \.isUserMessage) else {
+      let awaitsReader = model.rows.last?.showsPendingRequest == true
+      guard !isCLI, !awaitsReader, let latest = model.rows.lastIndex(where: \.isUserMessage)
+      else {
         pinBottom()
         return
       }

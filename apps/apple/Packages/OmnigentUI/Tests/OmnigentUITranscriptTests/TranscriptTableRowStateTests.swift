@@ -233,5 +233,30 @@
       }
       #expect(AssistiveClientNotice.isWritten)
     }
+
+    @Test("Jump to latest is a button an assistive client finds by the stack's identifier")
+    func jumpToLatestForAssistiveClients() async throws {
+      let (driver, controller) = try await screen(session(turns: 8))
+      let window = driver.screen
+      defer { window.close() }
+      let scrollView = try #require(driver.scrollView)
+      window.liveScroll(scrollView, began: true)
+      driver.move(to: controller.minimumOffset)
+      window.liveScroll(scrollView, began: false)
+      try await letTasksRun(window)
+      #expect(controller.follow.pill.isShown)
+      let (role, label) = try window.withAccessibilityTree {
+        let pill = try window.accessibilityElement("jump-to-latest")
+        return (
+          pill.value(forKey: "accessibilityRole") as? String,
+          pill.value(forKey: "accessibilityLabel") as? String
+        )
+      }
+      #expect(role == NSAccessibility.Role.button.rawValue)
+      #expect(label == "Jump to latest message")
+      try window.clickElement("jump-to-latest")
+      #expect(await window.waitUntil { abs(driver.offset - driver.maximumOffset) < 1 })
+      #expect(controller.follow.follows)
+    }
   }
 #endif

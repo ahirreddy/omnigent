@@ -34,15 +34,6 @@ extension MacLiveUITestSupport {
     elements(prefix: "transcript-", in: app).firstMatch
   }
 
-  /// Scrolls the shown transcript to its end, as a reader's wheel does to reach a request's
-  /// actions: an opened session frames its latest question, so a request under a long answer
-  /// can end below the window. A scroll past the end stops there.
-  func showTranscriptEnd(in app: XCUIApplication) {
-    let transcript = app.windows.firstMatch.coordinate(
-      withNormalizedOffset: CGVector(dx: 0.6, dy: 0.4))
-    for _ in 0..<3 { transcript.scroll(byDeltaX: 0, deltaY: -800) }
-  }
-
   /// The hittable element of `query`, once there is one. Closed menus and covered views stay in
   /// the accessibility tree, so existing is not enough; the last one is the frontmost.
   func hittable(_ query: XCUIElementQuery, timeout: TimeInterval = 5) -> XCUIElement? {

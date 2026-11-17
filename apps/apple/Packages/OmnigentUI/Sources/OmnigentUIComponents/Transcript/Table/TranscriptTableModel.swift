@@ -82,6 +82,12 @@ nonisolated struct TranscriptTableRow: Hashable, Sendable, Identifiable {
   /// Whether the row is a user's message, which opening frames at the top.
   var isUserMessage: Bool { kind == .userMessage }
 
+  /// Whether the row is the footer with a request waiting on the reader.
+  var showsPendingRequest: Bool {
+    guard case .footer(let footer) = content else { return false }
+    return footer.decisions != nil
+  }
+
   private static func kind(of segment: TurnSegment) -> TranscriptTableRowKind {
     switch segment {
     case .worked: .worked
