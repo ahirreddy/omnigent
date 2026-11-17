@@ -21,6 +21,13 @@
       SystemSideEffects.reset()
     }
 
+    private var pagingActions: ConversationActions {
+      var actions = ConversationActions()
+      let log = self.log
+      actions.loadOlder = { log.add("older") }
+      return actions
+    }
+
     private func session(turns: Int = 8, hasMore: Bool = false) -> LiveConversation {
       var state = ConversationViewState(
         header: TranscriptFixture.header, rows: TranscriptFixture.turns(turns, startingAt: 10))
@@ -37,6 +44,116 @@
       try await letOpeningEnd(window)
       let driver = TranscriptScrollDriver(screen: window)
       return (driver, try #require(driver.tableController))
+    }
+
+    /// The row under the viewport's top.
+    private func topRow(_ controller: TranscriptTableController) -> String? {
+      controller.readingAnchor()?.id
+    }
+
+    private func key(_ code: Int, _ modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
+      let characters = String(Character(try #require(Unicode.Scalar(code))))
+      return try #require(
+        NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
+          windowNumber: 0, context: nil, characters: characters,
+          charactersIgnoringModifiers: characters, isARepeat: false, keyCode: 0))
+    }
+
+    @Test("Option-Command-Up and Down go a question at a time; Next at the last goes to the end")
+    func messageKeys() async throws {
+      let (driver, controller) = try await screen(session())
+      let window = driver.screen
+      defer { window.close() }
+      // Opening framed the latest question at the top.
+      #expect(topRow(controller) == "u17")
+      try pressMessageKey(.previous, on: window)
+      #expect(topRow(controller) == "u16")
+      try pressMessageKey(.previous, on: window)
+      #expect(topRow(controller) == "u15")
+      #expect(!controller.follow.follows)
+      try pressMessageKey(.next, on: window)
+      #expect(topRow(controller) == "u16")
+      try pressMessageKey(.next, on: window)
+      try pressMessageKey(.next, on: window)
+      #expect(abs(driver.offset - driver.maximumOffset) < 1)
+      #expect(controller.follow.follows)
+    }
+
+    @Test("With one question the keys do nothing; with none above, Previous pages in more")
+    func messageKeysAtTheEdges() async throws {
+      let conversation = session(turns: 1, hasMore: true)
+      let (driver, controller) = try await screen(conversation, actions: pagingActions)
+      let window = driver.screen
+      defer { window.close() }
+      log.clear()
+      try pressMessageKey(.previous, on: window)
+      #expect(log.entries.isEmpty)
+      conversation.append(contentsOf: TranscriptFixture.turns(1, startingAt: 11))
+      try await letTasksRun(window)
+      let scrollView = try #require(driver.scrollView)
+      window.liveScroll(scrollView, began: true)
+      controller.moveToTop()
+      window.liveScroll(scrollView, began: false)
+      log.clear()
+      try pressMessageKey(.previous, on: window)
+      #expect(log.entries == ["older"], "on screen \(controller.visibleRowIDs)")
+      log.clear()
+      controller.step(.previous)
+      #expect(log.entries == ["older"], "on screen \(controller.visibleRowIDs)")
+    }
+
+    @Test("Keys a row passes on scroll a line, a page or to an end, as the reader's own scroll")
+    func scrollingKeys() async throws {
+      let (driver, controller) = try await screen(session(turns: 12))
+      let window = driver.screen
+      defer { window.close() }
+      // Idle measuring gives the rows around the end their heights, so a step up moves by its
+      // own length alone.
+      window.run(for: TranscriptTableController.prefetchDelay + 0.5)
+      driver.move(to: driver.maximumOffset - 1200)
+      let line = TranscriptTableController.keyLine
+      let page = controller.visibleHeight - line
+      let steps: [(key: NSEvent, delta: CGFloat)] = [
+        (try key(NSDownArrowFunctionKey), line), (try key(NSUpArrowFunctionKey), -line),
+        (try key(NSPageDownFunctionKey), page), (try key(NSPageUpFunctionKey), -page),
+        (try key(0x20), page), (try key(0x20, .shift), -page),
+      ]
+      for (event, delta) in steps {
+        let start = driver.offset
+        #expect(controller.scrolls(for: event))
+        window.settle(0.05)
+        #expect(abs(driver.offset - start - delta) < 1, "\(event): \(driver.offset - start)")
+      }
+      // A key the transcript does not scroll for goes on to the window.
+      #expect(!controller.scrolls(for: try key(Int(Character("a").asciiValue ?? 0))))
+      #expect(!controller.scrolls(for: try key(NSDownArrowFunctionKey, .command)))
+
+      #expect(controller.scrolls(for: try key(NSHomeFunctionKey)))
+      window.settle()
+      #expect(abs(driver.offset - controller.minimumOffset) < 1)
+      #expect(!controller.follow.follows)
+      #expect(controller.scrolls(for: try key(NSEndFunctionKey)))
+      // The reader's step ends once no other follows; at the end it follows again.
+      window.run(for: TranscriptTableController.wheelEnd + 0.1)
+      #expect(abs(driver.offset - driver.maximumOffset) < 1)
+      #expect(controller.follow.follows)
+    }
+
+    @Test("A key a focused row does not use reaches the table, which scrolls")
+    func keysReachTheTable() async throws {
+      let (driver, controller) = try await screen(session(turns: 12))
+      let window = driver.screen
+      defer { window.close() }
+      driver.move(to: 2000)
+      restKeyboard(window)
+      let start = driver.offset
+      try window.press(keyCode: 121, characters: "\u{F72D}", modifiers: .function)
+      // With nothing in the rows focused the window has the key, as it does over the stack.
+      #expect(abs(driver.offset - start) < 1)
+      controller.tableView.keyDown(with: try key(NSPageDownFunctionKey, .function))
+      window.settle(0.05)
+      #expect(driver.offset > start + 100)
     }
 
     @Test("With motion on a jump eases to where it goes, and the reader's scroll stops it")

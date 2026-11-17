@@ -72,5 +72,20 @@
       activeJump = nil
     }
 
+    // MARK: Previous and next message
+
+    /// Moves to the previous or next user message, from the rows on screen. With none above,
+    /// older history loads; with none below, the newest row shows.
+    func step(_ direction: TranscriptNavigation.Direction) {
+      let users = Set(model.rows.filter(\.isUserMessage).map(\.id))
+      let target = TranscriptNavigation.target(
+        direction, order: model.ids, userMessages: users, visible: Set(visibleRowIDs))
+      guard let target else {
+        if direction == .previous { requestOlder() } else { jumpToLatest(animated: true) }
+        return
+      }
+      show(target, at: .top, animated: true)
+    }
+
   }
 #endif

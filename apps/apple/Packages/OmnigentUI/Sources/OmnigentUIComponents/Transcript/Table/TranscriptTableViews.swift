@@ -38,12 +38,20 @@
 
   /// The table: one column, no selection, and cells whose text takes the first click.
   final class TranscriptTableNSView: NSTableView {
+    weak var owner: TranscriptTableController?
+
     /// Selectable text and controls in a row take a click at once, not only once a row is
     /// selected, as a table's editable cells otherwise do.
     override func validateProposedFirstResponder(_ responder: NSResponder, for event: NSEvent?)
       -> Bool
     {
       true
+    }
+
+    /// Keys a focused row passes on scroll the transcript, as a text view's do.
+    override func keyDown(with event: NSEvent) {
+      if owner?.scrolls(for: event) == true { return }
+      super.keyDown(with: event)
     }
   }
 #endif

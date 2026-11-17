@@ -124,6 +124,9 @@
       tableView.allowsEmptySelection = true
       tableView.focusRingType = .none
       tableView.refusesFirstResponder = true
+      tableView.owner = self
+      // The keyboard goes through the rows' controls, not the scroll bar.
+      scrollView.verticalScroller?.refusesFirstResponder = true
       tableView.usesAutomaticRowHeights = false
       tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
       column.resizingMask = .autoresizingMask

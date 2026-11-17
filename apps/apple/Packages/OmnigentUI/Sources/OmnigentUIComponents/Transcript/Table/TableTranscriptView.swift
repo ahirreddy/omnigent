@@ -19,6 +19,7 @@
     @State private var pacer = TranscriptRowsPacer()
     @State private var pill = TranscriptTablePill()
     @State private var rail = TurnRailModel()
+    @State private var keys = TranscriptTableKeys()
     @Environment(\.transcriptAppearance) private var appearance
     @Environment(\.transcriptFocus) private var focus
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -28,7 +29,7 @@
       wireController()
       return TranscriptTableRowsContent(
         state: state, liveRows: liveRows, pacer: pacer, layout: layout, controller: controller,
-        actions: actions, rail: rail
+        actions: actions, rail: rail, keys: keys
       )
       .environment(\.conversationActions, actions)
       .environment(\.openURL, environmentRelay.openURL)
@@ -61,6 +62,7 @@
           show: { controller.show($0, at: .center) })
       )
       .task(id: state.header.id) { pacer.release() }
+      .overlay { TableMessageKeys(keys: keys, controller: controller) }
       .transcriptSelectionPopup(reply: actions.replyWithSelection, ask: actions.askInSideChat)
       .modifier(
         TurnRailOverlay(
@@ -100,6 +102,29 @@
     var pill = TranscriptFollow.Pill()
   }
 
+  /// Whether the transcript has a second user message to move between, read by the message
+  /// keys alone.
+  @MainActor
+  @Observable
+  final class TranscriptTableKeys {
+    var hasUserMessages = false
+  }
+
+  /// The previous and next message keys (``MessageNavigationKeys``) over the table.
+  private struct TableMessageKeys: View {
+    let keys: TranscriptTableKeys
+    let controller: TranscriptTableController
+
+    var body: some View {
+      Color.clear
+        .allowsHitTesting(false)
+        .modifier(
+          MessageNavigationKeys(
+            isEnabled: keys.hasUserMessages, previous: { controller.step(.previous) },
+            next: { controller.step(.next) }))
+    }
+  }
+
   private struct TableJumpPill: View {
     let model: TranscriptTablePill
     let jump: () -> Void
@@ -123,6 +148,7 @@
     let controller: TranscriptTableController
     let actions: ConversationActions
     let rail: TurnRailModel
+    let keys: TranscriptTableKeys
     @Environment(\.transcriptAppearance) private var appearance
 
     var body: some View {
@@ -141,6 +167,10 @@
           .frame(width: 0, height: 0)
       }
       .onChange(of: layout.turns(for: state), initial: true) { _, turns in rail.setTurns(turns) }
+      // Previous and next need a second message to move between.
+      .onChange(of: state.rows.count { $0.role == .user } > 1, initial: true) { _, hasSeveral in
+        if keys.hasUserMessages != hasSeveral { keys.hasUserMessages = hasSeveral }
+      }
       .modifier(PacedWhileShown(pacer: pacer))
       .modifier(TableShownWatch(controller: controller))
       .countsRenders("rows")
