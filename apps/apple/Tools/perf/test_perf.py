@@ -195,6 +195,19 @@ class ScrollBenchTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             perf.list_args("table+unknown")
 
+    def test_a_list_plus_hosted_and_fitted_compares_the_swiftui_rows(self):
+        self.assertEqual(
+            perf.list_args("table+hosted+fitted"),
+            [
+                "-omnigent:transcript-list",
+                "table",
+                "-omnigent:transcript-cells",
+                "hosted",
+                "-omnigent:transcript-hosting",
+                "fitted",
+            ],
+        )
+
     def test_every_list_runs_with_every_variant(self):
         launched = perf.bench_variants(
             ["stack", "table"], [perf.Variant("base", []), perf.Variant("big", ["-a", "b"])]

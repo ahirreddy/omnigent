@@ -780,6 +780,14 @@ LIST_EXTRAS = {
     "full": ["-omnigent:message-text-viewport", "full"],
     "raster": ["-omnigent:message-text-surface", "raster"],
     "nocursor": ["-omnigent:transcript-cursor-rects", "paused"],
+    # Worked folds and an empty header or footer hosted in SwiftUI, not AppKit cells.
+    "hosted": ["-omnigent:transcript-cells", "hosted"],
+    # SwiftUI rows sized by a hosting controller's fitting size, with no constraints.
+    "fitted": ["-omnigent:transcript-hosting", "fitted"],
+    # A drawn run's controls made as views at once, not drawn at rest.
+    "chromeviews": ["-omnigent:message-text-chrome", "views"],
+    # One prewarm worker.
+    "oneworker": ["-omnigent:message-text-prewarm-workers", "1"],
 }
 
 
