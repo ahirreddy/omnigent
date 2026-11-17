@@ -335,6 +335,12 @@
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { false }
 
+    /// Row views that chain the rows' key view loops, so Tab reaches every row's controls.
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+      tableView.makeView(withIdentifier: TranscriptTableRowView.identifier, owner: nil)
+        as? TranscriptTableRowView ?? TranscriptTableRowView()
+    }
+
     func tableView(_ tableView: NSTableView, didAdd rowView: NSTableRowView, forRow row: Int) {
       // A cell measured away from the window lays out its views now, so the frame that shows
       // it has its text.
