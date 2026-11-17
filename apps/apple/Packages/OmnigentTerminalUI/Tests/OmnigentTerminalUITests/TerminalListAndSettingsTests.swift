@@ -240,8 +240,11 @@
       #expect(try !screen.shows("Terminal ended"))
       surface.connection.simulateExit()
       #expect(await eventually { surface.controller.state != .attached(readOnly: false) })
-      screen.settle()
-      #expect(try screen.shows("Terminal ended"))
+      // The card follows the state on a main actor update, which a settle alone may not run.
+      #expect(
+        try await screen.waitUntil(idleRecheck: .milliseconds(50)) {
+          try screen.shows("Terminal ended")
+        })
       let reattach = try #require(screen.drawnButtons.first)
       try screen.click(CGPoint(x: reattach.midX, y: reattach.midY))
       #expect(await eventually { surface.controller.state == .attached(readOnly: false) })
@@ -260,7 +263,9 @@
       surface.controller.report("something broke")
       screen.settle()
       #expect(try screen.shows("something broke"))
-      #expect(try screen.shows("Read-only"))
+      #expect(
+        try await screen.waitUntil(idleRecheck: .milliseconds(50)) { try screen.shows("Read-only") }
+      )
       let dismiss = try #require(screen.controlFrames.first)
       try screen.click(CGPoint(x: dismiss.midX, y: dismiss.midY))
       #expect(surface.controller.lastError == nil)
