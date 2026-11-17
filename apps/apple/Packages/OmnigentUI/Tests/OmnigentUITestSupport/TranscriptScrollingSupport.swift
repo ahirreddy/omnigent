@@ -105,17 +105,39 @@
     }
   }
 
-  /// The transcript over a ``LiveConversation``. With `rows`, the list reads its rows from them
-  /// and not from the conversation's state, as the app's does.
+  /// The transcript over a ``LiveConversation``, in the list the launch picks
+  /// (``TranscriptListKind/current``). With `rows`, the list reads its rows from them and not
+  /// from the conversation's state, as the app's does.
   struct LiveTranscriptHost: View {
     let conversation: LiveConversation
     let actions: ConversationActions
     var rows: LiveTranscriptRows?
 
     var body: some View {
-      TranscriptView(
+      LiveTranscript(
         state: conversation.state, liveRows: rows, actions: actions,
         scrollToLatestRequest: conversation.scrollRequest)
+    }
+  }
+
+  /// Runs `body` with ``LiveTranscriptHost`` showing the transcript in `list`, as a launch that
+  /// picks it does.
+  @MainActor
+  func overTranscriptList<Result>(
+    _ list: TranscriptListKind, _ body: () async throws -> Result
+  ) async rethrows -> Result {
+    let launched = TranscriptListKind.current
+    TranscriptListKind.current = list
+    defer { TranscriptListKind.current = launched }
+    return try await body()
+  }
+
+  extension View {
+    /// The renderer `list` draws settled messages with: TextKit for the table, whose text cells
+    /// take it, the launch's for the stack.
+    func messageRenderer(for list: TranscriptListKind) -> some View {
+      environment(
+        \.messageTextRenderer, list == .table ? .textKit : MessageTextRenderer.launchValue)
     }
   }
 

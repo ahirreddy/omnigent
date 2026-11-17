@@ -142,6 +142,15 @@
           }
           continue
         }
+        if let drawn = view as? MessageTextRasterView {
+          // A drawing shows its text unless a live view lies over it, which reads itself.
+          if drawn.drawnText != nil {
+            lines += paragraphs(of: drawn, in: scrollView.documentView).filter {
+              $0.frame.intersects(viewport)
+            }
+          }
+          continue
+        }
         guard let field = view as? NSTextField else { continue }
         let frame = field.convert(field.bounds, to: scrollView.documentView)
         if frame.intersects(viewport) {
@@ -161,23 +170,56 @@
     static func paragraphs(of text: MessageTextKitView, in container: NSView?)
       -> [CommittedFrame.Line]
     {
-      guard let layout = text.textLayoutManager, let content = layout.textContentManager else {
-        return []
+      guard let layout = text.textLayoutManager,
+        let string = layout.textContentManager.flatMap({ $0 as? NSTextContentStorage })?
+          .attributedString
+      else { return [] }
+      return paragraphs(laidOutBy: layout, string: string, ensuresLayout: false).map {
+        CommittedFrame.Line(text: $0.text, frame: text.convert($0.frame, to: container))
       }
+    }
+
+    /// A drawn run's paragraphs, laid out again as its drawing was: its document's text on a
+    /// TextKit stack the drawing's width wide, below the run's top inset.
+    static func paragraphs(of drawn: MessageTextRasterView, in container: NSView?)
+      -> [CommittedFrame.Line]
+    {
+      let storage = NSTextContentStorage()
+      let layout = NSTextLayoutManager()
+      storage.addTextLayoutManager(layout)
+      let textContainer = NSTextContainer(
+        size: CGSize(width: drawn.raster.width, height: 10_000_000))
+      textContainer.lineFragmentPadding = 0
+      layout.textContainer = textContainer
+      storage.textStorage?.setAttributedString(drawn.document.text)
+      return paragraphs(laidOutBy: layout, string: drawn.document.text, ensuresLayout: true).map {
+        let frame = $0.frame.offsetBy(dx: 0, dy: drawn.raster.topInset)
+        return CommittedFrame.Line(text: $0.text, frame: drawn.convert(frame, to: container))
+      }
+    }
+
+    /// Each paragraph `layout` lays out: its copied text, and the bounds of its lines in the
+    /// layout's coordinates. A live view's layout is read as it is, not laid out further.
+    private static func paragraphs(
+      laidOutBy layout: NSTextLayoutManager, string: NSAttributedString, ensuresLayout: Bool
+    ) -> [CommittedFrame.Line] {
+      guard let content = layout.textContentManager else { return [] }
       var lines: [CommittedFrame.Line] = []
-      _ = layout.enumerateTextLayoutFragments(from: layout.documentRange.location) { fragment in
+      _ = layout.enumerateTextLayoutFragments(
+        from: layout.documentRange.location, options: ensuresLayout ? [.ensuresLayout] : []
+      ) { fragment in
         guard let range = fragment.textElement?.elementRange else { return true }
         let start = content.offset(from: content.documentRange.location, to: range.location)
         let length = content.offset(from: range.location, to: range.endLocation)
-        let string = text.copiedText(in: NSRange(location: start, length: length))
+        let text = string.messageCopyText(in: NSRange(location: start, length: length))
           .trimmingCharacters(in: .whitespacesAndNewlines)
         let bounds = fragment.textLineFragments.map(\.typographicBounds).reduce(CGRect?.none) {
           $0?.union($1) ?? $1
         }
-        guard !string.isEmpty, let bounds else { return true }
+        guard !text.isEmpty, let bounds else { return true }
         let frame = bounds.offsetBy(
           dx: fragment.layoutFragmentFrame.minX, dy: fragment.layoutFragmentFrame.minY)
-        lines.append(CommittedFrame.Line(text: string, frame: text.convert(frame, to: container)))
+        lines.append(CommittedFrame.Line(text: text, frame: frame))
         return true
       }
       return lines

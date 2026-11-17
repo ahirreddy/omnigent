@@ -56,9 +56,10 @@
       min(width - 2 * Theme.Spacing.gutter, TranscriptAppearance().contentWidth.maxWidth)
     }
 
-    /// A conversation of `turns` open in a narrow pane, with its reader where `reader` says.
-    private func pane(_ width: PaneWidth, reader: ResizedReader) async throws
-      -> OffscreenWindow<AnyView>
+    /// A conversation of `turns` open in a narrow pane over `list`, with its reader where
+    /// `reader` says.
+    private func pane(_ width: PaneWidth, reader: ResizedReader, list: TranscriptListKind)
+      async throws -> OffscreenWindow<AnyView>
     {
       // These start from where the opening leaves the reader; its framing wait runs a tenth as long.
       Theme.Timing.scale = 0.1
@@ -67,7 +68,8 @@
         ConversationViewState(
           header: TranscriptFixture.header, rows: TranscriptFixture.turns(Self.turns)))
       let window = transcriptScreen(
-        ResizedTranscriptHost(conversation: conversation, width: width),
+        ResizedTranscriptHost(conversation: conversation, width: width)
+          .messageRenderer(for: list),
         width: WidthDrive.wide + 120, height: Self.height)
       try await letOpeningEnd(window)
       if reader == .midConversation {
@@ -85,8 +87,26 @@
       "Every frame of a width change shows the reader's place, with the rows at the pane's width",
       arguments: ResizedReader.allCases, WidthDrive.allCases)
     func framesKeepTheReader(reader: ResizedReader, drive: WidthDrive) async throws {
+      try await overTranscriptList(.stack) {
+        try await recordWidthChange(reader: reader, drive: drive, list: .stack)
+      }
+    }
+
+    @Test(
+      "Every frame of a width change over the table shows the reader's place, at the new width",
+      arguments: ResizedReader.allCases, WidthDrive.allCases)
+    func tableFramesKeepTheReader(reader: ResizedReader, drive: WidthDrive) async throws {
+      try await overTranscriptList(.table) {
+        try await recordWidthChange(reader: reader, drive: drive, list: .table)
+      }
+    }
+
+    /// Drives the pane's width as `drive` says under `reader` and reads every frame committed.
+    private func recordWidthChange(
+      reader: ResizedReader, drive: WidthDrive, list: TranscriptListKind
+    ) async throws {
       let width = PaneWidth(WidthDrive.narrow)
-      let window = try await pane(width, reader: reader)
+      let window = try await pane(width, reader: reader, list: list)
       defer { window.close() }
       let recorder = try CommittedFrames(window)
       let settled = recorder.settled
@@ -132,7 +152,7 @@
       }
       // Every frame's width was taken at the top, and no passage was left for a turn's end. The
       // table measures its rows at a new width where they are, with no passage.
-      if TranscriptListKind.current == .stack {
+      if list == .stack {
         #expect(probed.count("transcript passage", since: before) >= 2 * drive.turns.count)
       }
       #expect(probed.count(TranscriptScrollState.latePassage, since: before) == 0)

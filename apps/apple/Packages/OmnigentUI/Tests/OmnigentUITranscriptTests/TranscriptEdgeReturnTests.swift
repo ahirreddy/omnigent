@@ -66,15 +66,17 @@
       return LiveConversation(ConversationViewState(header: TranscriptFixture.header, rows: rows))
     }
 
-    /// The conversation open in the wide pane, at its end and following, as opening leaves it.
-    private func open(_ pane: TranscriptPane, _ conversation: LiveConversation) async throws
-      -> OffscreenWindow<AnyView>
-    {
+    /// The conversation open in the wide pane over `list`, at its end and following, as opening
+    /// leaves it.
+    private func open(
+      _ pane: TranscriptPane, _ conversation: LiveConversation, list: TranscriptListKind
+    ) async throws -> OffscreenWindow<AnyView> {
       // These start from where the opening leaves the reader; its framing wait runs a tenth as long.
       Theme.Timing.scale = 0.1
       defer { Theme.Timing.scale = 1 }
       let window = transcriptScreen(
-        DockedTranscriptHost(conversation: conversation, pane: pane), width: 1200, height: 800)
+        DockedTranscriptHost(conversation: conversation, pane: pane).messageRenderer(for: list),
+        width: 1200, height: 800)
       window.settle(0.5)
       try await letOpeningEnd(window)
       // A list that framed the last question instead goes to the end, as a reader there does.
@@ -98,10 +100,16 @@
       }
     }
 
-    @Test("Each step of a drag builds the rows at the end alone, and commits the bottom row")
-    func dragKeepsTheBottomRow() async throws {
+    @Test(
+      "Each step of a drag builds the rows at the end alone, and commits the bottom row",
+      arguments: TranscriptListKind.allCases)
+    func dragKeepsTheBottomRow(list: TranscriptListKind) async throws {
+      try await overTranscriptList(list) { try await dragUnderTheBottomRow(list: list) }
+    }
+
+    private func dragUnderTheBottomRow(list: TranscriptListKind) async throws {
       let pane = TranscriptPane(width: Self.wide, dock: Self.dock)
-      let window = try await open(pane, session())
+      let window = try await open(pane, session(), list: list)
       defer { window.close() }
       let recorder = try CommittedFrames(window)
       var rests: [CGFloat] = []
@@ -125,11 +133,17 @@
       #expect(rests.allSatisfy { abs($0 - opened) < 1 }, "\(rests)")
     }
 
-    @Test("After the drag the reader follows: a late answer is drawn on the bottom row, no pill")
-    func followsAfterTheDrag() async throws {
+    @Test(
+      "After the drag the reader follows: a late answer is drawn on the bottom row, no pill",
+      arguments: TranscriptListKind.allCases)
+    func followsAfterTheDrag(list: TranscriptListKind) async throws {
+      try await overTranscriptList(list) { try await followAfterADrag(list: list) }
+    }
+
+    private func followAfterADrag(list: TranscriptListKind) async throws {
       let conversation = session()
       let pane = TranscriptPane(width: Self.wide, dock: Self.dock)
-      let window = try await open(pane, conversation)
+      let window = try await open(pane, conversation, list: list)
       defer { window.close() }
       for steps in 1...Self.steps { drag(pane, to: steps) }
       // Layout forgets the drag's heights, which it would not follow again.
