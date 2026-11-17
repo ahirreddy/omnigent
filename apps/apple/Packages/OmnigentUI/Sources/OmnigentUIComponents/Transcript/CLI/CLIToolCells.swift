@@ -212,19 +212,23 @@ private struct CLIExploredRow: View {
     .accessibilityIdentifier("tool-\(line.id)")
   }
 
+  private var text: CLILineText { line.text(palette) }
+}
+
+extension CLIExploredLine {
   /// "Read a.swift, b.swift", "Search query in path" or "List path"; a failure says so.
-  private var text: CLILineText {
+  nonisolated func text(_ palette: CLIPalette) -> CLILineText {
     var text = CLILineText()
-    text.append(line.title, palette.marker)
-    for (index, target) in line.targets.enumerated() {
+    text.append(title, palette.marker)
+    for (index, target) in targets.enumerated() {
       text.append(index == 0 ? " " : ", ", palette.dim)
       text.append(target)
     }
-    if let scope = line.scope {
+    if let scope {
       text.append(" in ", palette.dim)
       text.append(scope)
     }
-    if line.steps.contains(where: \.entry.isFailure) { text.append(" (failed)", palette.failure) }
+    if steps.contains(where: \.entry.isFailure) { text.append(" (failed)", palette.failure) }
     return text
   }
 }

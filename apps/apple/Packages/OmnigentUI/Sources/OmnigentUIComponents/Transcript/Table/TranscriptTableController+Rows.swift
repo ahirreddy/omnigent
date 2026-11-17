@@ -101,11 +101,10 @@
       prefetchCursor = cursor
       noteHeights(noted)
       // The reader is still: answers nearest the viewport, either way, go first.
-      for prewarm in [MessageTextPrewarm.shared, .prompts] {
-        prewarm.focus(at: Double(shown.midY), direction: 0)
-      }
+      focusPrewarms(at: Double(shown.midY), direction: 0)
       prewarmAnswers(in: kept)
-      MessageTextPrewarm.shared.prioritize(awaited, at: awaitedAt)
+      offerCLI(in: reach, around: shown.midY)
+      prioritizeAwaited(awaited, at: awaitedAt)
       guard cursor.above >= 0 || cursor.below < model.rows.count else { return }
       // An answer being laid out ahead is measured once it is, a moment later.
       MainRunLoop.perform(after: awaited.isEmpty ? 0 : Self.prewarmWait) { [weak self] in
@@ -146,6 +145,7 @@
     /// not built yet: idle measuring leaves it to the prewarm rather than lay it out here, for
     /// a while.
     func answerLaidOutAhead(at index: Int) -> String? {
+      if isCLI { return cliLaidOutAhead(at: index) }
       guard MessageTextPrewarm.isEnabled, MessageTextPrewarm.shared.hasContext,
         let message = textMessage(at: index), message.role == .answer,
         let run = message.runs.first, let style = textStyle.style
@@ -200,6 +200,10 @@
     /// version, at its place, so they lay out off the main thread before they scroll in, nearest
     /// the reader first.
     func prewarmAnswers(in rect: NSRect, upward: Bool = false) {
+      if isCLI {
+        prewarmCLI(in: rect, upward: upward)
+        return
+      }
       guard textStyle.isEnabled, MessageTextPrewarm.isEnabled, tableView.numberOfRows > 0 else {
         return
       }

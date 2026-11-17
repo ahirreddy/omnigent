@@ -255,7 +255,7 @@ final class CLICodeHighlightCache {
     }
   }
 
-  static func color(_ token: CodeToken, _ palette: CLIPalette) -> SRGB {
+  nonisolated static func color(_ token: CodeToken, _ palette: CLIPalette) -> SRGB {
     switch token {
     case .syntax(.keyword): palette.italic
     case .syntax(.string): palette.code

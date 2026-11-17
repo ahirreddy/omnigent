@@ -186,11 +186,13 @@
   }
 
   /// The kinds of cell the pool reuses: rows hosted in SwiftUI, settled messages drawn as
-  /// TextKit text in AppKit (``TranscriptTableTextCell``), and Worked folds and an empty header
-  /// or footer drawn in AppKit (``TranscriptTableFoldCell``), each by row kind.
+  /// TextKit text in AppKit (``TranscriptTableTextCell``, ``TranscriptTableCLICell`` in CLI
+  /// style), and Worked folds and an empty header or footer drawn in AppKit
+  /// (``TranscriptTableFoldCell``), each by row kind.
   enum TranscriptTableCellKind: Hashable {
     case hosted(TranscriptTableRowKind)
     case text(TranscriptTableRowKind)
+    case cliText(TranscriptTableRowKind)
     case native(TranscriptTableRowKind)
 
     /// A SwiftUI row, whose height takes a layout to know.

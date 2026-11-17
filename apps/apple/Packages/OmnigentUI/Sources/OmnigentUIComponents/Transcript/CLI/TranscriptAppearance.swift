@@ -220,7 +220,7 @@ struct TranscriptColumn: ViewModifier {
 }
 
 /// CLI layout metrics, in points.
-enum CLIMetrics {
+nonisolated enum CLIMetrics {
   /// Horizontal padding at regular width.
   static let gutter: CGFloat = 16
   /// Horizontal padding at compact width.

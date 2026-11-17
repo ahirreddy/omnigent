@@ -142,7 +142,7 @@ struct CLIDiffRows: View {
     .textSelection(.enabled)
   }
 
-  static func sign(_ kind: DiffLineKind?) -> String {
+  nonisolated static func sign(_ kind: DiffLineKind?) -> String {
     switch kind {
     case .added: "+"
     case .removed: "-"

@@ -1,13 +1,15 @@
 import SwiftUI
 
 /// Builds one colored terminal line from parts.
-nonisolated struct CLILineText {
-  struct Part {
+nonisolated struct CLILineText: Hashable, Sendable {
+  struct Part: Hashable, Sendable {
     var text: String
     var color: SRGB?
     var bold: Bool
     /// Text that brings its own colors (highlighted code), drawn as it is.
     var styled: AttributedString?
+    /// The text is a shell command, highlighted as one.
+    var isShell = false
   }
 
   var parts: [Part] = []
@@ -20,6 +22,15 @@ nonisolated struct CLILineText {
   mutating func append(styled: AttributedString) {
     parts.append(
       Part(text: String(styled.characters), color: nil, bold: false, styled: styled))
+  }
+
+  /// Appends a shell command, highlighted as the Codex CLI colors one.
+  @MainActor
+  mutating func append(shell text: String, _ palette: CLIPalette) {
+    parts.append(
+      Part(
+        text: text, color: nil, bold: false, styled: CLIShell.highlighted(text, palette),
+        isShell: true))
   }
 
   var attributed: AttributedString {
@@ -98,7 +109,7 @@ struct CLIOutputTree: View {
   private(set) var size = CLIFontSize()
 
   /// "… +1 line" or "… +12 lines".
-  static func more(_ hidden: Int) -> String {
+  nonisolated static func more(_ hidden: Int) -> String {
     "\u{2026} +\(hidden) \(hidden == 1 ? "line" : "lines")"
   }
 

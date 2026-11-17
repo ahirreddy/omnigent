@@ -64,8 +64,7 @@ struct CLIActivityLine: View, Equatable {
     case .terminal:
       line.append("You ran", bold: true)
       line.append(" ")
-      line.append(
-        styled: CLIShell.highlighted(activity.detail("input") ?? activity.summary, palette))
+      line.append(shell: activity.detail("input") ?? activity.summary, palette)
     case .error:
       line.append(activity.summary.isEmpty ? activity.title : activity.summary, palette.failure)
     default:
@@ -218,7 +217,10 @@ struct CLIWorkGroup: View, Equatable {
     .accessibilityIdentifier("worked-\(items.first?.id ?? "empty")")
   }
 
-  private var summary: CLILineText {
+  private var summary: CLILineText { Self.summary(of: items) }
+
+  /// "Ran 3 shell commands, read 2 files …": a collapsed group's one line.
+  nonisolated static func summary(of items: [TranscriptItem]) -> CLILineText {
     var line = CLILineText()
     let titles = items.flatMap { item -> [String] in
       if case .tools(_, let entries) = item {

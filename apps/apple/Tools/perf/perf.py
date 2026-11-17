@@ -788,6 +788,8 @@ LIST_EXTRAS = {
     "chromeviews": ["-omnigent:message-text-chrome", "views"],
     # One prewarm worker.
     "oneworker": ["-omnigent:message-text-prewarm-workers", "1"],
+    # CLI-style rows hosted in SwiftUI, not drawn in CLI text cells.
+    "clihosted": ["-omnigent:transcript-cli-text", "hosted"],
 }
 
 

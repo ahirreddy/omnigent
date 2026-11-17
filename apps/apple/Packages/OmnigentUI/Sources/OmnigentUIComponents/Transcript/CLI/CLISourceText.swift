@@ -280,15 +280,19 @@ struct CLIFontSize: DynamicProperty {
   @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
 
   /// The space the CLI font adds between a text's lines, as a share of its size.
-  static let lineSpacingRatio: CGFloat = 0.22
+  nonisolated static let lineSpacingRatio: CGFloat = 0.22
+  /// One monospaced character's advance, as a share of the size.
+  nonisolated static let characterRatio: CGFloat = 0.602
+  /// One line's own height, as a share of the size.
+  nonisolated static let lineHeightRatio: CGFloat = 1.22
 
   var points: CGFloat { appearance.fontSize * scale }
   /// One monospaced character's advance.
-  var character: CGFloat { points * 0.602 }
+  var character: CGFloat { points * Self.characterRatio }
   /// The space between two lines of one text.
   var lineSpacing: CGFloat { points * Self.lineSpacingRatio }
   /// One line's own height, without the spacing.
-  var lineHeight: CGFloat { points * 1.22 }
+  var lineHeight: CGFloat { points * Self.lineHeightRatio }
   /// One line, with the CLI line spacing.
   var line: CGFloat { lineHeight + lineSpacing }
   /// The gap that leaves exactly one empty line between two texts.
