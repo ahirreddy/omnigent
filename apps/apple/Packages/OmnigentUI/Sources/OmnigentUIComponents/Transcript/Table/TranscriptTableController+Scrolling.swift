@@ -165,6 +165,24 @@
       move(to: maximumOffset)
     }
 
+    /// Measures the rows from the top down through a viewport and a half, then goes to the top.
+    /// The table can move the viewport again as rows it measures on the way change height, so it
+    /// goes again until it is there.
+    func moveToTop() {
+      var covered: CGFloat = 0
+      var noted = IndexSet()
+      var index = 0
+      while index < model.rows.count, covered < clipView.bounds.height * 1.5 {
+        if model.needsMeasure(at: index), measureKeeping(index) { noted.insert(index) }
+        covered += model.height(at: index)
+        index += 1
+      }
+      noteHeightsInPlace(noted)
+      for _ in 0..<3 where clipView.bounds.minY > minimumOffset + 0.5 {
+        move(to: minimumOffset)
+      }
+    }
+
     /// Opening frames the latest user message at the top, as the stack does, so a long answer
     /// reads from its start; a turn that fits keeps following the end.
     func frameLatestTurn() {
@@ -234,41 +252,6 @@
       insets = next
       scrollView.contentInsets = next
       if grew, follow.layoutGrew() { pinBottom() } else { restore(anchor) }
-    }
-
-    /// The viewport changed size: rows take a new width, and a follower stays at the end.
-    func viewportResized() {
-      let anchor = readingAnchor()
-      guard syncWidth() else {
-        if !frameIfReady(), follow.layoutGrew() { pinBottom() }
-        return
-      }
-      // Rows on screen are measured at the new width; the others keep their old heights, or
-      // estimates for it, until they come into view.
-      tableView.enumerateAvailableRowViews { _, row in
-        if let cell = realizedCell(at: row) { measure(row, with: cell) }
-      }
-      noteHeightsInPlace(IndexSet(integersIn: 0..<model.rows.count))
-      schedulePrefetch()
-      if frameIfReady() { return }
-      if follow.layoutGrew() { pinBottom() } else { restore(anchor) }
-    }
-
-    /// Lays rows out at the viewport's width.
-    /// - Returns: Whether the width changed.
-    @discardableResult
-    func syncWidth() -> Bool {
-      let width = clipView.bounds.width
-      guard width > 0, model.setWidth(width) else { return false }
-      column.width = width
-      prefetchCursor = nil
-      return true
-    }
-
-    /// The tab hid or shows: a hidden transcript measures nothing while idle.
-    func setShown(_ isShown: Bool) {
-      self.isShown = isShown
-      if isShown { schedulePrefetch() }
     }
   }
 #endif

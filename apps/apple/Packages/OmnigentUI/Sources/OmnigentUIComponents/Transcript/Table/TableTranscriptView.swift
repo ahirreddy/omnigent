@@ -176,7 +176,25 @@
     func makeNSView(context: Context) -> NSView { NSView() }
 
     func updateNSView(_ view: NSView, context: Context) {
+      // A hidden tab's cells keep the environment they were shown in: neither hiding nor
+      // showing the tab again renders them. A new environment always would, as its closures
+      // compare unequal.
+      if context.environment.isTabContentHidden {
+        context.coordinator.skippedWhileHidden = true
+        return
+      }
+      if context.coordinator.skippedWhileHidden {
+        context.coordinator.skippedWhileHidden = false
+        return
+      }
       environment.values = context.environment
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+      /// The tab hid since the cells last took the environment.
+      var skippedWhileHidden = false
     }
   }
 

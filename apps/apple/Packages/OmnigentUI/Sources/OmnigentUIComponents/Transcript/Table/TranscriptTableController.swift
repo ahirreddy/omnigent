@@ -74,6 +74,13 @@
     var olderRequested = false
     var historyReads = 0
     var isShown = true
+    /// Where a width change under way keeps the reader, taken before the viewport resized.
+    var resizeAnchor: WidthAnchor?
+    /// Where the reader was when the tab hid, for the width it takes when it shows.
+    var hiddenAnchor: WidthAnchor?
+    /// A short number for this transcript in loop reports.
+    private(set) lazy var probeTag = Int(
+      UInt(bitPattern: ObjectIdentifier(self).hashValue) % 10_000)
 
     var isAdjusting = false
     var isMeasuring = false
@@ -146,37 +153,49 @@
       self.isCLI = isCLI
       let previous = self.state
       self.state = state
-      if state.header.id != sessionID {
-        sessionID = state.header.id
-        follow.reset()
-        needsFraming = true
-        pendingShow = nil
-        olderRequested = false
-      }
-      if state.historyReads != historyReads || !state.isLoadingHistory {
-        if state.historyReads != historyReads { olderRequested = false }
-        historyReads = state.historyReads
-      }
+      if state.header.id != sessionID { sessionOpened(state.header.id) }
+      historyChanged(state)
       _ = scrollView
-      syncWidth()
+      // A hidden tab's rows keep their width until it shows.
+      if isShown { syncWidth() }
       let anchor = readingAnchor()
       let change = model.replaceRows(rows)
       if !change.isEmpty { apply(change) }
       if frameIfReady() {
         // Opened: framed at its latest turn.
       } else if !change.isEmpty {
-        let isNewOutput = previous?.revision != state.revision
-        if isNewOutput ? follow.contentChanged() : follow.layoutGrew() {
-          pinBottom()
-        } else {
-          restore(anchor)
-        }
+        keepReader(anchor, isNewOutput: previous?.revision != state.revision)
       }
       if let pendingShow, model.index(of: pendingShow.id) != nil {
         show(pendingShow.id, at: pendingShow.placement)
       }
       reportVisibleRows()
       if !change.inserted.isEmpty || !change.removed.isEmpty { schedulePrefetch() }
+    }
+
+    /// A read of older history ended: the reader near the top may ask for the next.
+    func historyChanged(_ state: ConversationViewState) {
+      guard state.historyReads != historyReads || !state.isLoadingHistory else { return }
+      if state.historyReads != historyReads { olderRequested = false }
+      historyReads = state.historyReads
+    }
+
+    /// Another session's rows are coming: it opens at its latest turn.
+    func sessionOpened(_ id: String) {
+      sessionID = id
+      follow.reset()
+      needsFraming = true
+      pendingShow = nil
+      olderRequested = false
+    }
+
+    /// Rows changed: a follower goes to the end, and another reader stays on their row.
+    func keepReader(_ anchor: ReadingAnchor?, isNewOutput: Bool) {
+      if isNewOutput ? follow.contentChanged() : follow.layoutGrew() {
+        pinBottom()
+      } else {
+        restore(anchor)
+      }
     }
 
     func schedulePill() {

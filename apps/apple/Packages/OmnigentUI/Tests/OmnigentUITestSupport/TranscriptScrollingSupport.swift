@@ -61,6 +61,18 @@
     }
   }
 
+  /// The table transcript over a ``LiveConversation``, whatever list the app picks.
+  struct TableTranscriptHost: View {
+    let conversation: LiveConversation
+    let actions: ConversationActions
+
+    var body: some View {
+      TableTranscriptView(
+        state: conversation.state, liveRows: nil, actions: actions,
+        scrollToLatestRequest: conversation.scrollRequest)
+    }
+  }
+
   /// The pane a transcript sits in: its width and the dock under it, which a test changes as a
   /// resize and a growing composer do.
   @MainActor
@@ -103,6 +115,13 @@
     /// How far the content can scroll.
     var maximumOffset: CGFloat {
       guard let scrollView, let document = scrollView.documentView else { return 0 }
+      // The table transcript's bars inset its scroll view, not its rows, so it can scroll past
+      // them; its controller knows how far.
+      if let table = document as? NSTableView,
+        let controller = table.delegate as? TranscriptTableController
+      {
+        return controller.maximumOffset
+      }
       return max(0, document.frame.height - scrollView.contentView.bounds.height)
     }
 
@@ -121,6 +140,11 @@
       let distance = offset - reading
       move(to: reading)
       return distance
+    }
+
+    /// The table transcript's controller, when the window shows the table.
+    var tableController: TranscriptTableController? {
+      (scrollView?.documentView as? NSTableView)?.delegate as? TranscriptTableController
     }
 
     /// Moves the position with no gesture, as a layout pass does.

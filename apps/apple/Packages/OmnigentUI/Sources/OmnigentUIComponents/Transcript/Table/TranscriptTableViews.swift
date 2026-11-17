@@ -17,6 +17,7 @@
     }
 
     override func setFrameSize(_ newSize: NSSize) {
+      owner?.viewportWillResize(to: newSize)
       super.setFrameSize(newSize)
       owner?.viewportResized()
     }
