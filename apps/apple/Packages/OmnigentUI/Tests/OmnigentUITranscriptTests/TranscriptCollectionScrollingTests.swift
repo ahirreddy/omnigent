@@ -12,13 +12,14 @@
   /// text size.
   @MainActor
   @Observable
-  private final class CollectionSurroundings {
+  final class CollectionSurroundings {
     var dock: CGFloat = 80
     var typeSize = DynamicTypeSize.large
+    var layoutWidth = LayoutWidth.compact
     let focus = TranscriptFocus()
   }
 
-  private struct CollectionHost: View {
+  struct CollectionHost: View {
     let conversation: LiveConversation
     let surroundings: CollectionSurroundings
     let actions: ConversationActions
@@ -33,11 +34,12 @@
       }
       .environment(\.dynamicTypeSize, surroundings.typeSize)
       .environment(\.transcriptFocus, surroundings.focus)
+      .environment(\.layoutWidth, surroundings.layoutWidth)
     }
   }
 
   /// The transcript in a window, with its collection view and controller.
-  private struct CollectionScreen {
+  struct CollectionScreen {
     let window: InProcessWindow
     let list: UICollectionView
     let controller: TranscriptCollectionController
@@ -65,6 +67,17 @@
       await settle(.milliseconds(Int(TranscriptCollectionController.prefetchDelay * 1000) + 400))
     }
 
+    /// Rests until idle measuring has nothing left within its reach: a loaded machine gives
+    /// each of its passes less time.
+    func restUntilMeasured() async {
+      await rest()
+      for _ in 0..<10 {
+        let measured = controller.measurements
+        await settle(.milliseconds(300))
+        if controller.measurements == measured { return }
+      }
+    }
+
     /// Whether the same point of the same row is under the viewport's top.
     func isReading(
       _ anchor: TranscriptCollectionController.ReadingAnchor, within tolerance: CGFloat = 1
@@ -74,13 +87,44 @@
     }
   }
 
+  /// `turns` turns, then a short one that fits the window.
+  @MainActor
+  func collectionSession(turns: Int = 10, hasMore: Bool = false) -> LiveConversation {
+    var rows = TranscriptFixture.turns(turns, startingAt: 10)
+    rows += [
+      TranscriptFixture.user("u-last", "Short?"),
+      TranscriptFixture.answer("a-last", "Yes.", responseID: "r-last"),
+    ]
+    var state = ConversationViewState(header: TranscriptFixture.header, rows: rows)
+    state.hasMoreHistory = hasMore
+    return LiveConversation(state)
+  }
+
+  /// The transcript in a window of `size`, iPhone-sized by default.
+  @MainActor
+  func collectionScreen(
+    _ conversation: LiveConversation, actions: ConversationActions = ConversationActions(),
+    size: CGSize = CGSize(width: 393, height: 852), layoutWidth: LayoutWidth = .compact
+  ) async throws -> CollectionScreen {
+    let surroundings = CollectionSurroundings()
+    surroundings.layoutWidth = layoutWidth
+    let window = try InProcessWindow(
+      CollectionHost(conversation: conversation, surroundings: surroundings, actions: actions),
+      width: size.width, height: size.height,
+      horizontalSizeClass: layoutWidth == .regular ? .regular : .compact)
+    await window.settle(.milliseconds(300))
+    let list = try #require(
+      window.views(UICollectionView.self).first { $0.delegate is TranscriptCollectionController })
+    let controller = try #require(list.delegate as? TranscriptCollectionController)
+    return CollectionScreen(
+      window: window, list: list, controller: controller, surroundings: surroundings)
+  }
+
   /// The collection transcript on iPhone and iPad: what it measures, and where it keeps the
-  /// reader as rows stream, arrive and page in above, as the keyboard and composer cover the
-  /// rows, as the window turns or resizes and as the text size changes.
+  /// reader as rows stream, arrive and page in above, and as a link sends them to a message.
   @Suite("Transcript collection scrolling", .serialized)
   @MainActor
   struct TranscriptCollectionScrollingTests {
-    static let phone = CGSize(width: 393, height: 852)
     let log = HostLog()
 
     private var pagingActions: ConversationActions {
@@ -90,38 +134,10 @@
       return actions
     }
 
-    /// `turns` turns, then a short one that fits the window.
-    private func session(turns: Int = 10, hasMore: Bool = false) -> LiveConversation {
-      var rows = TranscriptFixture.turns(turns, startingAt: 10)
-      rows += [
-        TranscriptFixture.user("u-last", "Short?"),
-        TranscriptFixture.answer("a-last", "Yes.", responseID: "r-last"),
-      ]
-      var state = ConversationViewState(header: TranscriptFixture.header, rows: rows)
-      state.hasMoreHistory = hasMore
-      return LiveConversation(state)
-    }
-
-    private func screen(
-      _ conversation: LiveConversation, actions: ConversationActions = ConversationActions(),
-      size: CGSize = phone
-    ) async throws -> CollectionScreen {
-      let surroundings = CollectionSurroundings()
-      let window = try InProcessWindow(
-        CollectionHost(conversation: conversation, surroundings: surroundings, actions: actions),
-        width: size.width, height: size.height)
-      await window.settle(.milliseconds(300))
-      let list = try #require(
-        window.views(UICollectionView.self).first { $0.delegate is TranscriptCollectionController })
-      let controller = try #require(list.delegate as? TranscriptCollectionController)
-      return CollectionScreen(
-        window: window, list: list, controller: controller, surroundings: surroundings)
-    }
-
     @Test("Opening at a turn that fits follows the end, and a streamed reply keeps it in view")
     func followsStreaming() async throws {
-      let conversation = session()
-      let screen = try await screen(conversation)
+      let conversation = collectionSession()
+      let screen = try await collectionScreen(conversation)
       defer { screen.window.close() }
       #expect(screen.isAtEnd, "\(screen.offset) of \(screen.controller.maximumOffset)")
       #expect(screen.controller.follow.follows)
@@ -139,8 +155,8 @@
 
     @Test("A reader who scrolled up stays put while output arrives; Jump to latest goes back")
     func readerStaysPut() async throws {
-      let conversation = session()
-      let screen = try await screen(conversation)
+      let conversation = collectionSession()
+      let screen = try await collectionScreen(conversation)
       defer { screen.window.close() }
       await screen.drag(to: screen.offset - 600)
       #expect(!screen.controller.follow.follows)
@@ -167,8 +183,8 @@
 
     @Test("Older rows landing above keep the reader on the row they were reading")
     func pagingKeepsPosition() async throws {
-      let conversation = session(hasMore: true)
-      let screen = try await screen(conversation, actions: pagingActions)
+      let conversation = collectionSession(hasMore: true)
+      let screen = try await collectionScreen(conversation, actions: pagingActions)
       defer { screen.window.close() }
       await screen.drag(to: 120)
       #expect(log.entries.contains("older"))
@@ -190,10 +206,10 @@
 
     @Test("Rows are measured once: scrolling back over them and a streamed delta measure little")
     func measuresOnce() async throws {
-      let conversation = session(turns: 24)
-      let screen = try await screen(conversation)
+      let conversation = collectionSession(turns: 24)
+      let screen = try await collectionScreen(conversation)
       defer { screen.window.close() }
-      await screen.rest()
+      await screen.restUntilMeasured()
       let controller = screen.controller
       let shown = screen.list.bounds
       let reach = shown.insetBy(
@@ -209,20 +225,19 @@
       }
       #expect(unmeasuredBeyond > 0)
       let end = screen.offset
-      let measured = controller.measurements
       let heights = controller.model.rows.map { controller.model.heights.measurement(of: $0.id) }
       for step in 1...6 { await screen.drag(to: end - CGFloat(step) * 150) }
       for step in 1...6 { await screen.drag(to: end - 900 + CGFloat(step) * 150) }
-      let changed = controller.model.rows.indices.filter {
-        controller.model.heights.measurement(of: controller.model.rows[$0].id) != heights[$0]
-      }.map {
-        "\($0) \(String(describing: heights[$0])) -> \(String(describing: controller.model.heights.measurement(of: controller.model.rows[$0].id)))"
+      // Rows measured before are not measured again; idle measuring between the moves may reach
+      // rows that came within its reach.
+      let again = controller.model.rows.indices.filter { index in
+        guard let before = heights[index] else { return false }
+        return controller.model.heights.measurement(of: controller.model.rows[index].id) != before
       }
-      #expect(
-        controller.measurements == measured,
-        "\(controller.measurements - measured) more: \(changed)")
+      #expect(again.isEmpty, "measured again: \(again)")
       controller.jumpToLatest()
       await screen.settle(.milliseconds(600))
+      let measured = controller.measurements
       conversation.stream("streamed", "One line")
       await screen.settle(.milliseconds(60))
       conversation.stream("streamed", "One line\n\nand another")
@@ -232,80 +247,10 @@
       #expect(screen.isAtEnd)
     }
 
-    @Test("The keyboard and a taller composer keep a follower at the end and a reader in place")
-    func keyboardInsets() async throws {
-      let conversation = session()
-      let screen = try await screen(conversation)
-      defer { screen.window.close() }
-      #expect(screen.isAtEnd)
-      let resting = screen.controller.insets.bottom
-      screen.surroundings.dock = 420
-      await screen.settle()
-      #expect(screen.controller.insets.bottom - resting > 300)
-      #expect(screen.isAtEnd, "\(screen.offset) of \(screen.controller.maximumOffset)")
-      screen.surroundings.dock = 80
-      await screen.settle()
-      #expect(screen.isAtEnd)
-      await screen.drag(to: screen.offset - 500)
-      let anchor = try #require(screen.controller.readingAnchor())
-      screen.surroundings.dock = 420
-      await screen.settle()
-      #expect(screen.isReading(anchor))
-      #expect(!screen.controller.follow.follows)
-    }
-
-    @Test("Turning the window keeps the row read and measures the rows on screen at the width")
-    func rotationKeepsPlace() async throws {
-      let conversation = session(turns: 16)
-      let screen = try await screen(conversation)
-      defer { screen.window.close() }
-      await screen.drag(to: screen.offset - 1400)
-      let anchor = try #require(screen.controller.readingAnchor())
-      let narrow = screen.controller.model.width
-      let before =
-        "\(screen.controller.insets) \(screen.controller.offsets.height(of: try #require(screen.controller.model.index(of: anchor.id))))"
-      screen.window.window.frame = CGRect(x: 0, y: 0, width: 852, height: 393)
-      await screen.settle()
-      let controller = screen.controller
-      #expect(controller.model.width > narrow + 300)
-      let now = try #require(controller.readingAnchor())
-      #expect(now.id == anchor.id)
-      let after =
-        "\(controller.insets) \(controller.offsets.height(of: try #require(controller.model.index(of: anchor.id))))"
-      #expect(
-        abs(now.fraction - anchor.fraction) < 0.05,
-        "\(now) vs \(anchor); before \(before), after \(after); \(controller.remeasured)")
-      for index in controller.visibleRange {
-        #expect(!controller.model.needsMeasure(at: index), "row \(index)")
-      }
-      screen.window.window.frame = CGRect(origin: .zero, size: Self.phone)
-      await screen.settle()
-      #expect(controller.readingAnchor()?.id == anchor.id)
-    }
-
-    @Test("A larger text size measures the rows again, and the reader keeps their row")
-    func dynamicType() async throws {
-      let conversation = session(turns: 16)
-      let screen = try await screen(conversation)
-      defer { screen.window.close() }
-      await screen.drag(to: screen.offset - 1400)
-      let anchor = try #require(screen.controller.readingAnchor())
-      let controller = screen.controller
-      let row = try #require(controller.model.index(of: anchor.id))
-      let before = controller.model.height(at: row)
-      screen.surroundings.typeSize = .accessibility2
-      await screen.settle(.milliseconds(300))
-      #expect(controller.model.height(at: row) > before * 1.2)
-      #expect(controller.readingAnchor()?.id == anchor.id)
-      for index in controller.visibleRange {
-        #expect(!controller.model.needsMeasure(at: index), "row \(index)")
-      }
-    }
-
     @Test("A message link scrolls its row into view, flashed, and stops following")
     func messageLink() async throws {
-      let conversation = session(turns: 16)
-      let screen = try await screen(conversation)
+      let conversation = collectionSession(turns: 16)
+      let screen = try await collectionScreen(conversation)
       defer { screen.window.close() }
       let focus = screen.surroundings.focus
       focus.focus("u12", in: TranscriptFixture.header.id)
@@ -319,7 +264,7 @@
 
     @Test("A host's measured height is the height SwiftUI lays the row out at in its cell")
     func measuredMatchesShown() async throws {
-      let screen = try await screen(session())
+      let screen = try await collectionScreen(collectionSession())
       defer { screen.window.close() }
       let controller = screen.controller
       var checked = 0
