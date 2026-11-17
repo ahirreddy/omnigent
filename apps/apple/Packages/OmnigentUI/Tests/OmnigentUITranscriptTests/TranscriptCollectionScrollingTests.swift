@@ -288,6 +288,17 @@
       #expect(screen.isAtEnd)
     }
 
+    @Test("Idle measuring waits while the list moves, by its own scroll too, and not once still")
+    func idleWaitsForStillness() async throws {
+      let screen = try await collectionScreen(collectionSession(turns: 24))
+      defer { screen.window.close() }
+      let controller = screen.controller
+      let generation = controller.prefetchGeneration
+      #expect(!controller.waitsForStillness(generation, since: screen.offset))
+      // A pass that left the list 100 points away: it moved since, with no finger on it.
+      #expect(controller.waitsForStillness(generation, since: screen.offset - 100))
+    }
+
     @Test("A message link scrolls its row into view, flashed, and stops following")
     func messageLink() async throws {
       let conversation = collectionSession(turns: 16)

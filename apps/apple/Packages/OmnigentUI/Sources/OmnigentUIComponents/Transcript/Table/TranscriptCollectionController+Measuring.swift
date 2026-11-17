@@ -54,15 +54,17 @@
     /// Measures row `index` in a view a cell can then show it in: its own, or one parked under
     /// its id for when it comes into view. A settled message drawn as text is measured from its
     /// run's size, its view made only as it shows, by when its drawing has likely arrived; one
-    /// not laid out at the width yet that showed at another measures in its parked view, whose
-    /// drawing stands in while the new one is drawn off the main thread.
+    /// measured at another width and not laid out at this one yet measures in its parked view,
+    /// whose drawing stands in while the new one is drawn off the main thread.
     func measureKeeping(_ index: Int) -> Bool {
       if let host = realizedHost(at: index), host.kind == cellKind(at: index) {
         return measure(index, with: host)
       }
       if let message = textMessage(at: index) {
         let id = model.rows[index].id
-        if !textStyle.isLaidOut(message, width: model.width),
+        let measuredWidth = model.heights.measurement(of: id)?.width
+        if let measuredWidth, abs(measuredWidth - model.width) >= 0.5,
+          !textStyle.isLaidOut(message, width: model.width),
           let view = pool.take(id: id, kind: cellKind(at: index))
         {
           defer { pool.park(view) }
@@ -254,20 +256,24 @@
     /// milliseconds a pass, so the next scrolls find their heights known: out to
     /// ``prefetchReach`` viewports either way, and the nearest in hosts kept for them, so they
     /// show without rendering again. It starts a while after rows change or the reader stops
-    /// scrolling; the transcript's own moves leave it running.
+    /// scrolling, and waits while the list moves, by the reader's hand or its own.
     func schedulePrefetch() {
       prefetchGeneration += 1
       prewarmDeferred = [:]
       let generation = prefetchGeneration
+      let offset = collectionView.contentOffset.y
       MainRunLoop.perform(after: Self.prefetchDelay) { [weak self] in
-        MainActor.assumeIsolated { self?.prefetch(generation) }
+        MainActor.assumeIsolated { self?.prefetch(generation, from: offset) }
       }
     }
 
-    func prefetch(_ generation: Int) {
+    /// One pass of idle measuring, the list at content offset `offset` when the last ended.
+    /// While the list moves (a scroll of its own, a follower kept at the end) it waits.
+    func prefetch(_ generation: Int, from offset: CGFloat) {
       guard generation == prefetchGeneration, isShown, !follow.isUserScrolling,
         model.width > 0, offsets.count == model.rows.count
       else { return }
+      if waitsForStillness(generation, since: offset) { return }
       var cursor = prefetchCursor ?? startingCursor()
       let shown = collectionView.bounds
       let reach = shown.insetBy(dx: 0, dy: -shown.height * Self.prefetchReach)
@@ -304,8 +310,9 @@
       noteHeights(noted)
       let isDone = cursor.above < 0 && cursor.below >= model.rows.count
       guard !isDone || !prewarmDeferred.isEmpty else { return }
+      let settled = collectionView.contentOffset.y
       let next: @Sendable () -> Void = { [weak self] in
-        MainActor.assumeIsolated { self?.prefetch(generation) }
+        MainActor.assumeIsolated { self?.prefetch(generation, from: settled) }
       }
       // Only messages being built ahead are left: they are looked at again a moment later.
       if isDone {
@@ -313,6 +320,17 @@
       } else {
         MainRunLoop.perform(next)
       }
+    }
+
+    /// Whether the list moved since idle measuring's last pass left it at `offset`: it looks
+    /// again a while later.
+    func waitsForStillness(_ generation: Int, since offset: CGFloat) -> Bool {
+      let now = collectionView.contentOffset.y
+      guard abs(now - offset) >= 0.5 else { return false }
+      MainRunLoop.perform(after: Self.prefetchDelay) { [weak self] in
+        MainActor.assumeIsolated { self?.prefetch(generation, from: now) }
+      }
+      return true
     }
 
     func startingCursor() -> (above: Int, below: Int) {
