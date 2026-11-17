@@ -67,6 +67,8 @@
       defer { isLayingOut = false }
       let next = TranscriptTableShown(id: row.id, version: version, width: width)
       guard next != shown || styleSerial != style.serial || awaitsRasters else { return }
+      // Shown again as it was: its drawings come back from the cache, if all are there.
+      if next == shown, styleSerial == style.serial, takeBitmapsBack() { return }
       // The same content in a new style may take another height, which the table then asks.
       let isRestyle = next == shown
       guard let message = TranscriptTableTextMessage.make(row, ramp: style.ramp),
@@ -202,12 +204,6 @@
         }
     }
 
-    /// Lets the drawn runs' bitmaps go once the cell leaves the table: the rasters' cache keeps
-    /// them under its memory budget, and showing the cell again takes them back from it.
-    func releaseBitmaps() {
-      for case .raster(let view) in runs { view.releaseBitmap() }
-    }
-
     /// Its height is the text's, known at show: nothing reports later.
     func settle() {}
 
@@ -298,6 +294,33 @@
   }
 
   extension TranscriptTableTextCell {
+    /// Lets the drawn runs' bitmaps go once the cell leaves the table: the rasters' cache keeps
+    /// them under its memory budget, and showing the cell again takes them back from it.
+    func releaseBitmaps() {
+      for case .raster(let view) in runs { view.releaseBitmap() }
+    }
+
+    /// Takes the drawn runs' bitmaps back from the rasters' cache.
+    /// - Returns: Whether every run shows its drawing again, with none left live.
+    fileprivate func takeBitmapsBack() -> Bool {
+      var shown = true
+      for run in runs {
+        switch run {
+        case .raster(let view) where view.isReleased:
+          if let raster = MessageTextRasters.shared.raster(for: view.key) {
+            view.show(raster)
+          } else {
+            shown = false
+          }
+        case .live:
+          shown = false
+        case .raster, .block:
+          break
+        }
+      }
+      return shown
+    }
+
     /// Typesets `math` the shown message doesn't have yet, then shows it again with it; math
     /// KaTeX rejects keeps its Unicode form, as in ``MarkdownParagraphText``.
     fileprivate func typeset(_ math: [String], ramp: TypeRamp, for shown: TranscriptTableShown) {
