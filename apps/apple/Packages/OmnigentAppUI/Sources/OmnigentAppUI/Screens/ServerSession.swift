@@ -244,8 +244,21 @@ public final class ServerSession {
     }
   }
 
-  /// Whether the connection is signed in, so the app shows sessions rather than sign-in.
+  /// Whether the connection is signed in.
   public var isSignedIn: Bool { connection.isSignedIn }
+
+  /// Whether the app shows the server's sessions rather than sign-in: signed in, or offline with
+  /// this device's saved copy of them.
+  public var showsSessions: Bool { connection.showsSessions }
+
+  /// Reconnect: reopens the streams when signed in, and connects again when offline.
+  public func reconnect() {
+    if connection.isOffline, !isSignedIn {
+      signIn.reconnect()
+    } else {
+      connection.foreground()
+    }
+  }
 
   /// The connected server's canonical URL.
   public var connectedURL: URL? {

@@ -72,10 +72,11 @@ struct IOSRootView: View {
     .onChange(of: scenePhase, initial: true) { previous, phase in
       // Back from the background: streams reopen and reconcile. A launch, even one that starts
       // in the background to open a link, is not a return; the first connect opens the streams.
+      // Offline, the return tries the server again.
       if SceneReturn.isReturn(from: previous, to: phase, hasBeenActive: hasBeenActive),
-        session?.isSignedIn == true
+        session?.showsSessions == true
       {
-        session?.connection.foreground()
+        session?.reconnect()
       }
       if phase == .active, !hasBeenActive { hasBeenActive = true }
       // iOS may end a backgrounded app without notice: save the tabs and drafts now.

@@ -63,8 +63,12 @@ impl Engine {
         }
     }
 
-    /// Starts the read of the page above `session_id`'s rows; `false` when none started.
+    /// Starts the read of the page above `session_id`'s rows; `false` when none started. Offline
+    /// there is none to read: the saved copy shows every page saved.
     fn read_older(&self, session_id: &str) -> bool {
+        if self.saved.offline.is_some() {
+            return false;
+        }
         let Some((driver, request)) = self.drivers.get(session_id).and_then(|driver| {
             let request = driver.sync.begin_older_history_raw()?;
             Some((driver.instance, request))
@@ -113,6 +117,7 @@ impl Engine {
         match applied {
             Ok(applied) => {
                 self.publish(session_id, applied);
+                self.save_conversation(session_id);
                 // A page of hidden items or activity rows gave the reader nothing to read: the
                 // read goes on above it.
                 let shows_nothing = sync.transcript_row_count_raw() == shown_before;

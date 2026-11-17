@@ -35,7 +35,11 @@ struct ConnectionNoticeRow: View {
 
   var body: some View {
     HStack(spacing: Theme.Spacing.small) {
-      if notice.isFailure {
+      if notice.isOffline {
+        Image(systemName: "wifi.slash")
+          .foregroundStyle(.secondary)
+          .accessibilityHidden(true)
+      } else if notice.isFailure {
         Image(systemName: "wifi.slash")
           .foregroundStyle(Theme.failure)
           .accessibilityHidden(true)

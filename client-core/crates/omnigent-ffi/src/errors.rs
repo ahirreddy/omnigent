@@ -402,12 +402,33 @@ pub enum CoreError {
         /// For display.
         message: String,
     },
+    /// This device's saved copy of sessions could not be read or written, or was damaged and
+    /// discarded. The message names the file's role and the cause, never what it holds.
+    #[error("{message}")]
+    MessageCache {
+        /// For display and logs.
+        message: String,
+    },
 }
 
 impl CoreError {
     pub(crate) fn invalid_state(message: impl Into<String>) -> Self {
         Self::InvalidState {
             message: message.into(),
+        }
+    }
+
+    /// Whether the server could not be reached: no network path, a timeout, or a gateway that
+    /// answered for a server that is down. Never a reason to sign in again.
+    pub(crate) const fn is_unreachable(&self) -> bool {
+        match self {
+            Self::Transport { kind, .. } => !matches!(kind, TransportErrorKind::Cancelled),
+            Self::HttpStatus { status, .. } => matches!(*status, 502..=504),
+            Self::Session { kind, .. } => matches!(kind, SessionErrorKind::Transport),
+            Self::Auth { failure, .. } | Self::Oidc { failure, .. } => {
+                matches!(failure, AuthFailure::Transport)
+            }
+            _ => false,
         }
     }
 
@@ -723,6 +744,14 @@ impl From<core::auth::SecureStoreError> for CoreError {
     fn from(error: core::auth::SecureStoreError) -> Self {
         Self::SecureStore {
             unavailable: matches!(error, core::auth::SecureStoreError::Unavailable { .. }),
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<core::message_cache::CacheError> for CoreError {
+    fn from(error: core::message_cache::CacheError) -> Self {
+        Self::MessageCache {
             message: error.to_string(),
         }
     }

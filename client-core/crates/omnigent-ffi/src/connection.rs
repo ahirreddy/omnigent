@@ -63,6 +63,10 @@ pub struct HostConfig {
     /// servers offer no sign-in method.
     #[uniffi(default)]
     pub databricks: Option<DatabricksOAuthSettings>,
+    /// The folder for this device's saved copy of sessions (the app's Caches), so sessions
+    /// seen before open without network. Without it nothing is saved.
+    #[uniffi(default)]
+    pub cache_directory: Option<String>,
 }
 
 const LOOPBACK_HOSTS: [&str; 4] = ["localhost", "127.0.0.1", "[::1]", "::1"];

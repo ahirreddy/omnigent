@@ -14,7 +14,11 @@ use std::collections::BTreeSet;
 
 use omnigent_protocol::ConversationItem;
 
-use super::{ConversationSync, Link, SyncError, SyncUpdate, history_rows};
+use super::{
+    ConversationSync, Link, SyncError, SyncUpdate, header_from_snapshot, history_rows,
+    history_snapshot,
+};
+use crate::message_cache::SavedConversation;
 
 /// Whether older history exists and whether a page of it is loading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -23,6 +27,17 @@ pub struct HistoryPaging {
     pub has_older: bool,
     /// A page of older items is being read.
     pub is_loading: bool,
+}
+
+/// The history a sync holds, for the device's saved copy ([`crate::message_cache`]).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct HistoryItems {
+    /// Items above the newest page, oldest first.
+    pub older: Vec<ConversationItem>,
+    /// The newest page as last read, oldest first.
+    pub newest: Vec<ConversationItem>,
+    /// The cursor for the page above `older`; `None` when history is complete or not read.
+    pub cursor: Option<String>,
 }
 
 /// A read of older history the host must perform: `GET /v1/sessions/{id}/items` with
@@ -106,6 +121,25 @@ impl OlderHistory {
         self.items.iter().chain(page).cloned().collect()
     }
 
+    fn items(&self) -> HistoryItems {
+        HistoryItems {
+            older: self.items.clone(),
+            newest: self.newest.clone(),
+            cursor: self.cursor.clone(),
+        }
+    }
+
+    fn restore(&mut self, history: HistoryItems, inherited_before: Option<i64>) {
+        *self = Self {
+            items: history.older,
+            newest: history.newest,
+            cursor: history.cursor,
+            loading: None,
+            next_ticket: self.next_ticket,
+            inherited_before,
+        };
+    }
+
     pub(super) fn clear(&mut self) {
         *self = Self {
             next_ticket: self.next_ticket,
@@ -126,6 +160,51 @@ impl ConversationSync {
     #[must_use]
     pub const fn history_paging(&self) -> HistoryPaging {
         self.older.paging()
+    }
+
+    /// The history held: the newest page as last read, the pages above it and their cursor.
+    #[must_use]
+    pub fn history_items(&self) -> HistoryItems {
+        self.older.items()
+    }
+
+    /// Shows the device's saved copy of the session before its first hydration, as a hydration
+    /// would show it: the rows of its items under its saved header, paging on from its cursor.
+    /// A saved copy shows no turn as running, since nothing is known to run while it shows. It
+    /// changes nothing once rows are shown, or for another session; the next hydration replaces
+    /// it with the server's state, keeping the saved older pages while they still join up.
+    ///
+    /// # Errors
+    ///
+    /// The saved copy cannot be shown; nothing changes.
+    pub fn restore_saved(&mut self, saved: &SavedConversation) -> Result<SyncUpdate, SyncError> {
+        if self.link == Link::Stopped
+            || self.published().is_some()
+            || saved.session.id != self.session_id
+        {
+            return Ok(SyncUpdate::default());
+        }
+        let mut session = saved.session.clone();
+        if session.status.is_busy() {
+            session.status = omnigent_protocol::SessionStatus::Idle;
+        }
+        let header = header_from_snapshot(&session, None)?;
+        let items: Vec<ConversationItem> = saved.items().cloned().collect();
+        let snapshot = history_snapshot(&session, &items, header)?;
+        let inherited_before = crate::session_tools::side_chat_inherited_before(
+            session.labels.value(),
+            session.harness.value().map(String::as_str),
+            session.created_at,
+        );
+        self.older.restore(
+            HistoryItems {
+                older: saved.older.clone(),
+                newest: saved.newest.clone(),
+                cursor: saved.older_cursor.clone(),
+            },
+            inherited_before,
+        );
+        Ok(self.adopt(snapshot))
     }
 
     /// Starts reading the page of history above the loaded items. `None` while watching

@@ -178,14 +178,18 @@ nonisolated public struct ComposerConnectionNotice: Hashable, Sendable {
   public var message: String
   /// The connection failed or stopped, rather than recovering by itself.
   public var isFailure: Bool
+  /// The server cannot be reached and the session shows what this device saved: a quiet line.
+  public var isOffline: Bool
 
   /// Creates a notice.
   /// - Parameters:
   ///   - message: The line.
   ///   - isFailure: Failed rather than recovering.
-  public init(message: String, isFailure: Bool = false) {
+  ///   - isOffline: Offline, showing saved messages.
+  public init(message: String, isFailure: Bool = false, isOffline: Bool = false) {
     self.message = message
     self.isFailure = isFailure
+    self.isOffline = isOffline
   }
 }
 

@@ -74,12 +74,14 @@ pub mod terminal;
 pub mod transcript;
 pub mod workspace;
 
+mod cache_driver;
 pub mod client;
 pub mod connection;
 mod databricks;
 mod engine;
 mod history_driver;
 mod list_driver;
+mod message_cache;
 mod read_driver;
 mod runtime;
 mod stream_driver;

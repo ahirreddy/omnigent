@@ -8,7 +8,8 @@ extension CoreError {
     case .InvalidUrl(let message), .Decode(let message), .Watch(let message),
       .Sync(let message), .ConfigurationRead(let message), .RowOps(let message),
       .Settings(let message), .DeepLink(let message), .Notification(let message),
-      .Entropy(let message), .Attachment(let message), .InvalidState(let message):
+      .Entropy(let message), .Attachment(let message), .InvalidState(let message),
+      .MessageCache(let message):
       return message
     case .Transport(_, let message):
       return "Could not reach the server: \(message)"

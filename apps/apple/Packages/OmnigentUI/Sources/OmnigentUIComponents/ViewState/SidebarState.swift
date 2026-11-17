@@ -240,6 +240,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var collapsedFamilies: Set<String> = []
   /// The provisional rows of open Add nested agent composers, by row id: each one's source.
   public var nestedDrafts: [String: String] = [:]
+  /// The server cannot be reached and the list is what this device saved: the line under it.
+  public var offlineNotice: String?
 
   /// Creates sidebar state.
   /// - Parameters:

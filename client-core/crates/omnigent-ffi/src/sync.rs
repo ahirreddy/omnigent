@@ -270,6 +270,25 @@ impl ConversationSync {
         lock(&self.inner).history_paging()
     }
 
+    /// Whether any rows are shown.
+    pub(crate) fn has_published_raw(&self) -> bool {
+        lock(&self.inner).published().is_some()
+    }
+
+    /// The history held, for this device's saved copy.
+    pub(crate) fn history_items_raw(&self) -> core::HistoryItems {
+        lock(&self.inner).history_items()
+    }
+
+    /// Shows this device's saved copy before the first hydration.
+    pub(crate) fn restore_saved_raw(
+        &self,
+        saved: &omnigent_core::message_cache::SavedConversation,
+    ) -> Result<Applied, CoreError> {
+        let update = lock(&self.inner).restore_saved(saved).map_err(core_error)?;
+        Ok(Applied::new(update, &self.session_id))
+    }
+
     /// How many published rows belong in the transcript rather than the activity drawer.
     pub(crate) fn transcript_row_count_raw(&self) -> usize {
         lock(&self.inner)

@@ -2,6 +2,12 @@ import OmnigentCoreFFI
 
 /// What the conversation learns from sends and the stream and tells the transcript or composer.
 extension ConversationStore {
+  /// The server can or cannot be reached while the rows show what this device saved.
+  /// - Parameter offline: Whether it is offline.
+  func offlineChanged(_ offline: Bool) {
+    if offline != isOffline { isOffline = offline }
+  }
+
   /// Shows a message being sent until the server echoes it.
   /// - Parameters:
   ///   - text: The message.

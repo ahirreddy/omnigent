@@ -4,6 +4,7 @@ extension ConnectionStore {
   func apply(_ event: CoreEvent) {
     eventsApplied += 1
     defer { if !eventWaiters.isEmpty { resumeEventWaiters() } }
+    logSavedCopyFailure(event)
     switch event {
     case .connectionChanged(let phase):
       connectionChanged(phase)
@@ -13,6 +14,10 @@ extension ConnectionStore {
       sessionList.apply(change)
     case .sessionListLoaded:
       sessionList.loaded()
+    case .offlineChanged(let serverURL):
+      offlineChanged(serverURL)
+    case .sessionOfflineChanged(let id, let offline):
+      conversations[id]?.offlineChanged(offline)
     default:
       applySessionEvent(event)
     }
