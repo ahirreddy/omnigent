@@ -44,6 +44,12 @@
     /// the whole window out again on a scroll's every step.
     override func invalidateIntrinsicContentSize() {}
 
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+      // A scroll under way paused this window's cursor rects: they come back as it goes.
+      if unsafe newWindow !== window { owner?.resumeCursorRects() }
+      super.viewWillMove(toWindow: newWindow)
+    }
+
     override func viewWillStartLiveResize() {
       super.viewWillStartLiveResize()
       owner?.liveResizeChanged(true)

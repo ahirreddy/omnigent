@@ -173,22 +173,35 @@
 
     // MARK: Cursor rects
 
-    /// `omnigent:transcript-cursor-rects paused`: the window stops rebuilding cursor rects at
-    /// each step of a reader's scroll, and rebuilds them once it ends.
-    static let pausesCursorRects =
-      UserDefaults.standard.string(forKey: "omnigent:transcript-cursor-rects") == "paused"
+    /// Whether the window keeps its cursor rects while a reader scrolls and rebuilds them once
+    /// the scroll ends: each step's rebuild redoes every view's and waits on the window server.
+    /// `omnigent:transcript-cursor-rects live` rebuilds them at every step.
+    static let pausesCursorRects = pausesCursorRects(in: .standard)
 
+    static func pausesCursorRects(in defaults: UserDefaults) -> Bool {
+      defaults.string(forKey: "omnigent:transcript-cursor-rects") != "live"
+    }
+
+    /// Pauses the window's cursor rects while the reader scrolls, or gives them back.
     func pauseCursorRects(_ paused: Bool) {
-      guard Self.pausesCursorRects, paused != cursorRectsPaused,
+      guard paused else {
+        resumeCursorRects()
+        return
+      }
+      guard Self.pausesCursorRects, isShown, cursorRectsWindow == nil,
         let window = unsafe scrollView.window
       else { return }
-      cursorRectsPaused = paused
-      if paused {
-        window.disableCursorRects()
-      } else {
-        window.enableCursorRects()
-        window.resetCursorRects()
-      }
+      cursorRectsWindow = window
+      window.disableCursorRects()
+    }
+
+    /// Gives the window whose cursor rects a scroll paused them back, rebuilt: the scroll ended,
+    /// or the transcript hid or left the window before it did.
+    func resumeCursorRects() {
+      guard let window = cursorRectsWindow else { return }
+      cursorRectsWindow = nil
+      window.enableCursorRects()
+      window.resetCursorRects()
     }
 
     // MARK: Prewarm

@@ -171,6 +171,7 @@
       if !isShown {
         hiddenAnchor = widthAnchor()
         self.isShown = false
+        resumeCursorRects()
         return
       }
       self.isShown = true
