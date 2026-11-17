@@ -76,11 +76,13 @@ struct MacLiveUITestSupport {
   }
 
   /// Launches the app on the server with no restored windows and tabs saved apart.
-  func launch() -> XCUIApplication {
+  /// - Parameter arguments: More launch arguments: preferences that hold for this launch only.
+  /// - Returns: The app.
+  func launch(arguments: [String] = []) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments =
       ["-desktop.defaultServerURL", server, "-OmnigentTabsDirectory", Self.scratchDirectory().path]
-      + Self.freshStateArguments
+      + Self.freshStateArguments + arguments
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.appears(within: 30), "no window")
     declineSystemPrompts()
