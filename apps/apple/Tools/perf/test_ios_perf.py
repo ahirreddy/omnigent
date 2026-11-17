@@ -41,6 +41,13 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(stats["renders.transcript"], 2)
         self.assertIn("loop.p99=9.8", ios_perf.format_numbers(stats))
 
+    def test_render_names_may_have_spaces(self):
+        stats = ios_perf.parse_stats(
+            "interval marked: fps=60.0 worst=16.7ms renders=composer:9,session row:6,tab:3"
+        )
+        self.assertEqual(stats["renders.session row"], 6)
+        self.assertEqual(stats["renders.tab"], 3)
+
     def test_keeps_the_numbers_before_a_cut_line(self):
         stats = ios_perf.parse_stats("interval marked: fps=60.0 worst=16.7ms renders=row:12,scr")
         self.assertEqual(stats["fps"], 60.0)

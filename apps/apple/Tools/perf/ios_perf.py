@@ -54,19 +54,19 @@ def parse_stats(line: str) -> dict[str, float] | None:
         return None
     numbers: dict[str, float] = {}
     skipped: list[str] = []
-    for key, value in re.findall(r"(\S+?)=(\S+)", line[line.index("fps=") :]):
-        if key == "renders":
-            for pair in value.split(","):
-                name, _, count = pair.partition(":")
-                try:
-                    numbers[f"renders.{name}"] = float(count)
-                except ValueError:
-                    skipped.append(pair)
-        else:
-            try:
-                numbers[key] = float(re.sub(r"(ms/s|ms)$", "", value))
-            except ValueError:
-                skipped.append(f"{key}={value}")
+    stats, _, renders = line[line.index("fps=") :].partition(" renders=")
+    for key, value in re.findall(r"(\S+?)=(\S+)", stats):
+        try:
+            numbers[key] = float(re.sub(r"(ms/s|ms)$", "", value))
+        except ValueError:
+            skipped.append(f"{key}={value}")
+    # Render names may have spaces ("session row"); the list runs to the end of the line.
+    for pair in filter(None, renders.strip().split(",")):
+        name, _, count = pair.rpartition(":")
+        try:
+            numbers[f"renders.{name}"] = float(count)
+        except ValueError:
+            skipped.append(pair)
     if skipped:
         # The log can cut a long line short; the numbers before the cut still count.
         print(f"  (unreadable in the stats line: {', '.join(skipped)}; line: {line})")

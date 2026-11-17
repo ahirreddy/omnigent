@@ -148,6 +148,14 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   1 s of opening a session.
 - [ ] **iPhone:** transcript content shows briefly under the dock and composer while the layout
   settles.
+- [ ] **iPhone and iPad collection transcript** (`omnigent:transcript-list table`):
+  - Settled messages as TextKit text cells, drawn from the shared document builder and raster
+    with a `UITextView` for selection, once the builder (message-textkit-parity) and the raster
+    (transcript-60hz) are on one branch.
+  - Previous and next message keys and Jump to top: the table wrapper has neither, on the Mac
+    either.
+  - Check on a device: the bars' soft scroll-edge effect over the UIKit scroll view, and the
+    rows sliding with the keyboard for a reader at the end.
 - [ ] **Onboarding (Mac):** offer the remote runner in "Where do you work today?" where
   Electron does (Databricks-managed servers only).
 - [ ] **Invite links:** `https://…/register?invite=` links open in the browser; only

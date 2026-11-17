@@ -7,9 +7,11 @@
 #
 #   bash apps/apple/Tools/perf/ios-scroll-bench.sh [--runs N] [--lists "stack table"]
 #        [--devices "iPhone 18 Pro;iPad Pro 11-inch (M5)"] [--scenarios "open scroll stream"]
-#        [--style chat|cli] [--skip-build]
+#        [--style chat|cli] [--sample] [--skip-build]
 #
 # Each device also runs a width change: the iPhone turns, the iPad hides and shows its sidebar.
+# --sample samples the main thread during each scenario; a run that fails prints the app's
+# newest crash report.
 #
 # Package checkouts come from the Debug workspace build's (vmq seeds them), so nothing is
 # fetched. In the shared test VMs, as one job:
@@ -22,7 +24,7 @@ die() {
   exit 1
 }
 
-runs=3 lists="stack table" style=chat build=1
+runs=3 lists="stack table" style=chat build=1 sample=0
 devices="iPhone 18 Pro;iPad Pro 11-inch (M5)"
 scenarios="open scroll stream keyboard"
 while (($#)); do
@@ -32,6 +34,7 @@ while (($#)); do
     --devices) devices=$2; shift 2 ;;
     --scenarios) scenarios=$2; shift 2 ;;
     --style) style=$2; shift 2 ;;
+    --sample) sample=1; shift ;;
     --skip-build) build=0; shift ;;
     *) die "unknown argument $1" ;;
   esac
@@ -112,11 +115,42 @@ for name in "${names[@]}"; do
   xcrun simctl boot "$udid" 2> /dev/null
   xcrun simctl bootstatus "$udid" -b > /dev/null || { echo "could not boot $name" >&2; status=1; continue; }
   xcrun simctl install "$udid" "$app" || { echo "could not install on $name" >&2; status=1; continue; }
+  # A simulator compiles its Metal shaders the first time SwiftUI draws an effect, on the main
+  # thread and for tens of seconds in a VM; one unmeasured open per list leaves that out.
+  echo "-- warm-up open, not measured ($logs/warm-up.log)"
+  warm=(run open --udid "$udid" --style "$style" --runs 1 --lists "${lists// /,}")
+  [[ "$name" == iPad* ]] && warm+=(--ipad)
+  .venv/bin/python apps/apple/Tools/perf/ios_perf.py "${warm[@]}" > "$logs/warm-up.log" 2>&1 \
+    || echo "warm-up failed ($logs/warm-up.log)" >&2
   read -r -a options <<< "$scenarios"
   # A width change too: the iPad's sidebar hides and shows, the iPhone turns.
   if [[ "$name" == iPad* ]]; then options+=(sidebar --ipad); else options+=(rotate); fi
   options=(run "${options[@]}" --udid "$udid" --style "$style" --runs "$runs" --lists "${lists// /,}")
-  .venv/bin/python apps/apple/Tools/perf/ios_perf.py "${options[@]}" || status=1
+  ((sample)) && options+=(--sample)
+  touch "$logs/run-started"
+  if ! .venv/bin/python apps/apple/Tools/perf/ios_perf.py "${options[@]}"; then
+    status=1
+    report=$(find ~/Library/Logs/DiagnosticReports -name 'Omnigent*' -newer "$logs/run-started" \
+      2> /dev/null | head -1)
+    if [[ -n "$report" ]]; then
+      echo "-- crash report $report"
+      head -c 6000 "$report"
+    else
+      echo "-- no crash report since the run started"
+    fi
+  fi
+  if ((sample)); then
+    for file in /tmp/omnigent-ios-*.txt; do
+      [[ -e "$file" ]] || continue
+      echo "-- $file"
+      .venv/bin/python apps/apple/Tools/perf/sample-breakdown.py "$file" | head -40
+      # Where the main thread waits, which the on-CPU breakdown leaves out: its heaviest path.
+      echo "-- main thread call graph"
+      awk '/^Call graph:/ { on = 1; next } on && /^    [0-9]+ Thread_/ && seen++ { exit } on' "$file" \
+        | cut -c1-200 | head -70
+      rm -f "$file"
+    done
+  fi
   xcrun simctl terminate "$udid" ai.omnigent.ios.lab 2> /dev/null
   xcrun simctl shutdown "$udid" || echo "could not shut $name down" >&2
 done
