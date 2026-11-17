@@ -1,5 +1,6 @@
 #if os(macOS)
   import AppKit
+  import OmnigentPlatform
   import OmnigentViewTesting
   import OmnigentViewTextReading
   import SwiftUI
@@ -163,19 +164,29 @@
       #expect(Theme.relativeDate(tomorrow, now: now) == formatted(tomorrow, template: "MMMd"))
     }
 
-    @Test("a loading caption shows its text, and reads as one element named by it")
+    @Test("a loading caption shows its text, and reads out as a spinner named by it")
     func loadingCaption() throws {
       let screen = OffscreenWindow(
         LoadingCaption(title: "Loading things\u{2026}").accessibilityIdentifier("caption"),
         width: 300, height: 200)
       defer { screen.close() }
-      // A busy machine can take more than one settle to draw the spinner's label.
-      _ = try MainLoop.settle(until: { try screen.shows("Loading things\u{2026}") })
+      let spinner = OffscreenWindow(
+        ProgressView().accessibilityIdentifier("spinner"), width: 300, height: 200)
+      defer { spinner.close() }
       #expect(try screen.shows("Loading things\u{2026}"))
-      let label = try screen.withAccessibilityTree {
-        try screen.accessibilityElement("caption").value(forKey: "accessibilityLabel") as? String
+      let (label, role) = try screen.withAccessibilityTree {
+        let element = try screen.accessibilityElement("caption")
+        return (
+          element.value(forKey: "accessibilityLabel") as? String,
+          element.value(forKey: "accessibilityRole") as? String
+        )
+      }
+      let spinnerRole = try spinner.withAccessibilityTree {
+        try spinner.accessibilityElement("spinner").value(forKey: "accessibilityRole") as? String
       }
       #expect(label == "Loading things\u{2026}")
+      #expect(role != nil)
+      #expect(role == spinnerRole)
     }
 
     @Test(

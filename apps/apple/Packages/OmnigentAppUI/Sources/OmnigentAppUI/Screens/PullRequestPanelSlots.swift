@@ -1,4 +1,5 @@
 import OmnigentCoreFFI
+import OmnigentPlatform
 import OmnigentStores
 import OmnigentUIComponents
 import OmnigentWorkspaceUI
@@ -109,7 +110,8 @@ enum PullRequestPanelSlots {
     switch panel.files {
     case .idle, .loading:
       AnyView(
-        ProgressView("Loading changes\u{2026}").frame(maxWidth: .infinity, maxHeight: .infinity))
+        LoadingCaption(title: "Loading changes\u{2026}")
+          .frame(maxWidth: .infinity, maxHeight: .infinity))
     case .failed(let error):
       AnyView(
         ContentUnavailableView(

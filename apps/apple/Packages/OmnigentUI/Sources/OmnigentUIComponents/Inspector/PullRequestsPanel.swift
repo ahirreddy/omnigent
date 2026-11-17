@@ -74,7 +74,7 @@ struct PullRequestsPanel: View {
   @ViewBuilder private var list: some View {
     switch state {
     case .loading:
-      ProgressView("Loading pull requests\u{2026}")
+      LoadingCaption(title: "Loading pull requests\u{2026}")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     case .unsupported:
       ContentUnavailableView(

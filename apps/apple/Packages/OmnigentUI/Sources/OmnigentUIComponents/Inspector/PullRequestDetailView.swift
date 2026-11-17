@@ -1,3 +1,4 @@
+import OmnigentPlatform
 import SwiftUI
 
 /// The PR the user opened from the Pull Requests tab, as the web's PR panel lays it out: back to
@@ -22,7 +23,7 @@ struct PullRequestDetailView: View {
       }
       switch content {
       case .loading:
-        ProgressView("Loading pull request\u{2026}")
+        LoadingCaption(title: "Loading pull request\u{2026}")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       case .failed(let message):
         ContentUnavailableView {

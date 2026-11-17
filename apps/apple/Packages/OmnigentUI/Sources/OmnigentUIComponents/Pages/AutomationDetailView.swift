@@ -1,3 +1,4 @@
+import OmnigentPlatform
 public import SwiftUI
 
 /// One automation's page: name and actions, the active switch with its schedule, the prompt,

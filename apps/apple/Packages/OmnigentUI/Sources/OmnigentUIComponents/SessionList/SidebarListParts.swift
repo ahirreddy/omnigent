@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentPlatform
 import SwiftUI
 
 /// What the list shows with no sessions and no projects: loading, no matches, or none.
@@ -55,7 +56,7 @@ struct SidebarEmptyState: View {
       .padding(.horizontal, Theme.Spacing.small)
       .listRowSeparator(.hidden)
     case .loading:
-      ProgressView("Loading sessions\u{2026}")
+      LoadingCaption(title: "Loading sessions\u{2026}")
     case .noMatches(let query):
       ContentUnavailableView.search(text: query)
     case .empty(let title):

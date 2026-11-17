@@ -25,6 +25,8 @@ let package = Package(
   dependencies: [
     // NSEvent translation and IME composition, shared with the remote browser.
     .package(path: "../OmnigentInput"),
+    // The shared loading caption.
+    .package(path: "../OmnigentPlatform"),
     .package(path: "../OmnigentViewTesting"),
   ],
   targets: [
@@ -36,7 +38,10 @@ let package = Package(
     ),
     .target(
       name: "OmnigentWebLayer",
-      dependencies: ["OWLProtocol", .product(name: "OmnigentInput", package: "OmnigentInput")],
+      dependencies: [
+        "OWLProtocol", .product(name: "OmnigentInput", package: "OmnigentInput"),
+        .product(name: "OmnigentPlatform", package: "OmnigentPlatform"),
+      ],
       swiftSettings: mainActorSwiftSettings,
       linkerSettings: [.linkedLibrary("bsm")]
     ),

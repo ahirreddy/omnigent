@@ -1,3 +1,4 @@
+import OmnigentPlatform
 public import SwiftUI
 
 /// A side question opened from the transcript into its own tab.
@@ -46,7 +47,7 @@ public struct SideChatTabView: View {
     Group {
       switch state.phase {
       case .loading:
-        ProgressView("Loading the side chat\u{2026}")
+        LoadingCaption(title: "Loading the side chat\u{2026}")
       case .unavailable:
         ContentUnavailableView {
           Label("Side Chat Unavailable", systemImage: TabKind.sideChat.systemImage)

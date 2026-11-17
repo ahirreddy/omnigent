@@ -1,3 +1,4 @@
+import OmnigentPlatform
 public import SwiftUI
 
 /// Content search: a query with case and regex toggles, optional include and exclude globs,
@@ -99,7 +100,7 @@ public struct ContentSearchPanel: View {
         "Search File Contents", systemImage: "text.magnifyingglass",
         description: Text("Find text across the session's workspace."))
     case .loading:
-      ProgressView("Searching")
+      LoadingCaption(title: "Searching")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     case .failed(let failure):
       FailureView(failure: failure)
