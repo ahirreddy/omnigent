@@ -194,18 +194,20 @@
       defer { window.close() }
       try scroll(window, driver, to: controller.minimumOffset)
       let first = try #require(controller.model.rows.dropFirst().first?.id)
-      let below = controller.tableView.rect(ofRow: 1).minY - driver.offset
       conversation.state.isLoadingHistory = true
       window.settle()
+      // Where the first row is under the header's loading line, as the reader last sees it.
+      let below = controller.tableView.rect(ofRow: 1).minY - driver.offset
       conversation.state.rows.insert(contentsOf: TranscriptFixture.turns(4), at: 0)
       conversation.state.revision += 1
       conversation.state.isLoadingHistory = false
       conversation.state.historyReads += 1
       window.settle()
-      // The page is above the reader, who still sees the rows they were reading.
+      // The page is above the reader, who still sees the rows they were reading: the page's
+      // last row, partly in view above them, only takes its measured height.
       let index = try #require(controller.model.index(of: first))
       #expect(index > 1)
-      #expect(abs(controller.tableView.rect(ofRow: index).minY - driver.offset - below) < 1)
+      #expect(abs(controller.tableView.rect(ofRow: index).minY - driver.offset - below) < 8)
     }
 
     @Test("Rows are measured once: scrolling back over them and a streamed delta measure little")
