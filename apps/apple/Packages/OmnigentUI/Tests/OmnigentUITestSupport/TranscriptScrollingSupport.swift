@@ -49,14 +49,39 @@
     }
   }
 
-  /// The transcript over a ``LiveConversation``.
+  /// Rows a transcript's list reads itself, kept apart from the screen's state as the app's store
+  /// keeps them.
+  @MainActor
+  @Observable
+  final class LiveRowsSource {
+    private(set) var rows: [Row]
+    private(set) var revision: UInt64 = 1
+
+    init(_ rows: [Row]) {
+      self.rows = rows
+    }
+
+    var reader: LiveTranscriptRows {
+      LiveTranscriptRows { (rows: self.rows, revision: self.revision) }
+    }
+
+    /// Puts a page of older rows above, with a new revision.
+    func prepend(_ page: [Row]) {
+      rows.insert(contentsOf: page, at: 0)
+      revision += 1
+    }
+  }
+
+  /// The transcript over a ``LiveConversation``. With `rows`, the list reads its rows from them
+  /// and not from the conversation's state, as the app's does.
   struct LiveTranscriptHost: View {
     let conversation: LiveConversation
     let actions: ConversationActions
+    var rows: LiveTranscriptRows?
 
     var body: some View {
       TranscriptView(
-        state: conversation.state, actions: actions,
+        state: conversation.state, liveRows: rows, actions: actions,
         scrollToLatestRequest: conversation.scrollRequest)
     }
   }

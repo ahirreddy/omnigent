@@ -26,12 +26,14 @@
       return actions
     }
 
+    /// The transcript over `conversation`; with `rows`, its list reads them instead of the
+    /// state's, as the app's does.
     func screen(
-      _ conversation: LiveConversation, actions: ConversationActions = ConversationActions(),
-      focus: TranscriptFocus? = nil
+      _ conversation: LiveConversation, rows: LiveRowsSource? = nil,
+      actions: ConversationActions = ConversationActions(), focus: TranscriptFocus? = nil
     ) async throws -> (OffscreenWindow<AnyView>, TranscriptScrollDriver) {
       let window = transcriptScreen(
-        LiveTranscriptHost(conversation: conversation, actions: actions)
+        LiveTranscriptHost(conversation: conversation, actions: actions, rows: rows?.reader)
           .environment(\.transcriptFocus, focus),
         width: Self.width, height: Self.height)
       try await letTasksRun(window, milliseconds: 200)

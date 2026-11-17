@@ -45,18 +45,6 @@
 
   }
 
-  /// The transcript reading its rows apart from the conversation's paging state, as the app does.
-  private struct HeldRowsTranscript: View {
-    let conversation: LiveConversation
-    let rows: LiveTranscriptRows
-    let actions: ConversationActions
-
-    var body: some View {
-      TranscriptView(
-        state: conversation.state, liveRows: rows, actions: actions, scrollToLatestRequest: 0)
-    }
-  }
-
   @Suite("Live rows and resizing", .serialized)
   @MainActor
   struct TranscriptLiveRowsTests {
@@ -89,7 +77,7 @@
       var actions = ConversationActions()
       actions.loadOlder = { [log] in log.add("older") }
       let window = transcriptScreen(
-        HeldRowsTranscript(conversation: conversation, rows: rows.reader, actions: actions),
+        LiveTranscriptHost(conversation: conversation, actions: actions, rows: rows.reader),
         width: 900, height: 500)
       defer { window.close() }
       try await letOpeningEnd(window)
