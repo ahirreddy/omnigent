@@ -779,7 +779,8 @@ LIST_EXTRAS = {
     "textkit": ["-omnigent:message-text", "textkit"],
     "full": ["-omnigent:message-text-viewport", "full"],
     "raster": ["-omnigent:message-text-surface", "raster"],
-    "nocursor": ["-omnigent:transcript-cursor-rects", "paused"],
+    # Cursor rects rebuilt at every step of a reader's scroll, not paused until it ends.
+    "livecursor": ["-omnigent:transcript-cursor-rects", "live"],
     # Worked folds and an empty header or footer hosted in SwiftUI, not AppKit cells.
     "hosted": ["-omnigent:transcript-cells", "hosted"],
     # SwiftUI rows sized by a hosting controller's fitting size, with no constraints.

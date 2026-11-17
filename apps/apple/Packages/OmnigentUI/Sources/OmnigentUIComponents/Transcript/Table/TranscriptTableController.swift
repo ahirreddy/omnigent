@@ -97,7 +97,8 @@
     var olderRequested = false
     var historyReads = 0
     var isShown = true
-    var cursorRectsPaused = false
+    /// The window whose cursor rects a reader's scroll paused (``pauseCursorRects(_:)``).
+    weak var cursorRectsWindow: NSWindow?
     /// The answer idle measuring waits for the prewarm to lay out, and since when.
     var prewarmAwaited: (id: String, since: CFTimeInterval)?
     /// Where a width change under way keeps the reader, taken before the viewport resized.

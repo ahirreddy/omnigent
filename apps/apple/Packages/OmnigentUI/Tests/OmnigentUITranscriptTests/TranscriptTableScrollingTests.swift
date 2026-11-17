@@ -176,6 +176,37 @@
       #expect(renders["rows", default: 0] == 0, "\(renders)")
     }
 
+    @Test("A reader's scroll pauses the window's cursor rects until it ends, or the chat hides")
+    func scrollPausesCursorRects() async throws {
+      let defaults = try #require(UserDefaults(suiteName: "cursor-rects-\(UUID().uuidString)"))
+      #expect(TranscriptTableController.pausesCursorRects(in: defaults), "paused by default")
+      defaults.set("live", forKey: "omnigent:transcript-cursor-rects")
+      #expect(!TranscriptTableController.pausesCursorRects(in: defaults))
+      let (driver, controller) = try await screen(session())
+      let window = driver.screen
+      defer { window.close() }
+      let scrollView = try #require(driver.scrollView)
+      let host = try #require(unsafe scrollView.window)
+      #expect(host.areCursorRectsEnabled)
+      window.liveScroll(scrollView, began: true)
+      driver.move(to: driver.offset - 200)
+      #expect(!host.areCursorRectsEnabled, "paused while the reader scrolls")
+      window.liveScroll(scrollView, began: false)
+      #expect(host.areCursorRectsEnabled, "rebuilt once the scroll ends")
+      // A wheel's steps pause them too, until no step follows for a moment.
+      controller.readerScrolled()
+      #expect(!host.areCursorRectsEnabled)
+      window.run(for: TranscriptTableController.wheelEnd + 0.1)
+      #expect(host.areCursorRectsEnabled)
+      // A chat hidden mid-scroll gives them back to the window.
+      window.liveScroll(scrollView, began: true)
+      controller.setShown(false)
+      #expect(host.areCursorRectsEnabled, "a hidden chat leaves them on")
+      window.liveScroll(scrollView, began: false)
+      controller.setShown(true)
+      #expect(host.areCursorRectsEnabled)
+    }
+
     @Test(
       "Older rows landing above keep the reader on the row they were reading",
       arguments: [MessageTextRenderer.swiftUI, .textKit])
