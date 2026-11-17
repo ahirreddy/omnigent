@@ -11,7 +11,8 @@
     /// The stack laid out off the main actor that the text view shows, kept alive with it.
     private let prepared: MessageTextPreparedLayout?
     private let layers = MessageTextLayersView()
-    private var chromeViews: [Int: NSView] = [:]
+    /// Each block's control, by block.
+    private(set) var chromeViews: [Int: NSView] = [:]
     private var measurements: [CGFloat: Measurement] = [:]
     /// The width the text is laid out at.
     private(set) var laidOutWidth: CGFloat?
@@ -22,6 +23,14 @@
     private var foundLinkRects: [MessageTextLinkRect] = []
     private var linkRectsAreFound = false
     var openURL: (@MainActor (URL) -> Void)?
+    /// Each code block's and table's paragraphs.
+    lazy var spans = MessageTextBlockSpan.spans(in: document.text)
+    /// Code blocks whose long lines scroll sideways instead of wrapping.
+    private var unwrapped: Set<Int> = []
+    /// Blocks whose text is hidden here, drawn by a copy that scrolls sideways.
+    var hiddenBlocks: Set<Int> = []
+    /// The copies drawing blocks that scroll sideways, by block.
+    var overflows: [Int: MessageTextOverflowView] = [:]
 
     /// A size at one width: how tall the text is and how wide its widest line.
     struct Measurement: Equatable {
@@ -57,25 +66,7 @@
     override var isFlipped: Bool { true }
 
     private func configureTextView() {
-      textView.isEditable = false
-      textView.isSelectable = true
-      textView.isRichText = true
-      textView.importsGraphics = false
-      textView.drawsBackground = false
-      textView.textContainerInset = .zero
-      textView.isVerticallyResizable = false
-      textView.isHorizontallyResizable = false
-      // Find stays the window's: one message's own find bar or panel would search only it.
-      textView.usesFindBar = false
-      textView.usesFindPanel = false
-      textView.isIncrementalSearchingEnabled = false
-      textView.displaysLinkToolTips = false
-      textView.isAutomaticLinkDetectionEnabled = false
-      textView.linkTextAttributes = [
-        .foregroundColor: document.palette.link,
-        .underlineStyle: NSUnderlineStyle.single.rawValue,
-        .cursor: NSCursor.pointingHand,
-      ]
+      textView.configureForMessage(palette: document.palette)
       textView.delegate = self
       textView.linkAt = { [weak self] point in self?.link(at: point) }
       guard prepared == nil else { return }
@@ -145,6 +136,11 @@
         return Measurement(height: 0, usedWidth: 0)
       }
       layoutPasses += 1
+      let overflowing = Set(
+        spans.compactMap { block, span in
+          span.overflows(width: width, wraps: !unwrapped.contains(block)) ? block : nil
+        })
+      hideText(of: overflowing)
       // The same size again would throw away a layout made off the main actor.
       let size = CGSize(width: width, height: MessageTextPreparedLayout.unlimitedHeight)
       if container.size != size { container.size = size }
@@ -165,6 +161,7 @@
       let shapes = collector.shapes
       layers.show(shapes, palette: document.palette)
       placeChrome(collector.chromeFrames)
+      placeOverflows(overflowing, collector: collector, width: width)
       linkRectsAreFound = false
       laidOutWidth = width
       let measured = Measurement(
@@ -182,7 +179,7 @@
         if let made = chromeViews[block] {
           view = made
         } else {
-          view = makeChrome(chrome)
+          view = makeChrome(chrome, block: block)
           chromeViews[block] = view
           addSubview(view)
         }
@@ -190,41 +187,47 @@
       }
     }
 
-    private func makeChrome(_ chrome: MessageTextChrome) -> NSView {
+    private func makeChrome(_ chrome: MessageTextChrome, block: Int) -> NSView {
       switch chrome {
       case .code(let code, let language):
-        MessageCodeHeaderView(
-          label: CodeLanguageName.label(for: language), code: code, palette: document.palette)
+        let header = MessageCodeHeaderView(
+          language: language, code: code, palette: document.palette)
+        header.wrapsLines = !unwrapped.contains(block)
+        header.wrapChanged = { [weak self] wraps in self?.setWraps(wraps, block: block) }
+        return header
       case .table(let table):
-        MessageTableControlsView(table: table, palette: document.palette)
+        return MessageTableControlsView(table: table, palette: document.palette)
       }
+    }
+
+    // MARK: Blocks that scroll sideways
+
+    /// Wraps a code block's long lines, or has them scroll sideways; the text's height changes.
+    func setWraps(_ wraps: Bool, block: Int) {
+      guard wraps == unwrapped.contains(block) else { return }
+      if wraps { unwrapped.remove(block) } else { unwrapped.insert(block) }
+      measurements.removeAll()
+      laidOutWidth = nil
+      needsLayout = true
+      invalidateIntrinsicContentSize()
+      // AppKit declares `superview` unowned(unsafe); it is only messaged here.
+      unsafe superview?.invalidateIntrinsicContentSize()
     }
 
     // MARK: Links
 
     /// Each link's rectangle on each line, found once per layout when the pointer first asks.
+    /// A link in a block drawn by a copy that scrolls is the copy's.
     var linkRects: [MessageTextLinkRect] {
       if linkRectsAreFound { return foundLinkRects }
-      var rects: [MessageTextLinkRect] = []
-      guard let layout = textView.textLayoutManager, let content = layout.textContentManager
-      else {
-        return rects
+      guard let layout = textView.textLayoutManager else { return [] }
+      let hiddenRanges = hiddenBlocks.compactMap { spans[$0]?.range }
+      let shown = document.links.filter { link in
+        !hiddenRanges.contains { NSIntersectionRange($0, link.range).length > 0 }
       }
-      for link in document.links {
-        guard
-          let start = content.location(
-            content.documentRange.location, offsetBy: link.range.location),
-          let end = content.location(start, offsetBy: link.range.length),
-          let range = NSTextRange(location: start, end: end)
-        else { continue }
-        layout.enumerateTextSegments(in: range, type: .standard) { _, frame, _, _ in
-          rects.append(MessageTextLinkRect(rect: frame, url: link.url))
-          return true
-        }
-      }
-      foundLinkRects = rects
+      foundLinkRects = MessageTextLinkRect.rects(in: layout, links: shown)
       linkRectsAreFound = true
-      return rects
+      return foundLinkRects
     }
 
     /// The link at `point`, in the text view's coordinates.
@@ -239,11 +242,33 @@
       openURL(url)
       return true
     }
+
   }
 
   /// A link's rectangle on one line.
   struct MessageTextLinkRect: Equatable {
     var rect: CGRect
     var url: URL
+
+    /// Each of `links`' rectangles on each line, as `layout` laid them out.
+    static func rects(in layout: NSTextLayoutManager, links: [(range: NSRange, url: URL)])
+      -> [Self]
+    {
+      guard let content = layout.textContentManager else { return [] }
+      var rects: [Self] = []
+      for link in links {
+        guard
+          let start = content.location(
+            content.documentRange.location, offsetBy: link.range.location),
+          let end = content.location(start, offsetBy: link.range.length),
+          let range = NSTextRange(location: start, end: end)
+        else { continue }
+        layout.enumerateTextSegments(in: range, type: .standard) { _, frame, _, _ in
+          rects.append(Self(rect: frame, url: link.url))
+          return true
+        }
+      }
+      return rects
+    }
   }
 #endif

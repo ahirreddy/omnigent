@@ -40,6 +40,8 @@ struct MessageTextLayerCollector {
   private var fills: [MessageTextShape] = []
   private var images: [MessageTextShape] = []
   private(set) var chromeFrames: [Int: CGRect] = [:]
+  /// Each table's rows, from the header's line to under the last row.
+  private var tables: [Int: CGRect] = [:]
   /// The lowest point any layer or control reaches.
   private(set) var bottom: CGFloat = 0
 
@@ -89,6 +91,12 @@ struct MessageTextLayerCollector {
       quoteBars[bar.id] = QuoteSpan(leading: bar.leading, top: start, bottom: bottom)
     }
     self.bottom = max(self.bottom, bottom)
+  }
+
+  /// Where a code block or table landed: a code block from its header's top to its bottom, a
+  /// table from its header row's line to under its last row.
+  func frame(of block: Int) -> CGRect? {
+    codeBlocks[block] ?? tables[block]
   }
 
   /// Each typeset math image, its baseline on its line's.
@@ -141,6 +149,8 @@ struct MessageTextLayerCollector {
       return bottom
     case .tableRow(let isHeader, let isLast, let tableWidth):
       let below = bottom + MarkdownTableView.rowPadding
+      let start = isHeader ? top : tables[mark.block]?.minY ?? top
+      tables[mark.block] = CGRect(x: mark.indent, y: start, width: span, height: below - start)
       guard !isLast else {
         let controls = CGRect(
           x: mark.indent, y: below, width: min(span, max(tableWidth, 120)),

@@ -111,5 +111,29 @@
     func isOverLink(_ location: NSPoint) -> Bool {
       linkAt?(convert(location, from: nil)) != nil
     }
+
+    /// Sets the view up to show message text: read-only and selectable, transparent, with no
+    /// insets, links in `palette`'s color, and find left to the window.
+    func configureForMessage(palette: MessageTextPalette) {
+      isEditable = false
+      isSelectable = true
+      isRichText = true
+      importsGraphics = false
+      drawsBackground = false
+      textContainerInset = .zero
+      isVerticallyResizable = false
+      isHorizontallyResizable = false
+      // Find stays the window's: one message's own find bar or panel would search only it.
+      usesFindBar = false
+      usesFindPanel = false
+      isIncrementalSearchingEnabled = false
+      displaysLinkToolTips = false
+      isAutomaticLinkDetectionEnabled = false
+      linkTextAttributes = [
+        .foregroundColor: palette.link,
+        .underlineStyle: NSUnderlineStyle.single.rawValue,
+        .cursor: NSCursor.pointingHand,
+      ]
+    }
   }
 #endif

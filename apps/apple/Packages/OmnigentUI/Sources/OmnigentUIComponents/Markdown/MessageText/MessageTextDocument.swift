@@ -140,6 +140,11 @@ nonisolated final class MessageTextDocument: @unchecked Sendable {
     self.chrome = chrome
     self.hasWideBlocks = hasWideBlocks
     self.topInset = topInset
+    links = Self.links(in: text)
+  }
+
+  /// Each link in `text` and where it is.
+  static func links(in text: NSAttributedString) -> [(range: NSRange, url: URL)] {
     var links: [(range: NSRange, url: URL)] = []
     // The block's third argument is AppKit's stop pointer, unused here.
     let whole = NSRange(location: 0, length: text.length)
@@ -148,7 +153,7 @@ nonisolated final class MessageTextDocument: @unchecked Sendable {
         links.append((range, url))
       }
     }
-    self.links = links
+    return links
   }
 
   #if os(macOS)
