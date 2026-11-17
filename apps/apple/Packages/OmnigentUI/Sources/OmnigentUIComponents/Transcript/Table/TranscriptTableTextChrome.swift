@@ -24,7 +24,7 @@
       let items = MessageActionItem.items(
         for: message.row, actions: values.conversationActions,
         copy: values.copyWithConfirmation)
-      view.show(items, timestamp: message.decoration.timestamp)
+      view.show(items, timestamp: message.decoration.timestamp, hover: style.palette?.hover)
       let size = view.frame.size
       let top =
         actionsLineHeight > 0
@@ -189,8 +189,11 @@
       var unavailableReason: String?
     }
 
-    func show(_ items: [MessageActionItem], timestamp date: Date?) {
+    /// Shows `items`' buttons and the timestamp; an enabled button under the pointer takes
+    /// `hover` behind it.
+    func show(_ items: [MessageActionItem], timestamp date: Date?, hover: NSColor? = nil) {
       performs = items.map(\.perform)
+      for button in buttons { button.hoverColor = hover }
       copyIndex = items.firstIndex { $0.kind == .copy }
       let looks = items.map {
         ShownItem(
@@ -210,6 +213,7 @@
           image: Self.symbol(item.systemImage, title: item.title), target: self,
           action: #selector(press(_:)))
         button.focusChanged = { [weak self] in self?.focusChanged?() }
+        button.hoverColor = hover
         button.isBordered = false
         button.contentTintColor = .secondaryLabelColor
         button.tag = index

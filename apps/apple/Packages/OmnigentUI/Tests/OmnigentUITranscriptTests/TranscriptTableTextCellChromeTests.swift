@@ -137,6 +137,42 @@
       #expect(!cell.acceptsFirstResponder)
     }
 
+    // MARK: Hover
+
+    /// The pointer entering or leaving, as a tracking area reports it.
+    private func pointerEvent(_ type: NSEvent.EventType) -> NSEvent? {
+      // Nothing reads the event's user data.
+      unsafe NSEvent.enterExitEvent(
+        with: type, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+        context: nil, eventNumber: 0, trackingNumber: 0, userData: nil)
+    }
+
+    @Test(
+      "An action button under the pointer takes SwiftUI's hover highlight; a disabled one doesn't")
+    func actionHoverHighlight() throws {
+      var actions = ConversationActions()
+      actions.forkUnavailableReason = "Only the owner can fork"
+      let style = textCellStyle(textCellEnvironment { $0.conversationActions = actions })
+      var decoration = MessageDecoration()
+      decoration.showsActions = true
+      let cell = TranscriptTableTextCell(style: style)
+      cell.show(
+        textCellRow(Fixture.answer("a1", "Body"), decoration: decoration), version: 0,
+        width: textCellWidth)
+      let buttons = try #require(cell.actionsView?.buttons)
+      #expect(buttons.count == 2, "Copy, and Fork from here disabled")
+      let hover = try #require(style.palette?.hover.cgColor)
+      let enter = try #require(pointerEvent(.mouseEntered))
+      let exit = try #require(pointerEvent(.mouseExited))
+      buttons[0].mouseEntered(with: enter)
+      #expect(buttons[0].layer?.backgroundColor == hover)
+      #expect(buttons[0].layer?.cornerRadius == Theme.Radius.small)
+      buttons[0].mouseExited(with: exit)
+      #expect(buttons[0].layer?.backgroundColor?.alpha == 0)
+      buttons[1].mouseEntered(with: enter)
+      #expect(buttons[1].layer?.backgroundColor?.alpha ?? 0 == 0, "a disabled action takes none")
+    }
+
     // MARK: VoiceOver
 
     @Test("VoiceOver gets the message's actions that apply, by title, and each one runs")
