@@ -84,34 +84,27 @@
       content.frame.size.width = 320
       content.layoutSubtreeIfNeeded()
       #expect(!content.overflows.isEmpty)
-      let controls = try #require(
-        content.subviews.compactMap { $0 as? MessageTableControlsView }.first)
-      #expect(controls.downloadChoices.map(\.title) == ["Download CSV", "Download Markdown"])
+      // The SwiftUI table's controls: Copy, Download and Expand, under the table.
+      let frames = screen.controlFrames
+      #expect(frames.count == 3, "Copy, Download and Expand: \(frames)")
       let folder = FileManager.default.temporaryDirectory
         .appendingPathComponent("message-text-\(UUID().uuidString)", isDirectory: true)
       try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
       let csv = folder.appendingPathComponent("table.csv")
       SystemSideEffects.answer(panel: .OK, panelURL: csv)
-      let download = controls.downloadButton.convert(
-        controls.downloadButton.bounds, to: screen.host)
-      let host = screen.host
-      let hit = unsafe host.hitTest(
-        host.convert(CGPoint(x: download.midX, y: download.midY), to: host.superview))
-      #expect(hit === controls.downloadButton, "\(String(describing: hit)) at \(download)")
-      try screen.choose(
-        "Download CSV", in: try screen.openMenu(CGPoint(x: download.midX, y: download.midY)))
+      let download = CGPoint(x: frames[1].midX, y: frames[1].midY)
+      try screen.choose("Download CSV", in: try screen.openMenu(download))
       #expect(await screen.waitUntil { FileManager.default.fileExists(atPath: csv.path) })
       #expect(try String(contentsOf: csv, encoding: .utf8).hasPrefix("Step,Owner,Status"))
-      try screen.click(controls.expandButton)
+      await screen.settleTasks()
+      try screen.clickControl(at: 2)
       _ = MainLoop.settle(until: { screen.window.attachedSheet != nil })
       #expect(screen.window.attachedSheet != nil)
-      #expect(controls.expandButton.isHidden, "Expand hides while the table is out")
       #expect(try screen.shows("team-2"))
       let done = try #require(screen.controlFrames.last)
       try screen.click(CGPoint(x: done.midX, y: done.midY))
       _ = MainLoop.settle(until: { screen.window.attachedSheet == nil })
       #expect(screen.window.attachedSheet == nil)
-      #expect(!controls.expandButton.isHidden)
     }
   }
 #endif

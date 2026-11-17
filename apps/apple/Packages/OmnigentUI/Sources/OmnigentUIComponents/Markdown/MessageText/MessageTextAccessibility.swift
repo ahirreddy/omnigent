@@ -288,11 +288,10 @@ nonisolated struct MessageTextAccessibilityItem: Equatable {
         return [element]
       case .table(let block):
         element.setAccessibilityChildren(children)
-        let controls = chromeViews[block] as? MessageTableControlsView
-        let buttons: [NSView] =
-          controls.map { [$0.copyButton, $0.downloadButton, $0.expandButton] } ?? []
-        for button in buttons { button.setAccessibilityParent(self) }
-        let read = unsafe NSAccessibility.unignoredChildren(from: buttons)
+        // The SwiftUI controls row's own elements follow the table, as under a SwiftUI table.
+        let controls = (chromeViews[block] as? MessageTableControlsView)?.hosting
+        let read = unsafe NSAccessibility.unignoredChildren(
+          from: controls?.accessibilityChildren() ?? [])
         return [element] + read
       case .text:
         element.showLinks(children)

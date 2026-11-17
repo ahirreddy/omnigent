@@ -7,17 +7,27 @@ import UniformTypeIdentifiers
 /// own, scrolling both ways.
 struct MarkdownTableBlock: View {
   let table: MarkdownTable
-  @State private var isExpanded = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       MarkdownTableView(table: table)
         .frame(maxWidth: .infinity, alignment: .leading)
-      MarkdownTableControls(table: table, isExpanded: $isExpanded)
+      MarkdownTableControlsRow(table: table)
     }
-    .expandedPresentation(isPresented: $isExpanded) {
-      ExpandedTable(table: table)
-    }
+  }
+}
+
+/// A table's controls row, which shows the table on its own when Expand is chosen: under a
+/// SwiftUI table, and under one a message's TextKit text draws.
+struct MarkdownTableControlsRow: View {
+  let table: MarkdownTable
+  @State private var isExpanded = false
+
+  var body: some View {
+    MarkdownTableControls(table: table, isExpanded: $isExpanded)
+      .expandedPresentation(isPresented: $isExpanded) {
+        ExpandedTable(table: table)
+      }
   }
 }
 
@@ -77,11 +87,8 @@ private struct MarkdownTableControls: View {
   }
 }
 
-/// The table on its own, scrolling both ways, with its controls and Done.
-struct ExpandedTable: View {
+private struct ExpandedTable: View {
   let table: MarkdownTable
-  /// Closes it where AppKit presents it; a SwiftUI sheet dismisses itself.
-  var done: (() -> Void)?
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
@@ -91,7 +98,7 @@ struct ExpandedTable: View {
           .font(.headline)
         Spacer()
         MarkdownTableControls(table: table, isExpanded: .constant(true))
-        Button("Done") { done.map { $0() } ?? dismiss() }
+        Button("Done") { dismiss() }
           .keyboardShortcut(.cancelAction)
           .accessibilityIdentifier("markdown.table.done")
       }
