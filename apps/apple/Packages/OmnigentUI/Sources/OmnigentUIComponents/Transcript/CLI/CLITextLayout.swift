@@ -14,6 +14,11 @@ nonisolated enum CLITextDecoration: Equatable, Sendable {
   case fill(CGRect, SRGB, opacity: Double)
   /// `glyph` on each line from the rectangle's top, on the text's pitch, cut off at its bottom.
   case markers(String, CGRect, SRGB)
+  /// Where the reader acts on something, by id: a tool call, or "… +N lines" (``morePrefix``).
+  case region(CGRect, String)
+
+  /// The start of a region's id that opens what it names.
+  static let morePrefix = "more:"
 }
 
 /// A CLI block's text laid out at one width as SwiftUI lays its views out, built once and shared
@@ -118,7 +123,7 @@ nonisolated enum CLITextLayout {
 
   static func layOut(_ build: CLITextBuild, width: CGFloat, metrics: CLITextMetrics) -> LaidOut {
     let lines = lineCounts(build, width: width)
-    var geometry = Geometry(units: build.units, lines: lines, metrics: metrics)
+    var geometry = Geometry(units: build.units, lines: lines, metrics: metrics, width: width)
     let height = geometry.place(build.root, at: 0)
     let text = NSMutableAttributedString(attributedString: build.text)
     for index in build.units.indices.dropFirst() {
@@ -170,13 +175,16 @@ nonisolated enum CLITextLayout {
     let units: [CLITextUnit]
     let lines: [Int]
     let metrics: CLITextMetrics
+    /// The width the text lays out at, which regions and bands span.
+    let width: CGFloat
     var tops: [CGFloat]
     var decorations: [CLITextDecoration] = []
 
-    init(units: [CLITextUnit], lines: [Int], metrics: CLITextMetrics) {
+    init(units: [CLITextUnit], lines: [Int], metrics: CLITextMetrics, width: CGFloat) {
       self.units = units
       self.lines = lines
       self.metrics = metrics
+      self.width = width
       tops = [CGFloat](repeating: 0, count: units.count)
     }
 
@@ -192,7 +200,8 @@ nonisolated enum CLITextLayout {
         let heights = items.map(height(of:))
         let gap = heights.contains { $0 > threshold } ? loose : compact
         return heights.reduce(0, +) + gap * CGFloat(max(0, heights.count - 1))
-      case .quote(let content, _, _), .bar(let content, _, _):
+      case .quote(let content, _, _), .bar(let content, _, _), .marked(let content, _, _),
+        .region(let content, _), .background(let content, _, _, _):
         return height(of: content)
       case .table(let rows, _, _, _):
         return rows.reduce(0) { $0 + height(of: .text($1)) }
@@ -236,6 +245,34 @@ nonisolated enum CLITextLayout {
       case .table(let rows, let rules, let columns, let color):
         placeTable(rows: rows, rules: rules, columns: columns, color: color, at: top)
         return height(of: node)
+      case .marked, .region, .background:
+        return placeMarked(node, at: top)
+      }
+    }
+
+    /// Places a node with something beside it: a marker in the gutter, a region, a band.
+    private mutating func placeMarked(_ node: CLITextNode, at top: CGFloat) -> CGFloat {
+      switch node {
+      case .marked(let content, let glyph, let color):
+        let markers = metrics.character * 2
+        decorations.append(
+          .markers(
+            glyph, CGRect(x: -markers, y: top, width: markers, height: metrics.lineHeight),
+            color))
+        return place(content, at: top)
+      case .region(let content, let id):
+        let height = place(content, at: top)
+        decorations.append(.region(CGRect(x: 0, y: top, width: width, height: height), id))
+        return height
+      case .background(let content, let leading, let color, let opacity):
+        let height = height(of: content)
+        decorations.append(
+          .fill(
+            CGRect(x: leading, y: top, width: max(0, width - leading), height: height), color,
+            opacity: opacity))
+        return place(content, at: top)
+      default:
+        return place(node, at: top)
       }
     }
 

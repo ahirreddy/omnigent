@@ -1,5 +1,6 @@
 #if os(macOS)
   import AppKit
+  import OmnigentPlatform
   import SwiftUI
 
   /// A CLI text cell's chrome: the message's actions that hover reveals in the CLI's floating
@@ -56,8 +57,10 @@
       refreshActions()
     }
 
-    /// The message's actions, then Copy Message ID.
+    /// The message's actions, then Copy Message ID; in tool work, the actions of the line under
+    /// the pointer, else the group's.
     override func menu(for event: NSEvent) -> NSMenu? {
+      if block?.kind == .work { return workMenu(at: convert(event.locationInWindow, from: nil)) }
       guard let message = block?.message, let values = style.environment.values else {
         return nil
       }
@@ -89,6 +92,101 @@
 
     @objc private func runMenuItem(_ item: NSMenuItem) {
       (item.representedObject as? TranscriptMenuAction)?.perform()
+    }
+
+    // MARK: Tool work
+
+    /// The id of the innermost region of tool work under `point`, in the cell's coordinates.
+    func workRegion(at point: CGPoint) -> String? {
+      guard block?.kind == .work, let document else { return nil }
+      let local = CGPoint(x: point.x - textFrame.minX, y: point.y - textFrame.minY)
+      // Inner regions come first: a line before its cell.
+      for case .region(let rect, let id) in document.decorations where rect.contains(local) {
+        return id
+      }
+      return nil
+    }
+
+    /// What "… +N lines" under `point` opens, if one is there.
+    private func moreAction(at point: CGPoint) -> String? {
+      guard let id = workRegion(at: point), id.hasPrefix(CLITextDecoration.morePrefix) else {
+        return nil
+      }
+      return String(id.dropFirst(CLITextDecoration.morePrefix.count))
+    }
+
+    /// "… +N lines" takes the click, not the text under it.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+      // AppKit declares `superview` unowned(unsafe); it is only read here.
+      let local = convert(point, from: unsafe superview)
+      if bounds.contains(local), moreAction(at: local) != nil { return self }
+      return super.hitTest(point)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+      guard let action = moreAction(at: convert(event.locationInWindow, from: nil)) else {
+        super.mouseDown(with: event)
+        return
+      }
+      toggle(action)
+    }
+
+    /// A tool line's Show output, Copy input and Copy output, an activity's Show details and
+    /// Copy, or the group's Collapse work.
+    private func workMenu(at point: CGPoint) -> NSMenu? {
+      guard let block else { return nil }
+      var actions: [CLIAction] = []
+      if let id = workRegion(at: point), let target = block.work?.targets[id] {
+        let isOpen = expansions.isOpen(id)
+        switch target {
+        case .steps(let steps):
+          actions = CLIToolStep.actions(for: steps, isExpanded: isOpen) { [weak self] in
+            self?.toggle(id)
+          }
+        case .activity(let row):
+          actions = activityActions(row, isOpen: isOpen)
+        }
+      } else if let group = block.group {
+        let isCollapsed = expansions.isCollapsed(group)
+        actions = [
+          CLIAction(
+            title: isCollapsed ? "Expand work" : "Collapse work",
+            systemImage: isCollapsed ? "chevron.down" : "chevron.up",
+            identifier: "worked-fold-\(group)",
+            perform: { [weak self] in self?.toggle(group, collapsing: true) })
+        ]
+      }
+      guard !actions.isEmpty else { return nil }
+      let menu = NSMenu()
+      menu.autoenablesItems = false
+      for action in actions {
+        menu.addItem(menuItem(action.title, enabled: true, perform: action.perform))
+      }
+      return menu
+    }
+
+    /// Show details and Copy, as ``CLIActivityLine`` offers them.
+    private func activityActions(_ row: Row, isOpen: Bool) -> [CLIAction] {
+      guard let activity = row.activity else { return [] }
+      var actions: [CLIAction] = []
+      let summary = activity.detail("summary") ?? activity.summary
+      if !summary.isEmpty {
+        let id = row.id
+        actions.append(
+          CLIAction(
+            title: isOpen ? "Hide details" : "Show details",
+            systemImage: isOpen ? "chevron.up" : "chevron.down",
+            identifier: "reasoning-toggle-\(row.id)",
+            perform: { [weak self] in self?.toggle(id) }))
+      }
+      let copyText = row.text.isEmpty ? activity.summary : row.text
+      if !copyText.isEmpty {
+        actions.append(
+          CLIAction(
+            title: "Copy", systemImage: "doc.on.doc", identifier: "activity-copy-\(row.id)",
+            perform: { Pasteboard.copy(copyText) }))
+      }
+      return actions
     }
   }
 

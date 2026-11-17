@@ -1,20 +1,23 @@
 import Foundation
 
-/// What a CLI text cell draws: agent output in Plain or Styled rendering, a user's prompt, or
-/// the dim line under a settled turn.
+/// What a CLI text cell draws: agent output in Plain or Styled rendering, a user's prompt, the
+/// dim line under a settled turn, or a turn's tool work.
 nonisolated enum CLITextSpec: Hashable, Sendable {
   case styled(String)
   case plain(String)
   case prompt(String)
   case footer(String)
+  case work(CLIWorkSpec)
 
-  /// The spec as one string, for the prewarm's queue.
+  /// The spec as one string, for the prewarm's queue; tool work goes by its hash, which the
+  /// prewarm looks up (``CLITextPrewarm``).
   var key: String {
     switch self {
     case .styled(let text): "s\u{1}" + text
     case .plain(let text): "p\u{1}" + text
     case .prompt(let text): "u\u{1}" + text
     case .footer(let text): "f\u{1}" + text
+    case .work(let work): "w\u{1}\(work.hashValue)"
     }
   }
 
@@ -55,6 +58,12 @@ nonisolated indirect enum CLITextNode: Sendable {
   case table(rows: [Int], rules: [CGFloat], columns: [CLITextColumn], color: SRGB)
   /// A prompt's quoted run, with the bar at `leading` beside it.
   case bar(Self, leading: CGFloat, color: SRGB)
+  /// A text whose first line has `glyph` hanging in the gutter before it.
+  case marked(Self, glyph: String, color: SRGB)
+  /// A node the reader acts on, by `id`: its frame across the text's width.
+  case region(Self, id: String)
+  /// A node on a band of `color` from `leading` across the text's width.
+  case background(Self, leading: CGFloat, color: SRGB, opacity: Double)
 }
 
 /// A node in a stack and the gap above it.

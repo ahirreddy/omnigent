@@ -1,0 +1,94 @@
+#if os(macOS)
+  import AppKit
+  import SwiftUI
+  import Testing
+
+  @testable import OmnigentUIComponents
+  @testable import OmnigentUITestSupport
+
+  /// A turn's tool work in CLI text cells: the long transcript's kinds of tool call, and the
+  /// reader opening and collapsing them.
+  extension TranscriptTableCLICellTests {
+    /// A tool call and its result, as the long transcript records them.
+    static func tool(
+      _ id: String, _ name: String, command: String, output: String
+    ) -> ToolEntry {
+      let arguments = "{\"path\": \"Sources/File12.swift\", \"command\": \"\(command)\"}"
+      return ToolEntry(
+        call: TranscriptFixture.toolCall(id, title: name, summary: arguments),
+        result: TranscriptFixture.toolResult("\(id)-result", callID: id, output: output))
+    }
+
+    /// A unified diff of `lines` changed lines.
+    static func patch(lines: Int) -> String {
+      let head = [
+        "diff --git a/Sources/File12.swift b/Sources/File12.swift",
+        "--- a/Sources/File12.swift", "+++ b/Sources/File12.swift", "@@ -1,8 +1,8 @@",
+      ]
+      let body = (0..<lines).flatMap { ["-  let old\($0) = \($0)", "+  let new\($0) = \($0 * 2)"] }
+      return (head + body).joined(separator: "\n")
+    }
+
+    /// A settled turn's tool work, as the long transcript's turns have it.
+    func worked(_ id: String, _ items: [TranscriptItem]) -> TranscriptTableRow {
+      row(.segment(.worked(id: id, responseID: "resp-1", items: items, isLive: false)))
+    }
+
+    var workRows: [TranscriptTableRow] {
+      let output = (0..<24).map { "bash line \($0): turn 12 call 0 ok" }.joined(separator: "\n")
+      let reasoning = TranscriptFixture.activityRow(
+        .reasoning, id: "r1", title: "Reasoning", summary: "Checking how the cache is called.")
+      return [
+        worked(
+          "w1",
+          [
+            .activity(reasoning),
+            .tools(
+              id: "t1",
+              entries: [
+                Self.tool("c1", "bash", command: "bash 12", output: output),
+                Self.tool(
+                  "c2", "apply_patch", command: "apply_patch 12", output: Self.patch(lines: 8)),
+                Self.tool("c3", "read_file", command: "read_file 12", output: output),
+                Self.tool("c4", "grep", command: "grep 12", output: output),
+              ]),
+          ]),
+        worked(
+          "w2",
+          [
+            .tools(
+              id: "t2",
+              entries: [
+                Self.tool("c5", "bash", command: "echo one\\necho two\\necho three", output: "one"),
+                Self.tool(
+                  "c6", "apply_patch", command: "apply_patch", output: Self.patch(lines: 2)),
+              ])
+          ]),
+      ]
+    }
+
+    @Test("Opening a tool line's output or collapsing the group keeps the SwiftUI row's height")
+    func workExpansions() throws {
+      let environment = environment()
+      let style = style(environment)
+      let expansions = CLIWorkExpansions()
+      let row = try #require(workRows.first)
+      let cell = TranscriptTableCLICell(style: style, expansions: expansions)
+      cell.show(row, version: 0, width: Self.width)
+      let closed = cell.idealHeight
+      var changed = false
+      cell.idealSizeChanged = { _ in changed = true }
+      // "… +21 lines" under the command opens its output, as Show output does.
+      cell.toggle("c1")
+      #expect(changed)
+      #expect(cell.idealHeight > closed)
+      cell.toggle("c1")
+      #expect(cell.idealHeight == closed)
+      cell.toggle("w1", collapsing: true)
+      #expect(cell.idealHeight < closed)
+      // Collapsed, the group is its one summary line.
+      let collapsed = try #require(cell.document)
+      #expect(collapsed.text.text.string.hasSuffix("\u{2026}"))
+    }
+  }
+#endif

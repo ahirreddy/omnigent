@@ -7,8 +7,17 @@
   @MainActor
   final class TranscriptTableCLIState {
     let style: TranscriptTableCLIStyle
-    /// Each row's CLI text by content version, `nil` for a row hosted in SwiftUI.
-    var texts: [String: (version: Int, text: TranscriptTableCLIText?)] = [:]
+    /// The tool work the reader opened, closed or collapsed.
+    let expansions = CLIWorkExpansions()
+    /// Each row's CLI text, `nil` for a row hosted in SwiftUI.
+    var texts: [String: Known] = [:]
+
+    /// A row's CLI text, for its content version and the work opened when it was worked out.
+    struct Known {
+      var version: Int
+      var opened: Int
+      var text: TranscriptTableCLIText?
+    }
     /// Texts handed to the prewarm, by row id and version.
     var prewarmed: [String: Int] = [:]
     /// The text idle measuring waits for the prewarm to lay out, and since when.
@@ -32,9 +41,16 @@
       guard isCLI, cli.style.isEnabled else { return nil }
       let row = model.rows[index]
       let version = model.version(at: index)
-      if let known = cli.texts[row.id], known.version == version { return known.text }
-      let text = TranscriptTableCLIText.make(row, rendering: cli.style.rendering)
-      cli.texts[row.id] = (version, text)
+      let opened = cli.expansions.serial
+      if let known = cli.texts[row.id], known.version == version, known.opened == opened {
+        return known.text
+      }
+      let text = cli.style.text.flatMap {
+        TranscriptTableCLIText.make(
+          row, rendering: cli.style.rendering, palette: $0.palette, expansions: cli.expansions)
+      }
+      cli.texts[row.id] = TranscriptTableCLIState.Known(
+        version: version, opened: opened, text: text)
       return text
     }
 
@@ -104,8 +120,7 @@
         MessageTextPrewarm.shared.prioritize(texts, at: positions)
         return
       }
-      let specs = texts.compactMap(CLITextSpec.init(key:))
-      CLITextPrewarm.shared.prioritize(specs, at: positions)
+      CLITextPrewarm.shared.prioritize(keys: texts, at: positions)
     }
   }
 #endif

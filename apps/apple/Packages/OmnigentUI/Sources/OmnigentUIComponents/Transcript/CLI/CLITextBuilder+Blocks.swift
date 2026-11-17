@@ -204,7 +204,7 @@ nonisolated extension CLITextBuilder {
 
   /// Fenced code in the terminal's colors (``CLICodeHighlightCache``), or plain in the block's
   /// color for a language the highlighter doesn't know.
-  private func highlighted(_ code: String, language: String?, color: SRGB) -> NSAttributedString {
+  func highlighted(_ code: String, language: String?, color: SRGB) -> NSAttributedString {
     guard CodeHighlighting.supports(language) else { return plain(code, color: color) }
     let result = NSMutableAttributedString(attributedString: plain(code, color: palette.body))
     let utf16 = code.utf16

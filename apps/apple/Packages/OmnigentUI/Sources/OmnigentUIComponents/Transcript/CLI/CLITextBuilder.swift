@@ -64,6 +64,8 @@ nonisolated struct CLITextBuilder {
       root = builder.prompt(text)
     case .footer(let text):
       root = builder.unit(builder.plain(text, color: style.palette.dim), indent: 0)
+    case .work(let work):
+      root = builder.work(work)
     }
     return builder.finish(root)
   }
@@ -125,9 +127,9 @@ nonisolated struct CLITextBuilder {
     if let marker {
       // The marker hangs in its column on the first line only; a copy leaves it out, as the
       // CLI's marker is a view of its own.
-      let hung = paragraphStyle(
-        indent: indent, tabs: [NSTextTab(textAlignment: .left, location: indent)] + tabs,
-        lineBreak: lineBreak)
+      let stops = ([NSTextTab(textAlignment: .left, location: indent)] + tabs)
+        .sorted { $0.location < $1.location }
+      let hung = paragraphStyle(indent: indent, tabs: stops, lineBreak: lineBreak)
       hung.firstLineHeadIndent = marker.start
       output.addAttribute(.paragraphStyle, value: hung, range: output.paragraph(startingAt: start))
       output.addAttribute(

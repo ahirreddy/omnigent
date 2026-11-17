@@ -33,7 +33,7 @@
     }
 
     /// The table's environment in CLI style with TextKit chosen.
-    private func environment(rendering: OutputRendering = .styled) -> TranscriptTableEnvironment {
+    func environment(rendering: OutputRendering = .styled) -> TranscriptTableEnvironment {
       let environment = TranscriptTableEnvironment()
       var values = EnvironmentValues()
       values.messageTextRenderer = .textKit
@@ -44,7 +44,7 @@
       return environment
     }
 
-    private func style(_ environment: TranscriptTableEnvironment) -> TranscriptTableCLIStyle {
+    func style(_ environment: TranscriptTableEnvironment) -> TranscriptTableCLIStyle {
       let style = TranscriptTableCLIStyle(
         environment: environment, textStyle: TranscriptTableTextStyle(environment: environment),
         setting: .text)
@@ -52,13 +52,13 @@
       return style
     }
 
-    private func row(_ block: CLIBlock, decorations: [String: MessageDecoration] = [:])
+    func row(_ block: CLIBlock, decorations: [String: MessageDecoration] = [:])
       -> TranscriptTableRow
     {
       TranscriptTableRow(.block(CLIBlockEntry(block: block, decorations: decorations)))
     }
 
-    private func message(_ row: Row) -> TranscriptTableRow {
+    func message(_ row: Row) -> TranscriptTableRow {
       self.row(.segment(.item(.message(row))))
     }
 
@@ -96,13 +96,14 @@
       let environment = environment(rendering: rendering)
       let style = style(environment)
       #expect(style.isEnabled)
-      let rows = [
-        message(TranscriptFixture.user("u1", "Short?")),
-        message(TranscriptFixture.user("u2", "> It said this\nMy reply to it")),
-        message(TranscriptFixture.answer("a1", Self.answer)),
-        message(TranscriptFixture.answer("a2", "## Step\n\nA paragraph with `code`.\n\n- one")),
-        row(.footer(id: "a1", text: "Worked for 12s \u{2022} 9:47 PM")),
-      ]
+      let rows =
+        [
+          message(TranscriptFixture.user("u1", "Short?")),
+          message(TranscriptFixture.user("u2", "> It said this\nMy reply to it")),
+          message(TranscriptFixture.answer("a1", Self.answer)),
+          message(TranscriptFixture.answer("a2", "## Step\n\nA paragraph with `code`.\n\n- one")),
+          row(.footer(id: "a1", text: "Worked for 12s \u{2022} 9:47 PM")),
+        ] + workRows
       for row in rows {
         let cell = TranscriptTableCLICell(style: style)
         cell.show(row, version: 0, width: Self.width)
@@ -165,7 +166,7 @@
       #expect(!view.isReleased)
     }
 
-    @Test("Settled CLI messages and footers take CLI text cells; tool work and streams stay hosted")
+    @Test("Settled CLI messages, footers and tool work take CLI text cells; streams stay hosted")
     func cellKinds() async throws {
       var streaming = TranscriptFixture.answer("a-live", "Streaming", responseID: "r-live")
       streaming.isStreaming = true
@@ -198,7 +199,7 @@
       #expect(kinds["a-live"] == .hosted(.answer))
       let footer = kinds.first { $0.key.hasPrefix("footer:") }
       #expect(footer?.value == .cliText(.cliFooter))
-      #expect(kinds.values.contains(.hosted(.tools)) || kinds.values.contains(.hosted(.worked)))
+      #expect(kinds.values.contains(.cliText(.worked)))
       for index in controller.model.rows.indices {
         guard case .cliText = kinds[controller.model.rows[index].id],
           let cell = controller.realizedCell(at: index)

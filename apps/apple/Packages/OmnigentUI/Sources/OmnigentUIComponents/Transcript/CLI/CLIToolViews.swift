@@ -114,6 +114,69 @@ extension CLIToolStep {
   }
 }
 
+extension CLIToolStep {
+  /// An edit, by its call or the diff it made.
+  nonisolated var isEdit: Bool {
+    if case .edit = call { return true }
+    return diff != nil
+  }
+
+  /// The files its diff changes.
+  nonisolated var files: [CLIDiffFile] { diff.map(CLIDiffFile.files(in:)) ?? [] }
+
+  /// The line's marker: a failed edit's cross, else the bullet.
+  nonisolated var glyph: String { isEdit && entry.isFailure ? CLIBullet.failed : CLIBullet.glyph }
+
+  /// Red for a failure, pulsing while it runs, green for a command or call that worked.
+  nonisolated func marker(_ palette: CLIPalette) -> SRGB? {
+    if entry.isFailure { return palette.failure }
+    if entry.isRunning { return palette.marker }
+    if case .plan = call { return nil }
+    return isEdit ? nil : palette.added
+  }
+
+  /// "Ran git status", "Called server.tool(arguments)", "Updated Plan" or an edit's line.
+  func line(_ files: [CLIDiffFile], palette: CLIPalette) -> CLILineText {
+    var line = CLILineText()
+    if isEdit {
+      editLine(&line, files, palette: palette)
+    } else if case .command(let script) = call {
+      line.append(entry.isRunning ? "Running" : "Ran", bold: true)
+      line.append(" ")
+      line.append(shell: CLIShell.lines(script).first ?? "", palette)
+    } else if case .other(let name, let arguments) = call {
+      // A result whose call is not on screen has only its own title to show.
+      let verb = entry.isRunning ? "Calling " : "Called "
+      line.append(entry.call == nil ? "" : verb, bold: true)
+      line.append(name, entry.call == nil ? nil : palette.marker)
+      line.append(arguments.isEmpty ? "" : "(")
+      line.append(arguments, palette.dim)
+      line.append(arguments.isEmpty ? "" : ")")
+    } else {
+      line.append("Updated Plan", bold: true)
+    }
+    return line
+  }
+
+  /// "Edited App.swift (+3 -1)", "Added notes.md (+2 -0)" or "Edited 2 files (+6 -1)".
+  private nonisolated func editLine(
+    _ line: inout CLILineText, _ files: [CLIDiffFile], palette: CLIPalette
+  ) {
+    var subject = files.count > 1 ? "\(files.count) files" : files.first?.path ?? ""
+    if case .edit(let path) = call, subject.isEmpty { subject = path ?? "files" }
+    if entry.isFailure {
+      line.append("Failed to edit \(subject)", palette.failure, bold: true)
+      return
+    }
+    let verb = files.count == 1 ? files[0].verb : "Edited"
+    line.append(entry.isRunning ? "Editing" : verb, bold: true)
+    line.append(" \(subject)")
+    if let diff, diff.added + diff.removed > 0 {
+      CLIDiffCounts.append(to: &line, added: diff.added, removed: diff.removed, palette)
+    }
+  }
+}
+
 /// One tool call's cell: its header line, then what it left on the `└` branch: a command's
 /// first lines of output, an edit's changed lines, a plan's steps.
 struct CLIToolLine: View {
@@ -129,19 +192,14 @@ struct CLIToolLine: View {
   private(set) var size = CLIFontSize()
 
   private var entry: ToolEntry { step.entry }
-  private var files: [CLIDiffFile] { step.diff.map(CLIDiffFile.files(in:)) ?? [] }
-  private var isEdit: Bool {
-    if case .edit = step.call { return true }
-    return step.diff != nil
-  }
 
   var body: some View {
-    let files = files
+    let files = step.files
     VStack(alignment: .leading, spacing: size.lineSpacing) {
       CLIBulletLine(
-        line: line(files), marker: marker, isLive: entry.isRunning,
-        glyph: isEdit && entry.isFailure ? CLIBullet.failed : CLIBullet.glyph,
-        spokenPrefix: entry.isFailure && !isEdit ? "Failed: " : "")
+        line: step.line(files, palette: palette), marker: step.marker(palette),
+        isLive: entry.isRunning, glyph: step.glyph,
+        spokenPrefix: entry.isFailure && !step.isEdit ? "Failed: " : "")
       if isExpanded, appearance.outputRendering == .rich {
         rich
       } else {
@@ -160,55 +218,9 @@ struct CLIToolLine: View {
     .accessibilityIdentifier("tool-\(entry.id)")
   }
 
-  /// Red for a failure, pulsing while it runs, green for a command or call that worked.
-  private var marker: SRGB? {
-    if entry.isFailure { return palette.failure }
-    if entry.isRunning { return palette.marker }
-    if case .plan = step.call { return nil }
-    return isEdit ? nil : palette.added
-  }
-
-  private func line(_ files: [CLIDiffFile]) -> CLILineText {
-    var line = CLILineText()
-    if isEdit {
-      editLine(&line, files)
-    } else if case .command(let script) = step.call {
-      line.append(entry.isRunning ? "Running" : "Ran", bold: true)
-      line.append(" ")
-      line.append(styled: CLIShell.highlighted(CLIShell.lines(script).first ?? "", palette))
-    } else if case .other(let name, let arguments) = step.call {
-      // A result whose call is not on screen has only its own title to show.
-      let verb = entry.isRunning ? "Calling " : "Called "
-      line.append(entry.call == nil ? "" : verb, bold: true)
-      line.append(name, entry.call == nil ? nil : palette.marker)
-      line.append(arguments.isEmpty ? "" : "(")
-      line.append(arguments, palette.dim)
-      line.append(arguments.isEmpty ? "" : ")")
-    } else {
-      line.append("Updated Plan", bold: true)
-    }
-    return line
-  }
-
-  /// "Edited App.swift (+3 -1)", "Added notes.md (+2 -0)" or "Edited 2 files (+6 -1)".
-  private func editLine(_ line: inout CLILineText, _ files: [CLIDiffFile]) {
-    var subject = files.count > 1 ? "\(files.count) files" : files.first?.path ?? ""
-    if case .edit(let path) = step.call, subject.isEmpty { subject = path ?? "files" }
-    if entry.isFailure {
-      line.append("Failed to edit \(subject)", palette.failure, bold: true)
-      return
-    }
-    let verb = files.count == 1 ? files[0].verb : "Edited"
-    line.append(entry.isRunning ? "Editing" : verb, bold: true)
-    line.append(" \(subject)")
-    if let diff = step.diff, diff.added + diff.removed > 0 {
-      CLIDiffCounts.append(to: &line, added: diff.added, removed: diff.removed, palette)
-    }
-  }
-
   @ViewBuilder
   private func detail(_ files: [CLIDiffFile]) -> some View {
-    if case .command(let script) = step.call, !isEdit {
+    if case .command(let script) = step.call, !step.isEdit {
       CLICommandLines(lines: Array(CLIShell.lines(script).dropFirst()), showsAll: $isExpanded)
     }
     if case .plan(let note, let steps) = step.call {

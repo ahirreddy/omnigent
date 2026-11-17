@@ -42,7 +42,7 @@
         TranscriptTableFittedCell(environment: environment)
       case .hosted: TranscriptTableHostingCell.make(environment: environment)
       case .text: TranscriptTableTextCell(style: textStyle)
-      case .cliText: TranscriptTableCLICell(style: cli.style)
+      case .cliText: TranscriptTableCLICell(style: cli.style, expansions: cli.expansions)
       case .native(.worked): TranscriptTableFoldCell(style: textStyle, folds: folds)
       case .native: TranscriptTableSpacerCell()
       }
