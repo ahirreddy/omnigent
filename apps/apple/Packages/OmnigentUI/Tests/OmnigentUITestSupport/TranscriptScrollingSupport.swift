@@ -105,8 +105,9 @@
     }
   }
 
-  /// The transcript over a ``LiveConversation``. With `rows`, the list reads its rows from them
-  /// and not from the conversation's state, as the app's does.
+  /// The stack transcript over a ``LiveConversation``, with the SwiftUI text the stack falls back
+  /// with (`omnigent:transcript-list stack`). With `rows`, the list reads its rows from them and
+  /// not from the conversation's state, as the app's does.
   struct LiveTranscriptHost: View {
     let conversation: LiveConversation
     let actions: ConversationActions
@@ -115,7 +116,9 @@
     var body: some View {
       TranscriptView(
         state: conversation.state, liveRows: rows, actions: actions,
-        scrollToLatestRequest: conversation.scrollRequest)
+        scrollToLatestRequest: conversation.scrollRequest
+      )
+      .environment(\.messageTextRenderer, .swiftUI)
     }
   }
 

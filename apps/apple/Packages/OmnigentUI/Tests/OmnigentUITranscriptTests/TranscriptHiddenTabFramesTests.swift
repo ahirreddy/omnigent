@@ -87,10 +87,6 @@
         window.liveScroll(scroll, began: false)
       }
       try await letTasksRun(window, milliseconds: 300)
-      // The table measures the rows around a still reader: what follows counts the tab's work.
-      if TranscriptListKind.current == .table {
-        window.run(for: TranscriptTableController.prefetchDelay + 1)
-      }
       return window
     }
 

@@ -118,11 +118,6 @@
         let before = HangTrace.tallies()
         change()
         try await letTasksRun(window, milliseconds: 300)
-        // The table measures the rows around a still reader a while after a change: that is
-        // part of the change's layout coming to rest.
-        if TranscriptListKind.current == .table {
-          window.run(for: TranscriptTableController.prefetchDelay + 0.7)
-        }
         let during = churn(since: before)
         let settled = HangTrace.tallies()
         for _ in 0..<20 { try await letTasksRun(window, milliseconds: 20) }
