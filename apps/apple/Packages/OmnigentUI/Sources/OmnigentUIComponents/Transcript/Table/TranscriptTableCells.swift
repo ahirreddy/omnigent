@@ -1,6 +1,7 @@
 #if os(macOS)
   import AppKit
   import Observation
+  import OmnigentPlatform
   import SwiftUI
 
   /// The transcript's environment, handed to the table's cells on each update: each cell is a
@@ -75,7 +76,7 @@
         case .loading:
           HStack {
             Spacer()
-            ProgressView("Loading earlier messages\u{2026}").controlSize(.small)
+            LoadingCaption(title: "Loading earlier messages\u{2026}").controlSize(.small)
             Spacer()
           }
           .accessibilityIdentifier("history-loading")
