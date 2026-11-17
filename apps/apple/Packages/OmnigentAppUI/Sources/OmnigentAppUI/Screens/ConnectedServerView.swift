@@ -175,6 +175,7 @@ public struct ConnectedServerView: View {
       $0 == .manual ? .manual : .alphabetical
     }
     state.account = signOutAccount
+    state.offlineNotice = SidebarAdapter.offlineNotice(connection)
     return state
   }
 
@@ -249,7 +250,7 @@ public struct ConnectedServerView: View {
       navigation: navigation(from: ownerID ?? id),
       opener: linkOpener(from: id, in: ownerID ?? id),
       openSession: { selection = .session($0) },
-      retry: { connection.foreground() }, server: connection.connectedServer,
+      retry: { session.reconnect() }, server: connection.connectedServer,
       hostEnvironment: { connection.sessionList.hostEnvironments[$0] },
       tabRoutes: windowTabs.routes(for: id, in: ownerID, subagentsApart: openSubagentsApart),
       terminalNames: session.declaredTerminalNames(in: id),

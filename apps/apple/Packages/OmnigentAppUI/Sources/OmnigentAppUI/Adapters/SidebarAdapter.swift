@@ -218,6 +218,16 @@ enum SidebarAdapter {
     return list.isLoaded ? .loaded : .loading
   }
 
+  /// The line under the sidebar while the list is this device's saved copy.
+  static let offlineText = "Offline \u{2014} showing saved sessions"
+
+  /// The sidebar's offline line, `nil` while the server is reachable.
+  /// - Parameter connection: The connection.
+  /// - Returns: The line.
+  static func offlineNotice(_ connection: ConnectionStore) -> String? {
+    connection.isOffline ? offlineText : nil
+  }
+
   /// The web page of a session, as the core builds it (`<server>/c/<id>`, keeping any mount).
   static func webURL(server: ConnectedServer?, sessionID: String) -> URL? {
     guard let server else { return nil }

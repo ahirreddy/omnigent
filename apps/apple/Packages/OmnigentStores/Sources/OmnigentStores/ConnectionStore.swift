@@ -38,6 +38,9 @@ public final class ConnectionStore {
   public internal(set) var issues: [CoreIssue] = []
   /// A browser-ticket sign-in waiting for approval.
   public internal(set) var browserLogin: BrowserLoginInfo?
+  /// The server whose saved sessions show because it could not be reached; `nil` when online
+  /// or when nothing was saved. See ``isOffline``.
+  public internal(set) var offlineServerURL: String?
   /// Bumped when the server's host inventory changes.
   public internal(set) var hostsRevision = 0
   /// Bumped when the server's project list changes.

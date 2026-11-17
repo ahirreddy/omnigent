@@ -17,7 +17,8 @@ struct TabRestoration: ViewModifier {
 
   @State private var boundServer: String?
 
-  private var server: String? { session.connection.connectedServer?.baseUrl }
+  /// The connected server, or the one whose saved sessions show offline.
+  private var server: String? { session.connection.shownServerURL }
 
   func body(content: Content) -> some View {
     content
@@ -28,7 +29,10 @@ struct TabRestoration: ViewModifier {
   }
 
   private func bind() {
-    guard let server, server != boundServer else { return }
+    // Offline and then connected to the same server keeps its tabs.
+    guard let server,
+      !ServerSession.sameServer(URL(string: server), boundServer.flatMap(URL.init(string:)))
+    else { return }
     let tabs = session.tabs
     let browser = context.browser
     let window = context.window

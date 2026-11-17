@@ -71,6 +71,7 @@ enum ComposerAdapter {
     guard !store.isClosed, store.supersededBy == nil,
       let message = ConversationAdapter.connectionStatus(store)
     else { return nil }
+    if store.isOffline { return ComposerConnectionNotice(message: message, isOffline: true) }
     switch store.link {
     case .closed, .stopped, .failed:
       return ComposerConnectionNotice(message: message, isFailure: true)
@@ -205,6 +206,9 @@ enum ComposerAdapter {
     if let header = store.header {
       if header.readOnly { return .unavailable(reason: "You can read this session but not send.") }
       if header.archived { return .unavailable(reason: "This session is archived.") }
+    }
+    if store.isOffline {
+      return .unavailable(reason: "Offline \u{2014} you can send once the server is back.")
     }
     if !store.isHydrated { return .unavailable(reason: "Waiting for the session to load\u{2026}") }
     return .available

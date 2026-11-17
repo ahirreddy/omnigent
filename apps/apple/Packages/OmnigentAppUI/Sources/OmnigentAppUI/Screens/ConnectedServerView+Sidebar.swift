@@ -204,6 +204,7 @@ extension ConnectedServerView {
   var sessionListActions: SessionListActions {
     let list = connection.sessionList
     let connection = connection
+    let session = session
     let server = connection.connectedServer
     let selection = selectionBinding
     var openInWindow: (@MainActor (OmnigentUIComponents.SessionSummary) -> Void)?
@@ -226,7 +227,9 @@ extension ConnectedServerView {
       openInNewWindow: openInWindow,
       webURL: { SidebarAdapter.webURL(server: server, sessionID: $0.id) },
       newSession: { selection.wrappedValue = .newSession },
-      retry: { connection.refreshSessions() })
+      retry: {
+        if connection.isOffline { session.reconnect() } else { connection.refreshSessions() }
+      })
     actions.deleteWithBranch = { summary, deleteBranch in
       removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
     }

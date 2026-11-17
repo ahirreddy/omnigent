@@ -132,7 +132,7 @@ enum ConversationAdapter {
   /// The first read is in flight and no row has arrived: the transcript says it is loading
   /// rather than offering an empty session.
   static func isHydrating(_ store: ConversationStore) -> Bool {
-    !store.isHydrated && !store.isClosed && store.transcriptDigest.isEmpty
+    !store.isHydrated && !store.isClosed && !store.isOffline && store.transcriptDigest.isEmpty
   }
 
   /// What the composer's chip calls the session's approval mode.
@@ -175,10 +175,17 @@ enum ConversationAdapter {
     return phases
   }
 
+  /// What an offline session shows: its saved messages, or that none were saved.
+  static let offlineStatus = "Offline \u{2014} showing saved messages"
+  static let offlineEmptyStatus = "Offline \u{2014} no messages saved for this session"
+
   /// A line for the stream's state when it is not live, `nil` while live.
   static func connectionStatus(_ store: ConversationStore) -> String? {
     if store.isClosed { return "This session is no longer available." }
     if let target = store.supersededBy { return "This conversation continues in \(target)." }
+    if store.isOffline {
+      return store.transcriptDigest.isEmpty ? offlineEmptyStatus : offlineStatus
+    }
     switch store.link {
     case .live: return nil
     case .idle, .connecting: return "Connecting\u{2026}"

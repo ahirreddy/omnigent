@@ -71,7 +71,9 @@ struct SidebarBottomBars: View {
       if let undo = state.undo {
         UndoBar(banner: undo, actions: actions)
       }
-      if case .failed(let message) = state.list.phase {
+      if let offline = state.offlineNotice {
+        SessionListOfflineBar(message: offline, retry: actions.sessions.retry)
+      } else if case .failed(let message) = state.list.phase {
         SessionListErrorBar(message: message, retry: actions.sessions.retry)
       }
     }

@@ -93,7 +93,11 @@ public final class SignInController {
       cancel: { [weak self] in self?.cancel() },
       signOut: { [weak self] in self?.signOut() },
       retry: { [weak self] in self?.retry() },
-      forgetServer: { [weak self] in self?.forgetServer($0) },
+      forgetServer: { [weak self] url in
+        // A server removed from the app takes this device's saved copy of it along.
+        self?.store.forgetSavedServer(url)
+        self?.forgetServer(url)
+      },
       createAccount: { [weak self] in self?.createAccount($0) },
       showAccountForm: { [weak self] in self?.showAccountForm($0) },
       inviteToken: { inviteTokenFromLink(text: $0) },
@@ -224,6 +228,12 @@ public final class SignInController {
   private func retry() {
     guard let lastServerUrl else { return }
     connect(lastServerUrl)
+  }
+
+  /// Connects again to the last server tried, as Retry on the failure screen does; the offline
+  /// view's Retry and Reconnect use it.
+  public func reconnect() {
+    retry()
   }
 
   private func signOut() {

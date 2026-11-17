@@ -34,9 +34,9 @@ public struct ServerRootView: View {
     self.serverSwitching = serverSwitching
   }
 
-  /// Sign-in until connected, then the connected app.
+  /// Sign-in until connected, then the connected app; offline, the sessions this device saved.
   public var body: some View {
-    if session.isSignedIn {
+    if session.showsSessions {
       ConnectedServerView(
         session: session, selection: $selection, isWindowFocused: isWindowFocused,
         openInNewWindow: openInNewWindow, tabContext: tabContext,

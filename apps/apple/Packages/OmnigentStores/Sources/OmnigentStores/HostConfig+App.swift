@@ -1,4 +1,6 @@
+import Foundation
 public import OmnigentCoreFFI
+import OmnigentServices
 
 extension HostConfig {
   /// This build's policy: debug builds accept http to any host, release builds require https
@@ -16,15 +18,17 @@ extension HostConfig {
     #else
       let policy = UrlPolicy.release
     #endif
+    // Sessions seen before open without network from this device's saved copy.
+    let cache = MessageCacheDirectory.prepared()?.path(percentEncoded: false)
     #if os(macOS)
       return HostConfig(
         urlPolicy: policy, oidcRedirect: .loopback(path: "/oauth/callback"),
-        databricks: databricks)
+        databricks: databricks, cacheDirectory: cache)
     #else
       return HostConfig(
         urlPolicy: policy,
         oidcRedirect: .privateScheme(redirectUri: "ai.omnigent.ios:/oauth/callback"),
-        databricks: databricks)
+        databricks: databricks, cacheDirectory: cache)
     #endif
   }
 }

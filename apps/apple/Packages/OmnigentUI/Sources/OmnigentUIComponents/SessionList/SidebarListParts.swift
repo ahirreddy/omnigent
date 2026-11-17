@@ -93,6 +93,31 @@ struct SessionListErrorBar: View {
   }
 }
 
+/// The list is this device's saved copy because the server cannot be reached: a quiet line under
+/// the sidebar, with Retry.
+struct SessionListOfflineBar: View {
+  let message: String
+  let retry: (@MainActor () -> Void)?
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
+      Image(systemName: "wifi.slash")
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+      Text(message).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+      Spacer(minLength: 4)
+      if let retry {
+        Button("Retry", action: retry).controlSize(.small)
+          .accessibilityIdentifier("sidebar-offline-retry")
+      }
+    }
+    .padding(Theme.Spacing.medium)
+    .background(.bar)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("sidebar-offline")
+  }
+}
+
 #if os(iOS)
   /// A row's iPhone and iPad swipe actions: read state and pin leading, archive trailing.
   struct SessionSwipeActions: ViewModifier {

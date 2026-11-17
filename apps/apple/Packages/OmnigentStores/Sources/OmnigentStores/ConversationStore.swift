@@ -91,6 +91,8 @@ public final class ConversationStore {
   public private(set) var isClosed = false
   /// The session the conversation continues in, when superseded.
   public private(set) var supersededBy: String?
+  /// The rows are what this device saved, because the server cannot be reached.
+  public internal(set) var isOffline = false
   /// When the running turn started and how long finished turns worked, for the turns this
   /// store saw start.
   public private(set) var turnTimer = TurnTimer()
