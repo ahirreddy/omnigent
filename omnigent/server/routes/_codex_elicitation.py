@@ -137,6 +137,11 @@ def _structured_codex_request_user_input(
     but its response must be keyed by stable question id. Preserve that
     id on each question so the UI can post MCP ``content`` keyed by id.
 
+    Codex sends ``options: null`` for a free-text question, which its
+    TUI answers in a text box whatever ``isOther`` says. Such a question
+    is published with no options and ``isOther: true``, the shared shape
+    for a question answered only by typing.
+
     :param params: Codex ``item/tool/requestUserInput`` params, e.g.
         ``{"questions": [{"id": "framework", "question": "Pick",
         "options": [{"label": "React"}]}]}``.
@@ -180,7 +185,9 @@ def _structured_codex_request_user_input(
         if isinstance(header, str) and header:
             question["header"] = header
         is_other = entry.get("isOther")
-        if isinstance(is_other, bool):
+        if options_raw is None or options_raw == []:
+            question["isOther"] = True
+        elif isinstance(is_other, bool):
             question["isOther"] = is_other
         is_secret = entry.get("isSecret")
         if isinstance(is_secret, bool):
@@ -691,6 +698,12 @@ def _codex_command_approval_params(
     message = "Codex wants to run a command"
     if command:
         message = f"Codex wants to run **{command}**"
+    # A managed-network prompt asks about the host, not the command that reached it.
+    network = params.get("networkApprovalContext")
+    network_host = network.get("host") if isinstance(network, dict) else None
+    if isinstance(network_host, str) and network_host:
+        extras["network_host"] = network_host
+        message = f"Codex wants network access to **{network_host}**"
     return ElicitationRequestParams(
         mode="form",
         message=message,
