@@ -79,8 +79,14 @@ bytes fed to `ghostty_surface_*` on iOS, and a C++ runtime link.
   running `git describe` on the enclosing Omnigent checkout. A cold build took 6 min 54 s on an
   M-series Mac, and a rerun with an unchanged stamp takes 0.8 s. The output is about 516 MB of
   static libraries; only the linked code ends up in the app.
+- **Patches.** Our changes to the pinned source are unified diffs in
+  `scripts/ghostty-patches/`, applied in name order to a fresh extraction. Their hash is part of
+  the stamp, so changing one rebuilds. Make one by editing the extracted tree and diffing it
+  against the tarball's files (`a/` and `b/` prefixes); a rebuild after a patch change took
+  about 2 min with the caches warm. `0001-macos-never-draw-into-a-shown-iosurface.patch`: see
+  "Output" in section 3.
 - **CI.** Cache `apps/apple/Vendor/ghostty/{downloads,zig-cache,out}` keyed on the hash of
-  `scripts/fetch-ghostty.sh`, and install the Metal toolchain before the step.
+  `scripts/fetch-ghostty.sh` and the patches, and install the Metal toolchain before the step.
 - **Linking.** The static library carries C++ objects (glslang, SPIRV-Cross), so
   `OmnigentGhosttyKit` links `libc++` plus Metal, QuartzCore, CoreText, CoreGraphics,
   CoreVideo, IOSurface, Foundation, AppKit and Carbon on macOS, and UIKit on iOS.
@@ -110,10 +116,17 @@ WebSocket ──binary──► Rust TerminalAttach ──AttachOutput::Output�
   and is thread-safe. We call it on the main actor from the connection's output stream. A
   `TerminalOutput.resetScreen` (the Rust machine's `ResetScreen`, emitted on every reattach)
   feeds `ESC c` (RIS). The server's next frame is a `capture-pane` seed of the current screen
-  that starts with `CSI H CSI 2J`. On macOS output waits while a frame libghostty drew has not
-  reached the layer (`TerminalOutputPacer`): its three IOSurfaces are reused once the GPU is
-  done, not once Core Animation stops showing them, so a busy main thread would otherwise have
-  the renderer draw into the frame on screen.
+  that starts with `CSI H CSI 2J`. On macOS libghostty draws on its renderer thread into a ring
+  of IOSurfaces and the main thread puts each finished frame on the layer. The pinned source
+  frees a slot once the GPU is done with it, so while the main thread runs behind, any redraw
+  (output, scrolling, the cursor) can land in the IOSurface on screen and tear. Our patch keeps
+  every IOSurface queued for or shown on the layer in use (`IOSurfaceIncrementUseCount`) until
+  the layer shows another, and the renderer skips a slot whose IOSurface is in use
+  (`IOSurfaceIsInUse`, which also counts the window server's own use while it composites one).
+  A fourth slot is used only when the three are taken; with none free the frame is skipped and
+  drawn one display refresh later.
+  Output also waits while a frame drawn from earlier output has not reached the layer
+  (`TerminalOutputPacer`), so a burst becomes one frame the layer can take.
 - **Input.** Ghostty encodes keys, IME commits, paste and mouse reports according to the modes
   the remote program set through its output: DECCKM, the kitty keyboard flags,
   modifyOtherKeys, bracketed paste and the SGR mouse modes. It then calls `io_write_cb` on its

@@ -4,8 +4,8 @@ import Foundation
 struct TerminalFrameProbe {
   /// Times libghostty's renderer has taken the terminal's state for a frame.
   var updatedFrames: @MainActor () -> Int
-  /// Frames put on the layer. The layer's IOSurface alone can't tell: the ring of three
-  /// repeats every third frame.
+  /// Frames put on the layer. The layer's IOSurface alone can't tell: the renderer's ring of
+  /// IOSurfaces brings each one back.
   var shownFrames: @MainActor () -> Int
   /// Whether the surface is in a window, where Core Animation shows its frames.
   var isInWindow: @MainActor () -> Bool
@@ -14,12 +14,11 @@ struct TerminalFrameProbe {
 /// Holds remote output while a frame libghostty drew from earlier output has not reached the
 /// layer yet.
 ///
-/// On macOS libghostty draws on its own thread into a ring of three IOSurfaces, and hands each
-/// finished frame to the main thread to put on the layer. A slot is free again as soon as the
-/// GPU is done with it, not once Core Animation stops showing it. When the main thread falls a
-/// frame behind (a window busy laying out a streaming chat), the renderer draws into the
-/// IOSurface still on screen, which shows as tearing. Changing the screen only once the last
-/// frame is on the layer, and committed, keeps a full frame between the two.
+/// On macOS libghostty draws on its own thread and hands each finished frame to the main thread
+/// to put on the layer. While the main thread runs behind (a window busy laying out a streaming
+/// chat), frames drawn meanwhile can't be shown, and the patched renderer skips them rather
+/// than draw into an IOSurface on screen (DESIGN.md, "Output"). Changing the screen only once
+/// the last frame is on the layer, and committed, makes a burst of output one frame instead.
 @MainActor
 final class TerminalOutputPacer {
   /// How often held output checks whether the frame reached the layer.

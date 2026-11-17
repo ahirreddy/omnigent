@@ -195,7 +195,7 @@ jobs:
             apps/apple/Vendor/ghostty/downloads
             apps/apple/Vendor/ghostty/zig-cache
             apps/apple/Vendor/ghostty/out
-          key: ghostty-${{ hashFiles('apps/apple/scripts/fetch-ghostty.sh') }}
+          key: ghostty-${{ hashFiles('apps/apple/scripts/fetch-ghostty.sh', 'apps/apple/scripts/ghostty-patches/*.patch') }}
 
       - name: Fetch libghostty
         run: bash apps/apple/scripts/fetch-ghostty.sh
@@ -325,7 +325,7 @@ jobs:
             apps/apple/Vendor/ghostty/downloads
             apps/apple/Vendor/ghostty/zig-cache
             apps/apple/Vendor/ghostty/out
-          key: ghostty-${{ hashFiles('apps/apple/scripts/fetch-ghostty.sh') }}
+          key: ghostty-${{ hashFiles('apps/apple/scripts/fetch-ghostty.sh', 'apps/apple/scripts/ghostty-patches/*.patch') }}
 
       - name: Fetch libghostty
         run: bash apps/apple/scripts/fetch-ghostty.sh
