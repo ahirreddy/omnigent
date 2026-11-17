@@ -287,9 +287,6 @@
       }
     }
 
-    /// The parked cell for row `id`, left in the pool.
-    func parkedCell(for id: String) -> (any TranscriptTableCell)? { parked[id] }
-
     /// Lets go of the rows that are gone: their cells become spares.
     mutating func keep(only ids: Set<String>) {
       for id in order where !ids.contains(id) {
