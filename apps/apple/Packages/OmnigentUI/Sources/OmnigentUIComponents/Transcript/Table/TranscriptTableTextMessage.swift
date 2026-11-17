@@ -51,18 +51,20 @@
         role: role, row: message, decoration: decoration, markdown: markdown, split: split)
     }
 
-    /// One run of text blocks and the gap above it.
+    /// One run of text blocks, the gap above it and the inline math its paragraphs typeset.
     struct Run {
       var id: Int
       var gapAbove: CGFloat
       var blocks: [MarkdownBlock]
+      var inlineMath: [String]
     }
 
     /// The text runs, top to bottom.
     var runs: [Run] {
       split.pieces.compactMap { piece in
         guard case .text(let blocks) = piece.content else { return nil }
-        return Run(id: piece.id, gapAbove: piece.gapAbove, blocks: blocks)
+        return Run(
+          id: piece.id, gapAbove: piece.gapAbove, blocks: blocks, inlineMath: piece.inlineMath)
       }
     }
   }

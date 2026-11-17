@@ -175,13 +175,22 @@
       guard split.cited.isEmpty else { return }
       for piece in split.pieces {
         guard case .text(let blocks) = piece.content else { continue }
-        let key = MessageTextDocumentKey(text: text, piece: piece.id, style: style, linked: [])
+        // The inline math typeset so far, as the row shows it.
+        var math: [String: RenderedRichBlock] = [:]
+        for tex in piece.inlineMath {
+          let request = RichBlockRequest(
+            kind: .math(display: false, size: style.ramp.body), source: tex)
+          math[tex] = MessageTextTypesetMath.shared.image(for: request)
+        }
+        let key = MessageTextDocumentKey(
+          text: text, piece: piece.id, style: style, linked: [], math: math.keys.sorted())
         let built = store.documents.withLock { $0.cached(key) }
         if let built {
           if draws { drawAhead(built, context: context, store: store) }
           continue
         }
         var builder = MessageTextBuilder(palette: context.palette)
+        builder.typesetMath = math
         let document = builder.document(blocks)
         let layout = MessageTextPreparedLayout(text: document.text, width: context.width)
         store.sizes.store(

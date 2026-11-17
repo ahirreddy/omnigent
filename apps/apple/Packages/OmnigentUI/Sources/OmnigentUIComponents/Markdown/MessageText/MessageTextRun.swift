@@ -105,6 +105,27 @@ nonisolated extension MessageTextSize {
   }
 }
 
+/// Inline math typeset so far (by ``RichBlockRenderer``, on the main actor), where answers laid
+/// out ahead off it find it: an answer whose math is all here lays out with it, as its row
+/// will show it.
+nonisolated final class MessageTextTypesetMath: Sendable {
+  static let shared = MessageTextTypesetMath(limit: 512)
+
+  private let entries: Mutex<BoundedCache<RichBlockRequest, RenderedRichBlock>>
+
+  init(limit: Int) {
+    entries = Mutex(BoundedCache(limit: limit))
+  }
+
+  func image(for request: RichBlockRequest) -> RenderedRichBlock? {
+    entries.withLock { $0.cached(request) }
+  }
+
+  func store(_ image: RenderedRichBlock, for request: RichBlockRequest) {
+    entries.withLock { $0.store(image, for: request) }
+  }
+}
+
 /// Laid-out runs' sizes, by document and width, from wherever a run was laid out (ahead, drawn,
 /// or measured on the main actor): a row far from view is measured from them, with no text
 /// view. Written off the main actor, read on it.

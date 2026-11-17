@@ -26,7 +26,8 @@
         case .text(let blocks):
           let document = MessageTextBlocksView.document(
             source: MessageTextSource(text: message.markdown, piece: piece.id), blocks: blocks,
-            linked: [], style: textStyle, links: nil)
+            linked: [], math: typesetMath(piece.inlineMath, ramp: textStyle.ramp),
+            style: textStyle, links: nil)
           let size = runSize(document, width: textWidth)
           // A prompt's bubble hugs its text, unless a block in it spans the column.
           let hugs = !isAnswer && !document.hasWideBlocks
@@ -41,6 +42,27 @@
         metrics: metrics,
         workedHeight: isAnswer ? message.decoration.workedFor.map { _ in workedLabelHeight } : nil)
       return frames.height
+    }
+
+    /// A piece's inline math typeset at `ramp`'s size so far, by TeX: from the renderer's
+    /// cache, kept where the prewarm reads it too.
+    static func typesetMath(_ math: [String], ramp: TypeRamp) -> [String: RenderedRichBlock] {
+      var typeset: [String: RenderedRichBlock] = [:]
+      for tex in math {
+        let request = mathRequest(tex, ramp: ramp)
+        if let image = RichBlockRenderer.shared.cached(request) {
+          MessageTextTypesetMath.shared.store(image, for: request)
+          typeset[tex] = image
+        } else if let image = MessageTextTypesetMath.shared.image(for: request) {
+          typeset[tex] = image
+        }
+      }
+      return typeset
+    }
+
+    /// Inline math at `ramp`'s size, as ``MessageTextMarkdownView`` asks for it.
+    nonisolated static func mathRequest(_ tex: String, ramp: TypeRamp) -> RichBlockRequest {
+      RichBlockRequest(kind: .math(display: false, size: ramp.body), source: tex)
     }
 
     /// `document`'s size `width` wide: as laid out ahead or drawn, else laid out now.

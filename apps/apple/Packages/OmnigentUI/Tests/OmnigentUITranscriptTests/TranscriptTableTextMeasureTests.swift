@@ -84,6 +84,33 @@
       }
     }
 
+    @Test("A text cell shows its typeset inline math, and a far row measures with it")
+    func inlineMath() throws {
+      let style = textStyle()
+      let answer = row(
+        TranscriptFixture.answer("a-math", "The ratio \\(x_i^2 + 1\\) grows with each step."))
+      let message = try #require(TranscriptTableTextMessage.make(answer, ramp: style.ramp))
+      let tex = try #require(message.runs.first?.inlineMath.first)
+      // KaTeX's image for it, as the renderer would have typeset it.
+      let context = try #require(
+        unsafe CGContext(
+          data: nil, width: 60, height: 36, bitsPerComponent: 8, bytesPerRow: 0,
+          space: CGColorSpaceCreateDeviceRGB(),
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+      let image = try #require(context.makeImage())
+      MessageTextTypesetMath.shared.store(
+        RenderedRichBlock(
+          image: image, scale: 2, size: CGSize(width: 30, height: 18), baseline: 14),
+        for: TranscriptTableTextCell.mathRequest(tex, ramp: style.ramp))
+      let cell = TranscriptTableTextCell(style: style)
+      cell.show(answer, version: 0, width: Self.width)
+      #expect(cell.runs.first?.document?.text.string.contains("\u{FFFC}") == true)
+      let measured = try #require(
+        TranscriptTableTextCell.measuredHeight(
+          of: message, style: style, width: Self.width, blockHeight: blockHeight(style)))
+      #expect(measured == cell.idealHeight)
+    }
+
     @Test("A live resize lays text out at snapped widths, and at the exact one once it ends")
     func liveResize() async throws {
       let metrics = { (width: CGFloat, snap: CGFloat) in

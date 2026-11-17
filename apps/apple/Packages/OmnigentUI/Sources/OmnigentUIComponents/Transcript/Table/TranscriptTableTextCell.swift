@@ -36,6 +36,10 @@
     private var laidOut: (metrics: TranscriptTableTextMetrics, textWidth: CGFloat)?
     var isHovered = false
     var hoverArea: NSTrackingArea?
+    /// The row shown, to show again once its inline math is typeset.
+    private var shownRow: TranscriptTableRow?
+    /// Typesets the inline math the shown message doesn't have yet.
+    private var typesetting: Task<Void, Never>?
 
     init(style: TranscriptTableTextStyle) {
       self.style = style
@@ -67,15 +71,20 @@
         return
       }
       shown = next
+      shownRow = row
       kind = .text(row.kind)
       styleSerial = style.serial
       self.message = message
       var documents: [Int: MessageTextDocument] = [:]
+      var untypeset: [String] = []
       for run in message.runs {
+        let math = Self.typesetMath(run.inlineMath, ramp: textStyle.ramp)
+        untypeset += run.inlineMath.filter { math[$0] == nil }
         documents[run.id] = MessageTextBlocksView.document(
           source: MessageTextSource(text: message.markdown, piece: run.id), blocks: run.blocks,
-          linked: [], style: textStyle, links: nil)
+          linked: [], math: math, style: textStyle, links: nil)
       }
+      typeset(untypeset, ramp: textStyle.ramp, for: next)
       let metrics = style.metrics(width: width)
       let textWidth =
         message.role == .answer ? metrics.columnWidth : metrics.promptWidth(style.layoutWidth)
@@ -152,31 +161,11 @@
       blockSizeChanged()
     }
 
-    /// The reader turned a drawn run's code block Wrap: long lines that scroll sideways need
-    /// the live text, which shows instead of the drawing from now on.
-    private func showLive(_ document: MessageTextDocument, block: Int, wraps: Bool) {
-      style.liveDocuments.insert(document.serial)
-      guard let index = runs.firstIndex(where: { $0.document === document }),
-        case .raster(let drawn) = runs[index], let laidOut
-      else { return }
-      let openURL = drawn.openURL
-      runs[index].release()
-      let view = MessageTextViews.shared.checkOut(document)
-      view.openURL = openURL
-      addSubview(view)
-      runs[index] = .live(view)
-      if index == 0, message?.role == .answer, let id = message?.row.id {
-        view.setAccessibilityIdentifier("message-text-\(id)")
-      }
-      view.setWraps(wraps, block: block)
-      // The header pressed was the drawing's; the live text's own shows the same state.
-      _ = view.measurement(for: laidOut.textWidth)
-      (view.chromeViews[block] as? MessageCodeHeaderView)?.wrapsLines = wraps
-      blockSizeChanged()
-    }
-
     /// Hands the text views back for the next cell that shows their documents.
     func releaseContent() {
+      typesetting?.cancel()
+      typesetting = nil
+      shownRow = nil
       for run in runs { run.release() }
       runs = []
       shown = nil
@@ -290,6 +279,61 @@
       addSubview(label)
       workedLabel = label
       return label
+    }
+  }
+
+  extension TranscriptTableTextCell {
+    /// Typesets `math` the shown message doesn't have yet, then shows it again with it; math
+    /// KaTeX rejects keeps its Unicode form, as in ``MarkdownParagraphText``.
+    fileprivate func typeset(_ math: [String], ramp: TypeRamp, for shown: TranscriptTableShown) {
+      typesetting?.cancel()
+      typesetting = nil
+      guard !math.isEmpty else { return }
+      typesetting = Task { [weak self] in
+        var typeset = false
+        for tex in math {
+          let request = Self.mathRequest(tex, ramp: ramp)
+          do {
+            let image = try await RichBlockRenderer.shared.render(request)
+            MessageTextTypesetMath.shared.store(image, for: request)
+            typeset = true
+          } catch is CancellationError {
+            return
+          } catch {
+            continue
+          }
+        }
+        guard typeset, !Task.isCancelled, let self, self.shown == shown,
+          let row = self.shownRow
+        else { return }
+        let previous = self.height
+        self.shown = nil
+        self.show(row, version: shown.version, width: shown.width)
+        if abs(previous - self.height) >= 0.5 { self.idealSizeChanged?(self) }
+      }
+    }
+
+    /// The reader turned a drawn run's code block Wrap: long lines that scroll sideways need
+    /// the live text, which shows instead of the drawing from now on.
+    fileprivate func showLive(_ document: MessageTextDocument, block: Int, wraps: Bool) {
+      style.liveDocuments.insert(document.serial)
+      guard let index = runs.firstIndex(where: { $0.document === document }),
+        case .raster(let drawn) = runs[index], let laidOut
+      else { return }
+      let openURL = drawn.openURL
+      runs[index].release()
+      let view = MessageTextViews.shared.checkOut(document)
+      view.openURL = openURL
+      addSubview(view)
+      runs[index] = .live(view)
+      if index == 0, message?.role == .answer, let id = message?.row.id {
+        view.setAccessibilityIdentifier("message-text-\(id)")
+      }
+      view.setWraps(wraps, block: block)
+      // The header pressed was the drawing's; the live text's own shows the same state.
+      _ = view.measurement(for: laidOut.textWidth)
+      (view.chromeViews[block] as? MessageCodeHeaderView)?.wrapsLines = wraps
+      blockSizeChanged()
     }
   }
 

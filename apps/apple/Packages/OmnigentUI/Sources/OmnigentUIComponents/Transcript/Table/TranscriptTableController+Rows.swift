@@ -148,8 +148,10 @@
         let message = textMessage(at: index), message.role == .answer,
         let run = message.runs.first, let style = textStyle.style
       else { return nil }
+      let math = TranscriptTableTextCell.typesetMath(run.inlineMath, ramp: style.ramp)
       let key = MessageTextDocumentKey(
-        text: message.markdown, piece: run.id, style: style, linked: [])
+        text: message.markdown, piece: run.id, style: style, linked: [],
+        math: math.keys.sorted())
       let isBuilt =
         MessageTextDocuments.shared.cached(key) != nil
         || MessageTextPrewarm.shared.takeDocument(for: key) != nil
