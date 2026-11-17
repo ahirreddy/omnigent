@@ -67,6 +67,24 @@
       #expect(view.subviews.contains { $0 is MessageCodeHeaderView })
     }
 
+    @Test("An update keeps the text before the old last block, or before a paragraph that changed")
+    func unchangedPrefix() {
+      func document(_ markdown: String) -> MessageTextDocument {
+        var builder = MessageTextBuilder(palette: MessageTextPalette(MessageTextFixture.style))
+        builder.lastBlockIsOpen = true
+        return builder.document(MarkdownParser.parse(markdown))
+      }
+      let old = document("Intro.\n\nSecond")
+      #expect(old.tailStart == 7, "after \"Intro.\\n\"")
+      let length = old.text.length
+      let grown = document("Intro.\n\nSecond line")
+      #expect(MessageTextContentView.unchangedPrefix(of: old, and: grown, upTo: length) == 7)
+      let changed = document("Other.\n\nSecond line")
+      #expect(MessageTextContentView.unchangedPrefix(of: old, and: changed, upTo: length) == 0)
+      let shorter = document("Intro.")
+      #expect(MessageTextContentView.unchangedPrefix(of: old, and: shorter, upTo: length) <= 6)
+    }
+
     @Test("A run before the streaming block keeps its layout while the answer streams on")
     func earlierRunsKeepTheirLayout() throws {
       let answer = StreamedAnswer("Intro.\n\n$$\nx^2\n$$\n\nAfter")

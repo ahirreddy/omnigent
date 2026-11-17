@@ -277,7 +277,8 @@
         document = next
         return
       }
-      let start = streaming ? min(document.tailStart, storage.length) : 0
+      let start =
+        streaming ? Self.unchangedPrefix(of: document, and: next, upTo: storage.length) : 0
       let changed = Set(
         spans.compactMap { block, span in NSMaxRange(span.range) > start ? block : nil })
       for block in changed {
@@ -296,6 +297,21 @@
       isStreaming = streaming
       spans = MessageTextBlockSpan.spans(in: next.text)
       forgetLayout()
+    }
+
+    /// How much of `old`'s text `next` keeps: up to the old last block, or to the start of the
+    /// paragraph where the two first differ, should a parse have changed an earlier block.
+    static func unchangedPrefix(
+      of old: MessageTextDocument, and next: MessageTextDocument, upTo length: Int
+    ) -> Int {
+      let before = Array(old.text.string.utf16)
+      let after = Array(next.text.string.utf16)
+      let limit = min(old.tailStart, length, before.count, after.count)
+      guard let differs = (0..<limit).first(where: { before[$0] != after[$0] }) else {
+        return limit
+      }
+      // A line break ends a paragraph.
+      return (before[..<differs].lastIndex(of: 0x0A) ?? -1) + 1
     }
   }
 
