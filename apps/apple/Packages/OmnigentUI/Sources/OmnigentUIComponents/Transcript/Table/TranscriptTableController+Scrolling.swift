@@ -133,11 +133,14 @@
       follow.geometryChanged(isNearBottom: isNearBottom)
     }
 
-    /// The row under the viewport's top, and how far into it the top is.
-    func readingAnchor() -> ReadingAnchor? {
+    /// The row under the viewport's top, and how far into it the top is. `belowHeader` keeps a
+    /// reader at the top on the first row under the header instead, for rows that land between
+    /// them: a page of older history.
+    func readingAnchor(belowHeader: Bool = false) -> ReadingAnchor? {
       guard !model.rows.isEmpty, tableView.numberOfRows == model.rows.count else { return nil }
       let top = clipView.bounds.minY + insets.top
-      let row = tableView.row(at: NSPoint(x: 1, y: max(0, top)))
+      var row = tableView.row(at: NSPoint(x: 1, y: max(0, top)))
+      if belowHeader, row == 0, model.rows.count > 1 { row = 1 }
       guard model.rows.indices.contains(row) else { return nil }
       return ReadingAnchor(id: model.rows[row].id, offset: top - tableView.rect(ofRow: row).minY)
     }

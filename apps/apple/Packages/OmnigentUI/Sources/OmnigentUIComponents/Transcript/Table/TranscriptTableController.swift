@@ -158,8 +158,12 @@
       _ = scrollView
       // A hidden tab's rows keep their width until it shows.
       if isShown { syncWidth() }
-      let anchor = readingAnchor()
+      let topAnchor = readingAnchor()
+      let pageAnchor = readingAnchor(belowHeader: true)
       let change = model.replaceRows(rows)
+      // A page landing under the header keeps the reader on the rows they were reading.
+      let anchor =
+        change.inserted.lowerBound == 1 && !change.inserted.isEmpty ? pageAnchor : topAnchor
       if !change.isEmpty { apply(change) }
       if frameIfReady() {
         // Opened: framed at its latest turn.

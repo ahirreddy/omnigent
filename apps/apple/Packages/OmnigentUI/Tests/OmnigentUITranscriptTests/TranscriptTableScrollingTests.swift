@@ -186,6 +186,28 @@
       #expect(isReading(anchor, controller))
     }
 
+    @Test("A page landing above a reader at the top keeps the rows they were reading in place")
+    func pagingAtTheTopKeepsPosition() async throws {
+      let conversation = session(hasMore: true)
+      let (driver, controller) = try await screen(conversation, actions: pagingActions)
+      let window = driver.screen
+      defer { window.close() }
+      try scroll(window, driver, to: controller.minimumOffset)
+      let first = try #require(controller.model.rows.dropFirst().first?.id)
+      let below = controller.tableView.rect(ofRow: 1).minY - driver.offset
+      conversation.state.isLoadingHistory = true
+      window.settle()
+      conversation.state.rows.insert(contentsOf: TranscriptFixture.turns(4), at: 0)
+      conversation.state.revision += 1
+      conversation.state.isLoadingHistory = false
+      conversation.state.historyReads += 1
+      window.settle()
+      // The page is above the reader, who still sees the rows they were reading.
+      let index = try #require(controller.model.index(of: first))
+      #expect(index > 1)
+      #expect(abs(controller.tableView.rect(ofRow: index).minY - driver.offset - below) < 1)
+    }
+
     @Test("Rows are measured once: scrolling back over them and a streamed delta measure little")
     func measuresOnce() async throws {
       let conversation = session(turns: 24)
