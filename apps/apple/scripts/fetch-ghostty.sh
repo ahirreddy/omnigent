@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fetch the pinned libghostty source (the MIT manaflow-ai/ghostty fork), verify its SHA-256,
-# build GhosttyKit.xcframework with the pinned Zig, and stage it under apps/apple/Vendor/ghostty.
+# apply Omnigent's patches (scripts/ghostty-patches/*.patch, in name order), build
+# GhosttyKit.xcframework with the pinned Zig, and stage it under apps/apple/Vendor/ghostty.
 #
 # Usage: fetch-ghostty.sh [--target universal|native] [--force]
 #   universal (default): macOS arm64+x86_64, iOS arm64 and iOS simulator arm64 slices.
@@ -11,12 +12,12 @@
 #   Vendor/ghostty/out/LICENSE                  Ghostty's MIT license (ship it in notices)
 #   Vendor/ghostty/out/GHOSTTY_VERSION          pinned source, Zig and target, written last
 #
-# Caches (safe to persist in CI, keyed on this file's hash):
+# Caches (safe to persist in CI, keyed on the hash of this file and the patches):
 #   Vendor/ghostty/downloads/   verified source tarballs
 #   Vendor/ghostty/zig-cache/   ZIG_GLOBAL_CACHE_DIR (Zig package and build cache)
 #
 # Requirements: Xcode with the Metal toolchain (xcodebuild -downloadComponent MetalToolchain),
-# mise (installs the pinned Zig), curl, shasum, tar.
+# mise (installs the pinned Zig), curl, shasum, tar, patch.
 #
 # Idempotent: a matching GHOSTTY_VERSION stamp short-circuits. Every failure exits non-zero.
 set -euo pipefail
@@ -48,7 +49,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --target) TARGET="${2:-}"; shift 2 ;;
     --force) FORCE=1; shift ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     *) die "unknown argument '$1'" ;;
   esac
 done
@@ -58,7 +59,7 @@ case "$TARGET" in
 esac
 
 [[ "$(uname -s)" == "Darwin" ]] || die "GhosttyKit builds on macOS only"
-for tool in curl shasum tar mise xcrun; do
+for tool in curl shasum tar patch mise xcrun; do
   command -v "$tool" >/dev/null 2>&1 || die "required tool '$tool' not found on PATH"
 done
 xcrun -sdk macosx metal --version >/dev/null 2>&1 \
@@ -75,9 +76,19 @@ DOWNLOADS="$VENDOR/downloads"
 SRC_ROOT="$VENDOR/src"
 OUT="$VENDOR/out"
 SHORT="${GHOSTTY_COMMIT:0:12}"
+# Unified diffs against the extracted source (a/ and b/ prefixes). A changed patch set changes
+# the stamp and the extraction marker, so the source is extracted and patched afresh.
+PATCH_DIR="$SCRIPT_DIR/ghostty-patches"
+PATCHES=()
+while IFS= read -r -d '' patch_file; do PATCHES+=("$patch_file"); done \
+  < <(find "$PATCH_DIR" -maxdepth 1 -name '*.patch' -print0 2>/dev/null | LC_ALL=C sort -z)
+PATCH_HASH="none"
+if [[ ${#PATCHES[@]} -gt 0 ]]; then
+  PATCH_HASH="$(cat "${PATCHES[@]}" | shasum -a 256 | cut -c1-16)"
+fi
 # `headers:GhosttyKit` is the staged layout (see "Namespace the headers" below); changing the
 # layout changes the stamp, so an older staging is rebuilt.
-STAMP_CONTENT="$GHOSTTY_REPO@$GHOSTTY_COMMIT zig-$ZIG_VERSION $TARGET ReleaseFast no-sentry headers:GhosttyKit memset-localized"
+STAMP_CONTENT="$GHOSTTY_REPO@$GHOSTTY_COMMIT zig-$ZIG_VERSION $TARGET ReleaseFast no-sentry headers:GhosttyKit memset-localized patches:$PATCH_HASH"
 
 if [[ $FORCE -eq 0 && -f "$OUT/GHOSTTY_VERSION" && "$(cat "$OUT/GHOSTTY_VERSION")" == "$STAMP_CONTENT" ]]; then
   echo "fetch-ghostty: GhosttyKit ($SHORT, $TARGET) already staged at $OUT"
@@ -110,11 +121,24 @@ fi
 echo "fetch-ghostty: verified ghostty-$SHORT.tar.gz (sha256 $GHOSTTY_SHA256)"
 
 SRC="$SRC_ROOT/ghostty-$GHOSTTY_COMMIT"
-if [[ ! -f "$SRC/.extracted" ]]; then
+EXTRACTED="patches:$PATCH_HASH"
+if [[ ! -f "$SRC/.extracted" || "$(cat "$SRC/.extracted")" != "$EXTRACTED" ]]; then
+  # Zig's local cache is content-addressed, so a fresh extraction can keep using it.
+  KEPT_CACHE="$SRC_ROOT/.zig-cache.kept"
+  rm -rf "$KEPT_CACHE"
+  if [[ -d "$SRC/.zig-cache" ]]; then mv "$SRC/.zig-cache" "$KEPT_CACHE"; fi
   rm -rf "$SRC"
   tar -xzf "$ARCHIVE" -C "$SRC_ROOT"
   [[ -f "$SRC/build.zig" ]] || die "archive did not contain ghostty-$GHOSTTY_COMMIT/build.zig"
-  touch "$SRC/.extracted"
+  if [[ -d "$KEPT_CACHE" ]]; then mv "$KEPT_CACHE" "$SRC/.zig-cache"; fi
+  for patch_file in ${PATCHES[@]+"${PATCHES[@]}"}; do
+    name="$(basename "$patch_file")"
+    patch -p1 -N --dry-run -s -d "$SRC" -i "$patch_file" >/dev/null \
+      || die "$name does not apply to ghostty-$SHORT"
+    patch -p1 -N -s -d "$SRC" -i "$patch_file" || die "applying $name failed"
+    echo "fetch-ghostty: applied $name"
+  done
+  echo "$EXTRACTED" >"$SRC/.extracted"
 fi
 
 for symbol in "${REQUIRED_SYMBOLS[@]}"; do

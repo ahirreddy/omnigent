@@ -1,0 +1,563 @@
+--- a/pkg/macos/iosurface/iosurface.zig
++++ b/pkg/macos/iosurface/iosurface.zig
+@@ -98,6 +98,20 @@
+         );
+     }
+
++    /// Whether any process (the window server included) still uses this
++    /// surface, by the system-wide use count.
++    pub inline fn isInUse(self: *IOSurface) bool {
++        return c.IOSurfaceIsInUse(@ptrCast(self)) != 0;
++    }
++
++    pub inline fn incrementUseCount(self: *IOSurface) void {
++        c.IOSurfaceIncrementUseCount(@ptrCast(self));
++    }
++
++    pub inline fn decrementUseCount(self: *IOSurface) void {
++        c.IOSurfaceDecrementUseCount(@ptrCast(self));
++    }
++
+     pub inline fn getAllocSize(self: *IOSurface) usize {
+         return c.IOSurfaceGetAllocSize(@ptrCast(self));
+     }
+--- a/src/renderer/frame_lease.zig
++++ b/src/renderer/frame_lease.zig
+@@ -56,6 +56,29 @@
+             self: *Self,
+             timeout_ns: ?u64,
+         ) error{ Defunct, Timeout }!Lease {
++            const AnySlot = struct {
++                pub fn usable(_: @This(), _: usize) bool {
++                    return true;
++                }
++            };
++            return self.acquireUsable(timeout_ns, slot_count, AnySlot{}) catch |err| switch (err) {
++                // Every permit corresponds to exactly one `.free` slot.
++                error.Busy => unreachable,
++                else => |other| other,
++            };
++        }
++
++        /// Acquire a free slot that `filter.usable(index)` accepts: the next
++        /// in rotation among the first `rotating` slots, else the lowest one
++        /// after them. Waits only for a free slot; when every free slot is
++        /// refused it returns `error.Busy` and the caller skips the frame.
++        pub fn acquireUsable(
++            self: *Self,
++            timeout_ns: ?u64,
++            rotating: usize,
++            filter: anytype,
++        ) error{ Defunct, Timeout, Busy }!Lease {
++            std.debug.assert(rotating > 0 and rotating <= slot_count);
+             try self.waitAvailable(timeout_ns);
+             errdefer self.available.post(self.io);
+
+@@ -64,25 +87,35 @@
+
+             if (self.defunct) return error.Defunct;
+
+-            for (0..self.slots.len) |offset| {
+-                const index = (self.next_slot + offset) % self.slots.len;
+-                const slot = &self.slots[index];
+-                if (slot.state != .free) continue;
++            const index = self.findUsableLocked(rotating, filter) orelse
++                return error.Busy;
++            const token = self.freshTokenLocked();
++            self.slots[index] = .{
++                .state = .gpu,
++                .token = token,
++            };
++            if (index < rotating) self.next_slot = (index + 1) % rotating;
++            return .{
++                .slot = @intCast(index),
++                .token = token,
++            };
++        }
+
+-                const token = self.freshTokenLocked();
+-                slot.* = .{
+-                    .state = .gpu,
+-                    .token = token,
+-                };
+-                self.next_slot = (index + 1) % self.slots.len;
+-                return .{
+-                    .slot = @intCast(index),
+-                    .token = token,
+-                };
++        fn findUsableLocked(
++            self: *const Self,
++            rotating: usize,
++            filter: anytype,
++        ) ?usize {
++            for (0..rotating) |offset| {
++                const index = (self.next_slot + offset) % rotating;
++                if (self.slots[index].state == .free and filter.usable(index))
++                    return index;
+             }
+-
+-            // Every permit corresponds to exactly one `.free` slot.
+-            unreachable;
++            for (rotating..slot_count) |index| {
++                if (self.slots[index].state == .free and filter.usable(index))
++                    return index;
++            }
++            return null;
+         }
+
+         /// Transition a GPU-complete frame before invoking a leased external
+@@ -290,8 +323,55 @@
+     try std.testing.expectEqual(@as(usize, 1), slots[1].slot);
+     try std.testing.expectEqual(@as(usize, 2), slots[2].slot);
+     try std.testing.expectEqual(@as(usize, 0), slots[3].slot);
++}
++
++test "frame lease pool skips refused slots and falls back to a spare" {
++    const LeasePool = Pool(4);
++    var pool: LeasePool = .{ .io = std.testing.io };
++    const Refuse = struct {
++        refused: [4]bool,
++
++        pub fn usable(self: @This(), index: usize) bool {
++            return !self.refused[index];
++        }
++    };
++
++    // Slot 0 is refused (its surface is still on screen): rotation moves on.
++    const first = try pool.acquireUsable(null, 3, Refuse{ .refused = .{ true, false, false, false } });
++    try std.testing.expectEqual(@as(usize, 1), first.slot);
++    try std.testing.expect(pool.finish(first.token, false));
++
++    // With every rotating slot refused, the lowest spare is used.
++    const spare = try pool.acquireUsable(null, 3, Refuse{ .refused = .{ true, true, true, false } });
++    try std.testing.expectEqual(@as(usize, 3), spare.slot);
++    try std.testing.expect(pool.finish(spare.token, false));
++
++    // A spare does not move the rotation.
++    const next = try pool.acquireUsable(null, 3, Refuse{ .refused = .{ false, false, false, false } });
++    try std.testing.expectEqual(@as(usize, 2), next.slot);
++    try std.testing.expect(pool.finish(next.token, false));
+ }
+
++test "frame lease pool reports busy without consuming a permit" {
++    const LeasePool = Pool(2);
++    var pool: LeasePool = .{ .io = std.testing.io };
++    const RefuseAll = struct {
++        pub fn usable(_: @This(), _: usize) bool {
++            return false;
++        }
++    };
++
++    try std.testing.expectError(error.Busy, pool.acquireUsable(null, 2, RefuseAll{}));
++    try std.testing.expectError(error.Busy, pool.acquireUsable(null, 2, RefuseAll{}));
++
++    // Both permits remain: two slots can still be taken without waiting.
++    const first = try pool.acquire(0);
++    const second = try pool.acquire(0);
++    try std.testing.expect(first.slot != second.slot);
++    try std.testing.expect(pool.finish(first.token, false));
++    try std.testing.expect(pool.finish(second.token, false));
++}
++
+ test "frame lease pool accepts release racing the presentation callback" {
+     const LeasePool = Pool(1);
+     var pool: LeasePool = .{ .io = std.testing.io };
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -359,9 +359,16 @@
+             // If this is one then we don't do any double+ buffering at all.
+             // This is comptime because there isn't a good reason to change
+             // this at runtime and there is a lot of complexity to support it.
+-            const buf_count = GraphicsAPI.swap_chain_count;
++            const buf_count = GraphicsAPI.swap_chain_count + spare_count;
+             const LeasePool = renderer.frame_lease.Pool(buf_count);
+
++            /// Slots drawn only while no regular one can be, sized to the
++            /// surface only once drawn.
++            const spare_count = if (@hasDecl(GraphicsAPI, "swap_chain_spare_count"))
++                GraphicsAPI.swap_chain_spare_count
++            else
++                0;
++
+             // cmux iOS fork: bounded acquire deadline for `nextFrame`. On iOS
+             // `render_now` produces frames synchronously on a single serial
+             // dispatch queue (no renderer-thread vsync pump); the permit is
+@@ -468,10 +475,26 @@
+                 token: renderer.frame_lease.Token,
+             };
+
++            /// Accepts the slots whose target the API can draw into now.
++            const UsableTarget = struct {
++                api: *const GraphicsAPI,
++                frames: *const [buf_count]FrameState,
++
++                pub fn usable(self: @This(), index: usize) bool {
++                    if (comptime !@hasDecl(GraphicsAPI, "targetReusable")) return true;
++                    return self.api.targetReusable(&self.frames[index].target);
++                }
++            };
++
+             /// Get the next frame state to draw to. This will wait on the
+             /// semaphore to ensure that the frame is available. This must
+-            /// always be paired with a call to finishFrame.
+-            pub fn nextFrame(self: *SwapChain) error{ Defunct, Timeout }!AcquiredFrame {
++            /// always be paired with a call to finishFrame. A free slot whose
++            /// target is still shown is skipped; with none left the frame is
++            /// dropped (`error.TargetsInUse`) and drawn on a later attempt.
++            pub fn nextFrame(
++                self: *SwapChain,
++                api: *const GraphicsAPI,
++            ) error{ Defunct, Timeout, TargetsInUse }!AcquiredFrame {
+                 if (self.defunct) return error.Defunct;
+
+                 // cmux iOS fork: bound the acquire so a stalled GPU completion
+@@ -482,10 +505,17 @@
+                 // macOS/OpenGL keep the proven unbounded wait (they drive
+                 // frames from the renderer-thread vsync loop where this is
+                 // legitimate backpressure, never a serial-queue wedge).
+-                const lease = try self.leases.acquire(if (comptime builtin.os.tag == .ios)
+-                    frame_acquire_timeout_ns
+-                else
+-                    null);
++                const lease = self.leases.acquireUsable(
++                    if (comptime builtin.os.tag == .ios)
++                        frame_acquire_timeout_ns
++                    else
++                        null,
++                    GraphicsAPI.swap_chain_count,
++                    UsableTarget{ .api = api, .frames = &self.frames },
++                ) catch |err| return switch (err) {
++                    error.Busy => error.TargetsInUse,
++                    else => |other| other,
++                };
+                 return .{
+                     .state = &self.frames[lease.slot],
+                     .token = lease.token,
+@@ -1870,7 +1900,7 @@
+             defer damage.deinit();
+
+             // Wait for a frame to be available.
+-            const acquired = try self.swap_chain.nextFrame();
++            const acquired = try self.swap_chain.nextFrame(&self.api);
+             const frame = acquired.state;
+             errdefer assert(self.swap_chain.finishFrame(acquired.token, false));
+             // log.debug("drawing frame token={}", .{acquired.token});
+--- a/src/renderer/Metal.zig
++++ b/src/renderer/Metal.zig
+@@ -41,6 +41,11 @@
+ /// Triple buffering.
+ pub const swap_chain_count = 3;
+
++/// macOS: one more slot, drawn only while no regular slot is free to draw:
++/// each is on the GPU, held by an external presenter, or (for the layer) its
++/// IOSurface is still queued for, shown on, or composited from the layer.
++pub const swap_chain_spare_count = if (builtin.os.tag == .macos) 1 else 0;
++
+ const log = std.log.scoped(.metal);
+
+ const ExternalPresenter = struct {
+@@ -354,8 +359,10 @@
+ }
+
+ fn displayCallback(renderer: *Renderer) align(8) void {
+-    renderer.drawFrame(true) catch |err| {
+-        log.warn("Error drawing frame in display callback, err={}", .{err});
++    renderer.drawFrame(true) catch |err| switch (err) {
++        // The renderer thread draws this state once a target is free.
++        error.TargetsInUse => log.debug("display callback frame skipped: every target is in use", .{}),
++        else => log.warn("Error drawing frame in display callback, err={}", .{err}),
+     };
+ }
+
+@@ -449,6 +456,17 @@
+     });
+ }
+
++/// Whether a free swap-chain target may be drawn into now. On macOS the
++/// layer's IOSurfaces stay in use while queued for, shown on, or still
++/// composited from the layer, and drawing into one of those tears.
++pub fn targetReusable(self: *const Metal, target: *const Target) bool {
++    return switch (self.presenter) {
++        .layer => if (comptime builtin.os.tag == .macos) !target.surface.isInUse() else true,
++        // External presenters return their frames explicitly.
++        .external, .external_leased => true,
++    };
++}
++
+ /// Present the provided target. The return value reports whether a leased
+ /// external presenter acquired the exact swap-chain slot.
+ pub inline fn present(
+--- a/src/renderer/metal/IOSurfaceLayer.zig
++++ b/src/renderer/metal/IOSurfaceLayer.zig
+@@ -3,6 +3,7 @@
+ const IOSurfaceLayer = @This();
+
+ const std = @import("std");
++const builtin = @import("builtin");
+ const Allocator = std.mem.Allocator;
+ const objc = @import("objc");
+ const macos = @import("macos");
+@@ -12,6 +13,12 @@
+
+ const log = std.log.scoped(.IOSurfaceLayer);
+
++/// macOS: an IOSurface counts as in use (`IOSurfaceIncrementUseCount`) from
++/// the moment its frame is queued for the layer until the layer shows another
++/// one, so the renderer never draws into it meanwhile. The window server's
++/// own use count then covers the frames it is still compositing.
++const tracks_use = builtin.os.tag == .macos;
++
+ /// We subclass CALayer with a custom display handler, we only need
+ /// to make the subclass once, and then we can use it as a singleton.
+ var Subclass: ?objc.Class = null;
+@@ -26,6 +33,8 @@
+     refs: std.atomic.Value(usize) = std.atomic.Value(usize).init(1),
+     scheduled: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+     committed: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
++    /// The layer's contents, retained with one use count (`tracks_use`).
++    shown: std.atomic.Value(?*IOSurface) = std.atomic.Value(?*IOSurface).init(null),
+
+     fn create() !*Self {
+         const self = try std.heap.c_allocator.create(Self);
+@@ -41,9 +50,22 @@
+     fn release(self: *Self) void {
+         const previous = self.refs.fetchSub(1, .seq_cst);
+         std.debug.assert(previous > 0);
+-        if (previous == 1) std.heap.c_allocator.destroy(self);
++        if (previous == 1) {
++            self.show(null);
++            std.heap.c_allocator.destroy(self);
++        }
+     }
+
++    /// Record `surface` as the layer's contents. It takes over one use count
++    /// the caller holds, and the surface it replaces loses its own.
++    fn show(self: *Self, surface: ?*IOSurface) void {
++        if (comptime !tracks_use) return;
++        if (surface) |value| value.retain();
++        const previous = self.shown.swap(surface, .acq_rel) orelse return;
++        previous.decrementUseCount();
++        previous.release();
++    }
++
+     fn schedule(self: *Self) u64 {
+         const previous = self.scheduled.fetchAdd(1, .monotonic);
+         std.debug.assert(previous != std.math.maxInt(u64));
+@@ -204,6 +226,7 @@
+     const generation = self.surface_generation.schedule();
+     self.surface_generation.retain();
+     surface.retain();
++    if (comptime tracks_use) surface.incrementUseCount();
+     return .{
+         .layer = self.layer.retain(),
+         .surface = surface,
+@@ -225,6 +248,8 @@
+     //
+     // We release in the callback after setting the contents.
+     surface.retain();
++    // The queued frame stays in use until the layer moves past it.
++    if (comptime tracks_use) surface.incrementUseCount();
+     // NOTE: Since `self.layer` is passed as an `objc.c.id`, it's
+     //       automatically retained when the block is copied, so we
+     //       don't need to retain it ourselves like with the surface.
+@@ -333,6 +358,8 @@
+     const generation = self.surface_generation.schedule();
+     self.layer.setProperty("contents", surface);
+     self.surface_generation.commit(generation);
++    if (comptime tracks_use) surface.incrementUseCount();
++    self.surface_generation.show(surface);
+ }
+
+ const SetSurfaceBlock = objc.Block(struct {
+@@ -378,6 +405,10 @@
+     // See explanation of why we retain and release in `setSurface`.
+     defer surface.release();
+     defer block.surface_generation.release();
++    // The use count taken when this frame was queued passes to the layer, or
++    // ends here when the frame is not shown.
++    var shown = false;
++    defer if (tracks_use and !shown) surface.decrementUseCount();
+
+     // Teardown invalidates on main. Blocks queued by a late GPU completion
+     // retain the layer and IOSurface but must not touch detached UI state or
+@@ -408,6 +439,8 @@
+
+     layer.setProperty("contents", surface);
+     block.surface_generation.commit(block.generation);
++    block.surface_generation.show(surface);
++    shown = true;
+     if (block.presentation_callback) |callback| {
+         if (block.presentation_delivery_gate) |gate| {
+             gate(block.presentation_delivery_gate_userdata);
+@@ -476,6 +509,7 @@
+     if (!block.surface_generation.shouldClear(block.cutoff)) return;
+     const layer = objc.Object.fromId(block.layer);
+     layer.setProperty("contents", @as(?*anyopaque, null));
++    block.surface_generation.show(null);
+ }
+
+ pub const DisplayCallback = ?*align(8) const fn (?*anyopaque) void;
+@@ -593,6 +627,7 @@
+     });
+     defer surface.deinit();
+     surface.retain();
++    if (comptime tracks_use) surface.incrementUseCount();
+     layer.surface_generation.retain();
+
+     var state: CallbackState = .{};
+@@ -668,6 +703,7 @@
+     });
+     defer surface.deinit();
+     surface.retain();
++    if (comptime tracks_use) surface.incrementUseCount();
+     layer.surface_generation.retain();
+
+     var state: CallbackState = .{};
+@@ -687,6 +723,58 @@
+     setSurfaceCallback(&block);
+
+     try testing.expectEqual(@as(usize, 1), state.gate_count);
++}
++
++test "a queued or shown surface stays in use and a discarded one does not" {
++    if (comptime !tracks_use) return error.SkipZigTest;
++    const testing = std.testing;
++
++    var layer = try IOSurfaceLayer.init();
++    defer layer.release();
++    var surface = try IOSurface.init(.{
++        .width = 1,
++        .height = 1,
++        .pixel_format = .@"32BGRA",
++        .bytes_per_element = 4,
++        .colorspace = null,
++    });
++    defer surface.deinit();
++
++    const Queued = struct {
++        fn block(target: *IOSurfaceLayer, value: *IOSurface) SetSurfaceBlock.Context {
++            value.retain();
++            value.incrementUseCount();
++            target.surface_generation.retain();
++            return SetSurfaceBlock.init(.{
++                .layer = target.layer.value,
++                .surface = value,
++                .surface_generation = target.surface_generation,
++                .generation = target.surface_generation.schedule(),
++                .presentation_callback = null,
++                .presentation_userdata = null,
++                .presentation_token = 0,
++                .presentation_failure_callback = null,
++                .presentation_failure_userdata = null,
++                .presentation_delivery_gate = null,
++                .presentation_delivery_gate_userdata = null,
++            }, &setSurfaceCallback);
++        }
++    };
++
++    // The layer has no size yet, so the queued frame is discarded.
++    var discarded = Queued.block(&layer, surface);
++    try testing.expect(surface.isInUse());
++    setSurfaceCallback(&discarded);
++    try testing.expect(!surface.isInUse());
++
++    layer.layer.setProperty("contentsScale", @as(f64, 1));
++    layer.layer.setProperty("bounds", macos.graphics.Rect{
++        .origin = .{ .x = 0, .y = 0 },
++        .size = .{ .width = 1, .height = 1 },
++    });
++    var shown = Queued.block(&layer, surface);
++    setSurfaceCallback(&shown);
++    try testing.expect(surface.isInUse());
+ }
+
+ test "clear surface drops displayed IOSurface without disabling future updates" {
+--- a/src/renderer/Thread.zig
++++ b/src/renderer/Thread.zig
+@@ -817,6 +817,11 @@
+ visibility_retry_c: xev.Completion = .{},
+ visibility_retry_generation: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+
++/// One-shot timer that redraws a frame dropped because every swap-chain
++/// target was still in use. A display link retries on its own.
++targets_in_use_retry_h: xev.Timer,
++targets_in_use_retry_c: xev.Completion = .{},
++
+ /// cmux fork: one-shot timer that delivers a paced render for an unfocused
+ /// surface. See `UNFOCUSED_RENDER_INTERVAL_MS`.
+ unfocused_render_h: xev.Timer,
+@@ -964,6 +969,10 @@
+     var visibility_retry = try xev.Async.init();
+     errdefer visibility_retry.deinit();
+
++    // Redraws a frame dropped while its targets were in use.
++    var targets_in_use_retry_h = try xev.Timer.init();
++    errdefer targets_in_use_retry_h.deinit();
++
+     // Paced renders for unfocused surfaces.
+     var unfocused_render_h = try xev.Timer.init();
+     errdefer unfocused_render_h.deinit();
+@@ -986,6 +995,7 @@
+         .draw_h = draw_h,
+         .draw_now = draw_now,
+         .visibility_retry = visibility_retry,
++        .targets_in_use_retry_h = targets_in_use_retry_h,
+         .unfocused_render_h = unfocused_render_h,
+         .cursor_h = cursor_timer,
+         .surface = surface,
+@@ -1014,6 +1024,7 @@
+     self.draw_h.deinit();
+     self.draw_now.deinit();
+     self.visibility_retry.deinit();
++    self.targets_in_use_retry_h.deinit();
+     self.unfocused_render_h.deinit();
+     self.cursor_h.deinit();
+     if (comptime terminalpkg.compression_enabled)
+@@ -1838,6 +1849,9 @@
+                         );
+                     }
+                 },
++                // The frame on screen and those queued for it keep their
++                // targets; the damage stays pending and draws on a retry.
++                error.TargetsInUse => self.retryWhenTargetsFree(),
+                 else => log.warn("error drawing err={}", .{err}),
+             }
+             return .backend_failed;
+@@ -1846,6 +1860,37 @@
+     }
+ }
+
++/// Retry a frame dropped while every target was in use, one display refresh
++/// later. Without a display link nothing else would draw it.
++fn retryWhenTargetsFree(self: *Thread) void {
++    if (self.externalDrainActive() or self.renderer.hasVsync()) return;
++    if (self.targets_in_use_retry_c.state() == .active) return;
++    self.targets_in_use_retry_h.run(
++        &self.loop,
++        &self.targets_in_use_retry_c,
++        DRAW_INTERVAL,
++        Thread,
++        self,
++        targetsInUseRetryCallback,
++    );
++}
++
++fn targetsInUseRetryCallback(
++    self_: ?*Thread,
++    _: *xev.Loop,
++    _: *xev.Completion,
++    r: xev.Timer.RunError!void,
++) xev.CallbackAction {
++    _ = r catch |err| {
++        log.warn("error in targets-in-use retry timer err={}", .{err});
++        return .disarm;
++    };
++    const t = self_ orelse return .disarm;
++    if (t.externalDrainActive()) return .disarm;
++    _ = t.drawFrame(true);
++    return .disarm;
++}
++
+ fn wakeupCallback(
+     self_: ?*Thread,
+     _: *xev.Loop,
