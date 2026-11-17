@@ -204,6 +204,10 @@ struct SettingsPaneLogicTests {
       notifications != OpenNotificationSettingsAction(presenter: NotificationSettingsPresenter()))
     notifications()
     #expect(opened == 11)
-    #expect(SettingsDevice.name == "Mac")
+    #if os(macOS)
+      #expect(SettingsDevice.name == "Mac")
+    #else
+      #expect(SettingsDevice.name == "device")
+    #endif
   }
 }

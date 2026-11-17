@@ -132,8 +132,13 @@ struct FocusedActionsRelayTests {
   @Test("the sidebar toggle hides a shown sidebar and shows a hidden one")
   func sidebarToggle() {
     #expect(SidebarToggle.toggled(.all) == .detailOnly)
-    #expect(SidebarToggle.toggled(.automatic) == .detailOnly)
     #expect(SidebarToggle.toggled(.detailOnly) == .all)
+    #if os(macOS)
+      #expect(SidebarToggle.toggled(.automatic) == .detailOnly)
+    #else
+      // iOS's `.automatic` compares equal to `.detailOnly`.
+      #expect(SidebarToggle.toggled(.automatic) == .all)
+    #endif
     let toggle = SidebarToggle()
     var toggled = 0
     toggle()

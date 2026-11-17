@@ -6,15 +6,18 @@ import Testing
 @MainActor
 @Suite("Animations under test")
 struct MotionSwitchTests {
-  @Test("a test process's views don't animate, and a test can turn animation back on")
-  func animationsAreOff() {
-    #expect(!Theme.Motion.isEnabled)
-    #expect(Theme.Motion.feedback == nil)
-    #expect(Theme.Motion.animation(.snappy) == nil)
-    Theme.Motion.isEnabled = true
-    defer { Theme.Motion.isEnabled = false }
-    #expect(Theme.Motion.disclosure == .easeInOut(duration: 0.2))
-  }
+  // Only the Mac's test runner starts with motion off (OmnigentViewTesting's bootstrap).
+  #if os(macOS)
+    @Test("a test process's views don't animate, and a test can turn animation back on")
+    func animationsAreOff() {
+      #expect(!Theme.Motion.isEnabled)
+      #expect(Theme.Motion.feedback == nil)
+      #expect(Theme.Motion.animation(.snappy) == nil)
+      Theme.Motion.isEnabled = true
+      defer { Theme.Motion.isEnabled = false }
+      #expect(Theme.Motion.disclosure == .easeInOut(duration: 0.2))
+    }
+  #endif
 
   @Test("the views' pauses are the app's own unless a test scales them for its duration")
   func pausesScale() {
