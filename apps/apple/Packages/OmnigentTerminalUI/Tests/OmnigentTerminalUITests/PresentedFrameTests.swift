@@ -142,6 +142,34 @@
       #expect(settled == redrawn, "the layer kept an older scroll position")
     }
 
+    /// The keyboard leaves the terminal while the main thread is busy, as when a click moves it
+    /// to the chat while a turn streams. Only the main thread stops the display link, so the link
+    /// still runs while the frames of the scroll that follows are skipped, and is stopped before
+    /// any target is free. A frame skipped then is still drawn once the main thread is free.
+    @Test("a frame skipped right after the keyboard leaves is drawn once the main thread is free")
+    func skippedFrameAfterFocusLossIsDrawn() async throws {
+      let surface = try await Self.scrolledSurface(keyboard: true)
+      defer { surface.screen.close() }
+      let controller = surface.controller
+      #expect(surface.screen.window.makeFirstResponder(nil))
+      for _ in 0..<12 {
+        controller.view.scrollWheel(with: try Self.wheel(lines: 2))
+        usleep(30_000)
+      }
+      // Every render of the scroll is attempted, and skipped, before the main thread is free.
+      usleep(100_000)
+      try await Task.sleep(for: .milliseconds(400))
+      let settled = try Self.pixels(try #require(Self.shown(controller)))
+      for lines: Int32 in [-2, 2] {
+        let before = controller.framesShown
+        controller.view.scrollWheel(with: try Self.wheel(lines: lines))
+        #expect(await surface.settles { controller.framesShown > before })
+        try await Task.sleep(for: .milliseconds(200))
+      }
+      let redrawn = try Self.pixels(try #require(Self.shown(controller)))
+      #expect(settled == redrawn, "the layer kept an older scroll position")
+    }
+
     /// Held output waits for the count of frames on the layer to move, not for its limit.
     @Test("each frame libghostty puts on the layer is counted")
     func framesOnTheLayerAreCounted() async throws {
