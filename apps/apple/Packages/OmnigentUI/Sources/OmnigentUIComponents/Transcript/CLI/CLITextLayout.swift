@@ -21,6 +21,19 @@ nonisolated enum CLITextDecoration: Equatable, Sendable {
   static let morePrefix = "more:"
 }
 
+/// A table wider than its CLI text, which SwiftUI scrolls sideways (``CLITableView``): its rows,
+/// laid out but unseen in the text, are drawn by a copy that scrolls, with their rules.
+nonisolated struct CLITextOverflow: @unchecked Sendable {
+  /// From the table's first line, at its leading edge, across the rest of the text's width.
+  var frame: CGRect
+  /// The rows, never wrapping, their leading edge at the frame's.
+  var text: NSAttributedString
+  /// The table's width past its leading edge.
+  var contentWidth: CGFloat
+  /// The rules under the rows, in the frame's coordinates.
+  var rules: [CLITextDecoration]
+}
+
 /// A CLI block's text laid out at one width as SwiftUI lays its views out, built once and shared
 /// by the views that show it: its text as a message document (``MessageTextDocument``, which a
 /// raster or a live text view draws), SwiftUI's height for it and what it draws beside its text.
@@ -29,15 +42,18 @@ nonisolated final class CLITextDocument: @unchecked Sendable {
   let width: CGFloat
   let height: CGFloat
   let decorations: [CLITextDecoration]
+  /// Tables wider than the text, which scroll sideways.
+  let overflows: [CLITextOverflow]
 
   init(
     text: MessageTextDocument, width: CGFloat, height: CGFloat,
-    decorations: [CLITextDecoration]
+    decorations: [CLITextDecoration], overflows: [CLITextOverflow] = []
   ) {
     self.text = text
     self.width = width
     self.height = height
     self.decorations = decorations
+    self.overflows = overflows
   }
 
   /// Builds `spec` in `style` and lays it out `width` wide.
@@ -50,7 +66,8 @@ nonisolated final class CLITextDocument: @unchecked Sendable {
       text: laidOut.text, palette: palette, chrome: [:], hasWideBlocks: false,
       topInset: laidOut.topInset)
     return CLITextDocument(
-      text: document, width: width, height: laidOut.height, decorations: laidOut.decorations)
+      text: document, width: width, height: laidOut.height, decorations: laidOut.decorations,
+      overflows: laidOut.overflows)
   }
 }
 
@@ -116,6 +133,7 @@ nonisolated enum CLITextLayout {
     var topInset: CGFloat
     var height: CGFloat
     var decorations: [CLITextDecoration]
+    var overflows: [CLITextOverflow] = []
     /// Each text's top and its lines, for tests.
     var tops: [CGFloat]
     var lines: [Int]
@@ -140,9 +158,30 @@ nonisolated enum CLITextLayout {
       spaced.paragraphSpacingBefore = spacing
       text.addAttribute(.paragraphStyle, value: spaced, range: paragraph)
     }
+    let overflows = geometry.wideTables.map { hide($0, units: build.units, in: text) }
     return LaidOut(
       text: text, topInset: geometry.tops.first ?? 0, height: height,
-      decorations: geometry.decorations, tops: geometry.tops, lines: lines)
+      decorations: geometry.decorations, overflows: overflows, tops: geometry.tops,
+      lines: lines)
+  }
+
+  /// A wide table's rows, copied for the view that scrolls them and left unseen in `text`, where
+  /// they keep their lines.
+  private static func hide(
+    _ table: WideTable, units: [CLITextUnit], in text: NSMutableAttributedString
+  ) -> CLITextOverflow {
+    let start = units[table.rows.lowerBound].range.location
+    let end = min(NSMaxRange(units[table.rows.upperBound - 1].range), text.length)
+    let range = NSRange(location: start, length: max(0, end - start))
+    let copy = text.overflowText(in: range, indent: table.frame.minX)
+    text.addAttribute(.foregroundColor, value: PlatformColor.clear, range: range)
+    for key: NSAttributedString.Key in [
+      .link, .backgroundColor, .underlineStyle, .strikethroughStyle,
+    ] {
+      text.removeAttribute(key, range: range)
+    }
+    return CLITextOverflow(
+      frame: table.frame, text: copy, contentWidth: table.contentWidth, rules: table.rules)
   }
 
   /// How many lines each text takes `width` wide.
@@ -171,6 +210,14 @@ nonisolated enum CLITextLayout {
 
   /// SwiftUI's frames for a build's texts: where each text's first line starts, and what is
   /// drawn beside them.
+  /// A table wider than the text: its rows' units, where it is, how wide, and its rules.
+  private struct WideTable {
+    var rows: Range<Int>
+    var frame: CGRect
+    var contentWidth: CGFloat
+    var rules: [CLITextDecoration]
+  }
+
   private struct Geometry {
     let units: [CLITextUnit]
     let lines: [Int]
@@ -179,6 +226,8 @@ nonisolated enum CLITextLayout {
     let width: CGFloat
     var tops: [CGFloat]
     var decorations: [CLITextDecoration] = []
+    /// Tables wider than the text, which scroll sideways.
+    var wideTables: [WideTable] = []
 
     init(units: [CLITextUnit], lines: [Int], metrics: CLITextMetrics, width: CGFloat) {
       self.units = units
@@ -277,22 +326,44 @@ nonisolated enum CLITextLayout {
     }
 
     /// Places a table's rows and the rules under them. Its scroll view sits on the pixel; what
-    /// follows it doesn't move.
+    /// follows it doesn't move. A table wider than the text keeps its rules for the copy that
+    /// scrolls it sideways.
     private mutating func placeTable(
       rows: [Int], rules: [CGFloat], columns: [CLITextColumn], color: SRGB, at top: CGFloat
     ) {
       var bottom = metrics.rounded(top)
+      var fills: [CLITextDecoration] = []
       for (index, row) in rows.enumerated() {
         bottom += place(.text(row), at: bottom)
         let rule = index < rules.count ? rules[index] : 0
         guard rule > 0 else { continue }
         for column in columns {
-          decorations.append(
+          fills.append(
             .fill(
               CGRect(x: column.leading, y: bottom - rule, width: column.width, height: rule),
               color, opacity: 1))
         }
       }
+      let leading = columns.first?.leading ?? 0
+      let trailing = columns.last.map { $0.leading + $0.width } ?? 0
+      // Rows are consecutive units: a table's rows are its own texts, in order.
+      guard trailing > width + 0.5, let first = rows.first, let last = rows.last,
+        last - first + 1 == rows.count
+      else {
+        decorations += fills
+        return
+      }
+      let textTop = tops[first]
+      wideTables.append(
+        WideTable(
+          rows: first..<(last + 1),
+          frame: CGRect(
+            x: leading, y: textTop, width: max(0, width - leading), height: bottom - textTop),
+          contentWidth: trailing - leading,
+          rules: fills.map { fill in
+            guard case .fill(let rect, let color, let opacity) = fill else { return fill }
+            return .fill(rect.offsetBy(dx: -leading, dy: -textTop), color, opacity: opacity)
+          }))
     }
   }
 }
