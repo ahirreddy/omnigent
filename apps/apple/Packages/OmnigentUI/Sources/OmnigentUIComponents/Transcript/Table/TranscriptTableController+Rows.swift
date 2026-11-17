@@ -125,7 +125,7 @@
       var swapped = false
       tableView.enumerateAvailableRowViews { _, row in
         guard !swapped, model.rows.indices.contains(row),
-          let cell = realizedCell(at: row) as? TranscriptTableTextCell, !cell.texts.isEmpty
+          let cell = realizedCell(at: row) as? TranscriptTableTextCell, cell.hasArrivedDrawing
         else { return }
         let live = cell.texts.count
         let height = cell.idealHeight
