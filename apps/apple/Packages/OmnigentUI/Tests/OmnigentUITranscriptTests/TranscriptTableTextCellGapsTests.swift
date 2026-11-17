@@ -258,5 +258,46 @@
         #expect(try screen.shownText(under: shown) == ["Interrupted"], "\(id)")
       }
     }
+
+    // MARK: Content this app can't show
+
+    private static let unshown = Activity(
+      kind: .unknown, title: "Audio",
+      details: [DetailSection(id: "d", title: "Raw", text: "Inner text")])
+
+    @Test("Content this app can't show is SwiftUI's quiet line, as tall as its row, and opens")
+    func unsupportedContent() async throws {
+      let environment = textCellEnvironment()
+      let answerRow = Row(id: "a-unshown", role: .assistant, text: "Hi", activity: Self.unshown)
+      let answer = try shownMatchingSwiftUI(textCellRow(answerRow), environment)
+      #expect(answer.accessoryViews.map(\.accessory) == [.unsupported(Self.unshown)])
+      // In a prompt's bubble, after its text; a prompt of that alone has no text.
+      let prompt = try shownMatchingSwiftUI(
+        textCellRow(Row(id: "u-unshown", role: .user, text: "Hi", activity: Self.unshown)),
+        environment)
+      let line = try #require(prompt.accessoryViews.last)
+      let text = try #require(prompt.runs.first?.view)
+      #expect(text.frame.maxY + Theme.Spacing.small <= line.frame.minY + 0.5)
+      let alone = try shownMatchingSwiftUI(
+        textCellRow(Row(id: "u-unshown-only", role: .user, activity: Self.unshown)), environment)
+      #expect(alone.runs.isEmpty)
+      // Its line opens to the safe text in the cell, which grows to show it.
+      let screen = try await textTableScreen([answerRow])
+      defer { screen.close() }
+      let cell = try textCell("a-unshown", in: screen)
+      let closedHeight = cell.idealHeight
+      let shown = try #require(cell.accessoryViews.first)
+      #expect(try screen.shownText(under: shown).contains("Audio \u{00B7} not shown in this app"))
+      try screen.click(shown)
+      #expect(
+        try await waitUntil(screen) { try screen.shownText(under: shown).contains("Inner text") })
+      #expect(try await waitUntil(screen) { cell.idealHeight > closedHeight })
+      // The table lays the row out at its new height, the part at its new size.
+      let controller = try tableController(of: screen)
+      let index = try #require(controller.model.index(of: "a-unshown"))
+      #expect(
+        try await waitUntil(screen) { controller.model.height(at: index) == cell.idealHeight })
+      #expect(shown.frame.size == shown.intrinsicContentSize)
+    }
   }
 #endif

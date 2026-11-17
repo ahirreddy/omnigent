@@ -41,16 +41,19 @@
       return .live(view)
     }
 
+    // A hosted piece reports a change before SwiftUI has its new size: the cell lays out
+    // again on the next pass, as for a live text view (``invalidateIntrinsicContentSize()``).
+
     func makeBlockView() -> TranscriptTableBlockView {
       let view = TranscriptTableBlockView.make(environment: style.environment)
-      view.sizeChanged = { [weak self] in self?.blockSizeChanged() }
+      view.sizeChanged = { [weak self] in self?.invalidateIntrinsicContentSize() }
       addSubview(view)
       return view
     }
 
     func makeAccessoryView() -> TranscriptTableAccessoryView {
       let view = TranscriptTableAccessoryView.make(environment: style.environment)
-      view.sizeChanged = { [weak self] in self?.blockSizeChanged() }
+      view.sizeChanged = { [weak self] in self?.invalidateIntrinsicContentSize() }
       view.action = { [weak self] in self?.togglePrompt() }
       addSubview(view)
       return view

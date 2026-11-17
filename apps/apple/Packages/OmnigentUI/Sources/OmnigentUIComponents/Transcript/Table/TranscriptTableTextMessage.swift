@@ -5,8 +5,8 @@
   /// A settled chat message a text cell draws in AppKit (``TranscriptTableTextCell``): an answer
   /// or a user's prompt as TextKit text runs, with the blocks only SwiftUI draws (math, a
   /// diagram, an image, a wide table) hosted between them, and the parts beside the text that
-  /// SwiftUI draws (attachments, mentions, a long prompt's toggle, the Interrupted line) hosted
-  /// where the message row stacks them.
+  /// SwiftUI draws (attachments, mentions, a long prompt's toggle, content this app can't show,
+  /// the Interrupted line) hosted where the message row stacks them.
   struct TranscriptTableTextMessage {
     enum Role {
       case user
@@ -58,10 +58,12 @@
         case .item(.message(let message)) =
           entry.segment
       else { return nil }
-      guard !message.isStreaming, message.activity == nil else { return nil }
+      guard !message.isStreaming else { return nil }
       let decoration = entry.decorations[message.id] ?? MessageDecoration()
       let attachments: [Entry] =
         message.attachments.isEmpty ? [] : [.accessory(.attachments(message.attachments))]
+      // Content this app can't show follows the text and attachments, in a bubble or not.
+      let unsupported: [Entry] = message.activity.map { [.accessory(.unsupported($0))] } ?? []
       var made: Self
       switch message.role {
       case .assistant:
@@ -71,12 +73,15 @@
         made = Self(
           role: .answer, row: message, decoration: decoration, markdown: message.text,
           split: MessageTextSplits.shared.split(message.text, ramp: ramp),
-          entries: (text.isEmpty ? [.empty] : text) + attachments + interrupted)
+          entries: (text.isEmpty ? [.empty] : text) + attachments + unsupported + interrupted)
       case .user:
         guard !decoration.showsAvatar else { return nil }
-        made = prompt(
-          message, decoration: decoration, leading: attachments, ramp: ramp,
-          expands: expandsPrompt)
+        // Attachments lead the bubble, then the body, then content this app can't show.
+        let body = promptBody(message, ramp: ramp, expands: expandsPrompt)
+        made = Self(
+          role: .user, row: message, decoration: decoration, markdown: body.markdown,
+          split: MessageTextSplits.shared.split(body.markdown, ramp: ramp),
+          entries: attachments + body.entries + unsupported, promptFold: body.fold)
         if message.interrupted { made.belowBubble = .interrupted }
       case .tool:
         return nil
@@ -88,13 +93,16 @@
       return made
     }
 
-    /// A user's prompt: `leading` first in its bubble, then its body as ``UserPromptBody``
-    /// stacks it: its mentions' chips, its text and a long prompt's toggle. A prompt of
-    /// attachments alone has no body.
-    private static func prompt(
-      _ message: Row, decoration: MessageDecoration, leading: [Entry], ramp: TypeRamp,
-      expands: Bool
-    ) -> Self {
+    /// A user's prompt's body: the markdown it shows, what it stacks and a long prompt's fold.
+    private struct PromptBody {
+      var markdown: String
+      var entries: [Entry]
+      var fold: PromptFold?
+    }
+
+    /// A user's prompt's body as ``UserPromptBody`` stacks it: its mentions' chips, its text
+    /// and a long prompt's toggle. A prompt of attachments alone has no body.
+    private static func promptBody(_ message: Row, ramp: TypeRamp, expands: Bool) -> PromptBody {
       let prompt = UserPrompt.parse(message.text)
       var markdown = prompt.text
       var fold: PromptFold?
@@ -110,10 +118,7 @@
         prompt.mentions.isEmpty ? [] : [.accessory(.mentions(prompt.mentions))]
       var body = mentions + pieces(of: markdown, ramp: ramp) + toggle
       if body.isEmpty, !message.text.isEmpty { body = [.empty] }
-      return Self(
-        role: .user, row: message, decoration: decoration, markdown: markdown,
-        split: MessageTextSplits.shared.split(markdown, ramp: ramp), entries: leading + body,
-        promptFold: fold)
+      return PromptBody(markdown: markdown, entries: body, fold: fold)
     }
 
     /// The pieces `markdown` splits into at `ramp`.

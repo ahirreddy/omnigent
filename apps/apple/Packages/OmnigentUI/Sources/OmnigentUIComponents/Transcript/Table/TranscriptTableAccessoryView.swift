@@ -13,6 +13,8 @@
     case promptToggle(title: String, collapses: Bool)
     /// "Interrupted": under an answer's text, or under a prompt's bubble.
     case interrupted
+    /// A content part this app can't show: one quiet line that opens to any safe text.
+    case unsupported(Activity)
   }
 
   /// One accessory at the width its stack offers it, sized as that stack sizes it: as wide as
@@ -35,6 +37,7 @@
         case .promptToggle(let title, let collapses):
           UserPromptToggle(title: title, collapses: collapses) { action?() }
         case .interrupted: InterruptedLabel(rowID: rowID)
+        case .unsupported(let activity): UnsupportedContentView(activity: activity, rowID: rowID)
         case nil: EmptyView()
         }
       }
@@ -89,30 +92,6 @@
         TranscriptTableAccessoryRoot(
           accessory: accessory, rowID: rowID, width: width, action: action,
           environment: root.environment))
-      // What loads as it first shows (an image read from the cache) reports before the cell
-      // takes reports; a size that changed by then is reported once it has shown.
-      MainRunLoop.performAfterDisplay { [weak self] in
-        MainActor.assumeIsolated { self?.reportIfResized() }
-      }
-    }
-
-    /// The size the cell last laid it out at.
-    private var takenSize: CGSize?
-
-    /// Its size at the width it was offered, laid out now if it has to be; the cell lays it
-    /// out at this size.
-    var idealSize: CGSize {
-      let size = intrinsicContentSize
-      let rounded = CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up))
-      takenSize = rounded
-      return rounded
-    }
-
-    private func reportIfResized() {
-      guard let takenSize else { return }
-      let size = intrinsicContentSize
-      let rounded = CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up))
-      if rounded != takenSize { sizeChanged?() }
     }
   }
 #endif

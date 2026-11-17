@@ -43,21 +43,52 @@
       sceneBridgingOptions = []
     }
 
-    /// Shows `root`; the report its first layout makes is not a change.
+    /// The size the cell last took for the piece (``idealSize``).
+    private var takenSize: CGSize?
+
+    /// Shows `root`; the report its first layout makes is not a change. A size that changed
+    /// before it has shown (an image read from the cache) is reported once it has.
     func present(_ root: Root) {
       rootView = root
       isSettling = true
       MainRunLoop.performAfterDisplay { [weak self] in
-        MainActor.assumeIsolated { self?.isSettling = false }
+        MainActor.assumeIsolated {
+          self?.isSettling = false
+          self?.reportIfResized()
+        }
       }
     }
 
-    /// The piece's height at its width, laid out now if it has to be.
-    var idealHeight: CGFloat { intrinsicContentSize.height.rounded(.up) }
+    /// The piece's size at its width, laid out now if it has to be; the cell takes it.
+    var idealSize: CGSize {
+      let size = currentSize
+      takenSize = size
+      return size
+    }
+
+    /// The piece's height at its width; the cell takes it.
+    var idealHeight: CGFloat { idealSize.height }
+
+    private var currentSize: CGSize {
+      let size = intrinsicContentSize
+      return CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up))
+    }
 
     /// Reports the change; the cell, not Auto Layout, sizes the piece.
     override func invalidateIntrinsicContentSize() {
       guard !isSettling else { return }
+      sizeChanged?()
+    }
+
+    /// SwiftUI lays the content out again as it changes (a part opened) without always
+    /// invalidating the view's size: one that differs from what the cell took is reported.
+    override func layout() {
+      super.layout()
+      reportIfResized()
+    }
+
+    private func reportIfResized() {
+      guard !isSettling, let takenSize, currentSize != takenSize else { return }
       sizeChanged?()
     }
   }

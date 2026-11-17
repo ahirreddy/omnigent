@@ -199,9 +199,10 @@
       if abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
     }
 
-    /// A live text view's height changed by itself (a code block's Wrap turned): the cell lays
-    /// out again on the next pass and tells the table. AppKit's own calls while the cell shows
-    /// or lays out change nothing it isn't laying out already.
+    /// A live text view's or a hosted piece's height changed by itself (a code block's Wrap
+    /// turned, a part opened): the cell lays out again on the next pass and tells the table.
+    /// AppKit's own calls while the cell shows or lays out change nothing it isn't laying out
+    /// already.
     override func invalidateIntrinsicContentSize() {
       guard !isLayingOut, !awaitsLayout, message != nil else { return }
       awaitsLayout = true
