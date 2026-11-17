@@ -4,10 +4,12 @@
 
   /// The transcript list's UIKit side on iPhone and iPad: a collection view with one item per
   /// transcript row, laid out in one column at the heights of ``TranscriptTableModel``. Cells hold
-  /// row hosts (``TranscriptCollectionRowHost``) kept by row id; heights are measured once per
-  /// row, content version and width, ahead of the scroll and while the reader is still, and
-  /// estimated until then. It keeps the Mac table's follow rules and paging, and the touch
-  /// transcript's keyboard and width changes.
+  /// row views kept by row id: SwiftUI row hosts (``TranscriptCollectionRowHost``), and with the
+  /// TextKit renderer, settled messages drawn as text (``TranscriptCollectionTextView``), built
+  /// and drawn ahead off the main thread. Heights are measured once per row, content version and
+  /// width, ahead of the scroll and while the reader is still, and estimated until then. It
+  /// keeps the Mac table's follow rules and paging, and the touch transcript's keyboard and
+  /// width changes.
   @MainActor
   final class TranscriptCollectionController: NSObject, UICollectionViewDataSource,
     UICollectionViewDelegate
@@ -59,10 +61,23 @@
     var itemCount = 0
     /// Whether the collection view has asked for its items since it was last reloaded.
     var hasLoadedItems = false
-    var pool = TranscriptTableCellPool<TranscriptCollectionRowHost>(
-      shownID: \.shownID, kind: \.kind)
+    var pool = TranscriptTableCellPool<any TranscriptCollectionRowView>(
+      shownID: { $0.shownID }, kind: { $0.kind })
     /// One host per kind measures rows away from the viewport, whose hosts are not kept.
     var measuringHosts: [TranscriptTableRowKind: TranscriptCollectionRowHost] = [:]
+    /// The style the text rows draw in.
+    lazy var textStyle = TranscriptCollectionTextStyle(environment: environment)
+    /// The content version of each row handed to the prewarms.
+    var prewarmed: [String: Int] = [:]
+    /// A cell is being given its row's view.
+    var isConfiguring = false
+    /// The row idle measuring waits on the prewarm for, and since when.
+    var prewarmAwaited: (id: String, since: CFTimeInterval)?
+    /// The text style changed and the rows on screen show again in it next pass, picking their
+    /// kinds again first when text rows turned on or off.
+    var awaitsTextStyle = false
+    var textKindsChanged = false
+    var awaitsFlash = false
 
     /// The follow rules (``TranscriptFollow``).
     var follow = TranscriptFollow() {
@@ -100,7 +115,7 @@
     /// The content offset at the last layout pass, for the direction of the scroll.
     var laidOutOffset: CGFloat = 0
     var visibleRange = 0..<0
-    var pendingHosts: [ObjectIdentifier: TranscriptCollectionRowHost] = [:]
+    var pendingHosts: [ObjectIdentifier: any TranscriptCollectionRowView] = [:]
     var awaitsRemeasure = false
     /// Rows measured while a cell was being made, whose heights the layout takes next pass.
     var pendingNotes = IndexSet()
@@ -114,6 +129,7 @@
     /// Counts for tests and the performance log.
     var measurements = 0
     var hostsMade = 0
+    var textViewsMade = 0
     /// Rows measured again because SwiftUI laid them out at another height once they showed,
     /// with both heights; the latest few.
     var remeasured: [String] = []
@@ -149,15 +165,17 @@
       rows: [TranscriptTableRow], state: ConversationViewState, actions: ConversationActions,
       isCLI: Bool, environment values: EnvironmentValues
     ) {
+      _ = collectionView
       if environment.values == nil {
         environment.values = values
         metrics = TranscriptTableMetrics(values)
+        syncTextStyle(values)
       }
       self.actions = actions
       self.isCLI = isCLI
       let previous = self.state
       take(state)
-      _ = collectionView
+      watchFlash()
       // A width that came with this update, before a layout pass took it.
       let widthAnchor = readingAnchor(atOffset: laidOutOffset)
       if syncWidth() { widthChanged(keeping: widthAnchor) }
@@ -202,6 +220,7 @@
     /// every row again, keeping the reader on the row they read.
     func environmentChanged(_ values: EnvironmentValues) {
       environment.values = values
+      syncTextStyle(values)
       let next = TranscriptTableMetrics(values)
       guard next != metrics else { return }
       metrics = next
@@ -285,7 +304,12 @@
       var noted = IndexSet()
       for index in change.changed {
         guard let host = realizedHost(at: index) else { continue }
-        if measure(index, with: host) { noted.insert(index) }
+        // A row that settled, or stopped being the latest answer, may change kind.
+        if host.kind != cellKind(at: index) {
+          reconfigureRealized(index)
+        } else if measure(index, with: host) {
+          noted.insert(index)
+        }
       }
       noteHeights(noted)
     }
@@ -326,21 +350,35 @@
         using: cellRegistration, for: indexPath, item: indexPath.item)
     }
 
-    /// Gives `cell` row `index`'s host: the one it already holds, one kept for the row, a spare.
+    /// Gives `cell` row `index`'s view: the one it already holds, one kept for the row, a
+    /// spare; a text row that can't draw the row gives way to a SwiftUI host.
     func configure(_ cell: TranscriptCollectionCell, at index: Int) {
       guard model.rows.indices.contains(index) else { return }
+      isConfiguring = true
+      defer { isConfiguring = false }
       let row = model.rows[index]
-      if let held = cell.host, held.shownID != row.id, let host = cell.detach() {
+      if let held = cell.host, held.shownID != row.id || held.kind != cellKind(at: index),
+        let host = cell.detach()
+      {
         pool.park(host)
       }
-      let host = cell.host ?? keptHost(for: row)
-      if model.needsMeasure(at: index) {
-        // A row the lookahead missed: measured now, its height laid out next pass.
-        if measure(index, with: host) { noteNextPass(index) }
-      } else {
-        host.show(row, version: model.version(at: index), width: model.width)
+      var host = cell.host ?? keptView(at: index)
+      present(index, in: host)
+      if host.shownID != row.id {
+        pool.park(host)
+        host = keptView(at: index)
+        present(index, in: host)
       }
       cell.attach(host)
+    }
+
+    /// Shows row `index` in `host`, measured now if it has to be, its height laid out next pass.
+    private func present(_ index: Int, in host: any TranscriptCollectionRowView) {
+      if model.needsMeasure(at: index) {
+        if measure(index, with: host) { noteNextPass(index) }
+      } else {
+        host.show(model.rows[index], version: model.version(at: index), width: model.width)
+      }
     }
 
     func collectionView(
@@ -348,6 +386,7 @@
       forItemAt indexPath: IndexPath
     ) {
       guard let cell = cell as? TranscriptCollectionCell, let host = cell.detach() else { return }
+      host.didLeaveScreen()
       pool.park(host)
     }
 

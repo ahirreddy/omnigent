@@ -33,11 +33,30 @@
     }
   }
 
-  /// A row's hosting view, apart from the cells: a row measured ahead of the scroll, or shown
-  /// before, keeps its rendered content when a cell takes it (``TranscriptTableCellPool``). The
-  /// view is a `UIHostingConfiguration`'s.
+  /// What a collection cell shows a row in, apart from the cells: a row measured ahead of the
+  /// scroll, or shown before, keeps its content when a cell takes it
+  /// (``TranscriptTableCellPool``). A row is hosted in SwiftUI (``TranscriptCollectionRowHost``)
+  /// or, for a settled message, drawn as text (``TranscriptCollectionTextView``).
   @MainActor
-  final class TranscriptCollectionRowHost {
+  protocol TranscriptCollectionRowView: AnyObject {
+    var rowView: UIView { get }
+    var shown: TranscriptTableShown? { get }
+    var kind: TranscriptTableCellKind? { get }
+    /// Shows `row`, unless it shows that version of it at `width` already.
+    func show(_ row: TranscriptTableRow, version: Int, width: CGFloat)
+    /// The row's height at `width`, laid out now if it has to be.
+    func idealHeight(at width: CGFloat) -> CGFloat
+    /// The row left the screen: what it can make again when it comes back goes.
+    func didLeaveScreen()
+  }
+
+  extension TranscriptCollectionRowView {
+    var shownID: String? { shown?.id }
+  }
+
+  /// A row's hosting view. The view is a `UIHostingConfiguration`'s.
+  @MainActor
+  final class TranscriptCollectionRowHost: TranscriptCollectionRowView {
     typealias Configuration = UIHostingConfiguration<TranscriptCollectionRowRoot, EmptyView>
 
     let view: any UIView & UIContentView
@@ -50,7 +69,7 @@
     private let environment: TranscriptTableEnvironment
     private let relay: HeightRelay
 
-    var shownID: String? { shown?.id }
+    var rowView: UIView { view }
 
     init(environment: TranscriptTableEnvironment) {
       self.environment = environment
@@ -81,6 +100,9 @@
       return size.height.rounded(.up)
     }
 
+    /// SwiftUI keeps the rendered row for when it comes back.
+    func didLeaveScreen() {}
+
     private static func configuration(
       row: TranscriptTableRow?, width: CGFloat, environment: TranscriptTableEnvironment,
       relay: HeightRelay
@@ -106,10 +128,10 @@
     }
   }
 
-  /// A collection cell: it holds the host of the row it shows, which the controller hands it and
+  /// A collection cell: it holds the view of the row it shows, which the controller hands it and
   /// takes back when the row leaves the screen. The model sizes it, not Auto Layout.
   final class TranscriptCollectionCell: UICollectionViewCell {
-    private(set) var host: TranscriptCollectionRowHost?
+    private(set) var host: (any TranscriptCollectionRowView)?
 
     override init(frame: CGRect) {
       super.init(frame: frame)
@@ -120,20 +142,20 @@
     required init?(coder: NSCoder) { nil }
 
     /// Shows `host`'s view, filling the cell.
-    func attach(_ host: TranscriptCollectionRowHost) {
+    func attach(_ host: any TranscriptCollectionRowView) {
       guard host !== self.host else { return }
       _ = detach()
       self.host = host
-      host.view.frame = contentView.bounds
-      host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-      contentView.addSubview(host.view)
+      host.rowView.frame = contentView.bounds
+      host.rowView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+      contentView.addSubview(host.rowView)
     }
 
     /// Takes the host out of the cell.
     /// - Returns: The host it held.
-    func detach() -> TranscriptCollectionRowHost? {
+    func detach() -> (any TranscriptCollectionRowView)? {
       guard let host else { return nil }
-      if host.view.superview === contentView { host.view.removeFromSuperview() }
+      if host.rowView.superview === contentView { host.rowView.removeFromSuperview() }
       self.host = nil
       return host
     }
