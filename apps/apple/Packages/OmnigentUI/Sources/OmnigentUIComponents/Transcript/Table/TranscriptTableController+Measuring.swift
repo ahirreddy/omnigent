@@ -83,6 +83,14 @@
       return changed
     }
 
+    /// Measures row `index` just ahead of a scroll: a settled message from its runs' sizes, so
+    /// its cell is made only as it shows, by when its drawing has likely arrived; another row
+    /// in a cell kept for it.
+    func measureAhead(_ index: Int) -> Bool {
+      if case .text = cellKind(at: index) { return measureAway(index) }
+      return measureKeeping(index)
+    }
+
     /// Measures row `index`, far from view: a settled message from its runs' laid-out sizes,
     /// with no text view; another row in its kind's measuring cell.
     func measureAway(_ index: Int) -> Bool {

@@ -48,7 +48,7 @@
         let deadline = CACurrentMediaTime() + Self.lookaheadBudget
         for index in next {
           guard CACurrentMediaTime() < deadline else { break }
-          if measureKeeping(index) { noted.insert(index) }
+          if measureAhead(index) { noted.insert(index) }
         }
         guard !noted.isEmpty else { break }
         noteHeightsInPlace(noted)
