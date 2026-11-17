@@ -20,6 +20,7 @@
       metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
     ) -> CGFloat {
       bubbleView.isHidden = true
+      avatarView?.isHidden = true
       if let palette = style.palette, textWidth >= MessageTextContentView.minimumWidth {
         // The answers after this one lay out (and draw) ahead at this width.
         MessageTextPrewarm.shared.note(
@@ -50,8 +51,11 @@
       metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
     ) -> CGFloat {
       workedLabel?.isHidden = true
-      if let palette = style.palette, textWidth >= MessageTextContentView.minimumWidth {
-        // The prompts after this one draw ahead at this width.
+      // The prompts after this one draw ahead at this width; one beside an avatar, narrower,
+      // leaves the width to the reader's own.
+      if let palette = style.palette, textWidth >= MessageTextContentView.minimumWidth,
+        message.avatar == nil
+      {
         MessageTextPrewarm.prompts.note(
           palette: palette, width: textWidth, scale: style.drawsAhead ? style.scale : 0,
           raster: style.drawsAhead ? style.rasterStyle : nil)
@@ -61,15 +65,33 @@
       let frames = TranscriptTableTextFrames(
         role: .user, gaps: message.gaps,
         sizes: entrySizes(of: message, textWidth: textWidth, fillsWidth: false),
-        metrics: metrics, workedHeight: nil, belowBubbleSize: below?.idealSize)
+        metrics: metrics, workedHeight: nil, belowBubbleSize: below?.idealSize,
+        hasAvatar: message.avatar != nil)
       place(frames, message: message)
       if let below, let frame = frames.belowBubble { below.frame = frame }
+      placeAvatar(message.avatar, at: frames.avatar)
       if let bubble = frames.bubble {
         bubbleView.frame = bubble
         bubbleView.color = style.bubble
         bubbleView.isHidden = false
       }
       return frames.height
+    }
+
+    /// Shows `author`'s avatar at `frame`, or none.
+    private func placeAvatar(_ author: String?, at frame: CGRect?) {
+      guard let author, let frame else {
+        avatarView?.isHidden = true
+        return
+      }
+      let view = avatarView ?? TranscriptTableAvatarView()
+      if avatarView == nil {
+        addSubview(view)
+        avatarView = view
+      }
+      view.show(author: author)
+      view.frame = frame
+      view.isHidden = false
     }
 
     /// Each of `message`'s entries' sizes at `textWidth`: as wide as that when they fill it, else

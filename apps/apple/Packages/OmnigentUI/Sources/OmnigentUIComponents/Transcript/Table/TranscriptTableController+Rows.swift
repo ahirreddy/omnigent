@@ -222,6 +222,8 @@
           answers.texts.append(message.markdown)
           answers.positions.append(position)
         case .user:
+          // A prompt beside an avatar lays out narrower than the prompts drawn ahead.
+          guard message.avatar == nil else { continue }
           prompts.texts.append(message.markdown)
           prompts.positions.append(position)
         }

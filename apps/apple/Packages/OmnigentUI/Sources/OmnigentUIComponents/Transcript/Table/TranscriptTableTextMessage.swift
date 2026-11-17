@@ -6,7 +6,8 @@
   /// or a user's prompt as TextKit text runs, with the blocks only SwiftUI draws (math, a
   /// diagram, an image, a wide table) hosted between them, and the parts beside the text that
   /// SwiftUI draws (attachments, mentions, a long prompt's toggle, content this app can't show,
-  /// the Interrupted line) hosted where the message row stacks them.
+  /// the Interrupted line) hosted where the message row stacks them, and a shared session
+  /// author's avatar beside their prompt.
   struct TranscriptTableTextMessage {
     enum Role {
       case user
@@ -44,6 +45,24 @@
     var promptFold: PromptFold?
     /// What shows under a prompt's bubble, at the column's trailing edge: its Interrupted line.
     var belowBubble: TranscriptTableAccessory?
+    /// The author whose initials show beside a shared session's prompt.
+    var avatar: String?
+
+    /// Who said it, as VoiceOver hears the message: "You said", or a shared session author's
+    /// name; `nil` for an answer.
+    var speaker: String? {
+      guard role == .user else { return nil }
+      return decoration.showsAvatar ? "\(row.author ?? "Someone") said" : "You said"
+    }
+
+    /// The width the message's text and parts lay out at: the column's for an answer, the
+    /// bubble's inside for a prompt, beside its avatar if it has one.
+    func textWidth(_ metrics: TranscriptTableTextMetrics, layoutWidth: LayoutWidth) -> CGFloat {
+      switch role {
+      case .answer: metrics.columnWidth
+      case .user: metrics.promptWidth(layoutWidth, besideAvatar: avatar != nil)
+      }
+    }
 
     /// The message row `row` shows, when a text cell can draw all of it at `ramp`.
     /// - Parameters:
@@ -75,7 +94,6 @@
           split: MessageTextSplits.shared.split(message.text, ramp: ramp),
           entries: (text.isEmpty ? [.empty] : text) + attachments + unsupported + interrupted)
       case .user:
-        guard !decoration.showsAvatar else { return nil }
         // Attachments lead the bubble, then the body, then content this app can't show.
         let body = promptBody(message, ramp: ramp, expands: expandsPrompt)
         made = Self(
@@ -83,6 +101,8 @@
           split: MessageTextSplits.shared.split(body.markdown, ramp: ramp),
           entries: attachments + body.entries + unsupported, promptFold: body.fold)
         if message.interrupted { made.belowBubble = .interrupted }
+        // A shared session shows another author's initials beside their prompt.
+        if decoration.showsAvatar { made.avatar = message.author }
       case .tool:
         return nil
       }
@@ -198,9 +218,14 @@
         + Theme.Spacing.small
     }
 
-    /// The width a user's prompt may lay out at inside its bubble.
-    func promptWidth(_ layoutWidth: LayoutWidth) -> CGFloat {
-      let bubble = min(Theme.userMessageWidth, columnWidth - Self.bubbleLead(layoutWidth))
+    /// The space a shared session's avatar takes at the bubble's trailing side, with the
+    /// stack's spacing before it.
+    static let avatarLane = TranscriptTableAvatarView.size + Theme.Spacing.small
+
+    /// The width a user's prompt may lay out at inside its bubble, beside an avatar or not.
+    func promptWidth(_ layoutWidth: LayoutWidth, besideAvatar: Bool = false) -> CGFloat {
+      let lane = besideAvatar ? Self.avatarLane : 0
+      let bubble = min(Theme.userMessageWidth, columnWidth - Self.bubbleLead(layoutWidth) - lane)
       return max(0, bubble - 2 * Theme.Spacing.large)
     }
   }

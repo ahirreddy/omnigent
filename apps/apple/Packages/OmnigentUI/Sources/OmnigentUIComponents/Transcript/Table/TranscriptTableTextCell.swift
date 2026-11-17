@@ -37,6 +37,8 @@
     var actionsTrailing: CGFloat = 0
     /// The message's own frame, as its SwiftUI row lays it out.
     var contentFrame: CGRect = .zero
+    /// A shared session author's initials beside their prompt, made once one shows.
+    var avatarView: TranscriptTableAvatarView?
     /// A linked message's tint, the row it tints for, and the wait before it fades.
     var flashView: NSView?
     var flashingRowID: String?
@@ -103,15 +105,14 @@
       if isNewRow { restartLinkCheck() }
       let documents = documents(for: message, in: textStyle, shown: next)
       let metrics = style.metrics(width: width)
-      let textWidth =
-        message.role == .answer ? metrics.columnWidth : metrics.promptWidth(style.layoutWidth)
+      let textWidth = message.textWidth(metrics, layoutWidth: style.layoutWidth)
       laidOut = (metrics, textWidth)
       adopt(message.split.pieces, documents: documents, width: textWidth)
       adoptAccessories(message.accessories, rowID: message.row.id, width: textWidth)
       let openURL = style.environment.values.map(Self.openURL(in:))
       for run in runs { run.setOpenURL(openURL) }
       setAccessibilityIdentifier("message-\(message.row.id)")
-      setAccessibilityLabel(message.role == .user ? "You said" : nil)
+      setAccessibilityLabel(message.speaker)
       if message.role == .answer {
         runs.first?.view.setAccessibilityIdentifier("message-text-\(message.row.id)")
       }

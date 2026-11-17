@@ -10,6 +10,8 @@
     var bubble: CGRect?
     /// What shows under a prompt's bubble, at the column's trailing edge.
     var belowBubble: CGRect?
+    /// A shared session author's avatar, beside their prompt's bubble.
+    var avatar: CGRect?
     /// An answer's "Worked for" line.
     var worked: CGRect?
     /// Where the actions' row starts (under the text, or on the "Worked for" line) and ends.
@@ -29,16 +31,21 @@
     ///   - metrics: The column.
     ///   - workedHeight: The "Worked for" line's height, when an answer has one.
     ///   - belowBubbleSize: The size of what shows under a prompt's bubble, if anything does.
+    ///   - hasAvatar: A prompt shows its author's avatar beside its bubble.
     init(
       role: TranscriptTableTextMessage.Role, gaps: [CGFloat], sizes: [CGSize],
       metrics: TranscriptTableTextMetrics, workedHeight: CGFloat?,
-      belowBubbleSize: CGSize? = nil
+      belowBubbleSize: CGSize? = nil, hasAvatar: Bool = false
     ) {
       actionsTrailing = metrics.columnX + metrics.columnWidth
       switch role {
       case .answer:
         stackAnswer(gaps: gaps, sizes: sizes, metrics: metrics, workedHeight: workedHeight)
       case .user:
+        if hasAvatar {
+          let size = TranscriptTableAvatarView.size
+          avatar = CGRect(x: actionsTrailing - size, y: 0, width: size, height: size)
+        }
         stackPrompt(gaps: gaps, sizes: sizes, metrics: metrics, belowBubbleSize: belowBubbleSize)
       }
     }
@@ -75,15 +82,16 @@
       height = (bottom + Theme.Spacing.row).rounded(.up)
     }
 
-    /// A prompt's entries in a bubble that hugs them at the column's trailing edge, then what
-    /// shows under it.
+    /// A prompt's entries in a bubble that hugs them at the column's trailing edge (before the
+    /// avatar, if it has one), then what shows under them.
     private mutating func stackPrompt(
       gaps: [CGFloat], sizes: [CGSize], metrics: TranscriptTableTextMetrics,
       belowBubbleSize: CGSize?
     ) {
       let used = sizes.map(\.width).max() ?? 0
       let bubbleWidth = used + 2 * Theme.Spacing.large
-      let bubbleX = metrics.columnX + metrics.columnWidth - bubbleWidth
+      let trailing = actionsTrailing - (avatar == nil ? 0 : TranscriptTableTextMetrics.avatarLane)
+      let bubbleX = trailing - bubbleWidth
       var bottom = Theme.Spacing.bubbleVertical
       for (index, size) in sizes.enumerated() {
         bottom += Self.gap(gaps, index)
@@ -94,9 +102,9 @@
       }
       let bubbleHeight = bottom + Theme.Spacing.bubbleVertical
       bubble = CGRect(x: bubbleX, y: 0, width: bubbleWidth, height: bubbleHeight)
-      // The row's stack spaces what follows the bubble at its trailing edge: a line, then the
-      // actions.
-      bottom = bubbleHeight
+      // The row's stack spaces what follows the bubble and avatar at its trailing edge: a line,
+      // then the actions.
+      bottom = max(bubbleHeight, avatar?.maxY ?? 0)
       if let belowBubbleSize {
         bottom += Theme.Spacing.extraSmall
         belowBubble = CGRect(

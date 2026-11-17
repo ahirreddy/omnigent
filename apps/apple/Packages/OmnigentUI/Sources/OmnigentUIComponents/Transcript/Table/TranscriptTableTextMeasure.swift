@@ -22,7 +22,7 @@
       guard let textStyle = style.style else { return nil }
       let metrics = style.metrics(width: width)
       let isAnswer = message.role == .answer
-      let textWidth = isAnswer ? metrics.columnWidth : metrics.promptWidth(style.layoutWidth)
+      let textWidth = message.textWidth(metrics, layoutWidth: style.layoutWidth)
       let measureAccessory =
         accessorySize ?? { accessory, rowID, width in
           let view = TranscriptTableAccessoryView.make(environment: style.environment)
@@ -57,8 +57,10 @@
       let frames = TranscriptTableTextFrames(
         role: message.role, gaps: message.gaps, sizes: sizes, metrics: metrics,
         workedHeight: isAnswer ? message.decoration.workedFor.map { _ in workedLabelHeight } : nil,
-        belowBubbleSize: message.belowBubble.map { measureAccessory($0, message.row.id, textWidth) }
-      )
+        belowBubbleSize: message.belowBubble.map {
+          measureAccessory($0, message.row.id, textWidth)
+        },
+        hasAvatar: message.avatar != nil)
       return frames.height
     }
 
