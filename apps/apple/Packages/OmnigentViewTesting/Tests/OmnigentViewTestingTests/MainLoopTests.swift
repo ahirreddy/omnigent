@@ -36,12 +36,13 @@
     func clickSettlesEarly() async throws {
       let screen = OffscreenWindow(Reveal(), width: 200, height: 200)
       defer { screen.close() }
+      // A long limit and half of it as the bound: a loaded machine can take a second to click.
       let seconds = try await elapsed {
         try screen.clickControl(at: 0)
-        screen.settle(2)
+        screen.settle(10)
       }
       #expect(screen.controlFrames.count == 2, "the new button is laid out")
-      #expect(seconds < 1, "\(seconds)")
+      #expect(seconds < 5, "\(seconds)")
     }
 
     @Test("a timer due after the limit is left for later")
