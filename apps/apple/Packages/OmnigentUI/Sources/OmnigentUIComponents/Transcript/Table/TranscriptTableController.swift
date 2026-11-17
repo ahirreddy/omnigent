@@ -82,6 +82,11 @@
     private(set) lazy var probeTag = Int(
       UInt(bitPattern: ObjectIdentifier(self).hashValue) % 10_000)
 
+    /// Jumps animate (motion on, not reduced); the transcript sets it.
+    var animatesJumps = false
+    var activeJump: TranscriptTableJump?
+    var jumpTimer: Timer?
+
     var isAdjusting = false
     var isMeasuring = false
     var isLiveScrolling = false
@@ -191,13 +196,15 @@
       needsFraming = true
       pendingShow = nil
       olderRequested = false
+      cancelJump()
     }
 
     /// Rows changed: a follower goes to the end, and another reader stays on their row.
     func keepReader(_ anchor: ReadingAnchor?, isNewOutput: Bool) {
       if isNewOutput ? follow.contentChanged() : follow.layoutGrew() {
         pinBottom()
-      } else {
+      } else if activeJump == nil {
+        // A jump under way goes on to its row, wherever the rows put it.
         restore(anchor)
       }
     }

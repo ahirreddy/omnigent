@@ -21,6 +21,7 @@
     @State private var rail = TurnRailModel()
     @Environment(\.transcriptAppearance) private var appearance
     @Environment(\.transcriptFocus) private var focus
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
       let actions = environmentRelay.publish(self.actions)
@@ -45,9 +46,9 @@
             .padding(.top, Theme.Spacing.small)
         }
       }
-      .onChange(of: scrollToLatestRequest) { _, _ in controller.jumpToLatest() }
+      .onChange(of: scrollToLatestRequest) { _, _ in controller.jumpToLatest(animated: true) }
       .onChange(of: TranscriptSends(state)) { previous, latest in
-        if latest.hasNewSend(since: previous) { controller.jumpToLatest() }
+        if latest.hasNewSend(since: previous) { controller.jumpToLatest(animated: true) }
       }
       .modifier(
         TranscriptMessageFocus(
@@ -66,13 +67,13 @@
           model: rail,
           jump: { [controller, focus] id in
             focus?.flash(id)
-            controller.show(id, at: .top)
+            controller.show(id, at: .top, animated: true)
           },
           preview: { TurnRailModel.responsePreview(after: $0, in: layout.entries(for: state)) },
           loadOlder: { controller.requestOlder() })
       )
       .overlay(alignment: .bottom) {
-        TableJumpPill(model: pill) { controller.jumpToLatest() }
+        TableJumpPill(model: pill) { controller.jumpToLatest(animated: true) }
       }
       .background { if appearance.isCLI { CLICanvas() } }
       .cliPalette()
@@ -82,6 +83,7 @@
 
     /// Hands the controller the callbacks that reach this view's state.
     private func wireController() {
+      controller.animatesJumps = Theme.Motion.isEnabled && !reduceMotion
       controller.showPill = { [pill] in if pill.pill != $0 { pill.pill = $0 } }
       controller.visibleRowsChanged = { [rail] order, visible in
         guard rail.turns.count >= 2 else { return }

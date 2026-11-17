@@ -63,6 +63,7 @@
     }
 
     @objc func liveScrollStarted(_ note: Notification) {
+      cancelJump()
       isLiveScrolling = true
       scrollPhaseChanged()
     }
@@ -76,6 +77,7 @@
     /// mouse wheel, or a trackpad before its phase begins) it counts as the reader scrolling
     /// until no event follows within ``wheelEnd``.
     func readerScrolled() {
+      cancelJump()
       guard !isLiveScrolling else { return }
       wheelSteps += 1
       let step = wheelSteps
@@ -156,15 +158,8 @@
     /// Measures the rows from the end up through a viewport and a half, then goes to the end.
     func pinBottom() {
       guard !model.rows.isEmpty else { return }
-      var covered: CGFloat = 0
-      var noted = IndexSet()
-      var index = model.rows.count - 1
-      while index >= 0, covered < clipView.bounds.height * 1.5 {
-        if model.needsMeasure(at: index), measureKeeping(index) { noted.insert(index) }
-        covered += model.height(at: index)
-        index -= 1
-      }
-      noteHeightsInPlace(noted)
+      cancelJump()
+      measureEnd()
       move(to: maximumOffset)
     }
 
@@ -184,6 +179,20 @@
       for _ in 0..<3 where clipView.bounds.minY > minimumOffset + 0.5 {
         move(to: minimumOffset)
       }
+    }
+
+    /// Measures the rows from the end up through a viewport and a half, where a move to the end
+    /// lands.
+    func measureEnd() {
+      var covered: CGFloat = 0
+      var noted = IndexSet()
+      var index = model.rows.count - 1
+      while index >= 0, covered < clipView.bounds.height * 1.5 {
+        if model.needsMeasure(at: index), measureKeeping(index) { noted.insert(index) }
+        covered += model.height(at: index)
+        index -= 1
+      }
+      noteHeightsInPlace(noted)
     }
 
     /// Opening frames the latest user message at the top, as the stack does, so a long answer
@@ -213,14 +222,22 @@
       }
     }
 
-    /// Follows the newest row again from the end.
-    func jumpToLatest() {
+    /// Follows the newest row again from the end; `animated` eases there, as the stack's pill.
+    func jumpToLatest(animated: Bool = false) {
       follow.jumpToLatest()
-      pinBottom()
+      guard animated, !model.rows.isEmpty else {
+        pinBottom()
+        return
+      }
+      measureEnd()
+      jump(
+        to: { [weak self] in self?.maximumOffset ?? 0 },
+        arrived: { [weak self] in self?.pinBottom() })
     }
 
     /// Scrolls row `id` into view; a row the table does not have yet is shown once it does.
-    func show(_ id: String, at placement: Placement) {
+    /// `animated` eases there, as the stack's message keys and rail do.
+    func show(_ id: String, at placement: Placement, animated: Bool = false) {
       // A reader sent to a row is not then framed at the latest turn.
       needsFraming = false
       guard let index = model.index(of: id) else {
@@ -238,10 +255,19 @@
         row += 1
       }
       noteHeightsInPlace(noted)
-      let rect = tableView.rect(ofRow: index)
-      switch placement {
-      case .top: move(to: rect.minY - insets.top)
-      case .center: move(to: rect.midY - insets.top - visibleHeight / 2)
+      let target: @MainActor () -> CGFloat = { [weak self] in
+        guard let self else { return 0 }
+        let rect = tableView.rect(ofRow: model.index(of: id) ?? index)
+        return switch placement {
+        case .top: rect.minY - insets.top
+        case .center: rect.midY - insets.top - visibleHeight / 2
+        }
+      }
+      if animated {
+        jump(to: target)
+      } else {
+        cancelJump()
+        move(to: target())
       }
       reportVisibleRows()
     }
