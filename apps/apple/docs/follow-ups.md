@@ -149,13 +149,50 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **iPhone:** transcript content shows briefly under the dock and composer while the layout
   settles.
 - [ ] **iPhone and iPad collection transcript** (the default list; `stack` falls back):
-  - Settled messages as TextKit text cells, drawn from the shared document builder and raster
-    with a `UITextView` for selection, once the builder (message-textkit-parity) and the raster
-    (transcript-60hz) are on one branch.
   - Previous and next message keys and Jump to top: the table wrapper has neither, on the Mac
     either.
   - Check on a device: the bars' soft scroll-edge effect over the UIKit scroll view, and the
     rows sliding with the keyboard for a reader at the end.
+- [ ] **iPhone and iPad text rows** (`-omnigent:message-text textkit` with the collection list;
+  `TranscriptCollectionTextView`). Drawn as text: settled answers and prompts that are one run
+  of text, code blocks and tables that fit included. Still SwiftUI rows:
+  - messages with a block only SwiftUI draws (display math, a diagram, an image, a table wider
+    than the column), attachments, @-mentions, a long prompt's fold, Interrupted, a shared
+    session author's avatar, and the latest answer (its action row); host those parts inside
+    the text row, as the Mac's `TranscriptTableBlockView` and `TranscriptTableAccessoryView`;
+  - CLI style (the Mac's `TranscriptTableCLICell` has no iOS counterpart yet);
+  - a code block's Wrap toggle: a drawn run always wraps its code, so the text row has only
+    Download and Copy;
+  - a drawing taller than 16,384 pixels (about 5,400 pt at 3x) keeps its row SwiftUI's; split
+    such a run into tiles instead.
+  - Bold Text: drawn runs keep regular weights (`MessageTextStyle` has no legibility weight),
+    on the Mac too.
+  - Memory: drawings are kept under the shared 256 MB budget (`MessageTextRasters`); a long
+    answer at 3x is tens of MB. Measure on a device and lower the budget for iPhone if needed.
+  - Check on the iPhone 17 Pro (Debug build with `-omnigent:transcript-list table
+    -omnigent:message-text textkit`; the simulator draws at 60 Hz, the phone at 120):
+    - Scroll a long session fast both ways: no blank or late rows, no hitches in the Instruments
+      Animation Hitches template, and text as sharp as the SwiftUI rows' (3x).
+    - Long press a word in an answer and in a prompt: the word selects with handles over the
+      drawing, drag the handles across lines, and the edit menu shows Copy, then Reply, Ask in
+      Side Chat and Message (its submenu has Copy, Fork from Here, Copy Link, Share and Copy
+      Message ID). Copy and paste into Notes: plain text, no list bullets, visible text.
+    - Reply and Ask in Side Chat quote the selection into the composer or a side chat.
+    - Long press a prompt's bubble padding and an answer's "Worked for" line: the message's
+      context menu lifts the row. A tap ends a selection.
+    - Tap a link in an answer: it opens (and a workspace file opens in the app).
+    - A code block's Copy shows "Copied" and the code pastes; Download opens the file exporter.
+      A table's Copy, Download and Expand menus work.
+    - Settings › Accessibility › Larger Text at the largest sizes: rows lay out again at the
+      new size without overlaps; compare with the stack list.
+    - Light and dark mode switched with a session open: the drawn text, code surfaces and
+      bubbles change color.
+    - VoiceOver: swipe through an answer (headings say "heading", links are links and open,
+      code blocks read "Code block, …" then Download, Copy and the code), and the actions rotor
+      offers Copy, Fork from here, Copy link, Reply and Ask in side chat.
+    - Rotate, and on iPad show and hide the sidebar: rows lay out at the new width and the
+      reader stays on the row they read.
+    - Memory in Xcode's gauge after scrolling a 300-turn session end to end and back.
 - [ ] **Onboarding (Mac):** offer the remote runner in "Where do you work today?" where
   Electron does (Databricks-managed servers only).
 - [ ] **Invite links:** `https://…/register?invite=` links open in the browser; only

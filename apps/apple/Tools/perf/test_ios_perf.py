@@ -54,6 +54,13 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(stats["renders.row"], 12)
         self.assertNotIn("renders.scr", stats)
 
+    def test_list_launch_arguments(self):
+        self.assertEqual(ios_perf.list_args("stack"), ["-omnigent:transcript-list", "stack"])
+        self.assertEqual(
+            ios_perf.list_args("text"),
+            ["-omnigent:transcript-list", "table", "-omnigent:message-text", "textkit"],
+        )
+
     def test_ignores_lines_without_stats(self):
         self.assertIsNone(ios_perf.parse_stats("begin marked"))
 

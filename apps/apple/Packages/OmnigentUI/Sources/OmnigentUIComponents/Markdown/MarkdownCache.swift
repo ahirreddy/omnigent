@@ -147,6 +147,8 @@ final class MarkdownWarmup {
       if MessageTextRenderer.launchValue == .textKit, MessageTextPrewarm.isEnabled {
         MessageTextPrewarm.shared.offer(text)
       }
+    #elseif os(iOS)
+      if MessageTextRenderer.launchValue == .textKit { MessageTextRunPrewarm.answers.offer(text) }
     #endif
   }
 

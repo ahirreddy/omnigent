@@ -5,10 +5,15 @@
   extension TranscriptCollectionController {
     // MARK: Measuring
 
-    /// A host for `row` that a cell can show: from the pool, else a new one.
-    func keptHost(for row: TranscriptTableRow) -> TranscriptCollectionRowHost {
-      if let host = pool.take(id: row.id, kind: .hosted(row.kind)) { return host }
-      return makeHost()
+    /// A view for row `index` that a cell can show, of the row's kind: from the pool, else a
+    /// new one.
+    func keptView(at index: Int) -> any TranscriptCollectionRowView {
+      let kind = cellKind(at: index)
+      if let view = pool.take(id: model.rows[index].id, kind: kind) { return view }
+      switch kind {
+      case .text: return makeTextView()
+      default: return makeHost()
+      }
     }
 
     func makeHost() -> TranscriptCollectionRowHost {
@@ -18,8 +23,8 @@
       return host
     }
 
-    /// The host showing row `index` in a cell on screen.
-    func realizedHost(at index: Int) -> TranscriptCollectionRowHost? {
+    /// The view showing row `index` in a cell on screen.
+    func realizedHost(at index: Int) -> (any TranscriptCollectionRowView)? {
       guard model.rows.indices.contains(index), index < itemCount else { return nil }
       let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))
       guard let host = (cell as? TranscriptCollectionCell)?.host,
@@ -28,30 +33,42 @@
       return host
     }
 
-    /// Shows row `index` in `host` and records its height.
+    /// Shows row `index` in `host` and records its height. A text row that can't draw the row
+    /// leaves it to SwiftUI, which measures it instead.
     /// - Returns: Whether the layout has another height for it.
     @discardableResult
-    func measure(_ index: Int, with host: TranscriptCollectionRowHost) -> Bool {
+    func measure(_ index: Int, with host: any TranscriptCollectionRowView) -> Bool {
       // Before the viewport has a width there is nothing to measure at.
       guard model.width > 0 else { return false }
-      host.show(model.rows[index], version: model.version(at: index), width: model.width)
+      let row = model.rows[index]
+      host.show(row, version: model.version(at: index), width: model.width)
+      guard host.shownID == row.id else {
+        if !isConfiguring { reconfigureRealized(index) }
+        return measureAway(index)
+      }
       let height = host.idealHeight(at: model.width)
       measurements += 1
       return model.record(height, at: index)
     }
 
-    /// Measures row `index` in a host a cell can then show it in: its own, or one parked under
-    /// its id for when it comes into view.
+    /// Measures row `index` in a view a cell can then show it in: its own, or one parked under
+    /// its id for when it comes into view. A settled message drawn as text is measured from its
+    /// run's size, its view made only as it shows, by when its drawing has likely arrived.
     func measureKeeping(_ index: Int) -> Bool {
-      if let host = realizedHost(at: index) { return measure(index, with: host) }
-      let host = keptHost(for: model.rows[index])
+      if let host = realizedHost(at: index), host.kind == cellKind(at: index) {
+        return measure(index, with: host)
+      }
+      if let message = textMessage(at: index) { return measureText(index, message, draws: true) }
+      let host = keptView(at: index)
       let changed = measure(index, with: host)
       pool.park(host)
       return changed
     }
 
-    /// Measures row `index` in its kind's measuring host, for a row far from view.
+    /// Measures row `index`, far from view: a settled message drawn as text from its run's
+    /// size, another row in its kind's measuring host.
     func measureAway(_ index: Int) -> Bool {
+      if let message = textMessage(at: index) { return measureText(index, message, draws: false) }
       let kind = model.rows[index].kind
       let host = measuringHosts[kind] ?? makeHost()
       measuringHosts[kind] = host
@@ -64,7 +81,11 @@
         guard let host = cell.host, let id = host.shownID, let index = model.index(of: id),
           model.needsMeasure(at: index)
         else { continue }
-        measure(index, with: host)
+        if host.kind == cellKind(at: index) {
+          measure(index, with: host)
+        } else {
+          reconfigureRealized(index)
+        }
       }
     }
 
@@ -118,7 +139,7 @@
       scheduleRemeasure(host)
     }
 
-    func scheduleRemeasure(_ host: TranscriptCollectionRowHost) {
+    func scheduleRemeasure(_ host: any TranscriptCollectionRowView) {
       pendingHosts[ObjectIdentifier(host)] = host
       guard !awaitsRemeasure else { return }
       awaitsRemeasure = true
@@ -225,26 +246,54 @@
       let kept = shown.insetBy(dx: 0, dy: -shown.height * Self.keptReach)
       let deadline = CACurrentMediaTime() + Self.prefetchBudget
       var noted = IndexSet()
-      // Measures row `index` if it needs it; `false` once rows are out of reach.
-      func visit(_ index: Int) -> Bool {
+      // The reader is still: messages nearest the viewport, either way, build and draw first.
+      focusPrewarms(at: shown.midY, direction: 0)
+      prewarmTexts(from: kept.minY, to: kept.maxY)
+      // Measures row `index` if it needs it: `.next` to go on, `.stop` once rows are out of
+      // reach, `.wait` for a message the prewarm is still building.
+      func visit(_ index: Int) -> PrefetchStep {
         let rect = frame(ofRow: index)
-        guard rect.maxY >= reach.minY, rect.minY <= reach.maxY else { return false }
-        guard model.needsMeasure(at: index) else { return true }
+        guard rect.maxY >= reach.minY, rect.minY <= reach.maxY else { return .stop }
+        guard model.needsMeasure(at: index) else { return .next }
+        if awaitsPrewarm(index) { return .wait }
         let isNear = rect.maxY >= kept.minY && rect.minY <= kept.maxY
         if isNear ? measureKeeping(index) : measureAway(index) { noted.insert(index) }
-        return true
+        return .next
+      }
+      // Visits the row at one side of the cursor and moves that side on; `true` to wait.
+      func step(_ position: inout Int, by delta: Int, end: Int) -> Bool {
+        switch visit(position) {
+        case .next: position += delta
+        case .stop: position = end
+        case .wait: return true
+        }
+        return false
       }
       let count = model.rows.count
-      while CACurrentMediaTime() < deadline, cursor.above >= 0 || cursor.below < count {
-        if cursor.below < count { cursor.below = visit(cursor.below) ? cursor.below + 1 : count }
-        if cursor.above >= 0 { cursor.above = visit(cursor.above) ? cursor.above - 1 : -1 }
+      var waits = false
+      while CACurrentMediaTime() < deadline, !waits, cursor.above >= 0 || cursor.below < count {
+        if cursor.below < count { waits = step(&cursor.below, by: 1, end: count) }
+        if !waits, cursor.above >= 0 { waits = step(&cursor.above, by: -1, end: -1) }
       }
       prefetchCursor = cursor
       noteHeights(noted)
       guard cursor.above >= 0 || cursor.below < model.rows.count else { return }
-      MainRunLoop.perform { [weak self] in
+      let next: @Sendable () -> Void = { [weak self] in
         MainActor.assumeIsolated { self?.prefetch(generation) }
       }
+      // A message being built ahead is measured once it is, a moment later.
+      if waits {
+        MainRunLoop.perform(after: Self.prewarmWait, next)
+      } else {
+        MainRunLoop.perform(next)
+      }
+    }
+
+    /// What measuring a row while idle does next.
+    enum PrefetchStep {
+      case next
+      case stop
+      case wait
     }
 
     func startingCursor() -> (above: Int, below: Int) {

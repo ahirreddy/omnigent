@@ -13,8 +13,9 @@ apps/apple/docs/performance.md.
 
 Scenarios: open, switch, scroll, type, stream, list-scroll, search, keyboard, rotate,
 sidebar, settings, usage, panel, new-session, browser (after open). ``--sample`` also runs
-``sample`` on each. ``--lists stack,table`` compares transcript lists in one job: each run
-launches once per list (``-omnigent:transcript-list <list>``), and the medians are per list.
+``sample`` on each. ``--lists stack,table,text`` compares transcript lists in one job: each run
+launches once per list (``-omnigent:transcript-list <list>``; ``text`` is the table with settled
+messages drawn as text rows), and the medians are per list.
 Each scenario reports the main thread's CPU (``main_cpu_ms`` from ``ps``, ``cpu`` from the
 app) and its run-loop pass times (``loop.*``, FrameMonitor's RunLoopPassStats).
 """
@@ -41,6 +42,17 @@ PREDICATE = 'subsystem == "ai.omnigent.perf"'
 # Main-thread CPU per second below which the app counts as quiet: the Debug frame monitor and
 # other sessions' server events cost 30-60 ms a second on a loaded machine.
 QUIET_MS_PER_S = 100.0
+
+
+# The launch arguments of the transcript lists ``--lists`` names; another name is a list itself.
+LIST_ARGS = {
+    "text": ["-omnigent:transcript-list", "table", "-omnigent:message-text", "textkit"],
+}
+
+
+def list_args(name: str) -> list[str]:
+    """The launch arguments that show transcript list ``name``."""
+    return LIST_ARGS.get(name, ["-omnigent:transcript-list", name])
 
 
 def long_session(index: int) -> str:
@@ -449,7 +461,7 @@ def main() -> None:
     )
     parser.add_argument("--sample", action="store_true")
     parser.add_argument(
-        "--lists", help="transcript lists to compare, comma-separated (stack,table)"
+        "--lists", help="transcript lists to compare, comma-separated (stack,table,text)"
     )
     options = parser.parse_args()
     device = Device(options.udid, options.style, options.sample)
@@ -467,9 +479,7 @@ def main() -> None:
     def run_lists() -> dict[str, dict[str, float]]:
         results: dict[str, dict[str, float]] = {}
         for transcript_list in lists:
-            device.launch_args = (
-                ["-omnigent:transcript-list", transcript_list] if transcript_list else []
-            )
+            device.launch_args = list_args(transcript_list) if transcript_list else []
             if transcript_list:
                 print(f" list {transcript_list}")
             for name, stats in scenarios(device, names, options.ipad, transcript).items():

@@ -30,6 +30,8 @@
       var top = collectionView.contentOffset.y
       let upward = top < laidOutOffset
       let keepsEnd = follow.layoutGrew() && isNearBottom
+      // Messages past what this pass measures build and draw off the main thread meanwhile.
+      if top != laidOutOffset { prewarmAhead(top: top, height: height, upward: upward) }
       var moved = false
       for _ in 0..<3 {
         let anchor = readingAnchor(atOffset: top)
@@ -102,6 +104,8 @@
       let width = collectionView.bounds.width - insets.left - insets.right
       guard width > 0, model.setWidth(width) else { return false }
       prefetchCursor = nil
+      prewarmed = [:]
+      textStyle.notePrewarms(width: width)
       return true
     }
 
