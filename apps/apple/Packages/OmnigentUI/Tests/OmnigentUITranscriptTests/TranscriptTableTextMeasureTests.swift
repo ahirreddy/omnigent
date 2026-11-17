@@ -111,6 +111,25 @@
       #expect(measured == cell.idealHeight)
     }
 
+    @Test("A message's actions keep their buttons when shown again alike, as a hover is")
+    func actionsKeepTheirButtons() throws {
+      let view = TranscriptMessageActionsView()
+      let answer = TranscriptFixture.answer("a-actions", "An answer.")
+      view.show(
+        MessageActionItem.items(for: answer, actions: ConversationActions()), timestamp: nil)
+      let buttons = view.subviews.compactMap { $0 as? NSButton }
+      #expect(!buttons.isEmpty)
+      view.show(
+        MessageActionItem.items(for: answer, actions: ConversationActions()), timestamp: nil)
+      #expect(view.subviews.compactMap { $0 as? NSButton } == buttons)
+      view.show(
+        MessageActionItem.items(for: answer, actions: ConversationActions()),
+        timestamp: Date(timeIntervalSince1970: 0))
+      let shown = view.subviews.compactMap { $0 as? NSButton }
+      #expect(shown.count == buttons.count)
+      #expect(view.frame.width > 0)
+    }
+
     @Test("A live resize lays text out at snapped widths, and at the exact one once it ends")
     func liveResize() async throws {
       let metrics = { (width: CGFloat, snap: CGFloat) in
