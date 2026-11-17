@@ -52,6 +52,8 @@
     var measuringCells: [TranscriptTableCellKind: any TranscriptTableCell] = [:]
     /// Measures the blocks only SwiftUI draws in messages away from the viewport.
     var measuringBlock: TranscriptTableBlockView?
+    /// Measures the parts beside the text that SwiftUI draws, in messages away from the viewport.
+    var measuringAccessory: TranscriptTableAccessoryView?
     /// The style settled messages draw in as text cells.
     lazy var textStyle = TranscriptTableTextStyle(environment: environment)
     /// Each row's text-cell message by content version, `nil` for a row hosted in SwiftUI.

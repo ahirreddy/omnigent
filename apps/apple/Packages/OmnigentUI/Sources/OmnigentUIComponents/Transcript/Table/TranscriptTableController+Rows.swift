@@ -214,6 +214,8 @@
         let version = model.version(at: index)
         guard prewarmed[id] != version, let message = textMessage(at: index) else { continue }
         prewarmed[id] = version
+        // A prompt of attachments alone has no text to lay out.
+        guard !message.runs.isEmpty else { continue }
         let position = Double(tableView.rect(ofRow: index).midY)
         switch message.role {
         case .answer:

@@ -1,6 +1,7 @@
 #if os(macOS)
   import AppKit
   import OmnigentViewTesting
+  import OmnigentViewTextReading
   import SwiftUI
   import Testing
 
@@ -68,6 +69,80 @@
         controller.realizedCell(at: index) as? TranscriptTableTextCell, "\(id) is a text cell")
     }
 
+    /// A chat environment with the TextKit renderer, which the test adds to.
+    private func environment(_ transform: (inout EnvironmentValues) -> Void = { _ in })
+      -> TranscriptTableEnvironment
+    {
+      let environment = TranscriptTableEnvironment()
+      var values = EnvironmentValues()
+      values.messageTextRenderer = .textKit
+      transform(&values)
+      environment.values = values
+      return environment
+    }
+
+    private func style(_ environment: TranscriptTableEnvironment) -> TranscriptTableTextStyle {
+      let style = TranscriptTableTextStyle(environment: environment)
+      style.refresh()
+      return style
+    }
+
+    private func row(_ message: Row, decoration: MessageDecoration = MessageDecoration())
+      -> TranscriptTableRow
+    {
+      TranscriptTableRow(
+        .segment(
+          SegmentEntry(
+            segment: .item(.message(message)), decorations: [message.id: decoration],
+            duration: nil)))
+    }
+
+    /// The height SwiftUI's row gives `row` in a hosted cell.
+    private func hostedHeight(_ row: TranscriptTableRow, _ environment: TranscriptTableEnvironment)
+      -> CGFloat
+    {
+      let cell = TranscriptTableHostingCell.make(environment: environment)
+      cell.show(row, version: 0, width: Self.width)
+      return cell.idealHeight
+    }
+
+    /// `row`'s height far from view, from its runs' and parts' sizes.
+    private func measuredHeight(_ row: TranscriptTableRow, _ style: TranscriptTableTextStyle)
+      throws -> CGFloat
+    {
+      let message = try #require(TranscriptTableTextMessage.make(row, ramp: style.ramp))
+      return try #require(
+        TranscriptTableTextCell.measuredHeight(
+          of: message, style: style, width: Self.width,
+          blockHeight: { block, piece, width in
+            let view = TranscriptTableBlockView.make(environment: style.environment)
+            view.show(block, piece: piece, width: width)
+            return view.idealHeight
+          }))
+    }
+
+    /// Shows `row` in a new text cell, which must take it, and checks it is as tall as SwiftUI's
+    /// row and as a far row measures.
+    private func shownMatchingSwiftUI(
+      _ row: TranscriptTableRow, _ environment: TranscriptTableEnvironment,
+      sourceLocation: SourceLocation = #_sourceLocation
+    ) throws -> TranscriptTableTextCell {
+      let style = style(environment)
+      let cell = TranscriptTableTextCell(style: style)
+      cell.show(row, version: 0, width: Self.width)
+      #expect(cell.message != nil, "\(row.id) takes a text cell", sourceLocation: sourceLocation)
+      #expect(
+        cell.idealHeight == hostedHeight(row, environment), "\(row.id) is as tall as SwiftUI's",
+        sourceLocation: sourceLocation)
+      #expect(
+        try measuredHeight(row, style) == cell.idealHeight, "\(row.id) measures as it shows",
+        sourceLocation: sourceLocation)
+      return cell
+    }
+
+    private static let attachment = Attachment(
+      id: "f1", kind: .file, title: "notes.txt", reference: "file-1", mimeType: "text/plain")
+
     /// The links the cell's text runs hold.
     private func links(in cell: TranscriptTableTextCell) -> [URL] {
       cell.runs.compactMap(\.document).flatMap { MessageTextDocument.links(in: $0.text) }
@@ -123,6 +198,56 @@
       #expect(controller.cellKind(at: index) == .text(.answer))
       try await letTasksRun(screen, milliseconds: 200)
       #expect(links(in: try textCell("a-missing", in: screen)).isEmpty)
+    }
+
+    // MARK: Attachments
+
+    @Test("A message's attachments sit where SwiftUI's row puts them, as tall as that row")
+    func attachmentsMatchSwiftUI() throws {
+      let environment = environment()
+      let attached = [Self.attachment]
+      let prompt = try shownMatchingSwiftUI(
+        row(Row(id: "u-att", role: .user, text: "With a file", attachments: attached)),
+        environment)
+      // They lead the bubble, above the text.
+      let strip = try #require(prompt.accessoryViews.first)
+      let text = try #require(prompt.runs.first?.view)
+      let bubble = try #require(prompt.subviews.first { $0 is TranscriptTableBubbleView })
+      #expect(strip.frame.maxY + Theme.Spacing.small <= text.frame.minY + 0.5)
+      #expect(bubble.frame.contains(strip.frame) && bubble.frame.contains(text.frame))
+      // Attachments alone, or behind upload markers only, fill the bubble with no text.
+      for alone in [
+        Row(id: "u-only", role: .user, attachments: attached),
+        Row(id: "u-upload", role: .user, text: "[Attached: /tmp/notes.txt]", attachments: attached),
+      ] {
+        let cell = try shownMatchingSwiftUI(row(alone), environment)
+        #expect(cell.runs.isEmpty && cell.accessoryViews.count == 1, "\(alone.id)")
+      }
+      // An answer's follow its text.
+      let answer = try shownMatchingSwiftUI(
+        row(
+          Row(
+            id: "a-att", role: .assistant, text: "Here it is.", attachments: attached,
+            responseId: "r1")), environment)
+      let answerText = try #require(answer.runs.first?.view)
+      let answerStrip = try #require(answer.accessoryViews.first)
+      #expect(answerText.frame.maxY + Theme.Spacing.small <= answerStrip.frame.minY + 0.5)
+    }
+
+    @Test("An attachment chip in a text cell opens through the host")
+    func attachmentOpens() async throws {
+      var opened: [String] = []
+      var actions = ConversationActions()
+      actions.openAttachment = { opened.append($0.id) }
+      let screen = try await tableScreen(
+        [Row(id: "u-att", role: .user, text: "With a file", attachments: [Self.attachment])],
+        actions: actions)
+      defer { screen.close() }
+      let cell = try textCell("u-att", in: screen)
+      let strip = try #require(cell.accessoryViews.first)
+      #expect(try screen.shownText(under: strip).contains("notes.txt"))
+      try screen.click(strip)
+      #expect(opened == ["f1"])
     }
   }
 #endif

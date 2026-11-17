@@ -4,8 +4,8 @@
 
   /// A settled chat message a text cell draws in AppKit (``TranscriptTableTextCell``): an answer
   /// or a user's prompt as TextKit text runs, with the blocks only SwiftUI draws (math, a
-  /// diagram, an image, a wide table) hosted between them, and nothing beside it that only
-  /// SwiftUI draws (attachments, mentions, a collapsed prompt).
+  /// diagram, an image, a wide table) hosted between them, and the parts beside the text that
+  /// SwiftUI draws (attachments) hosted where the message row stacks them.
   struct TranscriptTableTextMessage {
     enum Role {
       case user
@@ -18,6 +18,20 @@
     /// The markdown shown: the answer's text, or the prompt's without its mentions.
     let markdown: String
     let split: MessageTextSplit
+    /// What the message stacks, top to bottom, as its row's stacks do: the parts beside the
+    /// text that SwiftUI draws, and the text's pieces.
+    let entries: [Entry]
+
+    /// One thing the message stacks.
+    enum Entry {
+      /// A part beside the text that SwiftUI draws, hosted.
+      case accessory(TranscriptTableAccessory)
+      /// A piece of the text: a run of text blocks, or a block SwiftUI draws.
+      case piece(MessageTextPiece)
+      /// A prompt's body that shows nothing (its text was only upload markers): it takes no
+      /// height, and its stack still spaces it.
+      case empty
+    }
 
     /// The message row `row` shows, when a text cell can draw all of it at `ramp`.
     static func make(_ row: TranscriptTableRow, ramp: TypeRamp) -> Self? {
@@ -25,30 +39,75 @@
         case .item(.message(let message)) =
           entry.segment
       else { return nil }
-      guard !message.isStreaming, !message.text.isEmpty, message.attachments.isEmpty,
-        message.activity == nil, !message.interrupted
-      else { return nil }
+      guard !message.isStreaming, message.activity == nil, !message.interrupted else {
+        return nil
+      }
       let decoration = entry.decorations[message.id] ?? MessageDecoration()
+      let attachments: [Entry] =
+        message.attachments.isEmpty ? [] : [.accessory(.attachments(message.attachments))]
       let role: Role
       let markdown: String
+      var entries: [Entry] = []
       switch message.role {
       case .assistant:
+        guard !message.text.isEmpty else { return nil }
         role = .answer
         markdown = message.text
+        let text = Self.pieces(of: markdown, ramp: ramp)
+        entries = (text.isEmpty ? [.empty] : text) + attachments
       case .user:
         let prompt = UserPrompt.parse(message.text)
-        guard !decoration.showsAvatar, prompt.mentions.isEmpty, !prompt.text.isEmpty,
+        guard !decoration.showsAvatar, prompt.mentions.isEmpty,
           UserPrompt.collapsed(prompt.text) == nil
         else { return nil }
         role = .user
         markdown = prompt.text
+        // Attachments lead the bubble; a prompt of attachments alone has no body.
+        var body = Self.pieces(of: markdown, ramp: ramp)
+        if body.isEmpty, !message.text.isEmpty { body = [.empty] }
+        entries = attachments + body
       case .tool:
         return nil
       }
-      let split = MessageTextSplits.shared.split(markdown, ramp: ramp)
-      guard !split.pieces.isEmpty else { return nil }
+      // A message that shows nothing at all stays SwiftUI's.
+      guard entries.contains(where: { if case .empty = $0 { false } else { true } }) else {
+        return nil
+      }
       return Self(
-        role: role, row: message, decoration: decoration, markdown: markdown, split: split)
+        role: role, row: message, decoration: decoration, markdown: markdown,
+        split: MessageTextSplits.shared.split(markdown, ramp: ramp), entries: entries)
+    }
+
+    /// The pieces `markdown` splits into at `ramp`.
+    private static func pieces(of markdown: String, ramp: TypeRamp) -> [Entry] {
+      guard !markdown.isEmpty else { return [] }
+      return MessageTextSplits.shared.split(markdown, ramp: ramp).pieces.map(Entry.piece)
+    }
+
+    /// The parts beside the text, top to bottom.
+    var accessories: [TranscriptTableAccessory] {
+      entries.compactMap {
+        if case .accessory(let accessory) = $0 { return accessory }
+        return nil
+      }
+    }
+
+    /// The gap above each entry, as the row's stacks space them: a small gap between any two,
+    /// and a piece of text its own gap after another piece.
+    var gaps: [CGFloat] {
+      var gaps: [CGFloat] = []
+      var afterPiece = false
+      for entry in entries {
+        switch entry {
+        case .piece(let piece):
+          gaps.append(piece.gapAbove + (gaps.isEmpty || afterPiece ? 0 : Theme.Spacing.small))
+          afterPiece = true
+        case .accessory, .empty:
+          gaps.append(gaps.isEmpty ? 0 : Theme.Spacing.small)
+          afterPiece = false
+        }
+      }
+      return gaps
     }
 
     /// One run of text blocks, the gap above it and the inline math its paragraphs typeset.
@@ -101,11 +160,11 @@
     }
   }
 
-  /// Where a text cell puts a message's pieces, from their sizes: the cell lays its views out
+  /// Where a text cell puts a message's entries, from their sizes: the cell lays its views out
   /// by it, and a row far from view is measured by it with no views.
   struct TranscriptTableTextFrames: Equatable {
-    /// Each piece's frame, top to bottom.
-    var pieces: [CGRect] = []
+    /// Each entry's frame, top to bottom (``TranscriptTableTextMessage/entries``).
+    var entries: [CGRect] = []
     /// A user's bubble.
     var bubble: CGRect?
     /// An answer's "Worked for" line.
@@ -117,10 +176,10 @@
     var height: CGFloat = 0
 
     /// - Parameters:
-    ///   - role: An answer's pieces go down the column; a prompt's sit in a bubble that hugs
+    ///   - role: An answer's entries go down the column; a prompt's sit in a bubble that hugs
     ///     them at its trailing edge.
-    ///   - gaps: The gap above each piece.
-    ///   - sizes: Each piece's size: an answer's as wide as the column, a prompt's as its text.
+    ///   - gaps: The gap above each entry.
+    ///   - sizes: Each entry's size: an answer's as wide as the column, a prompt's as its own.
     ///   - metrics: The column.
     ///   - workedHeight: The "Worked for" line's height, when an answer has one.
     init(
@@ -134,7 +193,7 @@
         var bottom: CGFloat = 0
         for (index, size) in sizes.enumerated() {
           bottom += gap(index)
-          pieces.append(
+          entries.append(
             CGRect(x: metrics.columnX, y: bottom, width: size.width, height: size.height))
           bottom += size.height
         }
@@ -158,7 +217,7 @@
         var bottom = Theme.Spacing.bubbleVertical
         for (index, size) in sizes.enumerated() {
           bottom += gap(index)
-          pieces.append(
+          entries.append(
             CGRect(
               x: bubbleX + Theme.Spacing.large, y: bottom, width: size.width,
               height: size.height))

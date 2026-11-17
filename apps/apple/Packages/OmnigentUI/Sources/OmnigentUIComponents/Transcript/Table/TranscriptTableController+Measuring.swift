@@ -98,7 +98,8 @@
       let kind = cellKind(at: index)
       if case .text = kind, let message = textMessage(at: index),
         let height = TranscriptTableTextCell.measuredHeight(
-          of: message, style: textStyle, width: model.width, blockHeight: measuredBlockHeight)
+          of: message, style: textStyle, width: model.width, blockHeight: measuredBlockHeight,
+          accessorySize: measuredAccessorySize)
       {
         measurements += 1
         return model.record(height, at: index)
@@ -116,6 +117,17 @@
       measuringBlock = view
       view.show(block, piece: piece, width: width)
       return view.idealHeight
+    }
+
+    /// A part beside a message's text's size, offered `width`, in a hosting view kept for
+    /// measuring.
+    func measuredAccessorySize(
+      _ accessory: TranscriptTableAccessory, rowID: String, width: CGFloat
+    ) -> CGSize {
+      let view = measuringAccessory ?? TranscriptTableAccessoryView.make(environment: environment)
+      measuringAccessory = view
+      view.show(accessory, rowID: rowID, width: width)
+      return view.idealSize
     }
 
     /// Tells the table rows' heights changed, keeping the reader in place: at the bottom while
