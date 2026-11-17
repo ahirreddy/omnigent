@@ -130,8 +130,11 @@
           #expect(abs(distance - anchorDistance) <= 2)
         }
       }
-      // Every frame's width was taken at the top, and no passage was left for a turn's end.
-      #expect(probed.count("transcript passage", since: before) >= 2 * drive.turns.count)
+      // Every frame's width was taken at the top, and no passage was left for a turn's end. The
+      // table measures its rows at a new width where they are, with no passage.
+      if TranscriptListKind.current == .stack {
+        #expect(probed.count("transcript passage", since: before) >= 2 * drive.turns.count)
+      }
       #expect(probed.count(TranscriptScrollState.latePassage, since: before) == 0)
     }
   }

@@ -147,6 +147,31 @@
       (scrollView?.documentView as? NSTableView)?.delegate as? TranscriptTableController
     }
 
+    /// Where the reader is: in the table, the row under the viewport's top and how far into it,
+    /// as rows measured above it while the reader is still move the offset and not what they
+    /// see; in the stack, the offset.
+    struct ReaderPlace {
+      var row: String?
+      var offset: CGFloat
+    }
+
+    var readerPlace: ReaderPlace {
+      if let anchor = tableController?.readingAnchor() {
+        return ReaderPlace(row: anchor.id, offset: anchor.offset)
+      }
+      return ReaderPlace(row: nil, offset: offset)
+    }
+
+    /// How far what the reader sees moved since they were at `place`.
+    func distance(from place: ReaderPlace) -> CGFloat {
+      guard let row = place.row, let controller = tableController else {
+        return abs(offset - place.offset)
+      }
+      guard let index = controller.model.index(of: row) else { return .infinity }
+      let top = controller.clipView.bounds.minY + controller.insets.top
+      return abs(top - (controller.tableView.rect(ofRow: index).minY + place.offset))
+    }
+
     /// Moves the position with no gesture, as a layout pass does.
     func move(to offset: CGFloat) {
       guard let scrollView else { return }

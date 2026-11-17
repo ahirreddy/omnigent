@@ -53,8 +53,9 @@
           window.settle(0.3)
         }
         #expect(read.contains { $0.contains("And the last step?") })
-        // A question far above is also in the rail; its answer's text is only in its row.
-        #expect(read.contains("first point about step 2"))
+        // A question far above is also in the rail; its answer's text is only in its row. The
+        // table reads a row it has not laid out as the row's whole text.
+        #expect(read.contains { $0.contains("first point about step 2") })
         #expect(AssistiveClientNotice.isWritten)
       }
     }
