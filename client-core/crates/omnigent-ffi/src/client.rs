@@ -25,6 +25,7 @@ use omnigent_core::auth::{SecretString, SecureStoreKey};
 use omnigent_core::demo::DemoTransport;
 use omnigent_core::http::HttpTransport as _;
 
+use crate::cache_driver::SavedMsg;
 use crate::connection::{self, HostConfig, Resolved};
 use crate::databricks::DatabricksAuth;
 use crate::decisions::{DecisionCard, DecisionResponse};
@@ -38,6 +39,7 @@ use crate::host::{
     Clock, EntropySource, EventStreamTransport, ForeignEntropy, ForeignHttp, ForeignStore,
     HttpTransport, Scheduler, SecureStore, WebSocketTransport,
 };
+use crate::message_cache::MessageCache;
 use crate::runtime::{CoreTransport, Host, Sessions, post};
 
 /// How the server signs users in (`auth.mode` in the manifest).
@@ -223,6 +225,8 @@ pub(crate) struct AuthState {
     pub(crate) generation: u64,
     pub(crate) resolved: Option<Resolved>,
     pub(crate) connected_user: Option<String>,
+    /// The account the current connect asked for, whose saved copy shows if it fails offline.
+    expected_user: Option<String>,
     attempts: HashMap<u64, OidcSignInAttempt>,
     next_attempt: u64,
     /// The browser ticket whose poller is current; a new ticket or a connection retires it.
@@ -245,6 +249,9 @@ pub(crate) struct Inner {
     pub(crate) sockets: Option<Arc<dyn WebSocketTransport>>,
     demo: Option<Arc<DemoTransport>>,
     pub(crate) auth: Mutex<AuthState>,
+    /// This device's saved copy of sessions, which the engine reads and writes; tests flush it.
+    #[cfg(test)]
+    cache: Option<Arc<MessageCache>>,
 }
 
 /// The client core for one server connection. Safe to share across threads.
@@ -367,6 +374,14 @@ impl Inner {
     }
 
     pub(crate) fn fail(&self, server_url: &str, error: CoreError) -> CoreError {
+        // Ahead of the phase, so the app shows the saved copy instead of the failure screen.
+        if error.is_unreachable() {
+            let expected_user_id = lock(&self.auth).expected_user.clone();
+            self.post(Msg::Saved(SavedMsg::Unreachable {
+                server_url: server_url.to_owned(),
+                expected_user_id,
+            }));
+        }
         self.post(Msg::Phase(ConnectionPhase::Failed {
             server_url: server_url.to_owned(),
             error: error.clone(),
@@ -431,6 +446,7 @@ impl Inner {
         expected_user_id: Option<String>,
     ) -> Result<ConnectionPhase, CoreError> {
         let generation = self.begin_generation();
+        lock(&self.auth).expected_user.clone_from(&expected_user_id);
         self.post(Msg::Disconnected {
             phase: ConnectionPhase::Discovering {
                 server_url: server_url.to_owned(),
@@ -882,6 +898,7 @@ impl ClientCore {
                 url_policy: connection::UrlPolicy::Development,
                 oidc_redirect: connection::OidcRedirect::None,
                 databricks: None,
+                cache_directory: None,
             },
             CoreTransport::Demo(Arc::clone(&demo)),
             Transports {
@@ -1118,6 +1135,8 @@ impl ClientCore {
     /// [`CoreError::Oidc`] or [`CoreError::Auth`] when the saved credential could not be deleted.
     pub async fn sign_out(&self) -> Result<(), CoreError> {
         let inner = &self.inner;
+        // Whatever else fails, the account's saved copy of its sessions goes.
+        inner.post(Msg::Saved(SavedMsg::ForgetAccount));
         let resolved = inner.resolved()?;
         let user = lock(&inner.auth).connected_user.clone();
         let generation = inner.begin_generation();
@@ -1169,6 +1188,14 @@ impl ClientCore {
             inner.sign_in_required(&resolved, None);
         }
         result
+    }
+
+    /// Deletes this device's saved copy of `server_url`'s sessions, for every account, as
+    /// removing the server from the app should. Saving for it stops if it is the server in use.
+    /// A failure arrives as an `Error` event.
+    pub fn forget_saved_server(&self, server_url: String) {
+        self.inner
+            .post(Msg::Saved(SavedMsg::ForgetServer(server_url)));
     }
 
     /// Ends the connection and every stream. Open sessions keep their state for the next
@@ -1636,7 +1663,7 @@ impl ClientCore {
         let listeners = Arc::new(Listeners::default());
         let demo = transports.demo.clone();
         let sockets = transports.sockets.clone();
-        let (engine, rx) = Engine::new(
+        let (mut engine, rx) = Engine::new(
             host.clone(),
             transports,
             Arc::clone(&sessions),
@@ -1644,6 +1671,12 @@ impl ClientCore {
             seed,
         );
         let tx = engine.sender();
+        let cache = config
+            .cache_directory
+            .as_ref()
+            .filter(|_| demo.is_none())
+            .map(|directory| Arc::new(MessageCache::new(directory, tx.clone())));
+        engine.cache.clone_from(&cache);
         sessions.subscribe(Arc::new(Bridge(tx.clone())));
         host.spawn(engine.run(rx));
         Arc::new(Self {
@@ -1661,8 +1694,18 @@ impl ClientCore {
                 sockets,
                 demo,
                 auth: Mutex::new(AuthState::default()),
+                #[cfg(test)]
+                cache,
             }),
         })
+    }
+
+    /// Waits until the saved copy's writes so far are on disk.
+    #[cfg(test)]
+    pub(crate) fn flush_message_cache(&self) {
+        if let Some(cache) = &self.inner.cache {
+            cache.flush();
+        }
     }
 }
 

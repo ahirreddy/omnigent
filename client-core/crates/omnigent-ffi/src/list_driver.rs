@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use futures::future::AbortHandle;
 use omnigent_core::SessionError;
-use omnigent_core::sessions::{CANVAS_PAGE_LIMIT, DEFAULT_PAGE_LIMIT, SessionPage};
+use omnigent_core::sessions::{CANVAS_PAGE_LIMIT, DEFAULT_PAGE_LIMIT, SessionPage, SessionSummary};
 
 use crate::engine::{Engine, Msg};
 use crate::errors::CoreError;
@@ -145,9 +145,23 @@ impl Engine {
                 self.emit(CoreEvent::SessionListLoaded);
                 self.emit_list_paging();
                 self.update_watch();
+                self.saved_list_reset(page.rows);
             }
             Err(error) => self.list_failed(error),
         }
+    }
+
+    /// Shows the saved list while the server cannot be reached: no more pages load.
+    pub(crate) fn show_saved_list(&mut self, summaries: &[SessionSummary]) {
+        self.reset_list_window();
+        self.emit(CoreEvent::SessionListChanged {
+            change: SessionListChange::Reset {
+                sessions: summaries.iter().cloned().map(Into::into).collect(),
+            },
+        });
+        self.read_observe(summaries);
+        self.emit(CoreEvent::SessionListLoaded);
+        self.emit_list_paging();
     }
 
     /// Reads the page after the loaded rows, unless every session is loaded or a page is
@@ -192,6 +206,7 @@ impl Engine {
                 }
                 self.emit_list_paging();
                 self.update_watch();
+                self.saved_list_more(&page.rows);
             }
             Err(error) => {
                 self.emit_list_paging();

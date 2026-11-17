@@ -54,6 +54,8 @@ pub(crate) struct FakeHttp {
     gates: Mutex<HashMap<String, VecDeque<oneshot::Receiver<()>>>>,
     failures: Mutex<HashMap<String, VecDeque<TransportError>>>,
     pub(crate) requests: Mutex<Vec<HttpRequest>>,
+    /// Every request fails as offline while set.
+    pub(crate) offline: AtomicBool,
 }
 
 impl FakeHttp {
@@ -131,6 +133,11 @@ impl HttpTransport for FakeHttp {
             .and_then(VecDeque::pop_front);
         if let Some(error) = failure {
             return Err(error);
+        }
+        if self.offline.load(Ordering::SeqCst) {
+            return Err(TransportError::Offline {
+                message: "the network is down".into(),
+            });
         }
         if let Some(response) = lock(&self.method_routes).get(&(method, path.clone())) {
             return Ok(response.clone());
@@ -459,6 +466,31 @@ pub(crate) fn phases(events: &[CoreEvent]) -> Vec<ConnectionPhase> {
         .collect()
 }
 
+/// A folder of a test's own under the system's temporary folder, removed when dropped.
+pub(crate) struct TempFolder(pub(crate) std::path::PathBuf);
+
+impl TempFolder {
+    pub(crate) fn new(name: &str) -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "omnigent-ffi-{name}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::SeqCst)
+        ));
+        if path.exists() {
+            std::fs::remove_dir_all(&path).unwrap();
+        }
+        Self(path)
+    }
+}
+
+impl Drop for TempFolder {
+    fn drop(&mut self) {
+        // A folder that is already gone, or cannot be removed, is the system's to clean.
+        std::fs::remove_dir_all(&self.0).unwrap_or(());
+    }
+}
+
 /// A core connected to a routed loopback single-user server.
 pub(crate) fn connected() -> Harness {
     let mut harness = Harness::new(UrlPolicy::Development);
@@ -502,6 +534,7 @@ impl Harness {
                 path: "/oauth/callback".into(),
             },
             databricks,
+            cache_directory: None,
         })
     }
 
@@ -510,11 +543,22 @@ impl Harness {
             url_policy: policy,
             oidc_redirect,
             databricks: None,
+            cache_directory: None,
         })
     }
 
     pub(crate) fn with_config(config: HostConfig) -> Self {
         Self::with_transports(config, None)
+    }
+
+    /// A harness whose core saves sessions under `directory`.
+    pub(crate) fn with_cache(directory: &std::path::Path) -> Self {
+        Self::with_config(HostConfig {
+            url_policy: UrlPolicy::Development,
+            oidc_redirect: OidcRedirect::None,
+            databricks: None,
+            cache_directory: Some(directory.to_string_lossy().into_owned()),
+        })
     }
 
     /// A harness whose event streams go to `streams` instead of [`FakeStreams`].
@@ -524,6 +568,7 @@ impl Harness {
                 url_policy: policy,
                 oidc_redirect: OidcRedirect::None,
                 databricks: None,
+                cache_directory: None,
             },
             Some(streams),
         )

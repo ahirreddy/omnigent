@@ -210,6 +210,8 @@ pub(crate) enum Msg {
     TerminalTick { session_id: String },
     /// Read state: a caller's mark, or a finished write.
     Read(crate::read_driver::ReadMsg),
+    /// This device's saved copy: offline, a save, a deletion or a failure.
+    Saved(crate::cache_driver::SavedMsg),
     /// Answer once every message queued before this one is handled (`events_published`).
     EventsPublished(oneshot::Sender<()>),
     /// Stop everything and end the engine.
@@ -265,6 +267,9 @@ pub(crate) struct Engine {
     pub(crate) unread: BTreeSet<String>,
     pub(crate) list: crate::list_driver::ListWindow,
     pub(crate) demo_ticker: Option<AbortHandle>,
+    /// This device's saved copy; absent in the demo and without a cache folder.
+    pub(crate) cache: Option<Arc<crate::message_cache::MessageCache>>,
+    pub(crate) saved: crate::cache_driver::SavedState,
 }
 
 impl Engine {
@@ -299,6 +304,8 @@ impl Engine {
                 unread: BTreeSet::new(),
                 list: crate::list_driver::ListWindow::default(),
                 demo_ticker: None,
+                cache: None,
+                saved: crate::cache_driver::SavedState::default(),
             },
             rx,
         )
@@ -343,11 +350,8 @@ impl Engine {
                 server,
                 sign_in,
             } => self.connected(link, server, sign_in),
-            Msg::Disconnected { phase } => {
-                self.stop_realtime();
-                self.link = None;
-                self.set_phase(phase);
-            }
+            Msg::Disconnected { phase } => self.disconnected(phase),
+            Msg::Saved(message) => self.saved_message(message),
             Msg::BearerRotated {
                 bearer,
                 expires_at_ms,
@@ -422,11 +426,22 @@ impl Engine {
     fn connected(&mut self, link: Link, server: ConnectedServer, sign_in: SignInContext) {
         self.link = Some(link);
         self.sign_in = Some(sign_in);
-        self.set_phase(ConnectionPhase::Connected { server });
+        self.set_phase(ConnectionPhase::Connected {
+            server: server.clone(),
+        });
         self.read_reset();
         self.reset_list_window();
+        // After the phase, so the app keeps the saved list until the server's replaces it.
+        self.saved_connected(&server);
         self.start_realtime();
         self.refresh_list();
+    }
+
+    /// Stops every connection, then reports `phase`.
+    fn disconnected(&mut self, phase: ConnectionPhase) {
+        self.stop_realtime();
+        self.link = None;
+        self.set_phase(phase);
     }
 
     fn set_phase(&mut self, phase: ConnectionPhase) {
@@ -435,6 +450,7 @@ impl Engine {
         }
         self.phase = phase.clone();
         self.emit(CoreEvent::ConnectionChanged { phase });
+        self.saved_follows_phase();
     }
 
     pub(crate) const fn is_connected(&self) -> bool {
@@ -531,6 +547,7 @@ impl Engine {
                 self.update_watch();
             }
             ClientEvent::SessionsRemoved { ids } => {
+                self.saved_list_removed(&ids);
                 self.read_removed(&ids);
                 self.emit(CoreEvent::SessionListChanged {
                     change: SessionListChange::Remove { ids },

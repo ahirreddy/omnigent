@@ -450,6 +450,22 @@ pub enum CoreEvent {
     HostsChanged,
     /// The server's project list changed.
     ProjectsChanged,
+    /// The server could not be reached, and the session list and open sessions show what this
+    /// device saved of `server_url` (the URL the app connected with); `None` once that ends (a
+    /// connection, a sign-in screen, a disconnect or a sign-out). Sent before the saved list.
+    OfflineChanged {
+        /// The server whose saved copy shows, while offline.
+        server_url: Option<String>,
+    },
+    /// An open session shows what this device saved of it (or nothing, when nothing was saved)
+    /// because the server cannot be reached, or it no longer does. Sent after `TranscriptReset`
+    /// when true, and whenever it changes.
+    SessionOfflineChanged {
+        /// The session.
+        session_id: String,
+        /// Whether it is offline.
+        offline: bool,
+    },
     /// The session-updates socket sent a frame type this client does not know. Its payload is
     /// not forwarded.
     UnknownUpdate {

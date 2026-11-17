@@ -52,6 +52,8 @@ pub(crate) struct SessionDriver {
     stream_keyed: bool,
     /// The history paging state last reported.
     pub(crate) paging: Option<omnigent_core::reconcile::HistoryPaging>,
+    /// This device's saved copy of the session.
+    pub(crate) saved: crate::cache_driver::DriverSaved,
 }
 
 /// What a failed history read means for the stream.
@@ -101,10 +103,22 @@ impl Engine {
                     terminal_tick: None,
                     stream_keyed: false,
                     paging: None,
+                    saved: crate::cache_driver::DriverSaved::default(),
                 },
             );
+            // The saved rows go out in the reset below, before any network read.
+            if let Some(applied) = self.restore_saved(session_id)
+                && let Some(driver) = self.drivers.get_mut(session_id)
+            {
+                driver.revision = applied.revision;
+            }
         }
         self.emit_reset(session_id);
+        // Every opening tells its new store, which starts online, when it is offline.
+        if let Some(driver) = self.drivers.get_mut(session_id) {
+            driver.saved.offline_reported = false;
+        }
+        self.report_session_offline(session_id);
         if !self.is_connected() {
             return;
         }
@@ -136,7 +150,7 @@ impl Engine {
         self.emit_paging(session_id);
     }
 
-    fn emit_transcript_reset(&self, session_id: &str) {
+    pub(crate) fn emit_transcript_reset(&self, session_id: &str) {
         let Some(driver) = self.drivers.get(session_id) else {
             return;
         };
@@ -151,6 +165,7 @@ impl Engine {
     }
 
     pub(crate) fn close_session(&mut self, session_id: &str) {
+        self.save_pending(session_id);
         self.stream_input(session_id, StreamInput::Stop);
         let Some(driver) = self.drivers.remove(session_id) else {
             return;
@@ -428,6 +443,7 @@ impl Engine {
             }
             _ => None,
         };
+        self.saved_link(session_id, &state);
         self.emit(CoreEvent::SessionLinkChanged {
             session_id: session_id.to_owned(),
             state: state.into(),
@@ -456,6 +472,9 @@ impl Engine {
         let applied = sync.handle_event_raw(value);
         if let Ok(Some(decoded)) = &decoded {
             self.terminal_event(session_id, decoded);
+            if applied.is_ok() {
+                self.saved_streamed(session_id, decoded);
+            }
         }
         match applied {
             Ok(applied) => self.publish(session_id, applied),
@@ -554,6 +573,7 @@ impl Engine {
                     // The rows first: an app told "hydrated" before they land shows an empty
                     // session for a moment.
                     self.publish(session_id, applied);
+                    self.saved_hydrated(session_id, page.snapshot);
                     if current {
                         self.emit(CoreEvent::SessionHydrated {
                             session_id: session_id.to_owned(),
