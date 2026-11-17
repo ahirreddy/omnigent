@@ -60,6 +60,8 @@
     var prewarmed: [String: Int] = [:]
     /// Which rows beyond settled messages draw in AppKit cells.
     let cellStyle = TranscriptTableCellStyle.launchValue
+    /// How SwiftUI rows are sized.
+    let hostingStyle = TranscriptTableHostingStyle.launchValue
     /// The Worked folds the reader opened or closed.
     let folds = TranscriptTableFolds()
     var awaitsEnvironment = false

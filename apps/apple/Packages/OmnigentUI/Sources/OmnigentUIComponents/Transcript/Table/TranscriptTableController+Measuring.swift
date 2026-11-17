@@ -37,6 +37,8 @@
 
     func makeCell(_ kind: TranscriptTableCellKind) -> any TranscriptTableCell {
       switch kind {
+      case .hosted where hostingStyle == .fitted:
+        TranscriptTableFittedCell(environment: environment)
       case .hosted: TranscriptTableHostingCell.make(environment: environment)
       case .text: TranscriptTableTextCell(style: textStyle)
       case .native(.worked): TranscriptTableFoldCell(style: textStyle, folds: folds)

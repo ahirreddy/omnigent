@@ -84,6 +84,22 @@
       }
     }
 
+    @Test("A SwiftUI row fitted without constraints is as tall as one sized by Auto Layout")
+    func fitted() {
+      let environment = environment()
+      let activity = TranscriptTableRow(
+        .segment(
+          SegmentEntry(
+            segment: .item(
+              .activity(TranscriptFixture.activityRow(.error, id: "e1", title: "A failure"))),
+            decorations: [:], duration: nil)))
+      for row in [fold(), fold("f-live", isLive: true), activity] {
+        let cell = TranscriptTableFittedCell(environment: environment)
+        cell.show(row, version: 0, width: Self.width)
+        #expect(cell.idealHeight == hostedHeight(row, environment), "\(row.id)")
+      }
+    }
+
     @Test("A press opens and closes the fold, and the reader's choice outlasts the cell")
     func toggles() throws {
       let environment = environment()
