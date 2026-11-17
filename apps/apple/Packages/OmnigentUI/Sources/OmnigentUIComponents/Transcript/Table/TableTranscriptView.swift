@@ -108,12 +108,13 @@
           preview: { TurnRailModel.responsePreview(after: $0, in: layout.entries(for: state)) },
           loadOlder: { controller.requestOlder() })
       )
-      .overlay(alignment: .bottom) {
-        TableJumpPill(model: pill) { jumpToLatest() }
-      }
       .background { if appearance.isCLI { CLICanvas() } }
       .cliPalette()
       .accessibilityIdentifier("transcript-\(state.header.id)")
+      // Outside the transcript's identifier, which would replace the pill's own.
+      .overlay(alignment: .bottom) {
+        TableJumpPill(model: pill) { jumpToLatest() }
+      }
       .countsRenders("transcript")
     }
 
