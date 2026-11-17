@@ -79,23 +79,39 @@
       noteNextPass(index)
     }
 
-    /// How often idle measuring looks again for a message the prewarm is building, and how
-    /// long it waits for one before building it itself.
+    /// How often idle measuring looks again for messages the prewarm is building, once only
+    /// they are left, and how long it leaves one to the prewarm before building it itself.
     static let prewarmWait: TimeInterval = 0.03
     static let prewarmPatience: CFTimeInterval = 0.5
 
-    /// Whether idle measuring leaves row `index` to the prewarm for now: a message drawn as text
-    /// that is not built yet, for a while. One citing workspace paths builds here.
-    func awaitsPrewarm(_ index: Int) -> Bool {
+    /// Whether idle measuring leaves row `index` to the prewarm for now, for a while: a message
+    /// drawn as text that is not built yet, or, `near` the viewport, not drawn yet, so the main
+    /// thread doesn't draw it too. One citing workspace paths builds here.
+    func awaitsPrewarm(_ index: Int, near: Bool = false) -> Bool {
       guard let message = textMessage(at: index), textStyle.hasPrewarms,
-        message.split.cited.isEmpty, !textStyle.isBuilt(message)
+        message.split.cited.isEmpty,
+        near ? !textStyle.isLaidOut(message, width: model.width) : !textStyle.isBuilt(message)
       else { return false }
       let id = model.rows[index].id
       let now = CACurrentMediaTime()
-      if let awaited = prewarmAwaited, awaited.id == id {
-        return now - awaited.since < Self.prewarmPatience
+      if let since = prewarmDeferred[id] { return now - since < Self.prewarmPatience }
+      prewarmDeferred[id] = now
+      // One far away only lays out, as the prewarm lays out every answer offered.
+      if near {
+        let rect = frame(ofRow: index)
+        prewarmTexts(from: rect.minY, to: rect.maxY)
       }
-      prewarmAwaited = (id, now)
+      return true
+    }
+
+    /// Whether the lookahead leaves row `index` to the prewarm: a message drawn as text that
+    /// the prewarm builds and draws off the main thread and hasn't laid out at the width yet.
+    /// It is asked for, if it wasn't, and measured once it scrolls into view, by when its
+    /// drawing has likely landed, rather than drawn on the main thread before it shows.
+    func leavesToPrewarm(_ index: Int) -> Bool {
+      guard let message = textMessage(at: index), textStyle.hasPrewarms,
+        message.split.cited.isEmpty, !textStyle.isLaidOut(message, width: model.width)
+      else { return false }
       let rect = frame(ofRow: index)
       prewarmTexts(from: rect.minY, to: rect.maxY)
       return true

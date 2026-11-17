@@ -257,6 +257,7 @@
     /// scrolling; the transcript's own moves leave it running.
     func schedulePrefetch() {
       prefetchGeneration += 1
+      prewarmDeferred = [:]
       let generation = prefetchGeneration
       MainRunLoop.perform(after: Self.prefetchDelay) { [weak self] in
         MainActor.assumeIsolated { self?.prefetch(generation) }
@@ -274,51 +275,44 @@
       let deadline = CACurrentMediaTime() + Self.prefetchBudget
       var noted = IndexSet()
       prewarmAroundViewport()
-      // Measures row `index` if it needs it: `.next` to go on, `.stop` once rows are out of
-      // reach, `.wait` for a message the prewarm is still building.
-      func visit(_ index: Int) -> PrefetchStep {
+      // Measures row `index` if it needs it, unless the prewarm is still building or drawing
+      // it: idle measuring goes on past it, to the SwiftUI rows beyond, and comes back to it.
+      // `false` once rows are out of reach.
+      func visit(_ index: Int) -> Bool {
         let rect = frame(ofRow: index)
-        guard rect.maxY >= reach.minY, rect.minY <= reach.maxY else { return .stop }
-        guard model.needsMeasure(at: index) else { return .next }
-        if awaitsPrewarm(index) { return .wait }
+        guard rect.maxY >= reach.minY, rect.minY <= reach.maxY else { return false }
+        guard model.needsMeasure(at: index) else { return true }
         let isNear = rect.maxY >= kept.minY && rect.minY <= kept.maxY
+        if awaitsPrewarm(index, near: isNear) { return true }
+        prewarmDeferred[model.rows[index].id] = nil
         if isNear ? measureKeeping(index) : measureAway(index) { noted.insert(index) }
-        return .next
-      }
-      // Visits the row at one side of the cursor and moves that side on; `true` to wait.
-      func step(_ position: inout Int, by delta: Int, end: Int) -> Bool {
-        switch visit(position) {
-        case .next: position += delta
-        case .stop: position = end
-        case .wait: return true
-        }
-        return false
+        return true
       }
       let count = model.rows.count
-      var waits = false
-      while CACurrentMediaTime() < deadline, !waits, cursor.above >= 0 || cursor.below < count {
-        if cursor.below < count { waits = step(&cursor.below, by: 1, end: count) }
-        if !waits, cursor.above >= 0 { waits = step(&cursor.above, by: -1, end: -1) }
+      while CACurrentMediaTime() < deadline, cursor.above >= 0 || cursor.below < count {
+        if cursor.below < count { cursor.below = visit(cursor.below) ? cursor.below + 1 : count }
+        if cursor.above >= 0 { cursor.above = visit(cursor.above) ? cursor.above - 1 : -1 }
       }
       prefetchCursor = cursor
+      // The rows passed for the prewarm, once it has them or patience runs out.
+      for id in Array(prewarmDeferred.keys) where CACurrentMediaTime() < deadline {
+        guard let index = model.index(of: id), model.needsMeasure(at: index), visit(index) else {
+          prewarmDeferred[id] = nil
+          continue
+        }
+      }
       noteHeights(noted)
-      guard cursor.above >= 0 || cursor.below < model.rows.count else { return }
+      let isDone = cursor.above < 0 && cursor.below >= model.rows.count
+      guard !isDone || !prewarmDeferred.isEmpty else { return }
       let next: @Sendable () -> Void = { [weak self] in
         MainActor.assumeIsolated { self?.prefetch(generation) }
       }
-      // A message being built ahead is measured once it is, a moment later.
-      if waits {
+      // Only messages being built ahead are left: they are looked at again a moment later.
+      if isDone {
         MainRunLoop.perform(after: Self.prewarmWait, next)
       } else {
         MainRunLoop.perform(next)
       }
-    }
-
-    /// What measuring a row while idle does next.
-    enum PrefetchStep {
-      case next
-      case stop
-      case wait
     }
 
     func startingCursor() -> (above: Int, below: Int) {

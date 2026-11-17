@@ -1,4 +1,5 @@
 #if os(iOS)
+  import OmnigentPlatform
   import SwiftUI
   import UIKit
 
@@ -94,6 +95,9 @@
 
     /// The row's height at `width`, laid out now if it has to be.
     func idealHeight(at width: CGFloat) -> CGFloat {
+      #if DEBUG
+        FrameMonitor.count("row laid out here")
+      #endif
       let size = view.systemLayoutSizeFitting(
         CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
         withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)

@@ -69,6 +69,7 @@
       let deadline = CACurrentMediaTime() + Self.lookaheadBudget
       for index in ahead {
         guard CACurrentMediaTime() < deadline else { break }
+        if leavesToPrewarm(index) { continue }
         if measureKeeping(index) { noted.insert(index) }
       }
       return noted

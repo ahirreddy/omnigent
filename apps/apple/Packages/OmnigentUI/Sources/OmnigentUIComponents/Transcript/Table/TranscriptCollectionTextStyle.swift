@@ -1,4 +1,5 @@
 #if os(iOS)
+  import OmnigentPlatform
   import SwiftUI
   import UIKit
 
@@ -217,6 +218,9 @@
       let key = rasterKey(for: document, width: width)
       if let kept = MessageTextRasters.shared.raster(for: key) { return kept }
       drawnNow += 1
+      #if DEBUG
+        FrameMonitor.count("text drawn here")
+      #endif
       let raster = MessageTextRaster.make(
         document.run, width: width, scale: scale, style: rasterStyle)
       MessageTextRasters.shared.store(raster, for: key)
@@ -244,6 +248,9 @@
       if let size = MessageTextSizes.shared.size(document: document.serial, width: width) {
         return size
       }
+      #if DEBUG
+        FrameMonitor.count("text laid out here")
+      #endif
       let size = MessageTextSize.measure(document.run, width: width)
       MessageTextSizes.shared.store(size, document: document.serial, width: width)
       return size
