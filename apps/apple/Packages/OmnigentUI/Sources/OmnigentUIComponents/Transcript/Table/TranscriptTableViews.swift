@@ -89,8 +89,11 @@
   }
 
   /// The table: one column, no selection, and cells whose text takes the first click.
-  final class TranscriptTableNSView: NSTableView {
+  final class TranscriptTableNSView: NSTableView, MessageTextKeyScrolling {
     weak var owner: TranscriptTableController?
+    /// The table takes the keyboard only to keep it when the row view that has it leaves, so
+    /// the keys go on scrolling; a click goes to the rows' text and controls.
+    private var holdsKeyboard = false
 
     /// Selectable text and controls in a row take a click at once, not only once a row is
     /// selected, as a table's editable cells otherwise do.
@@ -100,10 +103,32 @@
       true
     }
 
-    /// Keys a focused row passes on scroll the transcript, as a text view's do.
+    override var acceptsFirstResponder: Bool { holdsKeyboard }
+
+    override func resignFirstResponder() -> Bool {
+      let resigned = super.resignFirstResponder()
+      if resigned { holdsKeyboard = false }
+      return resigned
+    }
+
+    /// Keys a focused row or a message's text passes on scroll the transcript.
     override func keyDown(with event: NSEvent) {
       if owner?.scrolls(for: event) == true { return }
       super.keyDown(with: event)
+    }
+
+    func scrollsForKey(_ event: NSEvent) -> Bool { owner?.scrolls(for: event) == true }
+
+    /// A row view leaving with the keyboard in it, as a scroll by keys takes it out of view,
+    /// hands the keyboard to the table, which goes on scrolling for the keys.
+    override func willRemoveSubview(_ subview: NSView) {
+      super.willRemoveSubview(subview)
+      // AppKit declares `window` unowned(unsafe); it is only read here.
+      guard let window = unsafe window, let responder = window.firstResponder as? NSView,
+        responder !== self, responder.isDescendant(of: subview)
+      else { return }
+      holdsKeyboard = true
+      if !window.makeFirstResponder(self) { holdsKeyboard = false }
     }
 
     // An assistive client reads the rows in order, as it reads the stack's: a group of the rows'

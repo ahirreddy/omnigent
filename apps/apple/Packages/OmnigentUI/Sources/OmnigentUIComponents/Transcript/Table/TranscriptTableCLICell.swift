@@ -25,6 +25,13 @@
     let decorations = TranscriptTableCLIDecorationsView()
     private let marker = TranscriptTableCLIDecorationsView()
     var cluster: TranscriptTableCLIClusterView?
+    /// The tables wider than the text, each in a copy that scrolls sideways over its rows, and
+    /// the document they were made for.
+    var overflowViews: [MessageTextOverflowView] = []
+    weak var overflowsDocument: CLITextDocument?
+    /// Tool work's region elements, and the document they were made for.
+    var workElements: (document: CLITextDocument?, elements: [TranscriptTableCLIRegionElement]) =
+      (nil, [])
     /// The text's frame and the column's trailing edge, where the actions sit.
     private(set) var textFrame = CGRect.zero
     private(set) var actionsTrailing: CGFloat = 0
@@ -147,6 +154,7 @@
     func releaseContent() {
       run?.release()
       run = nil
+      removeOverflows()
       shown = nil
       shownRow = nil
       block = nil
@@ -173,6 +181,7 @@
       run?.view.frame = textFrame
       decorations.frame = textFrame
       decorations.show(document.decorations, style: style)
+      placeOverflows(document)
       actionsTrailing = column.leading + column.width
       let character = (style.text?.points ?? 13) * CLIFontSize.characterRatio
       let markerWidth = character * CGFloat(CLIMetrics.markerColumns)

@@ -125,6 +125,32 @@
       #expect(style.builtDocument(for: text.spec, width: column.width) != nil)
     }
 
+    @Test("Tool work's lines carry SwiftUI's identifiers, and '… +N lines' is a button")
+    func workAccessibility() throws {
+      let style = style(environment())
+      let cell = TranscriptTableCLICell(style: style)
+      cell.show(try #require(workRows.first), version: 0, width: Self.width)
+      func regions() -> [TranscriptTableCLIRegionElement] {
+        (cell.accessibilityChildren() ?? []).compactMap { $0 as? TranscriptTableCLIRegionElement }
+      }
+      let lines = regions().filter { $0.accessibilityRole() == .group }
+      // A call's line, an explored line and reasoning, as CLIToolLine, CLIExploredRow and
+      // CLIActivityLine name them.
+      #expect(
+        Set(lines.map { $0.accessibilityIdentifier() })
+          == ["reasoning-r1", "tool-c1", "tool-c2", "tool-c3", "tool-c4"])
+      #expect(
+        lines.first { $0.accessibilityIdentifier() == "tool-c1" }?.accessibilityLabel()
+          == "Ran bash 12")
+      let more = try #require(regions().first { $0.accessibilityRole() == .button })
+      #expect(more.accessibilityLabel() == "\u{2026} +21 lines")
+      let closed = cell.idealHeight
+      #expect(more.accessibilityPerformPress())
+      #expect(cell.idealHeight > closed)
+      // Opened, the output has no "… +N lines" of its own.
+      #expect(!regions().contains { $0.accessibilityLabel() == "\u{2026} +21 lines" })
+    }
+
     @Test("Opening a tool line's output or collapsing the group lays the cell out again")
     func workExpansions() throws {
       let environment = environment()

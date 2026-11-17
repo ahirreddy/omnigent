@@ -106,19 +106,56 @@
   }
 
   /// The stack transcript over a ``LiveConversation``, with the SwiftUI text the stack falls back
-  /// with (`omnigent:transcript-list stack`). With `rows`, the list reads its rows from them and
-  /// not from the conversation's state, as the app's does.
+  /// with (`omnigent:transcript-list stack`), or inside ``overTranscriptList(_:_:)`` the list it
+  /// picks. With `rows`, the list reads its rows from them and not from the conversation's state.
   struct LiveTranscriptHost: View {
     let conversation: LiveConversation
     let actions: ConversationActions
     var rows: LiveTranscriptRows?
 
     var body: some View {
-      TranscriptView(
-        state: conversation.state, liveRows: rows, actions: actions,
-        scrollToLatestRequest: conversation.scrollRequest
-      )
-      .environment(\.messageTextRenderer, .swiftUI)
+      if HostedTranscriptList.list == .table {
+        LiveTranscript(
+          state: conversation.state, liveRows: rows, actions: actions,
+          scrollToLatestRequest: conversation.scrollRequest)
+      } else {
+        TranscriptView(
+          state: conversation.state, liveRows: rows, actions: actions,
+          scrollToLatestRequest: conversation.scrollRequest
+        )
+        .environment(\.messageTextRenderer, .swiftUI)
+      }
+    }
+  }
+
+  /// The list ``LiveTranscriptHost`` shows: the stack unless a test picks the table.
+  @MainActor
+  enum HostedTranscriptList {
+    static var list = TranscriptListKind.stack
+  }
+
+  /// Runs `body` with ``LiveTranscriptHost`` showing the transcript in `list`, as a launch that
+  /// picks it does.
+  @MainActor
+  func overTranscriptList<Result>(
+    _ list: TranscriptListKind, _ body: () async throws -> Result
+  ) async rethrows -> Result {
+    let launched = TranscriptListKind.current
+    let hosted = HostedTranscriptList.list
+    TranscriptListKind.current = list
+    HostedTranscriptList.list = list
+    defer {
+      TranscriptListKind.current = launched
+      HostedTranscriptList.list = hosted
+    }
+    return try await body()
+  }
+
+  extension View {
+    /// The renderer `list` draws settled messages with: TextKit for the table, whose text cells
+    /// take it, SwiftUI for the stack.
+    func messageRenderer(for list: TranscriptListKind) -> some View {
+      environment(\.messageTextRenderer, list == .table ? .textKit : .swiftUI)
     }
   }
 

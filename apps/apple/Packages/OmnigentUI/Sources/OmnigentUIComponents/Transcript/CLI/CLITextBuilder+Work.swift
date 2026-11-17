@@ -21,7 +21,9 @@ nonisolated extension CLITextBuilder {
 
   /// A cell: its `•` line, the marker hanging in the gutter, then its details.
   private mutating func cell(_ cell: CLIWorkCell) -> CLITextNode {
-    let line = unit(text(cell.line), indent: 0)
+    let lineText = text(cell.line)
+    labels[cell.id] = lineText.string
+    let line = unit(lineText, indent: 0)
     var items = [
       CLITextStackItem(
         gap: 0, node: .marked(line, glyph: cell.glyph, color: cell.marker ?? palette.bullet))
@@ -48,9 +50,9 @@ nonisolated extension CLITextBuilder {
     case .plan(let note, let steps):
       return plan(note: note, steps: steps)
     case .branch(let text, let isFirst, let id, let trees):
-      var items = [
-        CLITextStackItem(gap: 0, node: branch(isFirst ? "\u{2514} " : "  ", self.text(text)))
-      ]
+      let lineText = self.text(text)
+      labels[id] = lineText.string
+      var items = [CLITextStackItem(gap: 0, node: branch(isFirst ? "\u{2514} " : "  ", lineText))]
       for tree in trees {
         items.append(CLITextStackItem(gap: metrics.lineSpacing, node: self.tree(tree)))
       }
@@ -87,9 +89,10 @@ nonisolated extension CLITextBuilder {
 
   /// "… +N lines", which opens `action`.
   private mutating func more(_ hidden: Int, indent: CGFloat, action: String) -> CLITextNode {
-    .region(
-      unit(plain(CLIOutputTree.more(hidden), color: palette.dim), indent: indent),
-      id: CLITextDecoration.morePrefix + action)
+    let id = CLITextDecoration.morePrefix + action
+    labels[id] = CLIOutputTree.more(hidden)
+    return .region(
+      unit(plain(CLIOutputTree.more(hidden), color: palette.dim), indent: indent), id: id)
   }
 
   /// Text on the `└` branch, as ``CLIOutputTree`` shows it.

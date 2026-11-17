@@ -180,6 +180,18 @@
       guard !indexes.isEmpty else { return }
       probeRowHeights(indexes)
       withoutAnimation { tableView.noteHeightOfRows(withIndexesChanged: indexes) }
+      placeRowViews()
+    }
+
+    /// Puts each row view the table keeps on its row's rectangle, laid out there. The table
+    /// itself moves them for new heights only after the frame that shows those heights: neither
+    /// its layout nor its tiling moves them sooner.
+    func placeRowViews() {
+      tableView.enumerateAvailableRowViews { rowView, row in
+        let rect = tableView.rect(ofRow: row)
+        if rowView.frame != rect { rowView.frame = rect }
+        rowView.layoutSubtreeIfNeeded()
+      }
     }
 
     /// A cell's content changed size by itself: measured again on the next pass.

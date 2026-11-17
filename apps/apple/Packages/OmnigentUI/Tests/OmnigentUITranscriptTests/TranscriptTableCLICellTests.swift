@@ -166,6 +166,57 @@
       #expect(!view.isReleased)
     }
 
+    /// A table of `columns` columns, then a line after it.
+    private static func table(columns: Int) -> String {
+      let header = (0..<columns).map { "Column \($0)" }.joined(separator: " | ")
+      let cells = (0..<columns).map { "value \($0) of a row" }.joined(separator: " | ")
+      let rule = Array(repeating: " --- |", count: columns).joined()
+      return "| \(header) |\n|\(rule)\n| \(cells) |\n| \(cells) |\n\nAfter the table."
+    }
+
+    @Test("A table wider than the column scrolls sideways over its unseen rows, as SwiftUI's does")
+    func wideTable() throws {
+      let environment = environment()
+      let style = style(environment)
+      let row = message(TranscriptFixture.answer("a1", Self.table(columns: 9)))
+      let cell = TranscriptTableCLICell(style: style)
+      cell.show(row, version: 0, width: Self.width)
+      #expect(cell.overflowViews.count == 1)
+      let overflow = try #require(cell.overflowViews.first)
+      // The copy spans the column and scrolls its rows past it, their rules with them.
+      #expect(overflow.frame.minX == cell.textFrame.minX)
+      #expect(abs(overflow.frame.maxX - cell.textFrame.maxX) < 0.5)
+      #expect(overflow.contentWidth > overflow.frame.width + 100)
+      #expect(overflow.textView.string.contains("value 8 of a row"))
+      let rules = overflow.textView.subviews.compactMap { $0 as? TranscriptTableCLIDecorationsView }
+      #expect(rules.first?.shown.isEmpty == false)
+      overflow.contentView.scroll(to: NSPoint(x: 120, y: 0))
+      #expect(overflow.contentView.bounds.minX == 120)
+      // The text keeps the rows' lines unseen, so the row is as tall as SwiftUI's; what follows
+      // the table shows.
+      let text = try #require(cell.document).text.text
+      func alpha(of words: String) -> CGFloat? {
+        guard let found = text.string.range(of: words) else { return nil }
+        let location = NSRange(found, in: text.string).location
+        // Nothing reads the effective range back.
+        let color = unsafe text.attribute(.foregroundColor, at: location, effectiveRange: nil)
+        return (color as? NSColor)?.alphaComponent
+      }
+      #expect(alpha(of: "value 8 of a row") == 0)
+      #expect((alpha(of: "After the table.") ?? 0) > 0)
+      let hosted = TranscriptTableHostingCell.make(environment: environment)
+      hosted.show(row, version: 0, width: Self.width)
+      #expect(abs(cell.idealHeight - hosted.idealHeight) < 0.5)
+
+      // A table that fits needs no copy.
+      cell.show(
+        message(TranscriptFixture.answer("a2", Self.table(columns: 2))), version: 0,
+        width: Self.width)
+      #expect(cell.overflowViews.isEmpty)
+      // AppKit declares `superview` unowned(unsafe); it is only read here.
+      #expect(unsafe overflow.superview == nil)
+    }
+
     @Test("Settled CLI messages, footers and tool work take CLI text cells; streams stay hosted")
     func cellKinds() async throws {
       var streaming = TranscriptFixture.answer("a-live", "Streaming", responseID: "r-live")

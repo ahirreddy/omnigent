@@ -83,6 +83,8 @@ nonisolated struct CLITextBuild: @unchecked Sendable {
   var text: NSAttributedString
   var units: [CLITextUnit]
   var root: CLITextNode
+  /// What each region reads as, by its id: a tool work line's text, or "… +N lines".
+  var labels: [String: String] = [:]
 }
 
 nonisolated extension NSAttributedString {

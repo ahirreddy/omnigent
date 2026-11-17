@@ -56,9 +56,10 @@
       min(width - 2 * Theme.Spacing.gutter, TranscriptAppearance().contentWidth.maxWidth)
     }
 
-    /// A conversation of `turns` open in a narrow pane, with its reader where `reader` says.
-    private func pane(_ width: PaneWidth, reader: ResizedReader) async throws
-      -> OffscreenWindow<AnyView>
+    /// A conversation of `turns` open in a narrow pane over `list`, with its reader where
+    /// `reader` says.
+    private func pane(_ width: PaneWidth, reader: ResizedReader, list: TranscriptListKind)
+      async throws -> OffscreenWindow<AnyView>
     {
       // These start from where the opening leaves the reader; its framing wait runs a tenth as long.
       Theme.Timing.scale = 0.1
@@ -67,7 +68,8 @@
         ConversationViewState(
           header: TranscriptFixture.header, rows: TranscriptFixture.turns(Self.turns)))
       let window = transcriptScreen(
-        ResizedTranscriptHost(conversation: conversation, width: width),
+        ResizedTranscriptHost(conversation: conversation, width: width)
+          .messageRenderer(for: list),
         width: WidthDrive.wide + 120, height: Self.height)
       try await letOpeningEnd(window)
       if reader == .midConversation {
@@ -85,8 +87,56 @@
       "Every frame of a width change shows the reader's place, with the rows at the pane's width",
       arguments: ResizedReader.allCases, WidthDrive.allCases)
     func framesKeepTheReader(reader: ResizedReader, drive: WidthDrive) async throws {
+      try await overTranscriptList(.stack) {
+        try await recordWidthChange(reader: reader, drive: drive, list: .stack)
+      }
+    }
+
+    @Test(
+      "Every frame of a width change over the table shows the reader's place, at the new width",
+      arguments: ResizedReader.allCases, WidthDrive.allCases)
+    func tableFramesKeepTheReader(reader: ResizedReader, drive: WidthDrive) async throws {
+      try await overTranscriptList(.table) {
+        try await recordWidthChange(reader: reader, drive: drive, list: .table)
+      }
+    }
+
+    @Test(
+      "Every frame of a live drag over the table shows the reader's place, at snapped widths",
+      arguments: ResizedReader.allCases)
+    func tableLiveDragKeepsTheReader(reader: ResizedReader) async throws {
+      try await overTranscriptList(.table) {
+        try await recordWidthChange(reader: reader, drive: .drag, list: .table, isLive: true)
+      }
+    }
+
+    /// Lays out each of `drive`'s turns' widths and lets the turn's frame commit, inside a live
+    /// resize of `liveResizing` when there is one.
+    private func run(
+      _ drive: WidthDrive, _ width: PaneWidth, in window: OffscreenWindow<AnyView>,
+      liveResizing scrollView: NSScrollView?
+    ) {
+      scrollView?.viewWillStartLiveResize()
+      for turn in drive.turns {
+        for early in turn.dropLast() {
+          width.value = early
+          window.host.layoutSubtreeIfNeeded()
+        }
+        width.value = turn.last ?? width.value
+        commitFrames(for: drive.frameTime)
+      }
+      scrollView?.viewDidEndLiveResize()
+      commitFrames(for: 0.5)
+    }
+
+    /// Drives the pane's width as `drive` says under `reader` and reads every frame committed.
+    /// `isLive` drives it as a window's live resize, whose text lays out at snapped widths
+    /// until it ends.
+    private func recordWidthChange(
+      reader: ResizedReader, drive: WidthDrive, list: TranscriptListKind, isLive: Bool = false
+    ) async throws {
       let width = PaneWidth(WidthDrive.narrow)
-      let window = try await pane(width, reader: reader)
+      let window = try await pane(width, reader: reader, list: list)
       defer { window.close() }
       let recorder = try CommittedFrames(window)
       let settled = recorder.settled
@@ -96,28 +146,31 @@
       let padding = column(in: WidthDrive.narrow) - (try #require(settled.textSpan))
       let lastLine = "Line 11 of answer \(Self.turns - 1)"
 
+      let scrollView = try #require(TranscriptScrollDriver(screen: window).scrollView)
       let before = HangTrace.tallies()
       let frames = recorder.recording {
-        for turn in drive.turns {
-          for early in turn.dropLast() {
-            width.value = early
-            window.host.layoutSubtreeIfNeeded()
-          }
-          width.value = turn.last ?? width.value
-          commitFrames(for: drive.frameTime)
-        }
-        commitFrames(for: 0.5)
+        run(drive, width, in: window, liveResizing: isLive ? scrollView : nil)
       }
       let probed = HangTrace.tallies()
 
-      // Each turn's last width was committed, in order, and nothing else between.
-      #expect(frames.map(\.viewport.width) == drive.turns.compactMap(\.last))
-      for frame in frames {
+      // Each turn's last width was committed, in order, and nothing else between; a live
+      // resize's end lays the text out again at the last.
+      var widths = frames.map(\.viewport.width)
+      if isLive, widths.count > 1, widths.last == widths.dropLast().last { widths.removeLast() }
+      #expect(widths == drive.turns.compactMap(\.last))
+      for (index, frame) in frames.enumerated() {
         // More than a screen below the top.
         #expect(frame.offset > Self.height)
-        // The rows are at this frame's column, not the one before.
+        // The rows are at this frame's column, not the one before; during a live resize at
+        // one snapped down to its step, at no more than a step's cost.
         let span = try #require(frame.textSpan)
-        #expect(abs(span + padding - column(in: frame.viewport.width)) < 0.5)
+        let column = column(in: frame.viewport.width)
+        if isLive, index < frames.count - 1 {
+          #expect(span + padding <= column + 0.5)
+          #expect(span + padding > column - TranscriptTableTextStyle.liveResizeSnap)
+        } else {
+          #expect(abs(span + padding - column) < 0.5)
+        }
         // Nothing is drawn past the pane, and the scroll view clips what would be.
         #expect(try #require(frame.trailingEdge) <= frame.viewport.maxX)
         #expect(frame.clips)
@@ -130,8 +183,11 @@
           #expect(abs(distance - anchorDistance) <= 2)
         }
       }
-      // Every frame's width was taken at the top, and no passage was left for a turn's end.
-      #expect(probed.count("transcript passage", since: before) >= 2 * drive.turns.count)
+      // Every frame's width was taken at the top, and no passage was left for a turn's end. The
+      // table measures its rows at a new width where they are, with no passage.
+      if list == .stack {
+        #expect(probed.count("transcript passage", since: before) >= 2 * drive.turns.count)
+      }
       #expect(probed.count(TranscriptScrollState.latePassage, since: before) == 0)
     }
   }

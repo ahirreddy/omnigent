@@ -18,6 +18,8 @@ nonisolated struct CLITextBuilder {
   var units: [CLITextUnit] = []
   /// A list item's marker, which the next text's first line starts with.
   var pendingMarker: Marker?
+  /// What each region reads as, by its id.
+  var labels: [String: String] = [:]
 
   /// A list item's marker and where its column starts.
   struct Marker {
@@ -96,7 +98,8 @@ nonisolated struct CLITextBuilder {
       units[units.count - 1] = last
     }
     return CLITextBuild(
-      text: NSAttributedString(attributedString: output), units: units, root: root)
+      text: NSAttributedString(attributedString: output), units: units, root: root,
+      labels: labels)
   }
 
   // MARK: Texts

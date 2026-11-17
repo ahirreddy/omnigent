@@ -140,10 +140,9 @@
       }
       schedulePrefetch()
       defer { reportFooterViewport() }
-      // The frame that shows the new width has the rows' views laid out at it.
-      defer {
-        tableView.enumerateAvailableRowViews { rowView, _ in rowView.layoutSubtreeIfNeeded() }
-      }
+      // The frame that shows the new width has the rows' views where their new heights put
+      // them, laid out at it.
+      defer { placeRowViews() }
       if frameIfReady() { return }
       if follow.layoutGrew() { pinBottom() } else { restore(anchor) }
     }
