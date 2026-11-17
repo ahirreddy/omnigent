@@ -154,6 +154,9 @@
             .environment(\.typeRamp, style.ramp)
             .environment(\.colorScheme, style.isDark ? .dark : .light)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)))
+      // Its frame is the controls' band, set in layout: it makes no constraints for the
+      // window's constraint pass.
+      hosting.sizingOptions = []
       super.init(frame: .zero)
       addSubview(hosting)
     }
