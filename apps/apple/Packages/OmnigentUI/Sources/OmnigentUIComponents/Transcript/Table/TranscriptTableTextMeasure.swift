@@ -17,8 +17,7 @@
       blockHeight: (MarkdownBlock, Int, CGFloat) -> CGFloat
     ) -> CGFloat? {
       guard let textStyle = style.style else { return nil }
-      let metrics = TranscriptTableTextMetrics(
-        width: width, layoutWidth: style.layoutWidth, maxWidth: style.maxWidth)
+      let metrics = style.metrics(width: width)
       let isAnswer = message.role == .answer
       let textWidth = isAnswer ? metrics.columnWidth : metrics.promptWidth(style.layoutWidth)
       var sizes: [CGSize] = []

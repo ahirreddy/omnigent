@@ -76,8 +76,7 @@
           source: MessageTextSource(text: message.markdown, piece: run.id), blocks: run.blocks,
           linked: [], style: textStyle, links: nil)
       }
-      let metrics = TranscriptTableTextMetrics(
-        width: width, layoutWidth: style.layoutWidth, maxWidth: style.maxWidth)
+      let metrics = style.metrics(width: width)
       let textWidth =
         message.role == .answer ? metrics.columnWidth : metrics.promptWidth(style.layoutWidth)
       laidOut = (metrics, textWidth)

@@ -131,8 +131,7 @@
     /// Places the button, the hairline and an open fold's items; returns the row's height.
     private func layOut() -> CGFloat {
       guard let fold else { return 0 }
-      let metrics = TranscriptTableTextMetrics(
-        width: width, layoutWidth: style.layoutWidth, maxWidth: style.maxWidth)
+      let metrics = style.metrics(width: width)
       let isExpanded = folds.isExpanded(fold.id, isLive: fold.isLive)
       button.isExpanded = isExpanded
       let size = button.fittingSize

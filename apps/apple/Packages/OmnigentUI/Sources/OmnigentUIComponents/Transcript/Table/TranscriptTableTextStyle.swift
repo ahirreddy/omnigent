@@ -95,6 +95,28 @@
         codeRadius: Theme.Radius.large, codeChrome: stamps.code, tableChrome: stamps.table)
     }
 
+    /// Whether the window is being resized live: text lays out at column widths snapped to
+    /// ``liveResizeSnap`` meanwhile, and exactly once the resize ends.
+    private(set) var isLiveResizing = false
+    static let liveResizeSnap: CGFloat = 32
+
+    /// Starts or ends a live resize.
+    /// - Returns: Whether that changed.
+    @discardableResult
+    func setLiveResizing(_ resizing: Bool) -> Bool {
+      guard resizing != isLiveResizing else { return false }
+      isLiveResizing = resizing
+      serial += 1
+      return true
+    }
+
+    /// Where a cell `width` wide puts its message's column.
+    func metrics(width: CGFloat) -> TranscriptTableTextMetrics {
+      TranscriptTableTextMetrics(
+        width: width, layoutWidth: layoutWidth, maxWidth: maxWidth,
+        snap: isLiveResizing ? Self.liveResizeSnap : 0)
+    }
+
     /// Whether runs are drawn ahead, at a known scale.
     var drawsAhead: Bool { surface == .raster && scale > 0 && rasterStyle != nil }
 

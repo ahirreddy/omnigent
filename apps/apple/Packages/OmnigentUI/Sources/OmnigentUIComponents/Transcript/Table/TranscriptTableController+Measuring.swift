@@ -67,6 +67,7 @@
       let height = cell.idealHeight
       isMeasuring = false
       measurements += 1
+      if textStyle.isLiveResizing { measuredWhileResizing.insert(model.rows[index].id) }
       return model.record(height, at: index)
     }
 

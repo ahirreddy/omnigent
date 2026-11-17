@@ -104,6 +104,9 @@
     var prefetchGeneration = 0
     var prefetchCursor: (above: Int, below: Int)?
 
+    /// Rows measured during a live resize, at a snapped text width.
+    var measuredWhileResizing: Set<String> = []
+
     /// Counts for tests and the performance log.
     var measurements = 0
     var cellsMade = 0

@@ -269,6 +269,27 @@
       if follow.layoutGrew() { pinBottom() } else { restore(anchor) }
     }
 
+    /// The window started or ended a live resize. Meanwhile text lays out at snapped widths, so
+    /// a drag lays each message out every few points, not at each; once it ends, the rows
+    /// measured meanwhile are measured again at the exact width, those on screen now.
+    func liveResizeChanged(_ isResizing: Bool) {
+      guard textStyle.setLiveResizing(isResizing), !isResizing else { return }
+      let anchor = readingAnchor()
+      model.markStale(measuredWhileResizing)
+      measuredWhileResizing = []
+      var noted = IndexSet()
+      tableView.enumerateAvailableRowViews { _, row in
+        if let cell = realizedCell(at: row), model.needsMeasure(at: row),
+          measure(row, with: cell)
+        {
+          noted.insert(row)
+        }
+      }
+      noteHeightsInPlace(noted)
+      schedulePrefetch()
+      if follow.layoutGrew() { pinBottom() } else { restore(anchor) }
+    }
+
     /// Lays rows out at the viewport's width.
     /// - Returns: Whether the width changed.
     @discardableResult

@@ -33,6 +33,16 @@
       owner?.readerScrolled()
       super.scrollWheel(with: event)
     }
+
+    override func viewWillStartLiveResize() {
+      super.viewWillStartLiveResize()
+      owner?.liveResizeChanged(true)
+    }
+
+    override func viewDidEndLiveResize() {
+      super.viewDidEndLiveResize()
+      owner?.liveResizeChanged(false)
+    }
   }
 
   /// The table: one column, no selection, and cells whose text takes the first click.

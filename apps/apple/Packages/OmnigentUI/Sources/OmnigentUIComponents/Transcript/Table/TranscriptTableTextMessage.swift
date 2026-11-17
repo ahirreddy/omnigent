@@ -74,10 +74,15 @@
     var columnX: CGFloat
     var columnWidth: CGFloat
 
-    init(width: CGFloat, layoutWidth: LayoutWidth, maxWidth: CGFloat) {
+    /// The column in a cell `width` wide. A column narrower than its limit snaps down to a
+    /// multiple of `snap` (0 for none), so a width dragged a point at a time lays text out only
+    /// now and then.
+    init(width: CGFloat, layoutWidth: LayoutWidth, maxWidth: CGFloat, snap: CGFloat = 0) {
       let gutter = layoutWidth == .compact ? Theme.Spacing.compactGutter : Theme.Spacing.gutter
       let limit = layoutWidth == .compact ? CGFloat.infinity : maxWidth
-      columnWidth = max(0, min(limit, width - 2 * gutter))
+      var columnWidth = max(0, min(limit, width - 2 * gutter))
+      if snap > 0, columnWidth < limit { columnWidth = (columnWidth / snap).rounded(.down) * snap }
+      self.columnWidth = columnWidth
       columnX = ((width - columnWidth - 2 * gutter) / 2).rounded(.down) + gutter
     }
 
