@@ -17,6 +17,8 @@ nonisolated struct MessageTextBlockSpan: Equatable {
   /// The block's leading edge.
   var indent: CGFloat
   var kind: Kind
+  /// A code block's header line, whose label stays put while the code scrolls.
+  var header: NSRange?
 
   /// Each code block's and table's span in `text`, by block.
   static func spans(in text: NSAttributedString) -> [Int: Self] {
@@ -37,6 +39,7 @@ nonisolated struct MessageTextBlockSpan: Equatable {
       } else {
         spans[mark.block] = Self(range: range, indent: mark.indent, kind: kind)
       }
+      if case .codeHeader = mark.role { spans[mark.block]?.header = range }
     }
     return spans
   }
@@ -210,6 +213,13 @@ nonisolated extension NSParagraphStyle {
         for (run, style) in styles {
           storage.addAttribute(.paragraphStyle, value: style.unwrapped(), range: run)
         }
+        // The header's label stays drawn here, over the code that scrolls.
+        if let header = span.header {
+          // The block's third argument is AppKit's stop pointer, unused here.
+          unsafe document.text.enumerateAttributes(in: header) { attributes, run, _ in
+            storage.setAttributes(attributes, range: run)
+          }
+        }
       }
       storage.endEditing()
       hiddenBlocks = blocks
@@ -235,7 +245,14 @@ nonisolated extension NSParagraphStyle {
     }
 
     private func makeOverflow(_ span: MessageTextBlockSpan) -> MessageTextOverflowView {
-      let text = document.text.overflowText(in: span.range, indent: span.indent)
+      let text = NSMutableAttributedString(
+        attributedString: document.text.overflowText(in: span.range, indent: span.indent))
+      // The label stays put in the text below; the copy only keeps its line's room.
+      if let header = span.header {
+        text.addAttribute(
+          .foregroundColor, value: NSColor.clear, range: NSRange(location: 0, length: header.length)
+        )
+      }
       let view: MessageTextOverflowView
       switch span.kind {
       case .code:

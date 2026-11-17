@@ -79,7 +79,7 @@
       let code = "let a = 1\n\nlet b = 2"
       let document = MessageTextFixture.document("Before\n\n```swift\n\(code)\n```")
       let text = document.text
-      #expect(text.string == "Before\n \nlet a = 1\n\nlet b = 2")
+      #expect(text.string == "Before\nSwift\nlet a = 1\n\nlet b = 2")
       #expect(document.hasWideBlocks)
       guard case .code(let copied, let language)? = document.chrome.values.first else {
         Issue.record("no code block control")
@@ -87,7 +87,7 @@
       }
       #expect(copied == code)
       #expect(language == "swift")
-      let header = MessageTextFixture.offset(of: " ", in: text, after: "Before")
+      let header = MessageTextFixture.offset(of: "Swift", in: text)
       let headerMark = MessageTextFixture.value(
         .messageBlock, at: header, in: text, as: MessageBlockMark.self)
       guard case .codeHeader? = headerMark?.role else {
@@ -96,8 +96,11 @@
       }
       let before = try #require(MessageTextFixture.paragraph(at: 0, in: text))
       let headerStyle = try #require(MessageTextFixture.paragraph(at: header, in: text))
-      #expect(headerStyle.lineSpacing == 0, "the header line is all line height")
-      #expect(headerStyle.minimumLineHeight == MessageTextBuilder.codeHeaderHeight + 1)
+      #expect(headerStyle.lineSpacing == 0, "the header's label line has no spacing of its own")
+      #expect(
+        headerStyle.minimumLineHeight + headerStyle.paragraphSpacing
+          == MessageTextBuilder.codeHeaderHeight + 1, "the band and its rule")
+      #expect(headerStyle.lineBreakMode == .byTruncatingTail)
       #expect(
         headerStyle.paragraphSpacingBefore == TypeRamp.paragraphSpacing + before.lineSpacing)
       let first = MessageTextFixture.offset(of: "let a", in: text)

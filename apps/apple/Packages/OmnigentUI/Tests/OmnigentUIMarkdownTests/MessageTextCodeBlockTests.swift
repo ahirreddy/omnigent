@@ -16,25 +16,7 @@
     func codeHeader() throws {
       let markdown = "```swift\nlet a = 1\n```"
       let capturedLines = CapturedPoints()
-      let swiftUI = OffscreenWindow(
-        AnyView(
-          MarkdownView(markdown)
-            .overlayPreferenceValue(Text.LayoutKey.self) { layouts in
-              GeometryReader { proxy in
-                Color.clear.onAppear {
-                  for anchored in layouts {
-                    let origin = proxy[anchored.origin]
-                    for line in anchored.layout {
-                      capturedLines.values.append(
-                        CGPoint(x: origin.x + line.origin.x, y: origin.y + line.origin.y))
-                    }
-                  }
-                }
-              }
-            }
-            .frame(width: 600, alignment: .topLeading)
-            .frame(maxHeight: .infinity, alignment: .top)),
-        width: 600, height: 300)
+      let swiftUI = Self.swiftUIScreen(markdown, capturing: capturedLines)
       defer { swiftUI.close() }
       // The label is the header's first line; its controls are the last two of three.
       let label = try #require(
@@ -48,7 +30,8 @@
         width: 600, height: 300)
       defer { textKit.close() }
       let header = try #require(textKit.allViews.compactMap { $0 as? MessageCodeHeaderView }.first)
-      let baseline = header.convert(header.labelBaseline, to: textKit.host)
+      let content = try #require(MessageTextFixture.contentViews(in: textKit).first)
+      let baseline = try Self.labelBaseline(in: content, to: textKit.host)
       #expect(
         abs(baseline.x - label.x) < 0.5 && abs(baseline.y - label.y) < 0.5,
         "\(baseline) vs \(label)")
@@ -65,6 +48,50 @@
       #expect(wrap.width == Theme.Control.target)
       #expect(abs(wrap.maxX + Theme.Spacing.small - buttons[0].minX) < 0.5)
       #expect(header.copyButton.title == "Copy code")
+    }
+
+    /// SwiftUI's rendering of `markdown`, each line's baseline origin captured.
+    private static func swiftUIScreen(_ markdown: String, capturing captured: CapturedPoints)
+      -> OffscreenWindow<AnyView>
+    {
+      OffscreenWindow(
+        AnyView(
+          MarkdownView(markdown)
+            .overlayPreferenceValue(Text.LayoutKey.self) { layouts in
+              GeometryReader { proxy in
+                Color.clear.onAppear {
+                  for anchored in layouts {
+                    let origin = proxy[anchored.origin]
+                    for line in anchored.layout {
+                      captured.values.append(
+                        CGPoint(x: origin.x + line.origin.x, y: origin.y + line.origin.y))
+                    }
+                  }
+                }
+              }
+            }
+            .frame(width: 600, alignment: .topLeading)
+            .frame(maxHeight: .infinity, alignment: .top)),
+        width: 600, height: 300)
+    }
+
+    /// Where the text draws the code block's label: its first glyph on its baseline.
+    private static func labelBaseline(in content: MessageTextContentView, to host: NSView) throws
+      -> CGPoint
+    {
+      let layout = try #require(content.textView.textLayoutManager)
+      var found: CGPoint?
+      _ = layout.enumerateTextLayoutFragments(
+        from: layout.documentRange.location, options: [.ensuresLayout]
+      ) { fragment in
+        guard let line = fragment.textLineFragments.first else { return true }
+        let frame = fragment.layoutFragmentFrame
+        found = CGPoint(
+          x: frame.minX + line.typographicBounds.minX + line.locationForCharacter(at: 0).x,
+          y: frame.minY + line.typographicBounds.minY + line.glyphOrigin.y)
+        return false
+      }
+      return content.textView.convert(try #require(found), to: host)
     }
 
     private static let longCode =

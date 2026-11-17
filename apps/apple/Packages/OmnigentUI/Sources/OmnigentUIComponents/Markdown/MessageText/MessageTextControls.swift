@@ -3,10 +3,9 @@
   import OmnigentPlatform
   import SwiftUI
 
-  /// A code block's header, as ``CodeBlockView`` draws it: the language, then Wrap, Download and
-  /// a Copy button that says "Copied" for a moment.
+  /// A code block's controls, as ``CodeBlockView`` draws them: Wrap, Download and a Copy button
+  /// that says "Copied" for a moment. The text draws the language beside them.
   final class MessageCodeHeaderView: NSView {
-    private let label: NSAttributedString
     private let labelFont: NSFont
     let wrapButton: NSButton
     let downloadButton: NSButton
@@ -32,13 +31,6 @@
       self.language = language
       self.palette = palette
       labelFont = palette.sectionFont
-      let style = NSMutableParagraphStyle()
-      style.lineBreakMode = .byTruncatingTail
-      label = NSAttributedString(
-        string: CodeLanguageName.label(for: language),
-        attributes: [
-          .font: palette.sectionFont, .foregroundColor: palette.secondary, .paragraphStyle: style,
-        ])
       let symbolSize = palette.style.ramp.body
       wrapButton = Self.iconButton(
         "text.word.spacing", label: "Wrap code lines", size: symbolSize)
@@ -90,42 +82,21 @@
       return button
     }
 
-    /// The label's baseline and leading edge, as SwiftUI sets it in a message: one line of the
-    /// prose's exact line height, centered in the band, its baseline the font's size down.
-    var labelBaseline: CGPoint {
-      let scale = max(palette.style.scale, 1)
-      let top = (bounds.height - palette.style.ramp.bodyLineHeight) / 2
-      let baseline = ((top + labelFont.pointSize) * scale).rounded() / scale
-      return CGPoint(x: Theme.Spacing.medium, y: baseline)
-    }
-
     override func layout() {
       super.layout()
       let target = Theme.Control.target
-      let scale = max(palette.style.scale, 1)
       let top = ((bounds.height - target) / 2).rounded()
       var trailing = bounds.maxX - Theme.Spacing.medium
       for button in [copyButton, downloadButton, wrapButton] {
-        // Copy is as wide as its icon, the gap and its title, as SwiftUI's label is.
+        // Copy is as wide as its icon, the gap and its title, unrounded, as SwiftUI lays it out.
         let content =
           button === copyButton
           ? (button.image?.size.width ?? 0) + Theme.Spacing.extraSmall
             + button.attributedTitle.size().width : 0
-        let width = max(target, (content * scale).rounded(.up) / scale)
+        let width = max(target, content)
         button.frame = CGRect(x: trailing - width, y: top, width: width, height: target)
         trailing -= width + Theme.Spacing.small
       }
-      needsDisplay = true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-      let baseline = labelBaseline
-      let width = max(0, wrapButton.frame.minX - Theme.Spacing.small - baseline.x)
-      let lineHeight = (labelFont.ascender - labelFont.descender + labelFont.leading).rounded(.up)
-      label.draw(
-        with: CGRect(
-          x: baseline.x, y: baseline.y - labelFont.ascender, width: width, height: lineHeight),
-        options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
     }
 
     @objc private func toggleWrap() {

@@ -61,6 +61,10 @@ nonisolated struct MessageTextBuilder {
     MessageTextMetrics.controlTarget + 2 * MessageTextMetrics.extraSmall
   /// Inside a code block, around its code.
   static let codePadding = MessageTextMetrics.large
+  /// The header's Wrap, Download and Copy, which its label stops short of.
+  static let codeHeaderControlsWidth =
+    MessageTextMetrics.medium + 4.5 * MessageTextMetrics.controlTarget
+    + 3 * MessageTextMetrics.small
   /// Under a table, its controls' row.
   static let tableControlsHeight = MessageTextMetrics.controlTarget
   static let quoteBarWidth: CGFloat = 3

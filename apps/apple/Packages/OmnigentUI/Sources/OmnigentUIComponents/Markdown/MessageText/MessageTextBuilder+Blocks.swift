@@ -83,12 +83,22 @@ nonisolated extension MessageTextBuilder {
     let block = lastBlock
     hasWideBlocks = true
     chrome[block] = .code(code: code, language: language)
+    let label = NSAttributedString(
+      string: CodeLanguageName.label(for: language),
+      attributes: [.font: palette.sectionFont, .foregroundColor: palette.secondary])
+    // The label's line is one of the prose's exact lines centered in the band, as SwiftUI sets
+    // it there; the band's rest, and the rule under it, follow as spacing.
+    let scale = max(palette.style.scale, 1)
+    let top = (Self.codeHeaderHeight - ramp.bodyLineHeight) / 2
+    let baseline = ((top + palette.sectionFont.pointSize) * scale).rounded() / scale
+    let glyphs = baseline + (-palette.sectionFont.descender).rounded()
     emit(
       Paragraph(
-        content: space(palette.sectionFont), lineHeight: Self.codeHeaderHeight + 1,
-        font: palette.sectionFont, indent: context.indent,
+        content: label, lineHeight: glyphs, font: palette.sectionFont,
+        indent: context.indent + MessageTextMetrics.medium,
+        tailIndent: -Self.codeHeaderControlsWidth, after: Self.codeHeaderHeight + 1 - glyphs,
         mark: MessageBlockMark(block: block, role: .codeHeader, indent: context.indent),
-        spacesUnderGlyphs: false, isPlaceholder: true),
+        lineBreak: .byTruncatingTail, spacesUnderGlyphs: false, isPlaceholder: true),
       in: context)
     let font = palette.codeFont
     let colored = highlighted(code, language: language, font: font)
