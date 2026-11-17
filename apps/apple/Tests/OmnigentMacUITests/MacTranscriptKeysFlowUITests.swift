@@ -125,14 +125,14 @@ final class MacTranscriptKeysFlowUITests: XCTestCase {
   }
 
   /// Each message row's top in view, by identifier, once the transcript has had a moment to
-  /// move.
+  /// move. A row that left between the query and the read is skipped.
   @MainActor
   private static func rowTops(in app: XCUIApplication, within transcript: CGRect)
     -> [String: CGFloat]
   {
     RunLoop.current.run(until: Date().addingTimeInterval(0.6))
     var tops: [String: CGFloat] = [:]
-    for row in messageRows(in: app).allElementsBoundByIndex {
+    for row in messageRows(in: app).allElementsBoundByIndex where row.exists {
       let frame = row.frame
       if frame.intersects(transcript) { tops[row.identifier] = frame.minY }
     }
