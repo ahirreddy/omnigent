@@ -169,6 +169,8 @@
       tableView.allowsEmptySelection = true
       tableView.focusRingType = .none
       tableView.refusesFirstResponder = true
+      // Holding the keyboard for a row that left, the table takes no typing for its rows.
+      tableView.allowsTypeSelect = false
       tableView.owner = self
       disclosures.changed = { [weak self] in self?.foldChanged() }
       // The keyboard goes through the rows' controls, not the scroll bar.

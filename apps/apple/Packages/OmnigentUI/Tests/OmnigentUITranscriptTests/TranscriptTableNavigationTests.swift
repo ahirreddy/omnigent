@@ -28,7 +28,7 @@
       return actions
     }
 
-    private func session(turns: Int = 8, hasMore: Bool = false) -> LiveConversation {
+    func session(turns: Int = 8, hasMore: Bool = false) -> LiveConversation {
       var state = ConversationViewState(
         header: TranscriptFixture.header, rows: TranscriptFixture.turns(turns, startingAt: 10))
       state.hasMoreHistory = hasMore
@@ -51,7 +51,7 @@
       controller.readingAnchor()?.id
     }
 
-    private func key(_ code: Int, _ modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
+    func key(_ code: Int, _ modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
       let characters = String(Character(try #require(Unicode.Scalar(code))))
       return try #require(
         NSEvent.keyEvent(

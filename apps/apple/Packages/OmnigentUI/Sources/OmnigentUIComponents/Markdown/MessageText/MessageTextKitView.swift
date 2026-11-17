@@ -1,6 +1,14 @@
 #if os(macOS)
   import AppKit
 
+  /// A list that scrolls for the keys a read-only message text in it passes on.
+  @MainActor
+  protocol MessageTextKeyScrolling: AnyObject {
+    /// Scrolls for `event`.
+    /// - Returns: Whether it did, so the text does nothing more with it.
+    func scrollsForKey(_ event: NSEvent) -> Bool
+  }
+
   /// A message's selectable text on TextKit 2. Links show the pointing hand (``linkAt`` finds
   /// them), and copying gives plain text.
   final class MessageTextKitView: NSTextView {
@@ -84,6 +92,24 @@
         return
       }
       super.rightMouseDown(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+      // In a list that scrolls for them, a read-only text's arrows, Page Up and Down and Space
+      // scroll the list, as a reader of a page expects; Shift-arrows still select.
+      if !isEditable, let list = enclosingKeyScroller, list.scrollsForKey(event) { return }
+      super.keyDown(with: event)
+    }
+
+    /// The nearest view around this one that scrolls for keys.
+    private var enclosingKeyScroller: (any MessageTextKeyScrolling)? {
+      // AppKit declares `superview` unowned(unsafe); the chain is only read here.
+      var view = unsafe superview
+      while let current = view {
+        if let scroller = current as? any MessageTextKeyScrolling { return scroller }
+        view = unsafe current.superview
+      }
+      return nil
     }
 
     override func mouseDown(with event: NSEvent) {
