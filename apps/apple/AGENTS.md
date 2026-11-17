@@ -37,7 +37,8 @@ Read `README.md` first. These rules cover `apps/apple/` and the Rust core in
 - Chromium is only for browser tabs (user and agent browsing). Anything that renders
   content inline outside a browser tab (HTML, SVG, rich previews, artifacts) uses
   WebKit with a non-persistent `WKWebsiteDataStore`: that rendering is stateless,
-  and WebKit costs far less memory and CPU. Markdown stays native SwiftUI.
+  and WebKit costs far less memory and CPU. Markdown stays native: SwiftUI, and TextKit
+  in the Mac transcript's text cells.
 - `OmnigentMac` is the primary edition. Keep iOS and iPad compiling, and
   keep platform differences in `#if os()` shims, not in forked views.
 

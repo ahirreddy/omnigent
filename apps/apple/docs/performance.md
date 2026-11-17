@@ -4,6 +4,29 @@ How to load the app with a lot of data, measure it, and what the last pass found
 for the Debug build (what `just apple-build` makes), on an Apple silicon Mac shared with other
 builds, so wall-clock times are noisy; main-thread CPU time and sample shares are steadier.
 
+## The transcript's list and text
+
+On the Mac the transcript is an `NSTableView` of reused cells (`TableTranscriptView`). Settled
+messages are TextKit text cells, drawn ahead into bitmaps off the main thread, and CLI rows are CLI
+text cells. iPhone and iPad show the same list as a `UICollectionView` with SwiftUI text. SwiftUI's
+lazy stack with SwiftUI text stays as the fallback. Each setting is a user default or a launch
+argument (`-omnigent:transcript-list stack`), read at launch:
+
+| Setting | Default | Fallback |
+| --- | --- | --- |
+| `omnigent:transcript-list` | `table` | `stack`, with SwiftUI text unless `omnigent:message-text` says otherwise |
+| `omnigent:message-text` | `textkit` in the Mac's table, `swiftui` elsewhere | `swiftui`: SwiftUI rows hosted in the table |
+| `omnigent:message-text-surface` | `raster` | `textkit`: a live text view per run |
+| `omnigent:transcript-cli-text` | `text` | `hosted`: SwiftUI CLI rows |
+
+```sh
+defaults write ai.omnigent.mac.lab omnigent:transcript-list stack  # the Debug build
+defaults delete ai.omnigent.mac.lab omnigent:transcript-list
+```
+
+`perf.py scroll --lists stack,table` compares the two lists. The passes below measured the stack
+unless they name the table.
+
 ## Seed a large data set
 
 With the local services running (`just apple-services start`, the mock LLM and the `mock-model`

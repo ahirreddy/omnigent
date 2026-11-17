@@ -3,8 +3,8 @@ import SwiftUI
 /// The transcript over live rows. Its row list reads them in its own body
 /// (``TranscriptRowsContent``), so row changes re-render only the list. The rows arrive paced
 /// (``TranscriptRowsPacer``), and a kept tab out of view keeps the rows it last showed, so
-/// streaming into it costs nothing until it shows again. `omnigent:transcript-list table` shows
-/// it in a list of reused cells instead (``TableTranscriptView``).
+/// streaming into it costs nothing until it shows again. It shows in a list of reused cells
+/// (``TableTranscriptView``); `omnigent:transcript-list stack` shows the lazy stack instead.
 struct LiveTranscript: View {
   let state: ConversationViewState
   let liveRows: LiveTranscriptRows?

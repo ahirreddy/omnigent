@@ -12,7 +12,8 @@ import Synchronization
 /// How settled message text reaches the screen in the table transcript:
 /// `omnigent:message-text-surface`. `raster` draws each run ahead, off the main actor, into a
 /// bitmap a cell shows as layer contents (``MessageTextRaster``), with a live text view laid
-/// over it only while the reader selects; anything else keeps a live TextKit view per run.
+/// over it only while the reader selects: the default. `textkit` keeps a live TextKit view per
+/// run.
 nonisolated enum MessageTextSurface: String, Sendable {
   case textKit = "textkit"
   case raster
@@ -23,7 +24,7 @@ nonisolated enum MessageTextSurface: String, Sendable {
   static let launchValue = Self(defaults: .standard)
 
   init(defaults: UserDefaults) {
-    self = defaults.string(forKey: Self.key).flatMap(Self.init(rawValue:)) ?? .textKit
+    self = defaults.string(forKey: Self.key).flatMap(Self.init(rawValue:)) ?? .raster
   }
 }
 
