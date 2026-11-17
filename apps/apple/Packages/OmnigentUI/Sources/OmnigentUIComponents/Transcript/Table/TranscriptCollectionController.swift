@@ -71,8 +71,8 @@
     var prewarmed: [String: Int] = [:]
     /// A cell is being given its row's view.
     var isConfiguring = false
-    /// The row idle measuring waits on the prewarm for, and since when.
-    var prewarmAwaited: (id: String, since: CFTimeInterval)?
+    /// The rows idle measuring passed for the prewarm to build or draw, by id, and since when.
+    var prewarmDeferred: [String: CFTimeInterval] = [:]
     /// The text style changed and the rows on screen show again in it next pass, picking their
     /// kinds again first when text rows turned on or off.
     var awaitsTextStyle = false

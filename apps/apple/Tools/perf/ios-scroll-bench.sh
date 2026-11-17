@@ -7,12 +7,13 @@
 #
 #   bash apps/apple/Tools/perf/ios-scroll-bench.sh [--runs N] [--lists "stack table text"]
 #        [--devices "iPhone 18 Pro;iPad Pro 11-inch (M5)"] [--scenarios "open scroll stream"]
-#        [--style chat|cli] [--sample] [--skip-build]
+#        [--style chat|cli] [--sample [--frames REGEX]] [--skip-build]
 #
-# The lists are ios_perf.py's: `text` is the table with settled messages drawn as text rows.
+# The lists are ios_perf.py's: `table` is the collection with SwiftUI rows, `text` the default,
+# with settled messages drawn as text rows.
 # Each device also runs a width change: the iPhone turns, the iPad hides and shows its sidebar.
-# --sample samples the main thread during each scenario; a run that fails prints the app's
-# newest crash report.
+# --sample samples the main thread during each scenario, and --frames also lists the samples of
+# its frames matching REGEX; a run that fails prints the app's newest crash report.
 #
 # Package checkouts come from the Debug workspace build's (vmq seeds them), so nothing is
 # fetched. In the shared test VMs, as one job:
@@ -25,7 +26,7 @@ die() {
   exit 1
 }
 
-runs=3 lists="stack table" style=chat build=1 sample=0
+runs=3 lists="stack table" style=chat build=1 sample=0 frames=""
 devices="iPhone 18 Pro;iPad Pro 11-inch (M5)"
 scenarios="open scroll stream keyboard"
 while (($#)); do
@@ -36,6 +37,7 @@ while (($#)); do
     --scenarios) scenarios=$2; shift 2 ;;
     --style) style=$2; shift 2 ;;
     --sample) sample=1; shift ;;
+    --frames) frames=$2; shift 2 ;;
     --skip-build) build=0; shift ;;
     *) die "unknown argument $1" ;;
   esac
@@ -144,7 +146,9 @@ for name in "${names[@]}"; do
     for file in /tmp/omnigent-ios-*.txt; do
       [[ -e "$file" ]] || continue
       echo "-- $file"
-      .venv/bin/python apps/apple/Tools/perf/sample-breakdown.py "$file" | head -40
+      breakdown=(apps/apple/Tools/perf/sample-breakdown.py "$file")
+      [[ -n "$frames" ]] && breakdown+=(--frames "$frames")
+      .venv/bin/python "${breakdown[@]}" | head -80
       # Where the main thread waits, which the on-CPU breakdown leaves out: its heaviest path.
       echo "-- main thread call graph"
       awk '/^Call graph:/ { on = 1; next } on && /^    [0-9]+ Thread_/ && seen++ { exit } on' "$file" \

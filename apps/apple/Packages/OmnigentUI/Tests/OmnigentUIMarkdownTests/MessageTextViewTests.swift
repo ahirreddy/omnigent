@@ -1,10 +1,13 @@
+import Foundation
+import Testing
+
+@testable import OmnigentUIComponents
+
 #if os(macOS)
   import AppKit
   import OmnigentViewTesting
   import SwiftUI
-  import Testing
 
-  @testable import OmnigentUIComponents
   @testable import OmnigentUITestSupport
 
   @MainActor
@@ -183,37 +186,45 @@
       let byDefault = MessageTextRenderer.launchValue == .textKit
       #expect(texts == ["Settled", "Streaming"] + (byDefault ? ["Default"] : []))
     }
-
-    @Test("With nothing chosen, the Mac draws the table with TextKit runs drawn ahead")
-    func launchDefaults() throws {
-      // Every `UserDefaults` reads the run's launch arguments over its own values.
-      let arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
-      let keys = [TranscriptListKind.key, MessageTextRenderer.key, MessageTextSurface.key]
-      try #require(keys.allSatisfy { arguments[$0] == nil }, "the run chose a transcript setting")
-      let list = TranscriptListKind.key
-      let text = MessageTextRenderer.key
-      #expect(TranscriptListKind.read(from: Self.defaults([:])) == .table)
-      #expect(TranscriptListKind.read(from: Self.defaults([list: "stack"])) == .stack)
-      #expect(TranscriptListKind.read(from: Self.defaults([list: "other"])) == .table)
-      #expect(MessageTextRenderer(defaults: Self.defaults([:])) == .textKit)
-      #expect(MessageTextRenderer(defaults: Self.defaults([text: "other"])) == .textKit)
-      #expect(MessageTextRenderer(defaults: Self.defaults([text: "swiftui"])) == .swiftUI)
-      // The stack falls back with SwiftUI's text unless TextKit is chosen.
-      #expect(MessageTextRenderer(defaults: Self.defaults([list: "stack"])) == .swiftUI)
-      #expect(
-        MessageTextRenderer(defaults: Self.defaults([list: "stack", text: "textkit"])) == .textKit)
-      #expect(MessageTextSurface(defaults: Self.defaults([:])) == .raster)
-      #expect(
-        MessageTextSurface(defaults: Self.defaults([MessageTextSurface.key: "textkit"]))
-          == .textKit)
-    }
-
-    private static func defaults(_ values: [String: String]) -> UserDefaults {
-      let suite = "message-text-\(UUID().uuidString)"
-      let defaults = UserDefaults(suiteName: suite) ?? .standard
-      defaults.removePersistentDomain(forName: suite)
-      for (key, value) in values { defaults.set(value, forKey: key) }
-      return defaults
-    }
   }
 #endif
+
+/// The transcript settings a launch with nothing chosen gets, on the Mac, iPhone and iPad.
+@Suite("Transcript launch defaults")
+struct TranscriptLaunchDefaultsTests {
+  @Test("With nothing chosen, the table draws messages as TextKit runs drawn ahead")
+  func launchDefaults() throws {
+    // Every `UserDefaults` reads the run's launch arguments over its own values.
+    let arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+    let keys = [TranscriptListKind.key, MessageTextRenderer.key, MessageTextSurface.key]
+    try #require(keys.allSatisfy { arguments[$0] == nil }, "the run chose a transcript setting")
+    let list = TranscriptListKind.key
+    let text = MessageTextRenderer.key
+    #expect(TranscriptListKind.read(from: Self.defaults([:])) == .table)
+    #expect(TranscriptListKind.read(from: Self.defaults([list: "stack"])) == .stack)
+    #expect(TranscriptListKind.read(from: Self.defaults([list: "other"])) == .table)
+    // The Mac's table and the iPhone and iPad collection both draw text rows.
+    #expect(MessageTextRenderer(defaults: Self.defaults([:])) == .textKit)
+    #expect(MessageTextRenderer(defaults: Self.defaults([list: "table"])) == .textKit)
+    #expect(MessageTextRenderer(defaults: Self.defaults([text: "other"])) == .textKit)
+    #expect(MessageTextRenderer(defaults: Self.defaults([text: "swiftui"])) == .swiftUI)
+    #expect(
+      MessageTextRenderer(defaults: Self.defaults([list: "table", text: "swiftui"])) == .swiftUI)
+    // The stack falls back with SwiftUI's text unless TextKit is chosen.
+    #expect(MessageTextRenderer(defaults: Self.defaults([list: "stack"])) == .swiftUI)
+    #expect(
+      MessageTextRenderer(defaults: Self.defaults([list: "stack", text: "textkit"])) == .textKit)
+    #expect(MessageTextSurface(defaults: Self.defaults([:])) == .raster)
+    #expect(
+      MessageTextSurface(defaults: Self.defaults([MessageTextSurface.key: "textkit"]))
+        == .textKit)
+  }
+
+  private static func defaults(_ values: [String: String]) -> UserDefaults {
+    let suite = "message-text-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite) ?? .standard
+    defaults.removePersistentDomain(forName: suite)
+    for (key, value) in values { defaults.set(value, forKey: key) }
+    return defaults
+  }
+}

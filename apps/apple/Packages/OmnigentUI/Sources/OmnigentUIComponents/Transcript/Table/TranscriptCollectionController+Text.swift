@@ -23,8 +23,25 @@
       textViewsMade += 1
       let view = TranscriptCollectionTextView(style: textStyle)
       view.sizeChanged = { [weak self] in self?.scheduleRemeasure($0) }
+      view.drawingLanded = { [weak self] in self?.drawingLanded($0) }
       view.cannotDraw = { [weak self] in self?.textCannotDraw(rowID: $0) }
+      view.redrawPosition = { [weak self] in self?.redrawPosition(ofRow: $0) }
       return view
+    }
+
+    /// Where row `id`'s middle is in the content, for a drawing of its run at a new width,
+    /// which the prewarm then leaves to that drawing.
+    func redrawPosition(ofRow id: String) -> Double? {
+      guard let index = model.index(of: id), index < offsets.count else { return nil }
+      prewarmed[id] = model.version(at: index)
+      return Double(frame(ofRow: index).midY)
+    }
+
+    /// Tells the drawing of runs at a new width where the reader is: the nearest go first.
+    func focusRedraws() {
+      guard textStyle.isEnabled else { return }
+      let middle = collectionView.contentOffset.y + insets.top + visibleHeight / 2
+      textStyle.redraws.focus(at: Double(middle))
     }
 
     /// Records row `index`'s height as a text row shows it, from its run's laid-out size, with
@@ -62,23 +79,39 @@
       noteNextPass(index)
     }
 
-    /// How often idle measuring looks again for a message the prewarm is building, and how
-    /// long it waits for one before building it itself.
+    /// How often idle measuring looks again for messages the prewarm is building, once only
+    /// they are left, and how long it leaves one to the prewarm before building it itself.
     static let prewarmWait: TimeInterval = 0.03
     static let prewarmPatience: CFTimeInterval = 0.5
 
-    /// Whether idle measuring leaves row `index` to the prewarm for now: a message drawn as text
-    /// that is not built yet, for a while. One citing workspace paths builds here.
-    func awaitsPrewarm(_ index: Int) -> Bool {
+    /// Whether idle measuring leaves row `index` to the prewarm for now, for a while: a message
+    /// drawn as text that is not built yet, or, `near` the viewport, not drawn yet, so the main
+    /// thread doesn't draw it too. One citing workspace paths builds here.
+    func awaitsPrewarm(_ index: Int, near: Bool = false) -> Bool {
       guard let message = textMessage(at: index), textStyle.hasPrewarms,
-        message.split.cited.isEmpty, !textStyle.isBuilt(message)
+        message.split.cited.isEmpty,
+        near ? !textStyle.isLaidOut(message, width: model.width) : !textStyle.isBuilt(message)
       else { return false }
       let id = model.rows[index].id
       let now = CACurrentMediaTime()
-      if let awaited = prewarmAwaited, awaited.id == id {
-        return now - awaited.since < Self.prewarmPatience
+      if let since = prewarmDeferred[id] { return now - since < Self.prewarmPatience }
+      prewarmDeferred[id] = now
+      // One far away only lays out, as the prewarm lays out every answer offered.
+      if near {
+        let rect = frame(ofRow: index)
+        prewarmTexts(from: rect.minY, to: rect.maxY)
       }
-      prewarmAwaited = (id, now)
+      return true
+    }
+
+    /// Whether the lookahead leaves row `index` to the prewarm: a message drawn as text that
+    /// the prewarm builds and draws off the main thread and hasn't laid out at the width yet.
+    /// It is asked for, if it wasn't, and measured once it scrolls into view, by when its
+    /// drawing has likely landed, rather than drawn on the main thread before it shows.
+    func leavesToPrewarm(_ index: Int) -> Bool {
+      guard let message = textMessage(at: index), textStyle.hasPrewarms,
+        message.split.cited.isEmpty, !textStyle.isLaidOut(message, width: model.width)
+      else { return false }
       let rect = frame(ofRow: index)
       prewarmTexts(from: rect.minY, to: rect.maxY)
       return true
@@ -107,6 +140,7 @@
       let kindsChanged = textKindsChanged
       textKindsChanged = false
       guard itemCount == model.rows.count, model.width > 0 else { return }
+      let anchor = readingAnchor()
       // Rows that change kind may take another height; those on screen are measured now.
       if kindsChanged { model.invalidateHeights() }
       var noted = IndexSet()
@@ -126,6 +160,9 @@
         measureShownRows()
         rebuildOffsets()
         schedulePrefetch()
+        // Every row took its kind's height: a follower stays at the end, a reader on their row.
+        if follow.layoutGrew() { pinBottom() } else { restore(anchor, proportionally: true) }
+        return
       }
       noteHeights(noted)
     }
@@ -161,6 +198,16 @@
       }
       MessageTextRunPrewarm.answers.prioritize(answers.texts, at: answers.positions)
       MessageTextRunPrewarm.prompts.prioritize(prompts.texts, at: prompts.positions)
+    }
+
+    /// The reader is still: the messages within ``keptReach`` viewports either way build and
+    /// draw first, nearest the viewport first.
+    func prewarmAroundViewport() {
+      guard textStyle.isEnabled else { return }
+      let shown = collectionView.bounds
+      let kept = shown.insetBy(dx: 0, dy: -shown.height * Self.keptReach)
+      focusPrewarms(at: shown.midY, direction: 0)
+      prewarmTexts(from: kept.minY, to: kept.maxY)
     }
 
     /// Tells the prewarms where the reader is and which way they scroll.

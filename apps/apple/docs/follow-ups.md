@@ -153,9 +153,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     either.
   - Check on a device: the bars' soft scroll-edge effect over the UIKit scroll view, and the
     rows sliding with the keyboard for a reader at the end.
-- [ ] **iPhone and iPad text rows** (`-omnigent:message-text textkit` with the collection list;
-  `TranscriptCollectionTextView`). Drawn as text: settled answers and prompts that are one run
-  of text, code blocks and tables that fit included. Still SwiftUI rows:
+- [ ] **iPhone and iPad text rows** (the collection list's default, `TranscriptCollectionTextView`;
+  `-omnigent:message-text swiftui` falls back to SwiftUI rows). Drawn as text: settled answers
+  and prompts that are one run of text, code blocks and tables that fit included. Still SwiftUI
+  rows:
   - messages with a block only SwiftUI draws (display math, a diagram, an image, a table wider
     than the column), attachments, @-mentions, a long prompt's fold, Interrupted, a shared
     session author's avatar, and the latest answer (its action row); host those parts inside
@@ -169,8 +170,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     on the Mac too.
   - Memory: drawings are kept under the shared 256 MB budget (`MessageTextRasters`); a long
     answer at 3x is tens of MB. Measure on a device and lower the budget for iPhone if needed.
-  - Check on the iPhone 17 Pro (Debug build with `-omnigent:transcript-list table
-    -omnigent:message-text textkit`; the simulator draws at 60 Hz, the phone at 120):
+  - Still drawn on the main thread: a message that scrolls into view before the prewarm has
+    drawn it (messages citing workspace paths always, as the prewarm doesn't build them), and
+    one a width change brings into view with no drawing at either width; no live run stands in.
+  - Check on the iPhone 17 Pro (Debug build, no transcript arguments; the simulator draws at
+    60 Hz, the phone at 120):
     - Scroll a long session fast both ways: no blank or late rows, no hitches in the Instruments
       Animation Hitches template, and text as sharp as the SwiftUI rows' (3x).
     - Long press a word in an answer and in a prompt: the word selects with handles over the
@@ -190,8 +194,9 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     - VoiceOver: swipe through an answer (headings say "heading", links are links and open,
       code blocks read "Code block, …" then Download, Copy and the code), and the actions rotor
       offers Copy, Fork from here, Copy link, Reply and Ask in side chat.
-    - Rotate, and on iPad show and hide the sidebar: rows lay out at the new width and the
-      reader stays on the row they read.
+    - Rotate, and on iPad show and hide the sidebar: no row goes blank; each shows its old
+      drawing, shrunk to fit when narrower, until its drawing at the new width lands a moment
+      later, and the reader stays on the row they read.
     - Memory in Xcode's gauge after scrolling a 300-turn session end to end and back.
 - [ ] **Onboarding (Mac):** offer the remote runner in "Where do you work today?" where
   Electron does (Databricks-managed servers only).

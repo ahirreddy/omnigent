@@ -23,8 +23,16 @@
     private(set) var frames: TranscriptCollectionTextFrames?
     /// Told when the row's height changed by itself: its math typeset, a cited path found.
     var sizeChanged: ((TranscriptCollectionTextView) -> Void)?
+    /// Told when the drawing at a new width took the place of the old one, at another height.
+    var drawingLanded: ((TranscriptCollectionTextView) -> Void)?
     /// Told, with the row's id, when the row can't be drawn as text and is SwiftUI's from now on.
     var cannotDraw: ((String) -> Void)?
+    /// Where row `id` is in the transcript, for drawing its run at a new width: the rows
+    /// nearest the reader are drawn first.
+    var redrawPosition: ((String) -> Double?)?
+    /// The width the run is being drawn at off the main thread, while its drawing at the width
+    /// it had stands in.
+    private(set) var awaitedWidth: CGFloat?
     private var styleSerial = -1
     /// The row shown, to show again once its math is typeset or its links are found.
     private var shownRow: TranscriptTableRow?
@@ -74,7 +82,8 @@
       self.message = message
       guard let document = style.document(for: message, linked: linkedPaths(of: message)),
         style.canDraw(document, width: textWidth),
-        let raster = style.raster(for: document, width: textWidth),
+        let raster = drawing(
+          of: document, width: textWidth, rowID: row.id, standsIn: !isNewRow && !isRestyle),
         raster.size.height * raster.scale <= TranscriptCollectionTextStyle.tallestDrawing
       else {
         style.keepHosted(row.id, version: version)
@@ -143,15 +152,27 @@
       _ message: TranscriptTableTextMessage, document: MessageTextDocument,
       raster: MessageTextRaster, width: CGFloat
     ) {
-      let size = style.runSize(
+      let drawn = style.runSize(
         raster.size, of: document, role: message.role, textWidth: raster.width)
+      // A drawing standing in at a narrower width shrinks to fit until its own lands.
+      let fit = min(1, style.textWidth(of: message, width: width) / max(1, raster.width))
+      let size = CGSize(width: drawn.width * fit, height: drawn.height * fit)
       let frames = style.frames(of: message, runSize: size, width: width)
       self.frames = frames
-      // The run view is as wide as its drawing, so a selection lays the text out as drawn;
-      // touches past a prompt's text pass to the bubble.
-      runView?.frame = CGRect(
-        origin: frames.run.origin, size: CGSize(width: raster.width, height: size.height))
-      runView?.touchWidth = message.role == .user ? size.width : nil
+      if let runView {
+        // The run view is as wide as its drawing, so a selection lays the text out as drawn;
+        // touches past a prompt's text pass to the bubble.
+        let origin = frames.run.origin
+        runView.transform = .identity
+        runView.frame = CGRect(
+          origin: origin, size: CGSize(width: raster.width, height: drawn.height))
+        if fit < 1 {
+          runView.transform = CGAffineTransform(scaleX: fit, y: fit)
+          runView.center = CGPoint(
+            x: origin.x + raster.width * fit / 2, y: origin.y + drawn.height * fit / 2)
+        }
+        runView.touchWidth = message.role == .user ? drawn.width : nil
+      }
       if let bubble = frames.bubble {
         bubbleView.frame = bubble
         bubbleView.backgroundColor = style.bubble
@@ -202,6 +223,7 @@
       runView?.removeFromSuperview()
       runView = nil
       document = nil
+      awaitedWidth = nil
       message = nil
       shown = nil
       shownRow = nil
@@ -256,6 +278,71 @@
     override func didMoveToWindow() {
       super.didMoveToWindow()
       if window == nil { stopLinkCheck() } else { startLinkCheck() }
+    }
+  }
+
+  extension TranscriptCollectionTextView {
+    // MARK: Drawings at a new width
+
+    /// `document`'s drawing `width` wide: the one kept or shown, else, for the run this view
+    /// shows at another width (`standsIn`), its drawing there while the new one is drawn off
+    /// the main thread, else one drawn now.
+    private func drawing(
+      of document: MessageTextDocument, width: CGFloat, rowID: String, standsIn: Bool
+    ) -> MessageTextRaster? {
+      if let kept = style.keptRaster(for: document, width: width) {
+        awaitedWidth = nil
+        return kept
+      }
+      if document === self.document, let own = standInDrawing() {
+        if abs(own.width - width) < 0.5 {
+          awaitedWidth = nil
+          return own
+        }
+        if standsIn,
+          style.redraw(
+            document, width: width, at: redrawPosition?(rowID) ?? 0,
+            landed: { [weak self, serial = document.serial] raster in
+              self?.redrawLanded(raster, serial: serial)
+            })
+        {
+          awaitedWidth = width
+          return own
+        }
+      }
+      awaitedWidth = nil
+      return style.raster(for: document, width: width)
+    }
+
+    /// The drawing the run view shows, or showed before it let its bitmap go, if the rasters'
+    /// cache still has it.
+    private func standInDrawing() -> MessageTextRaster? {
+      guard let runView, let document else { return nil }
+      guard runView.isReleased else { return runView.raster }
+      let key = MessageTextRasterKey(
+        document: document.serial, width: runView.raster.width, scale: runView.raster.scale)
+      return MessageTextRasters.shared.raster(for: key)
+    }
+
+    /// The run's drawing at the width it waited for landed: it takes the old one's place, and
+    /// the row's height follows it.
+    private func redrawLanded(_ raster: MessageTextRaster, serial: UInt64) {
+      guard let awaitedWidth, abs(raster.width - awaitedWidth) < 0.5, let document,
+        document.serial == serial, let message, let shown
+      else { return }
+      self.awaitedWidth = nil
+      guard raster.size.height * raster.scale <= TranscriptCollectionTextStyle.tallestDrawing
+      else {
+        style.keepHosted(shown.id, version: shown.version)
+        releaseContent()
+        cannotDraw?(shown.id)
+        return
+      }
+      let previous = frames?.height ?? 0
+      adopt(document, raster: raster)
+      layOut(message, document: document, raster: raster, width: shown.width)
+      if window == nil { runView?.releaseBitmap() }
+      if abs(previous - (frames?.height ?? 0)) >= 0.5 { drawingLanded?(self) }
     }
   }
 #endif

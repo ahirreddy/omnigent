@@ -1,4 +1,5 @@
 #if os(iOS)
+  import OmnigentPlatform
   import SwiftUI
   import UIKit
 
@@ -30,6 +31,8 @@
     private(set) var serial = 0
     /// Runs drawn on the main actor because no drawing was kept when their row showed.
     private(set) var drawnNow = 0
+    /// Draws runs rows show at a new width; a test gives it its own.
+    var redraws = MessageTextRunRedraws.shared
     /// What each row was worked out to show, by id: its content version and the message a text
     /// row draws, `nil` for a row SwiftUI keeps.
     private var messages: [String: (version: Int, message: TranscriptTableTextMessage?)] = [:]
@@ -181,6 +184,17 @@
         || MessageTextRunPrewarm.preparedDocument(for: key) != nil
     }
 
+    /// Whether `message`'s run is laid out for a row `width` wide, here or ahead, with nothing
+    /// built or laid out now.
+    func isLaidOut(_ message: TranscriptTableTextMessage, width: CGFloat) -> Bool {
+      guard let key = documentKey(for: message),
+        let document = MessageTextDocuments.shared.cached(key)
+          ?? MessageTextRunPrewarm.preparedDocument(for: key)
+      else { return false }
+      let textWidth = textWidth(of: message, width: width)
+      return MessageTextSizes.shared.size(document: document.serial, width: textWidth) != nil
+    }
+
     /// The width `message`'s text lays out at in a row `width` wide.
     func textWidth(of message: TranscriptTableTextMessage, width: CGFloat) -> CGFloat {
       message.textWidth(metrics(width: width), layoutWidth: layoutWidth)
@@ -192,12 +206,21 @@
       MessageTextRasterKey(document: document.serial, width: width, scale: scale)
     }
 
+    /// The drawing kept for `document` at `width`, if one is.
+    func keptRaster(for document: MessageTextDocument, width: CGFloat) -> MessageTextRaster? {
+      guard scale > 0 else { return nil }
+      return MessageTextRasters.shared.raster(for: rasterKey(for: document, width: width))
+    }
+
     /// The drawing kept for `document` at `width`, else one drawn now on the main actor.
     func raster(for document: MessageTextDocument, width: CGFloat) -> MessageTextRaster? {
       guard scale > 0, let rasterStyle else { return nil }
       let key = rasterKey(for: document, width: width)
       if let kept = MessageTextRasters.shared.raster(for: key) { return kept }
       drawnNow += 1
+      #if DEBUG
+        FrameMonitor.count("text drawn here")
+      #endif
       let raster = MessageTextRaster.make(
         document.run, width: width, scale: scale, style: rasterStyle)
       MessageTextRasters.shared.store(raster, for: key)
@@ -205,11 +228,29 @@
       return raster
     }
 
+    /// Draws `document` at `width` off the main actor for a row at `position` in the
+    /// transcript, which shows its drawing at another width meanwhile, and hands it to
+    /// `landed`.
+    /// - Returns: Whether it is drawing: not before the style is known.
+    func redraw(
+      _ document: MessageTextDocument, width: CGFloat, at position: Double,
+      landed: @escaping MessageTextRunRedraws.Landed
+    ) -> Bool {
+      guard scale > 0, let rasterStyle else { return false }
+      redraws.draw(
+        document, as: rasterKey(for: document, width: width), style: rasterStyle, at: position,
+        landed: landed)
+      return true
+    }
+
     /// `document`'s size `width` wide: as laid out ahead or drawn, else laid out now.
     func size(of document: MessageTextDocument, width: CGFloat) -> MessageTextSize {
       if let size = MessageTextSizes.shared.size(document: document.serial, width: width) {
         return size
       }
+      #if DEBUG
+        FrameMonitor.count("text laid out here")
+      #endif
       let size = MessageTextSize.measure(document.run, width: width)
       MessageTextSizes.shared.store(size, document: document.serial, width: width)
       return size

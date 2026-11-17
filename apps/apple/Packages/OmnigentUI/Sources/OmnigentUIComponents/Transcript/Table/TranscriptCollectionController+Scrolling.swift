@@ -69,6 +69,7 @@
       let deadline = CACurrentMediaTime() + Self.lookaheadBudget
       for index in ahead {
         guard CACurrentMediaTime() < deadline else { break }
+        if leavesToPrewarm(index) { continue }
         if measureKeeping(index) { noted.insert(index) }
       }
       return noted
@@ -85,14 +86,17 @@
       widthChanged(keeping: anchor)
     }
 
-    /// Rows on screen are measured at the new width; the others keep their old heights, or
-    /// estimates for it, until they come into view. The reader keeps the same share of the row
-    /// they read above the viewport's top.
+    /// Rows on screen are measured at the new width, a text row with its old drawing fitted
+    /// until its new one lands; the others keep their old heights, or estimates for it, until
+    /// they come into view. The reader keeps the same share of the row they read above the
+    /// viewport's top.
     func widthChanged(keeping anchor: ReadingAnchor?) {
       guard itemCount == model.rows.count else { return }
+      focusRedraws()
       measureShownRows()
       rebuildOffsets()
       schedulePrefetch()
+      defer { prewarmAroundViewport() }
       if frameIfReady() { return }
       if follow.layoutGrew() { pinBottom() } else { restore(anchor, proportionally: true) }
     }
