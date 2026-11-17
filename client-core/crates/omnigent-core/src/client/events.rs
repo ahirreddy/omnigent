@@ -742,7 +742,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 key,
             }
         };
-        let expectation = self.expect_turn(session_id);
+        let expectation = self.expect_turn(session_id, payload);
         let result = self
             .deliver(session_id, text, payload, &gate, require_live_stream)
             .await;
@@ -751,7 +751,7 @@ impl<T: HttpTransport> ClientCore<T> {
             Err(error) => error.submission_outcome(),
         };
         let mut state = lock(&self.state);
-        if outcome != SubmissionOutcome::Accepted {
+        if let Some(expectation) = expectation.filter(|_| outcome != SubmissionOutcome::Accepted) {
             state.end_turn_expectation(session_id, expectation);
         }
         let current = state
@@ -778,8 +778,12 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 
     /// Tells the host a message to `session_id` is leaving, before it does, so the open
-    /// conversation shows working (see [`ClientEvent::TurnExpected`]). Returns the expectation.
-    fn expect_turn(&self, session_id: &str) -> u64 {
+    /// conversation shows working (see [`ClientEvent::TurnExpected`]). Returns the expectation;
+    /// `None` for a compact, which shows its own progress and may start no turn.
+    fn expect_turn(&self, session_id: &str, payload: &SendPayload) -> Option<u64> {
+        if matches!(payload, SendPayload::Compact) {
+            return None;
+        }
         let expectation = {
             let mut state = lock(&self.state);
             state.turn_expectations += 1;
@@ -791,7 +795,7 @@ impl<T: HttpTransport> ClientCore<T> {
             expectation
         };
         self.dispatch();
-        expectation
+        Some(expectation)
     }
 
     #[allow(

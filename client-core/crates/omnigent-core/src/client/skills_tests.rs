@@ -3,12 +3,12 @@
 use futures::executor::block_on;
 use serde_json::json;
 
-use super::SessionError;
 use super::events::SendPayload;
 use super::test_support::{
     Reply, RouteTransport, body_json, cache_row, connected, header, lines_after_connect, live,
-    query_value,
+    query_value, record,
 };
+use super::{ClientEvent, SessionError};
 
 #[test]
 fn session_skills_reads_the_session_catalog() {
@@ -94,6 +94,7 @@ fn skill_and_compact_sends_post_their_events_and_clear_the_draft() {
         ],
     );
     let core = live(transport);
+    let recorder = record(&core);
     let payload = SendPayload::Skill {
         name: "review".into(),
         arguments: "the diff".into(),
@@ -103,6 +104,19 @@ fn skill_and_compact_sends_post_their_events_and_clear_the_draft() {
     assert_eq!(sent.draft, "");
     let sent = block_on(core.send_command("conv_a", "/compact", SendPayload::Compact)).unwrap();
     assert!(!sent.submission.queued);
+    // A skill runs a turn, which shows at once; a compact shows its own progress.
+    let expected: Vec<_> = recorder
+        .take()
+        .into_iter()
+        .filter(|event| matches!(event, ClientEvent::TurnExpected { .. }))
+        .collect();
+    assert_eq!(
+        expected,
+        [ClientEvent::TurnExpected {
+            session_id: "conv_a".into(),
+            expectation: 1
+        }]
+    );
     let bodies: Vec<_> = core.transport().writes().iter().map(body_json).collect();
     assert_eq!(
         bodies,
