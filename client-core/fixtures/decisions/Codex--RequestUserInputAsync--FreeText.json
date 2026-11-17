@@ -1,0 +1,61 @@
+{
+  "codex": {
+    "id": "async_question:call_fixture:0",
+    "method": "item/tool/requestUserInput",
+    "params": {
+      "threadId": "thread_fixture",
+      "turnId": "turn_fixture",
+      "itemId": "call_fixture",
+      "isBlocking": false,
+      "questions": [
+        {
+          "id": "0",
+          "question": "Which customer should the demo data use?",
+          "isOther": true,
+          "isSecret": false,
+          "options": []
+        }
+      ]
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "Codex needs input",
+      "phase": "codex_request_user_input",
+      "policy_name": "codex_native_request_user_input",
+      "codex_method": "item/tool/requestUserInput",
+      "codex_request_id": "async_question:call_fixture:0",
+      "thread_id": "thread_fixture",
+      "turn_id": "turn_fixture",
+      "item_id": "call_fixture",
+      "is_blocking": false,
+      "ask_user_question": {
+        "questions": [
+          {
+            "id": "0",
+            "question": "Which customer should the demo data use?",
+            "options": [],
+            "multiSelect": false,
+            "isOther": true,
+            "isSecret": false
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "0": "Example Outfitters"
+    }
+  },
+  "codex_result": {
+    "answers": {
+      "0": {
+        "answers": ["Example Outfitters"]
+      }
+    }
+  }
+}

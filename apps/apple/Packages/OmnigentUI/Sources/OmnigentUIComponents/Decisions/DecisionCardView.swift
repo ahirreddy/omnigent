@@ -226,6 +226,8 @@ public struct DecisionCardView: View {
       }
     case .form(let fields):
       formControls(fields)
+    case .externalPage(let address):
+      externalPageControls(address)
     case .unsupported(let reason, let externalURL):
       VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         Label(reason, systemImage: "info.circle")
@@ -329,6 +331,42 @@ extension DecisionCardView {
     }
   }
 
+  /// URL mode: open the page, finish there, then Done; or Decline. The page never opens on its own.
+  private func externalPageControls(_ address: String) -> some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      Label("Finish this on its page, then choose Done.", systemImage: "info.circle")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      if let url = MarkdownParser.safeURL(address) {
+        Button {
+          openURL(url)
+        } label: {
+          Label("Open page", systemImage: "arrow.up.forward.app")
+        }
+        .buttonStyle(.bordered)
+        .tint(.primary)
+        .disabled(!canRespond)
+        .accessibilityIdentifier("\(idPrefix)decision-open-page-\(card.id)")
+        Text(url.host() ?? address).font(.caption).foregroundStyle(.secondary)
+      }
+      HStack(spacing: Theme.Spacing.small) {
+        Button("Done") { act(.approve) }
+          .buttonStyle(.borderedProminent)
+          .tint(Theme.accent)
+          .controlSize(.large)
+          .disabled(!canRespond)
+          .accessibilityIdentifier("\(idPrefix)decision-page-done-\(card.id)")
+        Button("Decline") { act(.decline) }
+          .buttonStyle(.bordered)
+          .tint(.primary)
+          .controlSize(.large)
+          .disabled(!canRespond)
+          .accessibilityIdentifier("\(idPrefix)decision-page-decline-\(card.id)")
+      }
+    }
+  }
+
   private var dismissButton: some View {
     Button("Cancel") { act(.cancel) }
       .buttonStyle(.borderless)
@@ -348,7 +386,7 @@ extension DecisionCardView {
     case .approval: return DecisionSummary.isGeneric(card.title) ? "Approval required" : card.title
     case .choice: return "Choose an option"
     case .form: return DecisionSummary.isGeneric(card.title) ? "Questions" : card.title
-    case .unsupported: return card.title
+    case .externalPage, .unsupported: return card.title
     }
   }
 }

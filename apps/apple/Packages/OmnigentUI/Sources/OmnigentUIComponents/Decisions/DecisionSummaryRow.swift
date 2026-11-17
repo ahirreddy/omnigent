@@ -117,7 +117,7 @@ struct DecisionSummaryRow: View {
         }
       }
       .fixedSize()
-    case .form, .unsupported:
+    case .form, .externalPage, .unsupported:
       reviewButton
     }
   }

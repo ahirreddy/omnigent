@@ -1,0 +1,54 @@
+{
+  "codex": {
+    "id": 34,
+    "method": "item/permissions/requestApproval",
+    "params": {
+      "threadId": "thread_fixture",
+      "turnId": "turn_fixture",
+      "itemId": "item_fixture",
+      "environmentId": null,
+      "startedAtMs": 1763400000000,
+      "cwd": "/workspace/demo",
+      "reason": "Download the sample data",
+      "permissions": {
+        "network": {
+          "enabled": true
+        },
+        "fileSystem": null
+      }
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "Codex requests additional permissions",
+      "phase": "codex_permissions_approval",
+      "policy_name": "codex_native_permissions_approval",
+      "codex_method": "item/permissions/requestApproval",
+      "codex_request_id": 34,
+      "cwd": "/workspace/demo",
+      "reason": "Download the sample data",
+      "permissions": {
+        "network": {
+          "enabled": true
+        },
+        "fileSystem": null
+      },
+      "thread_id": "thread_fixture",
+      "turn_id": "turn_fixture",
+      "item_id": "item_fixture"
+    }
+  },
+  "answer": {
+    "action": "accept"
+  },
+  "codex_result": {
+    "permissions": {
+      "network": {
+        "enabled": true
+      }
+    },
+    "scope": "turn"
+  }
+}

@@ -94,6 +94,7 @@ enum DecisionCatalog {
     CatalogSampleItem("plan", "Plan review", PreviewData.planReview),
     CatalogSampleItem("choice", "Choice", PreviewData.choice),
     CatalogSampleItem("form", "Form", PreviewData.form),
+    CatalogSampleItem("external-page", "Page to complete", PreviewData.externalPage),
     CatalogSampleItem("unsupported", "Unsupported", PreviewData.unsupported),
   ]
 

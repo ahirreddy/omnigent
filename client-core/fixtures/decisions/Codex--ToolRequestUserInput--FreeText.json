@@ -1,0 +1,62 @@
+{
+  "codex": {
+    "id": 13,
+    "method": "item/tool/requestUserInput",
+    "params": {
+      "threadId": "thread_fixture",
+      "turnId": "turn_fixture",
+      "itemId": "call_fixture",
+      "isBlocking": true,
+      "questions": [
+        {
+          "id": "release_name",
+          "header": "Release",
+          "question": "What should the release be called?",
+          "isOther": false,
+          "isSecret": false,
+          "options": null
+        }
+      ]
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "Codex needs input",
+      "phase": "codex_request_user_input",
+      "policy_name": "codex_native_request_user_input",
+      "codex_method": "item/tool/requestUserInput",
+      "codex_request_id": 13,
+      "thread_id": "thread_fixture",
+      "turn_id": "turn_fixture",
+      "item_id": "call_fixture",
+      "ask_user_question": {
+        "questions": [
+          {
+            "id": "release_name",
+            "question": "What should the release be called?",
+            "header": "Release",
+            "options": [],
+            "multiSelect": false,
+            "isOther": true,
+            "isSecret": false
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "release_name": "Northwind"
+    }
+  },
+  "codex_result": {
+    "answers": {
+      "release_name": {
+        "answers": ["Northwind"]
+      }
+    }
+  }
+}

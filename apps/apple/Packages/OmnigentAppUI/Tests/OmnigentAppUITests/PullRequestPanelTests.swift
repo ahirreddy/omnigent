@@ -305,8 +305,31 @@ struct WorkspacePanelSlotsWiringTests {
     #expect(shown.options.map(\.label) == ["L"])
     #expect(shown.isSecret)
     #expect(shown.maxItems == 6)
+    #expect(shown.format == nil)
+    #expect(shown.defaultValue == nil)
     #expect(OmnigentUIComponents.PersistMode(.session) == .session)
     #expect(OmnigentUIComponents.PersistMode(.always) == .always)
+  }
+
+  @Test("A format, a default and a page card reach the native form")
+  func formFormatsDefaultsAndPages() {
+    let formats: [(OmnigentCoreFFI.TextFormat, OmnigentUIComponents.TextFormat)] = [
+      (.email, .email), (.uri, .uri), (.date, .date), (.dateTime, .dateTime),
+    ]
+    for (format, expected) in formats {
+      #expect(OmnigentUIComponents.TextFormat(format) == expected)
+    }
+    let field = OmnigentCoreFFI.FormField(
+      key: "when", title: "Day", detail: "", kind: .text, required: true, options: [],
+      allowsCustom: false, isSecret: false, minimum: nil, maximum: nil, minLength: nil,
+      maxLength: nil, minItems: nil, maxItems: nil, format: .date,
+      defaultValue: .text(value: "2026-11-18"))
+    let shown = OmnigentUIComponents.FormField(field)
+    #expect(shown.format == .date)
+    #expect(shown.defaultValue == .text(value: "2026-11-18"))
+    #expect(
+      OmnigentUIComponents.DecisionKind(.externalPage(url: "https://a.test/pay"))
+        == .externalPage(url: "https://a.test/pay"))
   }
 
   @Test("A shell approval and an Antigravity permission reach the card")

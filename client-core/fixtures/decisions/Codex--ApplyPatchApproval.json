@@ -1,0 +1,40 @@
+{
+  "codex": {
+    "id": 36,
+    "method": "applyPatchApproval",
+    "params": {
+      "conversationId": "thread_fixture",
+      "callId": "call_fixture",
+      "fileChanges": {
+        "/workspace/demo/src/lib.rs": {
+          "type": "update",
+          "unified_diff": "@@ -1,2 +1,2 @@\n pub fn greet() {\n-    old();\n+    new();\n",
+          "move_path": null
+        }
+      },
+      "reason": "Rename the helper",
+      "grantRoot": null
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "Codex wants to apply a patch",
+      "phase": "codex_apply_patch_approval",
+      "policy_name": "codex_native_apply_patch_approval",
+      "codex_method": "applyPatchApproval",
+      "codex_request_id": 36,
+      "reason": "Rename the helper",
+      "thread_id": "thread_fixture",
+      "call_id": "call_fixture",
+      "files": ["/workspace/demo/src/lib.rs"]
+    }
+  },
+  "answer": {
+    "action": "accept"
+  },
+  "codex_result": {
+    "decision": "approved"
+  }
+}

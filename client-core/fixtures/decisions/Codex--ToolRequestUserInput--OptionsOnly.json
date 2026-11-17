@@ -1,0 +1,88 @@
+{
+  "codex": {
+    "id": 12,
+    "method": "item/tool/requestUserInput",
+    "params": {
+      "threadId": "thread_fixture",
+      "turnId": "turn_fixture",
+      "itemId": "call_fixture",
+      "isBlocking": true,
+      "questions": [
+        {
+          "id": "mcp_tool_call_approval_call_fixture",
+          "header": "Approve app tool call?",
+          "question": "Allow the calendar MCP server to run tool \"create_event\"?",
+          "isOther": false,
+          "isSecret": false,
+          "options": [
+            {
+              "label": "Allow",
+              "description": "Run the tool and continue."
+            },
+            {
+              "label": "Allow for this session",
+              "description": "Run the tool and remember this choice for this session."
+            },
+            {
+              "label": "Cancel",
+              "description": "Cancel this tool call."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "Codex needs input",
+      "phase": "codex_request_user_input",
+      "policy_name": "codex_native_request_user_input",
+      "codex_method": "item/tool/requestUserInput",
+      "codex_request_id": 12,
+      "thread_id": "thread_fixture",
+      "turn_id": "turn_fixture",
+      "item_id": "call_fixture",
+      "ask_user_question": {
+        "questions": [
+          {
+            "id": "mcp_tool_call_approval_call_fixture",
+            "question": "Allow the calendar MCP server to run tool \"create_event\"?",
+            "header": "Approve app tool call?",
+            "options": [
+              {
+                "label": "Allow",
+                "description": "Run the tool and continue."
+              },
+              {
+                "label": "Allow for this session",
+                "description": "Run the tool and remember this choice for this session."
+              },
+              {
+                "label": "Cancel",
+                "description": "Cancel this tool call."
+              }
+            ],
+            "multiSelect": false,
+            "isOther": false,
+            "isSecret": false
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "mcp_tool_call_approval_call_fixture": "Allow for this session"
+    }
+  },
+  "codex_result": {
+    "answers": {
+      "mcp_tool_call_approval_call_fixture": {
+        "answers": ["Allow for this session"]
+      }
+    }
+  }
+}

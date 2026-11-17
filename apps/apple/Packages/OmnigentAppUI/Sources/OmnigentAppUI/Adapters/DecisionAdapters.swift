@@ -25,6 +25,8 @@ nonisolated extension OmnigentUIComponents.DecisionKind {
       self = .choice(answerKey: answerKey, options: options)
     case .form(let fields):
       self = .form(fields: fields.map(OmnigentUIComponents.FormField.init))
+    case .externalPage(let url):
+      self = .externalPage(url: url)
     case .unsupported(let reason, let externalUrl):
       self = .unsupported(reason: reason, externalUrl: externalUrl)
     }
@@ -41,7 +43,20 @@ nonisolated extension OmnigentUIComponents.FormField {
       },
       allowsCustom: field.allowsCustom, isSecret: field.isSecret, minimum: field.minimum,
       maximum: field.maximum, minLength: field.minLength, maxLength: field.maxLength,
-      minItems: field.minItems, maxItems: field.maxItems)
+      minItems: field.minItems, maxItems: field.maxItems,
+      format: field.format.map(OmnigentUIComponents.TextFormat.init),
+      defaultValue: field.defaultValue.map(OmnigentUIComponents.ElicitationValue.init))
+  }
+}
+
+nonisolated extension OmnigentUIComponents.TextFormat {
+  init(_ format: OmnigentCoreFFI.TextFormat) {
+    switch format {
+    case .email: self = .email
+    case .uri: self = .uri
+    case .date: self = .date
+    case .dateTime: self = .dateTime
+    }
   }
 }
 

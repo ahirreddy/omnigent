@@ -21,9 +21,9 @@ use crate::http::{HttpHeader, HttpRequest, HttpResponse, TransportError};
 /// What the user chose.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecisionResponse {
-    /// Accept a binary approval.
+    /// Accept a binary approval, or say a page card's page is done.
     Approve,
-    /// Decline a binary approval.
+    /// Decline a binary approval or a page card.
     Decline,
     /// Dismiss any answerable card without an explicit choice (MCP `cancel`). The way to close a
     /// choice or form without answering it.
@@ -138,8 +138,8 @@ impl Decision {
     ///
     /// # Errors
     ///
-    /// [`DecisionError::Unsupported`] for a card that cannot be answered natively (including a
-    /// URL handoff), [`DecisionError::NotOffered`] for a response kind the card did not offer, and
+    /// [`DecisionError::Unsupported`] for a card that cannot be answered natively,
+    /// [`DecisionError::NotOffered`] for a response kind the card did not offer, and
     /// [`DecisionError::InvalidAnswer`] for form values that fail validation.
     pub fn result_for(
         &self,
@@ -148,13 +148,18 @@ impl Decision {
         if let DecisionKind::Unsupported { reason, .. } = &self.kind {
             return Err(DecisionError::Unsupported(reason.clone()));
         }
+        // A page card answers like a binary approval once the user is done with the page.
+        let is_binary = matches!(
+            self.kind,
+            DecisionKind::Approval | DecisionKind::ExternalPage { .. }
+        );
         match response {
             DecisionResponse::Approve => {
-                require(self.kind == DecisionKind::Approval)?;
+                require(is_binary)?;
                 Ok(bare(ElicitationAction::Accept))
             }
             DecisionResponse::Decline => {
-                require(self.kind == DecisionKind::Approval)?;
+                require(is_binary)?;
                 Ok(bare(ElicitationAction::Decline))
             }
             DecisionResponse::Cancel => Ok(bare(ElicitationAction::Cancel)),

@@ -2,7 +2,8 @@ import SwiftUI
 
 /// What the user has entered into a decision card so far: form answers and the "Tell the agent
 /// instead" reply. Kept per card id and shared by the inline card, the dock and the iPhone sheet,
-/// so a half-written answer survives scrolling, paging and size-class changes.
+/// so a half-written answer survives scrolling, paging and size-class changes. A field the user
+/// has not touched reads its default.
 struct FormDraft: Hashable {
   var text: [String: String] = [:]
   var selected: [String: [String]] = [:]
@@ -13,8 +14,36 @@ struct FormDraft: Hashable {
   /// The reply field is open.
   var isComposingFeedback = false
 
+  /// The text a text or number field shows: what was typed, else its default.
+  func text(for field: FormField) -> String {
+    if let typed = text[field.key] { return typed }
+    switch field.defaultValue {
+    case .text(let value): return value
+    case .integer(let value): return String(value)
+    case .number(let value): return String(value)
+    case .bool, .textList, .null, nil: return ""
+    }
+  }
+
+  /// The options a choice field has selected: what was chosen, else its default.
+  func selection(for field: FormField) -> [String] {
+    if let chosen = selected[field.key] { return chosen }
+    switch field.defaultValue {
+    case .text(let value): return [value]
+    case .textList(let values): return values
+    case .bool, .integer, .number, .null, nil: return []
+    }
+  }
+
+  /// A yes-or-no field's answer: what was chosen, else its default; `nil` while unanswered.
+  func booleanAnswer(for field: FormField) -> ElicitationValue? {
+    if let chosen = booleans[field.key] { return .bool(value: chosen) }
+    if case .bool = field.defaultValue { return field.defaultValue }
+    return nil
+  }
+
   /// A problem the UI itself can see: unparseable numbers and missing required answers.
-  /// Constraint checks (lengths, ranges, item counts) are the core's validator.
+  /// Constraint checks (lengths, ranges, item counts, formats) are the core's validator.
   func localProblem(for fields: [FormField]) -> String? {
     fields.lazy.compactMap { problem(for: $0)?.message }.first
   }
@@ -25,10 +54,10 @@ struct FormDraft: Hashable {
     case .number, .integer:
       return numberProblem(for: field)
     case .text:
-      return field.required && text[field.key, default: ""].isEmpty
+      return field.required && text(for: field).isEmpty
         ? .missing("Enter \(field.title).") : nil
     case .boolean:
-      return field.required && booleans[field.key] == nil
+      return field.required && booleanAnswer(for: field) == nil
         ? .missing("Choose Yes or No for \(field.title).") : nil
     case .singleChoice, .multipleChoice:
       return field.required && value(for: field) == nil
@@ -37,7 +66,7 @@ struct FormDraft: Hashable {
   }
 
   private func numberProblem(for field: FormField) -> FieldProblem? {
-    let raw = text[field.key, default: ""].trimmingCharacters(in: .whitespaces)
+    let raw = text(for: field).trimmingCharacters(in: .whitespaces)
     if raw.isEmpty { return field.required ? .missing("Enter \(field.title).") : nil }
     if field.kind == .integer, Int64(raw) == nil {
       return .invalid("\(field.title) must be a whole number.")
@@ -69,25 +98,24 @@ struct FormDraft: Hashable {
     let other = custom[field.key, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
     switch field.kind {
     case .text:
-      let raw = text[field.key, default: ""]
+      let raw = text(for: field)
       return raw.isEmpty ? nil : .text(value: raw)
     case .integer:
-      return Int64(text[field.key, default: ""].trimmingCharacters(in: .whitespaces))
+      return Int64(text(for: field).trimmingCharacters(in: .whitespaces))
         .map { .integer(value: $0) }
     case .number:
-      guard let number = Double(text[field.key, default: ""].trimmingCharacters(in: .whitespaces)),
+      guard let number = Double(text(for: field).trimmingCharacters(in: .whitespaces)),
         number.isFinite
       else { return nil }
       return .number(value: number)
     case .boolean:
-      return booleans[field.key].map { .bool(value: $0) }
+      return booleanAnswer(for: field)
     case .singleChoice:
       if field.allowsCustom, !other.isEmpty { return .text(value: other) }
-      return selected[field.key]?.first.map { .text(value: $0) }
+      return selection(for: field).first.map { .text(value: $0) }
     case .multipleChoice:
-      var choices = field.options.map(\.value).filter {
-        selected[field.key, default: []].contains($0)
-      }
+      let chosen = selection(for: field)
+      var choices = field.options.map(\.value).filter { chosen.contains($0) }
       if field.allowsCustom, !other.isEmpty, !choices.contains(other) { choices.append(other) }
       return choices.isEmpty ? nil : .textList(values: choices)
     }
@@ -157,7 +185,7 @@ struct DecisionFormFields: View {
     case .text, .number, .integer:
       textControl(field)
     case .boolean:
-      Picker(field.title, selection: booleanBinding(field.key)) {
+      Picker(field.title, selection: booleanBinding(field)) {
         Text("Yes").tag(YesNo.answeredYes)
         Text("No").tag(YesNo.answeredNo)
       }
@@ -169,50 +197,66 @@ struct DecisionFormFields: View {
         ForEach(field.options) { option in
           OptionRow(
             option: option, isMultiple: field.kind == .multipleChoice,
-            isSelected: draft.selected[field.key, default: []].contains(option.value)
+            isSelected: draft.selection(for: field).contains(option.value)
           ) {
             toggle(option.value, in: field)
           }
         }
         if field.allowsCustom {
-          TextField("Other answer", text: customBinding(field), axis: .vertical)
-            .textFieldStyle(.roundedBorder)
-            .padding(.top, Theme.Spacing.extraSmall)
-            .accessibilityLabel("Other answer for \(field.title)")
+          Group {
+            if field.isSecret {
+              SecureField("Other answer", text: customBinding(field))
+            } else {
+              TextField("Other answer", text: customBinding(field), axis: .vertical)
+            }
+          }
+          .textFieldStyle(.roundedBorder)
+          .padding(.top, Theme.Spacing.extraSmall)
+          .accessibilityLabel("Other answer for \(field.title)")
         }
+        if let hint = FormFieldHint.choices(field) { FormFieldHint.text(hint) }
       }
     }
   }
 
   @ViewBuilder
   private func textControl(_ field: FormField) -> some View {
-    let binding = textBinding(field.key)
-    Group {
-      if field.isSecret {
-        SecureField(field.title, text: binding)
-      } else if field.kind == .text {
-        TextField(field.title, text: binding, axis: .vertical)
-          .lineLimit(1...6)
-      } else {
-        TextField(field.kind == .integer ? "Whole number" : "Number", text: binding)
-          #if os(iOS)
-            .keyboardType(field.kind == .integer ? .numberPad : .decimalPad)
-          #endif
+    let binding = textBinding(field)
+    HStack(spacing: Theme.Spacing.small) {
+      Group {
+        if field.isSecret {
+          SecureField(field.title, text: binding)
+        } else if let format = field.format {
+          TextField(FormFieldHint.placeholder(format), text: binding)
+            .textEntry(for: format)
+        } else if field.kind == .text {
+          TextField(field.title, text: binding, axis: .vertical)
+            .lineLimit(1...6)
+        } else {
+          TextField(field.kind == .integer ? "Whole number" : "Number", text: binding)
+            #if os(iOS)
+              .keyboardType(field.kind == .integer ? .numberPad : .decimalPad)
+            #endif
+        }
+      }
+      .textFieldStyle(.roundedBorder)
+      .labelsHidden()
+      .accessibilityLabel(field.title)
+      if let format = field.format, format == .date || format == .dateTime {
+        FormDateEntry(format: format, title: field.title, text: binding)
       }
     }
-    .textFieldStyle(.roundedBorder)
-    .labelsHidden()
-    .accessibilityLabel(field.title)
     if let maxLength = field.maxLength, field.kind == .text {
       let count = binding.wrappedValue.unicodeScalars.count
       Text("\(count) of \(maxLength) characters")
         .font(.caption2.monospacedDigit())
         .foregroundStyle(UInt64(count) > maxLength ? Theme.failure : .secondary)
     }
+    if let hint = FormFieldHint.range(field) { FormFieldHint.text(hint) }
   }
 
   private func toggle(_ value: String, in field: FormField) {
-    var current = draft.selected[field.key, default: []]
+    var current = draft.selection(for: field)
     if field.kind == .singleChoice {
       current = [value]
       draft.custom[field.key] = nil
@@ -224,8 +268,8 @@ struct DecisionFormFields: View {
     draft.selected[field.key] = current
   }
 
-  private func textBinding(_ key: String) -> Binding<String> {
-    Binding(get: { draft.text[key, default: ""] }, set: { draft.text[key] = $0 })
+  private func textBinding(_ field: FormField) -> Binding<String> {
+    Binding(get: { draft.text(for: field) }, set: { draft.text[field.key] = $0 })
   }
 
   /// A yes/no answer; `unanswered` is distinct from No.
@@ -235,20 +279,20 @@ struct DecisionFormFields: View {
     case answeredNo
   }
 
-  private func booleanBinding(_ key: String) -> Binding<YesNo> {
+  private func booleanBinding(_ field: FormField) -> Binding<YesNo> {
     Binding(
       get: {
-        switch draft.booleans[key] {
-        case true?: .answeredYes
-        case false?: .answeredNo
-        case nil: .unanswered
+        switch draft.booleanAnswer(for: field) {
+        case .bool(value: true): .answeredYes
+        case .bool(value: false): .answeredNo
+        default: .unanswered
         }
       },
       set: { answer in
         switch answer {
-        case .answeredYes: draft.booleans[key] = true
-        case .answeredNo: draft.booleans[key] = false
-        case .unanswered: draft.booleans[key] = nil
+        case .answeredYes: draft.booleans[field.key] = true
+        case .answeredNo: draft.booleans[field.key] = false
+        case .unanswered: draft.booleans[field.key] = nil
         }
       })
   }

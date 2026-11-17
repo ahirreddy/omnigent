@@ -5,10 +5,15 @@ These are pure-function tests — no HTTP or runtime needed.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from typing import Any
+
 import pytest
 
 from omnigent.errors import OmnigentError
 from omnigent.server.routes._codex_elicitation import (
+    _CODEX_ELICITATION_ADAPTERS,
     _codex_command_preview,
     _codex_mcp_elicitation_response,
     _codex_mcp_persist_modes,
@@ -18,6 +23,58 @@ from omnigent.server.routes._codex_elicitation import (
     parse_codex_elicitation_request,
 )
 from omnigent.server.schemas import ElicitationResult
+
+# Shared with omnigent-core's `decisions/codex_tests.rs`: each file holds one Codex request,
+# the elicitation the server publishes for it, an answer the app posts, and the result Codex
+# receives.
+_CODEX_DECISION_FIXTURES = sorted(
+    (Path(__file__).resolve().parents[3] / "client-core" / "fixtures" / "decisions").glob(
+        "Codex--*.json"
+    )
+)
+
+
+def _codex_fixture(path: Path) -> dict[str, Any]:
+    """
+    Load one shared Codex decision fixture.
+
+    :param path: Fixture file, e.g. ``Codex--FileChangeRequestApproval.json``.
+    :returns: The fixture's ``codex``, ``elicitation``, ``answer`` and
+        ``codex_result`` entries.
+    """
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+class TestCodexDecisionFixtures:
+    """Every Codex request kind maps to the elicitation the native app reads, and back."""
+
+    def test_every_codex_request_method_has_a_fixture(self) -> None:
+        methods = {_codex_fixture(path)["codex"]["method"] for path in _CODEX_DECISION_FIXTURES}
+        assert methods == set(_CODEX_ELICITATION_ADAPTERS)
+
+    @pytest.mark.parametrize("path", _CODEX_DECISION_FIXTURES, ids=lambda path: path.stem)
+    def test_request_publishes_the_fixture_elicitation(self, path: Path) -> None:
+        fixture = _codex_fixture(path)
+
+        request = parse_codex_elicitation_request(fixture["codex"])
+
+        published = {
+            key: value
+            for key, value in request.params.model_dump(mode="json").items()
+            if value is not None
+        }
+        assert published.pop("content_preview") == _json_preview(fixture["codex"]["params"])
+        assert published == fixture["elicitation"]["params"]
+
+    @pytest.mark.parametrize("path", _CODEX_DECISION_FIXTURES, ids=lambda path: path.stem)
+    def test_answer_becomes_the_fixture_codex_result(self, path: Path) -> None:
+        fixture = _codex_fixture(path)
+        request = parse_codex_elicitation_request(fixture["codex"])
+
+        result = request.build_response(ElicitationResult.model_validate(fixture["answer"]))
+
+        assert result == fixture["codex_result"]
+
 
 # ── parse_codex_elicitation_request ──────────────────────────────────
 

@@ -1,0 +1,81 @@
+{
+  "codex": {
+    "id": 11,
+    "method": "item/tool/requestUserInput",
+    "params": {
+      "threadId": "thread_fixture",
+      "turnId": "turn_fixture",
+      "itemId": "call_fixture",
+      "isBlocking": true,
+      "autoResolutionMs": null,
+      "questions": [
+        {
+          "id": "ui_framework",
+          "header": "Framework",
+          "question": "Which UI framework should the prototype use?",
+          "isOther": true,
+          "isSecret": false,
+          "options": [
+            {
+              "label": "SwiftUI (Recommended)",
+              "description": "Native controls on Mac and iPhone."
+            },
+            {
+              "label": "UIKit",
+              "description": "More control, more code."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "Codex needs input",
+      "phase": "codex_request_user_input",
+      "policy_name": "codex_native_request_user_input",
+      "codex_method": "item/tool/requestUserInput",
+      "codex_request_id": 11,
+      "thread_id": "thread_fixture",
+      "turn_id": "turn_fixture",
+      "item_id": "call_fixture",
+      "ask_user_question": {
+        "questions": [
+          {
+            "id": "ui_framework",
+            "question": "Which UI framework should the prototype use?",
+            "header": "Framework",
+            "options": [
+              {
+                "label": "SwiftUI (Recommended)",
+                "description": "Native controls on Mac and iPhone."
+              },
+              {
+                "label": "UIKit",
+                "description": "More control, more code."
+              }
+            ],
+            "multiSelect": false,
+            "isOther": true,
+            "isSecret": false
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "ui_framework": "A web view"
+    }
+  },
+  "codex_result": {
+    "answers": {
+      "ui_framework": {
+        "answers": ["A web view"]
+      }
+    }
+  }
+}

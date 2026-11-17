@@ -7,119 +7,6 @@ import Foundation
 // Mirrors of the core's decision records (`omnigent-ffi` `decisions.rs`, built by
 // `omnigent_core::decisions::Decision::from_request`, which fails closed).
 
-/// One choice a form field offers.
-nonisolated public struct FormOption: Hashable, Sendable, Identifiable {
-  /// The value posted when chosen.
-  public var value: String
-  /// What to show.
-  public var label: String
-  /// Extra description.
-  public var detail: String
-
-  /// The option's identity is its value; values are unique within a field.
-  public var id: String { value }
-
-  /// Creates an option.
-  /// - Parameters:
-  ///   - value: Posted value.
-  ///   - label: Display label.
-  ///   - detail: Extra description.
-  public init(value: String, label: String? = nil, detail: String = "") {
-    self.value = value
-    self.label = label ?? value
-    self.detail = detail
-  }
-}
-
-/// The native control a field needs.
-nonisolated public enum FieldKind: String, Hashable, Sendable, CaseIterable {
-  /// Free text.
-  case text
-  /// A number.
-  case number
-  /// A whole number.
-  case integer
-  /// A toggle.
-  case boolean
-  /// One option.
-  case singleChoice
-  /// Several options.
-  case multipleChoice
-}
-
-/// One form field.
-nonisolated public struct FormField: Hashable, Sendable, Identifiable {
-  /// The `content` key.
-  public var key: String
-  /// Label.
-  public var title: String
-  /// Help text.
-  public var detail: String
-  /// The control.
-  public var kind: FieldKind
-  /// Must be answered.
-  public var required: Bool
-  /// Offered choices.
-  public var options: [FormOption]
-  /// A free-text answer is allowed besides the options.
-  public var allowsCustom: Bool
-  /// Render as a secure field.
-  public var isSecret: Bool
-  /// Lowest number.
-  public var minimum: Double?
-  /// Highest number.
-  public var maximum: Double?
-  /// Shortest text.
-  public var minLength: UInt64?
-  /// Longest text.
-  public var maxLength: UInt64?
-  /// Fewest choices.
-  public var minItems: UInt64?
-  /// Most choices.
-  public var maxItems: UInt64?
-
-  /// The field's identity is its key.
-  public var id: String { key }
-
-  /// Creates a field.
-  /// - Parameters:
-  ///   - key: Content key.
-  ///   - title: Label.
-  ///   - detail: Help text.
-  ///   - kind: Control.
-  ///   - required: Must be answered.
-  ///   - options: Choices.
-  ///   - allowsCustom: Free text allowed.
-  ///   - isSecret: Secure entry.
-  ///   - minimum: Lowest number.
-  ///   - maximum: Highest number.
-  ///   - minLength: Shortest text.
-  ///   - maxLength: Longest text.
-  ///   - minItems: Fewest choices.
-  ///   - maxItems: Most choices.
-  public init(
-    key: String, title: String, detail: String = "", kind: FieldKind, required: Bool = true,
-    options: [FormOption] = [], allowsCustom: Bool = false, isSecret: Bool = false,
-    minimum: Double? = nil, maximum: Double? = nil, minLength: UInt64? = nil,
-    maxLength: UInt64? = nil, minItems: UInt64? = nil, maxItems: UInt64? = nil
-  ) {
-    self.key = key
-    self.title = title
-    self.detail = detail
-    self.kind = kind
-    self.required = required
-    self.options = options
-    self.allowsCustom = allowsCustom
-    self.isSecret = isSecret
-    self.minimum = minimum
-    self.maximum = maximum
-    self.minLength = minLength
-    self.maxLength = maxLength
-    self.minItems = minItems
-    self.maxItems = maxItems
-  }
-}
-
 /// What a card asks for.
 nonisolated public enum DecisionKind: Hashable, Sendable {
   /// Approve or decline, plus the card's permission options.
@@ -128,6 +15,9 @@ nonisolated public enum DecisionKind: Hashable, Sendable {
   case choice(answerKey: String, options: [String])
   /// A typed form.
   case form(fields: [FormField])
+  /// A page to complete, then Done (``DecisionResponse/approve``) or Decline. The page is only
+  /// ever opened when the user asks.
+  case externalPage(url: String)
   /// Cannot be answered natively. `externalUrl` is never opened automatically.
   case unsupported(reason: String, externalUrl: String?)
 }

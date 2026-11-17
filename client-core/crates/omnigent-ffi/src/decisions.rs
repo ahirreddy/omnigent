@@ -40,6 +40,19 @@ pub enum FieldKind {
     MultipleChoice,
 }
 
+/// A format a text field's answer must match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum TextFormat {
+    /// An email address.
+    Email,
+    /// An absolute URI.
+    Uri,
+    /// `YYYY-MM-DD`.
+    Date,
+    /// `YYYY-MM-DDTHH:MM:SS` with an offset or `Z`.
+    DateTime,
+}
+
 /// One form field.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct FormField {
@@ -71,6 +84,12 @@ pub struct FormField {
     pub min_items: Option<u64>,
     /// Most choices.
     pub max_items: Option<u64>,
+    /// The format a text answer must match.
+    #[uniffi(default)]
+    pub format: Option<TextFormat>,
+    /// The answer to start with; always a valid answer.
+    #[uniffi(default)]
+    pub default_value: Option<ElicitationValue>,
 }
 
 /// What a card asks for.
@@ -89,6 +108,11 @@ pub enum DecisionKind {
     Form {
         /// The fields, in order.
         fields: Vec<FormField>,
+    },
+    /// A page to complete, then Done (`Approve`) or `Decline`. Open it only when the user asks.
+    ExternalPage {
+        /// The safe `http(s)` page.
+        url: String,
     },
     /// Cannot be answered natively.
     Unsupported {
@@ -349,6 +373,28 @@ impl From<FieldKind> for core::FieldKind {
     }
 }
 
+impl From<TextFormat> for core::TextFormat {
+    fn from(format: TextFormat) -> Self {
+        match format {
+            TextFormat::Email => Self::Email,
+            TextFormat::Uri => Self::Uri,
+            TextFormat::Date => Self::Date,
+            TextFormat::DateTime => Self::DateTime,
+        }
+    }
+}
+
+impl From<core::TextFormat> for TextFormat {
+    fn from(format: core::TextFormat) -> Self {
+        match format {
+            core::TextFormat::Email => Self::Email,
+            core::TextFormat::Uri => Self::Uri,
+            core::TextFormat::Date => Self::Date,
+            core::TextFormat::DateTime => Self::DateTime,
+        }
+    }
+}
+
 impl From<FormField> for core::FormField {
     fn from(field: FormField) -> Self {
         Self {
@@ -366,6 +412,8 @@ impl From<FormField> for core::FormField {
             max_length: field.max_length.map(size),
             min_items: field.min_items.map(size),
             max_items: field.max_items.map(size),
+            format: field.format.map(Into::into),
+            default_value: field.default_value.map(Into::into),
         }
     }
 }
@@ -410,6 +458,8 @@ impl From<core::FormField> for FormField {
             max_length: field.max_length.map(count),
             min_items: field.min_items.map(count),
             max_items: field.max_items.map(count),
+            format: field.format.map(Into::into),
+            default_value: field.default_value.map(Into::into),
         }
     }
 }
@@ -428,6 +478,7 @@ impl From<core::DecisionKind> for DecisionKind {
             core::DecisionKind::Form(form) => Self::Form {
                 fields: form.fields.into_iter().map(Into::into).collect(),
             },
+            core::DecisionKind::ExternalPage { url } => Self::ExternalPage { url },
             core::DecisionKind::Unsupported {
                 reason,
                 external_url,
@@ -546,6 +597,19 @@ impl From<ElicitationValue> for CoreValue {
             ElicitationValue::Number { value } => Self::Number(value),
             ElicitationValue::Text { value } => Self::Text(value),
             ElicitationValue::TextList { values } => Self::TextList(values),
+        }
+    }
+}
+
+impl From<CoreValue> for ElicitationValue {
+    fn from(value: CoreValue) -> Self {
+        match value {
+            CoreValue::Null => Self::Null,
+            CoreValue::Bool(value) => Self::Bool { value },
+            CoreValue::Integer(value) => Self::Integer { value },
+            CoreValue::Number(value) => Self::Number { value },
+            CoreValue::Text(value) => Self::Text { value },
+            CoreValue::TextList(values) => Self::TextList { values },
         }
     }
 }

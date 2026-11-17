@@ -465,11 +465,16 @@ enum PreviewData {
         "Complete this request on its confirmation page. The session will update when the server receives your response.",
       externalUrl: "https://linear.app/oauth/authorize?client_id=omnigent"))
 
+  static let externalPage = card(
+    "elic_page", title: "Action required", detail: "Review the payment details to continue.",
+    kind: .externalPage(url: "https://payments.example.com/checkout/123"))
+
   static let answered = card(
     "elic_done", detail: "Delete the generated report.md?", answered: true)
 
   static let decisions = [
-    approval, codexCommand, antigravity, planReview, choice, form, unsupported, answered,
+    approval, codexCommand, antigravity, planReview, choice, form, externalPage, unsupported,
+    answered,
   ]
 
   // MARK: Conversation

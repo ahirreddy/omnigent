@@ -45,7 +45,8 @@ nonisolated public enum SupervisionCategory: String, CaseIterable, Hashable, Sen
       return .question
     case .form(let fields):
       return SupervisionReply.singleTextField(fields) == nil ? .update : .question
-    case .unsupported:
+    case .externalPage, .unsupported:
+      // A page has to be opened and finished first, which a notification cannot do.
       return .update
     }
   }
@@ -340,7 +341,7 @@ nonisolated public enum SupervisionReply {
     case .form(let fields):
       guard let field = singleTextField(fields) else { throw .needsApp }
       return .form(values: [field.key: .text(value: reply)])
-    case .unsupported:
+    case .externalPage, .unsupported:
       throw .needsApp
     }
   }

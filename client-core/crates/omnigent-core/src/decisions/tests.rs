@@ -300,10 +300,35 @@ fn external_request_only_exposes_safe_explicit_handoff() {
     let safe = decision(lines[0].clone());
     assert_eq!(safe.external_url(), Some("https://example.invalid/confirm"));
     assert_eq!(
-        safe.unsupported_reason(),
-        Some(&UnsupportedReason::ExternalConfirmation)
+        safe.kind,
+        DecisionKind::ExternalPage {
+            url: "https://example.invalid/confirm".to_owned()
+        }
     );
-    assert!(safe.result_for(&DecisionResponse::Approve).is_err());
+    assert_eq!(safe.unsupported_reason(), None);
+    assert_eq!(safe.title, "Action required");
+    // Done and Decline answer the page; nothing posts a typed answer to it.
+    assert_eq!(
+        safe.result_for(&DecisionResponse::Approve)
+            .map(|result| result.action),
+        Ok(ElicitationAction::Accept)
+    );
+    assert_eq!(
+        safe.result_for(&DecisionResponse::Decline)
+            .map(|result| result.action),
+        Ok(ElicitationAction::Decline)
+    );
+    for response in [
+        DecisionResponse::Answer("done".to_owned()),
+        DecisionResponse::Form(BTreeMap::new()),
+        DecisionResponse::ApprovePersist(PersistMode::Session),
+    ] {
+        assert_eq!(
+            safe.result_for(&response),
+            Err(DecisionError::NotOffered),
+            "{response:?}"
+        );
+    }
     let unsafe_link = decision(lines[1].clone());
     assert_eq!(unsafe_link.external_url(), None);
     assert_eq!(
@@ -1169,11 +1194,182 @@ fn schemas_the_native_form_cannot_express_are_refused() {
             property(json!({"enum": ["a", 1]})),
             malformed_options.clone(),
         ),
-        (property(json!({"enum": ["a", "a"]})), malformed_options),
+        (
+            property(json!({"enum": ["a", "a"]})),
+            malformed_options.clone(),
+        ),
+        // A `oneOf` that is a union of schemas, not a list of titled options.
+        (
+            property(json!({"type": "string", "oneOf": [{"type": "string", "maxLength": 3}]})),
+            unsupported("oneOf"),
+        ),
+        (
+            property(json!({"type": "string", "oneOf": [{"const": "a", "pattern": "x"}]})),
+            unsupported("oneOf"),
+        ),
+        (
+            property(json!({"type": "string", "oneOf": [{"const": 1, "title": "One"}]})),
+            unsupported("oneOf"),
+        ),
+        (
+            property(json!({"type": "string", "oneOf": [{"const": "a", "title": 7}]})),
+            malformed_options.clone(),
+        ),
+        (
+            property(json!({"type": "string", "oneOf": [
+                {"const": "a", "title": "A"}, {"const": "a", "title": "Again"}
+            ]})),
+            malformed_options.clone(),
+        ),
+        (
+            property(json!({"type": "string", "oneOf": []})),
+            malformed_options,
+        ),
+        (
+            property(json!({"type": "string", "enum": ["a"], "oneOf": [{"const": "a"}]})),
+            not_applicable("oneOf"),
+        ),
+        (
+            property(json!({"type": "boolean", "oneOf": [{"const": "a"}]})),
+            not_applicable("oneOf"),
+        ),
+        (
+            property(json!({"type": "array", "items": {
+                "anyOf": [{"const": "a"}], "oneOf": [{"const": "a"}]
+            }})),
+            unsupported("oneOf"),
+        ),
+        (
+            property(json!({"type": "array", "items": {
+                "anyOf": [{"const": "a"}], "enum": ["a"]
+            }})),
+            not_applicable("anyOf"),
+        ),
+        (
+            property(json!({"type": "array", "items": {
+                "type": "number", "anyOf": [{"const": "a"}]
+            }})),
+            unsupported_type("array of non-strings"),
+        ),
+        (
+            property(json!({"type": "array", "items": {"anyOf": [{"type": "string"}]}})),
+            unsupported("anyOf"),
+        ),
+        // `format`: only the four MCP formats, only on text.
+        (
+            property(json!({"type": "string", "format": "uuid"})),
+            FormError::UnsupportedFormat {
+                field: "f".to_owned(),
+                format: "uuid".to_owned(),
+            },
+        ),
+        (
+            property(json!({"type": "string", "format": 7})),
+            FormError::MalformedConstraint {
+                field: "f".to_owned(),
+                keyword: "format".to_owned(),
+            },
+        ),
+        (
+            property(json!({"type": "number", "format": "email"})),
+            not_applicable("format"),
+        ),
+        (
+            property(json!({"type": "string", "enum": ["a"], "format": "email"})),
+            not_applicable("format"),
+        ),
+        // A default of the wrong type is a malformed schema, not a hint to drop.
+        (
+            property(json!({"type": "integer", "default": 1.5})),
+            FormError::MalformedConstraint {
+                field: "f".to_owned(),
+                keyword: "default".to_owned(),
+            },
+        ),
+        (
+            property(json!({"type": "boolean", "default": "true"})),
+            FormError::MalformedConstraint {
+                field: "f".to_owned(),
+                keyword: "default".to_owned(),
+            },
+        ),
+        (
+            property(json!({
+                "type": "array", "items": {"type": "string", "enum": ["a"]}, "default": [1]
+            })),
+            FormError::MalformedConstraint {
+                field: "f".to_owned(),
+                keyword: "default".to_owned(),
+            },
+        ),
     ];
     for (schema, expected) in cases {
         assert_eq!(schema_error(&schema), expected, "{schema}");
     }
+}
+
+#[test]
+fn a_default_starts_the_answer_only_when_it_is_itself_valid() {
+    let field = |property: Value| {
+        DecisionForm::from_schema(
+            json!({"type": "object", "properties": {"f": property}, "required": ["f"]})
+                .as_object()
+                .unwrap(),
+        )
+        .unwrap()
+        .fields
+        .remove(0)
+        .default_value
+    };
+    assert_eq!(
+        field(json!({"type": "integer", "minimum": 1.0, "default": 3.0})),
+        Some(ElicitationValue::Integer(3))
+    );
+    assert_eq!(
+        field(json!({"type": "number", "default": 2})),
+        Some(ElicitationValue::Integer(2))
+    );
+    assert_eq!(
+        field(json!({"type": "string", "enum": ["a", "b"], "default": "b"})),
+        Some(ElicitationValue::Text("b".to_owned()))
+    );
+    // Valid JSON types that break the field's own rules start the field empty instead.
+    for property in [
+        json!({"type": "string", "enum": ["a"], "default": "z"}),
+        json!({"type": "integer", "maximum": 2, "default": 3}),
+        json!({"type": "string", "minLength": 2, "default": "a"}),
+        json!({"type": "string", "format": "email", "default": "nobody"}),
+        json!({"type": "string", "default": "  "}),
+        json!({
+            "type": "array", "maxItems": 1,
+            "items": {"type": "string", "enum": ["a", "b"]}, "default": ["a", "b"],
+        }),
+    ] {
+        assert_eq!(field(property.clone()), None, "{property}");
+    }
+}
+
+#[test]
+fn an_unsupported_reason_names_what_the_app_cannot_do() {
+    let card = decision(fixture_json(
+        "decisions/DecisionForm--UnsupportedPatternNeverSilentlyDisappears.json",
+    ));
+    assert_eq!(
+        card.unsupported_reason()
+            .map(ToString::to_string)
+            .as_deref(),
+        Some(
+            "The app cannot show this form exactly: field \"name\" uses the unsupported keyword \
+             \"pattern\". Continue in the web app."
+        )
+    );
+    assert_eq!(
+        UnsupportedReason::UnknownMode {
+            mode: "openai/form".to_owned()
+        }
+        .to_string(),
+        "This request uses the \"openai/form\" mode, which the app does not support yet."
+    );
 }
 
 #[test]
@@ -1281,6 +1477,47 @@ fn question_payloads_with_too_many_or_duplicate_entries_are_refused() {
             field: "same".to_owned()
         })
     );
+}
+
+#[test]
+fn a_question_without_options_takes_text_only_when_it_offers_a_typed_answer() {
+    let first = |question: Value| {
+        DecisionForm::from_questions(&json!({"questions": [question]}))
+            .map(|mut form| form.fields.remove(0))
+    };
+    let malformed = Err(FormError::MalformedOptions {
+        field: "Name it".to_owned(),
+    });
+    for question in [
+        json!({"question": "Name it"}),
+        json!({"question": "Name it", "options": [], "isOther": false}),
+        json!({"question": "Name it", "options": null}),
+        json!({"question": "Name it", "options": [], "isOther": true, "multiSelect": true}),
+        json!({"question": "Name it", "options": "free", "isOther": true}),
+    ] {
+        assert_eq!(first(question.clone()), malformed, "{question}");
+    }
+    let text = first(json!({"question": "Name it", "options": [], "isOther": true})).unwrap();
+    assert_eq!(
+        (text.kind, text.required, text.default_value),
+        (FieldKind::Text, true, None)
+    );
+    // Pi's editor prefills its text.
+    let editor = first(json!({
+        "id": "0", "question": "Name it", "options": [], "isOther": true,
+        "textInput": {"default": "Draft"},
+    }))
+    .unwrap();
+    assert_eq!(
+        editor.default_value,
+        Some(ElicitationValue::Text("Draft".to_owned()))
+    );
+    // `isOther` absent keeps Claude's typed "Other" answer; `false` takes the options only.
+    let options = json!([{"label": "A"}]);
+    let claude = first(json!({"question": "Pick", "options": options})).unwrap();
+    assert!(claude.allows_custom);
+    let closed = first(json!({"question": "Pick", "options": options, "isOther": false})).unwrap();
+    assert!(!closed.allows_custom);
 }
 
 #[test]
