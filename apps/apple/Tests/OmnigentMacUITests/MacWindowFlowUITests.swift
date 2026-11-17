@@ -192,6 +192,7 @@ final class MacWindowFlowUITests: XCTestCase {
     live.assertRow("demo-design", in: app, contains: "Needs you")
 
     let approve = live.elements(prefix: "approval-approve-", in: app).firstMatch
+    live.showTranscriptEnd(in: app)
     live.click(approve, "Approve")
     XCTAssertTrue(approve.disappears(within: 15), "the request stayed")
     live.assertRow("demo-design", in: app, contains: "Needs you", false)

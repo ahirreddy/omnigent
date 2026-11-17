@@ -108,7 +108,9 @@ final class MacSidebarFilterFlowUITests: XCTestCase {
     let app = live.launchDemo()
     defer { app.terminate() }
     live.openDemo("demo-design", in: app)
-    live.click(live.elements(prefix: "approval-approve-", in: app).firstMatch, "Approve")
+    let approve = live.elements(prefix: "approval-approve-", in: app).firstMatch
+    live.showTranscriptEnd(in: app)
+    live.click(approve, "Approve")
     live.assertRow("demo-design", in: app, contains: "Needs you", false)
     live.openDemo("demo-question", in: app)
     live.click(live.elements(prefix: "decision-option-", in: app).firstMatch, "the first option")
