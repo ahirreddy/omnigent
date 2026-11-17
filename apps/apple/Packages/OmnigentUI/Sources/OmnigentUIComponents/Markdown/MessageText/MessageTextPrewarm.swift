@@ -28,11 +28,13 @@
     }
   }
 
-  /// Builds and lays out settled answers off the main actor, newest first, once a TextKit answer
-  /// has shown the style and width answers draw at: a row then only takes its laid-out text.
-  /// With a raster style it also draws the answers asked for ahead (``MessageTextRaster``).
-  /// ``MarkdownWarmup`` offers each answer it parses; the table transcript puts those about to
-  /// scroll into view first (``prioritize(_:)``).
+  /// Builds and lays out settled answers off the main actor, on a few workers, once a TextKit
+  /// answer has shown the style and width answers draw at: a row then only takes its laid-out
+  /// text, and a row far from view is measured from its size (``MessageTextSizes``). With a
+  /// raster style it also draws the answers asked for ahead (``MessageTextRaster``).
+  /// ``MarkdownWarmup`` offers each answer it parses, newest first; the table transcript asks for
+  /// those about to scroll into view, which go first, nearest the reader first
+  /// (``prioritize(_:at:)``).
   nonisolated final class MessageTextPrewarm: Sendable {
     static let shared = MessageTextPrewarm(limit: 256)
 
@@ -55,22 +57,26 @@
       var raster: MessageTextRasterStyle?
     }
 
-    /// What it builds, shared with the queue's runs.
+    /// What it builds, shared with the queue's workers.
     private final class Store: Sendable {
       let documents: Mutex<BoundedCache<MessageTextDocumentKey, MessageTextDocument>>
       let rasters: MessageTextRasters
-      /// Answers asked for ahead of the rest, which are drawn as well as laid out: drawing
-      /// every answer offered would spend the rasters' budget far from the reader.
-      let drawn = Mutex<Set<String>>([])
+      let sizes: MessageTextSizes
 
-      init(limit: Int, rasters: MessageTextRasters) {
+      init(limit: Int, rasters: MessageTextRasters, sizes: MessageTextSizes) {
         documents = Mutex(BoundedCache(limit: limit))
         self.rasters = rasters
+        self.sizes = sizes
       }
     }
 
-    /// How many answers asked for ahead it remembers to draw.
-    private static let drawnLimit = 64
+    /// `omnigent:message-text-prewarm-workers`: how many answers lay out at once; by default
+    /// as many as the cores spare beyond the main thread and the window server's, up to four.
+    static let workers: Int = {
+      let asked = UserDefaults.standard.integer(forKey: "omnigent:message-text-prewarm-workers")
+      if asked > 0 { return asked }
+      return min(4, max(1, ProcessInfo.processInfo.activeProcessorCount - 3))
+    }()
 
     private let store: Store
     private let queue: MessageTextPrewarmQueue<Context>
@@ -78,11 +84,16 @@
     private let drawing = DispatchQueue(label: "omnigent.message-text.raster", qos: .utility)
     private let drawingKeys = Mutex<Set<MessageTextRasterKey>>([])
 
-    init(limit: Int, rasters: MessageTextRasters = .shared) {
-      let store = Store(limit: limit, rasters: rasters)
+    init(
+      limit: Int, rasters: MessageTextRasters = .shared, sizes: MessageTextSizes = .shared,
+      workers: Int = MessageTextPrewarm.workers
+    ) {
+      let store = Store(limit: limit, rasters: rasters, sizes: sizes)
       self.store = store
-      queue = MessageTextPrewarmQueue(limit: limit) { text, context in
-        Self.prepare(text, context: context, store: store)
+      // Answers asked for ahead are drawn as well as laid out: drawing every answer offered
+      // would spend the rasters' budget far from the reader.
+      queue = MessageTextPrewarmQueue(limit: limit, workers: workers) { text, draws, context in
+        Self.prepare(text, draws: draws, context: context, store: store)
       }
     }
 
@@ -108,17 +119,23 @@
       queue.offer(text)
     }
 
-    /// Puts answers about to show at the front of the queue, in order.
+    /// Asks for answers about to show, at their places in the transcript: they lay out and draw
+    /// before the rest, the one nearest the reader first.
+    func prioritize(_ texts: [String], at positions: [Double]) {
+      queue.prioritize(texts, at: positions)
+    }
+
+    /// Asks for answers about to show, the first nearest the reader.
     func prioritize(_ texts: [String]) {
-      guard !texts.isEmpty else { return }
-      store.drawn.withLock { drawn in
-        if drawn.count + texts.count > Self.drawnLimit { drawn.removeAll() }
-        drawn.formUnion(texts)
-      }
       queue.prioritize(texts)
     }
 
-    /// The texts waiting to lay out, first to last, for tests.
+    /// Where the reader is in the transcript and which way they scroll (+1 down, -1 up, 0 still).
+    func focus(at position: Double, direction: Int) {
+      queue.focus(at: position, direction: direction)
+    }
+
+    /// The texts waiting to lay out, in the order they would go now, for tests.
     var pendingTexts: [String] { queue.pendingTexts }
 
     /// Whether it draws answers ahead as it lays them out.
@@ -146,16 +163,16 @@
         let raster = MessageTextRaster.make(
           document.run, width: width, scale: scale, style: style)
         store.rasters.store(raster, for: key)
+        store.sizes.store(raster.size, document: document.serial, width: width)
         _ = drawingKeys.withLock { $0.remove(key) }
       }
     }
 
-    private static func prepare(_ text: String, context: Context, store: Store) {
+    private static func prepare(_ text: String, draws: Bool, context: Context, store: Store) {
       let style = context.palette.style
       let split = MessageTextSplit(MarkdownCache.shared.blocks(for: text), ramp: style.ramp)
       // Linked paths depend on the main actor's folder listings; those answers build there.
       guard split.cited.isEmpty else { return }
-      let draws = store.drawn.withLock { $0.remove(text) != nil }
       for piece in split.pieces {
         guard case .text(let blocks) = piece.content else { continue }
         let key = MessageTextDocumentKey(text: text, piece: piece.id, style: style, linked: [])
@@ -167,6 +184,10 @@
         var builder = MessageTextBuilder(palette: context.palette)
         let document = builder.document(blocks)
         let layout = MessageTextPreparedLayout(text: document.text, width: context.width)
+        store.sizes.store(
+          MessageTextSize.measure(
+            layout.manager, width: context.width, topInset: document.topInset),
+          document: document.serial, width: context.width)
         if draws { drawAhead(document, context: context, store: store) }
         document.offer(layout)
         store.documents.withLock { $0.store(document, for: key) }
@@ -185,6 +206,7 @@
       let raster = MessageTextRaster.make(
         document.run, width: context.width, scale: context.scale, style: style)
       store.rasters.store(raster, for: key)
+      store.sizes.store(raster.size, document: document.serial, width: context.width)
     }
   }
 #endif

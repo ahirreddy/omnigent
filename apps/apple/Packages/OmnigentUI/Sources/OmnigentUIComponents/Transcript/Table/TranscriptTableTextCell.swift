@@ -329,6 +329,7 @@
         MessageTextRasters.shared.store(
           drawn,
           for: MessageTextRasterKey(document: document.serial, width: width, scale: style.scale))
+        MessageTextSizes.shared.store(drawn.size, document: document.serial, width: width)
         if !drawn.overflows { raster = drawn }
       }
       if let raster {

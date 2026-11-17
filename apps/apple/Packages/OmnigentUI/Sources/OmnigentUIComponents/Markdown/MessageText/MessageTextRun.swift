@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import Synchronization
 
 #if canImport(UIKit)
   import UIKit
@@ -77,5 +78,56 @@ nonisolated struct MessageTextRasterStyle: @unchecked Sendable {
     case .code: codeChrome
     case .table: tableChrome
     }
+  }
+}
+
+nonisolated extension MessageTextSize {
+  /// The size of the text `manager` lays out `width` wide, laid out now where it isn't yet: as
+  /// a text view or a raster measures it, its top inset included.
+  static func measure(_ manager: NSTextLayoutManager, width: CGFloat, topInset: CGFloat) -> Self {
+    var collector = MessageTextLayerCollector(width: width)
+    var height: CGFloat = 0
+    var usedWidth: CGFloat = 0
+    _ = manager.enumerateTextLayoutFragments(
+      from: manager.documentRange.location, options: [.ensuresLayout]
+    ) { fragment in
+      let frame = fragment.layoutFragmentFrame
+      height = max(height, frame.maxY)
+      for line in fragment.textLineFragments {
+        usedWidth = max(usedWidth, frame.minX + line.typographicBounds.maxX)
+      }
+      collector.add(fragment)
+      return true
+    }
+    return Self(
+      height: (max(height, collector.bottom) + topInset).rounded(.up),
+      usedWidth: usedWidth.rounded(.up))
+  }
+}
+
+/// Laid-out runs' sizes, by document and width, from wherever a run was laid out (ahead, drawn,
+/// or measured on the main actor): a row far from view is measured from them, with no text
+/// view. Written off the main actor, read on it.
+nonisolated final class MessageTextSizes: Sendable {
+  static let shared = MessageTextSizes(limit: 4096)
+
+  private struct Key: Hashable {
+    var document: UInt64
+    var width: CGFloat
+  }
+
+  private let entries: Mutex<BoundedCache<Key, MessageTextSize>>
+
+  init(limit: Int) {
+    entries = Mutex(BoundedCache(limit: limit))
+  }
+
+  /// The size `document` laid out at `width`, if it was.
+  func size(document: UInt64, width: CGFloat) -> MessageTextSize? {
+    entries.withLock { $0.cached(Key(document: document, width: width)) }
+  }
+
+  func store(_ size: MessageTextSize, document: UInt64, width: CGFloat) {
+    entries.withLock { $0.store(size, for: Key(document: document, width: width)) }
   }
 }

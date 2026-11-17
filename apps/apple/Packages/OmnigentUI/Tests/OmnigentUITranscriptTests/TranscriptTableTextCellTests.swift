@@ -238,14 +238,18 @@
       }
     }
 
-    @Test("Prioritized answers go to the front of the queue in order, once each")
+    @Test("Answers asked for ahead go nearest the reader first, those behind a moving one last")
     func prioritizeOrder() {
       let prewarm = MessageTextPrewarm(limit: 3)
-      prewarm.prioritize(["a", "b"])
-      prewarm.prioritize(["c", "b"])
-      #expect(prewarm.pendingTexts == ["c", "b", "a"])
-      prewarm.prioritize(["d"])
-      #expect(prewarm.pendingTexts == ["d", "c", "b"])
+      prewarm.focus(at: 100, direction: 1)
+      prewarm.prioritize(["a", "b", "c"], at: [400, 150, 60])
+      // Ahead of the reader: b 50 points, a 300; c is 40 behind, which counts as 120.
+      #expect(prewarm.pendingTexts == ["b", "c", "a"])
+      prewarm.focus(at: 500, direction: -1)
+      #expect(prewarm.pendingTexts == ["a", "b", "c"], "scrolling up from 500")
+      // Past the limit the oldest ask goes.
+      prewarm.prioritize(["d"], at: [450])
+      #expect(prewarm.pendingTexts == ["d", "b", "c"])
     }
 
     @Test("A parked cell goes back to its row only as the same kind of cell")
