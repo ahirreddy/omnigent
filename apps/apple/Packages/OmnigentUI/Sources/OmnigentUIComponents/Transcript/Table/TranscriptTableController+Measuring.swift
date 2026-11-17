@@ -80,15 +80,31 @@
       return changed
     }
 
-    /// Measures row `index` in its kind's measuring cell, for a row far from view. A text cell
-    /// hands its laid-out text back, so the row's own cell later shows it without laying out.
+    /// Measures row `index`, far from view: a settled message from its runs' laid-out sizes,
+    /// with no text view; another row in its kind's measuring cell.
     func measureAway(_ index: Int) -> Bool {
+      guard model.width > 0 else { return false }
       let kind = cellKind(at: index)
+      if case .text = kind, let message = textMessage(at: index),
+        let height = TranscriptTableTextCell.measuredHeight(
+          of: message, style: textStyle, width: model.width, blockHeight: measuredBlockHeight)
+      {
+        measurements += 1
+        return model.record(height, at: index)
+      }
       let cell = measuringCells[kind] ?? makeCell(kind)
       measuringCells[kind] = cell
       let changed = measure(index, with: cell)
       (cell as? TranscriptTableTextCell)?.releaseContent()
       return changed
+    }
+
+    /// A block's height at `width`, in a hosting view kept for measuring.
+    func measuredBlockHeight(_ block: MarkdownBlock, piece: Int, width: CGFloat) -> CGFloat {
+      let view = measuringBlock ?? TranscriptTableBlockView.make(environment: environment)
+      measuringBlock = view
+      view.show(block, piece: piece, width: width)
+      return view.idealHeight
     }
 
     /// Tells the table rows' heights changed, keeping the reader in place: at the bottom while

@@ -224,7 +224,6 @@
     private func layOutAnswer(
       metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
     ) -> CGFloat {
-      let gaps = message.split.pieces.map(\.gapAbove)
       bubbleView.isHidden = true
       if let palette = style.palette, textWidth >= MessageTextContentView.minimumWidth {
         // The answers after this one lay out (and draw) ahead at this width.
@@ -232,72 +231,57 @@
           palette: palette, width: textWidth, scale: style.drawsAhead ? style.scale : 0,
           raster: style.drawsAhead ? style.rasterStyle : nil)
       }
-      var bottom: CGFloat = 0
-      for (index, run) in runs.enumerated() {
-        bottom += gaps.indices.contains(index) ? gaps[index] : 0
-        let size = run.size(for: textWidth, fillsWidth: true)
-        run.view.frame = CGRect(
-          x: metrics.columnX, y: bottom, width: size.width, height: size.height)
-        bottom += size.height
-      }
-      // The footer follows the stack's spacing; without "Worked for" it takes no height and
-      // the actions hang into the gap below the text.
-      bottom += Theme.Spacing.small
-      if let workedFor = message.decoration.workedFor {
+      let frames = TranscriptTableTextFrames(
+        role: .answer, gaps: message.split.pieces.map(\.gapAbove),
+        sizes: runs.map { $0.size(for: textWidth, fillsWidth: true) }, metrics: metrics,
+        workedHeight: message.decoration.workedFor.map { _ in Self.workedLabelHeight })
+      place(frames)
+      if let workedFor = message.decoration.workedFor, let frame = frames.worked {
         let label = workedLabel ?? makeWorkedLabel()
         label.stringValue = TurnElapsed.worked(workedFor)
         label.toolTip = message.decoration.timestamp.map {
           "Finished \(MessageTimestamp.format($0, now: Date()))"
         }
-        let labelHeight = label.intrinsicContentSize.height.rounded(.up)
-        label.frame = CGRect(
-          x: metrics.columnX, y: bottom, width: metrics.columnWidth / 2, height: labelHeight)
+        label.frame = frame
         label.isHidden = false
-        actionsTop = bottom
-        actionsLineHeight = labelHeight
-        bottom += labelHeight
       } else {
         workedLabel?.isHidden = true
-        actionsTop = bottom - Theme.Spacing.small
-        actionsLineHeight = 0
       }
-      actionsTrailing = metrics.columnX + metrics.columnWidth
-      return (bottom + Theme.Spacing.row).rounded(.up)
+      return frames.height
     }
 
     /// A user's prompt: its runs in a bubble that hugs them, at the column's trailing edge.
     private func layOutPrompt(
       metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
     ) -> CGFloat {
-      let gaps = message.split.pieces.map(\.gapAbove)
       workedLabel?.isHidden = true
-      var bottom: CGFloat = 0
-      var used: CGFloat = 0
-      var sizes: [CGSize] = []
-      for run in runs {
-        let size = run.size(for: textWidth, fillsWidth: false)
-        sizes.append(size)
-        used = max(used, size.width)
+      let frames = TranscriptTableTextFrames(
+        role: .user, gaps: message.split.pieces.map(\.gapAbove),
+        sizes: runs.map { $0.size(for: textWidth, fillsWidth: false) }, metrics: metrics,
+        workedHeight: nil)
+      place(frames)
+      if let bubble = frames.bubble {
+        bubbleView.frame = bubble
+        bubbleView.color = style.bubble
+        bubbleView.isHidden = false
       }
-      let bubbleWidth = used + 2 * Theme.Spacing.large
-      let bubbleX = metrics.columnX + metrics.columnWidth - bubbleWidth
-      bottom = Theme.Spacing.bubbleVertical
-      for (index, run) in runs.enumerated() {
-        bottom += gaps.indices.contains(index) ? gaps[index] : 0
-        run.view.frame = CGRect(
-          x: bubbleX + Theme.Spacing.large, y: bottom, width: sizes[index].width,
-          height: sizes[index].height)
-        bottom += sizes[index].height
-      }
-      let bubbleHeight = bottom + Theme.Spacing.bubbleVertical
-      bubbleView.frame = CGRect(x: bubbleX, y: 0, width: bubbleWidth, height: bubbleHeight)
-      bubbleView.color = style.bubble
-      bubbleView.isHidden = false
-      actionsTop = bubbleHeight
-      actionsLineHeight = 0
-      actionsTrailing = metrics.columnX + metrics.columnWidth
-      return (bubbleHeight + Theme.Spacing.extraSmall + Theme.Spacing.row).rounded(.up)
+      return frames.height
     }
+
+    /// Puts the runs where `frames` says, and the actions' row.
+    private func place(_ frames: TranscriptTableTextFrames) {
+      for (run, frame) in zip(runs, frames.pieces) { run.view.frame = frame }
+      actionsTop = frames.actionsTop
+      actionsLineHeight = frames.actionsLineHeight
+      actionsTrailing = frames.actionsTrailing
+    }
+
+    /// The "Worked for" line's height: its caption's.
+    static let workedLabelHeight: CGFloat = {
+      let label = NSTextField(labelWithString: "Worked for 1s")
+      label.font = .preferredFont(forTextStyle: .caption1)
+      return label.intrinsicContentSize.height.rounded(.up)
+    }()
 
     private func makeWorkedLabel() -> NSTextField {
       let label = NSTextField(labelWithString: "")

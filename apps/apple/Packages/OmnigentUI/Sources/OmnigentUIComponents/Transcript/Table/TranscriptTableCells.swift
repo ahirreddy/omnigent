@@ -174,6 +174,12 @@
     case hosted(TranscriptTableRowKind)
     case text(TranscriptTableRowKind)
     case native(TranscriptTableRowKind)
+
+    /// A SwiftUI row, whose height takes a layout to know.
+    var isHosted: Bool {
+      if case .hosted = self { return true }
+      return false
+    }
   }
 
   /// A table cell: it shows one row at a width and reports when its content's ideal size

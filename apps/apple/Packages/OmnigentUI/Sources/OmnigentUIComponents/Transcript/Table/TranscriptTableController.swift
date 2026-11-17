@@ -50,6 +50,8 @@
     var pool = TranscriptTableCellPool()
     /// One cell per kind measures rows away from the viewport, whose cells are not kept.
     var measuringCells: [TranscriptTableCellKind: any TranscriptTableCell] = [:]
+    /// Measures the blocks only SwiftUI draws in messages away from the viewport.
+    var measuringBlock: TranscriptTableBlockView?
     /// The style settled messages draw in as text cells.
     lazy var textStyle = TranscriptTableTextStyle(environment: environment)
     /// Each row's text-cell message by content version, `nil` for a row hosted in SwiftUI.
@@ -267,6 +269,11 @@
         if measure(row, with: cell) { scheduleRemeasure(cell) }
       } else {
         cell.show(model.rows[row], version: model.version(at: row), width: model.width)
+        // An AppKit cell knows its height without a layout: one that differs from what the
+        // row was measured at (in another cell, from sizes) is told to the table next pass.
+        if cell.kind?.isHosted == false, abs(cell.idealHeight - model.height(at: row)) >= 0.5 {
+          scheduleRemeasure(cell)
+        }
       }
       // Its row's height is known: going into the window and laying out there changes nothing.
       cell.settle()
