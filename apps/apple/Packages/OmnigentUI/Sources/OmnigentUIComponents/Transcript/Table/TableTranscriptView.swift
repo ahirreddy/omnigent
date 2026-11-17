@@ -1,11 +1,25 @@
-#if os(macOS)
-  import AppKit
+#if os(macOS) || os(iOS)
   import Observation
   import SwiftUI
 
-  /// The transcript as a table (`omnigent:transcript-list table`): an `NSTableView` whose rows
-  /// are reused cells hosting the stack's row views, with heights measured once per row, content
-  /// version and width (``TranscriptTableController``). It keeps the stack's follow rules,
+  #if os(macOS)
+    import AppKit
+  #else
+    import UIKit
+  #endif
+
+  #if os(macOS)
+    /// The list's AppKit side.
+    typealias TranscriptListController = TranscriptTableController
+  #else
+    /// The list's UIKit side.
+    typealias TranscriptListController = TranscriptCollectionController
+  #endif
+
+  /// The transcript as a list of reused cells (`omnigent:transcript-list table`): an
+  /// `NSTableView` on the Mac (``TranscriptTableController``), a `UICollectionView` on iPhone and
+  /// iPad (``TranscriptCollectionController``). Cells host the stack's row views, with heights
+  /// measured once per row, content version and width. It keeps the stack's follow rules,
   /// paging, Jump to latest, linked messages, the turn rail and the selection popup.
   struct TableTranscriptView: View {
     let state: ConversationViewState
@@ -13,7 +27,7 @@
     let actions: ConversationActions
     let scrollToLatestRequest: Int
 
-    @State private var controller = TranscriptTableController()
+    @State private var controller = TranscriptListController()
     @State private var layout = TranscriptLayoutMemo()
     @State private var environmentRelay = TranscriptEnvironmentRelay()
     @State private var pacer = TranscriptRowsPacer()
@@ -35,10 +49,15 @@
         TranscriptEnvironment(
           relay: environmentRelay, publications: environmentRelay.publications, scroll: nil)
       )
-      .environment(\.transcriptDisclosures, controller.disclosures)
-      .environment(\.transcriptTableViewport, controller.tableViewport)
-      // The rows scroll under the bars around them, which the scroll view insets them by.
-      .ignoresSafeArea(.container, edges: .vertical)
+      #if os(macOS)
+        .environment(\.transcriptDisclosures, controller.disclosures)
+        .environment(\.transcriptTableViewport, controller.tableViewport)
+        // The rows scroll under the bars around them, which the scroll view insets them by.
+        .ignoresSafeArea(.container, edges: .vertical)
+      #else
+        // On iPhone and iPad they scroll under the keyboard too.
+        .ignoresSafeArea(edges: .vertical)
+      #endif
       .onGeometryChange(for: EdgeInsets.self) {
         $0.safeAreaInsets
       } action: { insets in
@@ -51,37 +70,46 @@
             .padding(.top, Theme.Spacing.small)
         }
       }
-      .onChange(of: scrollToLatestRequest) { _, _ in controller.jumpToLatest(animated: true) }
+      .onChange(of: scrollToLatestRequest) { _, _ in jumpToLatest() }
       .onChange(of: TranscriptSends(state)) { previous, latest in
-        if latest.hasNewSend(since: previous) { controller.jumpToLatest(animated: true) }
+        if latest.hasNewSend(since: previous) { jumpToLatest() }
       }
-      // The count too: a read that starts and ends between two renders never shows as loading.
-      .onChange(of: HistoryRead(isLoading: state.isLoadingHistory, ended: state.historyReads)) {
-        if !$1.isLoading { controller.olderHistoryEnded() }
-      }
+      #if os(macOS)
+        // The count too: a read that starts and ends between two renders never shows as
+        // loading.
+        .onChange(of: HistoryRead(isLoading: state.isLoadingHistory, ended: state.historyReads)) {
+          if !$1.isLoading { controller.olderHistoryEnded() }
+        }
+      #endif
       .task(id: state.header.id) { pacer.release() }
-      .overlay { TableMessageKeys(keys: keys, controller: controller) }
-      .modifier(
-        JumpToTopReveal(
-          hasMoreHistory: state.hasMoreHistory && actions.loadOlder != nil,
-          isLoading: state.isLoadingHistory, jump: { controller.jumpToTop() },
+      #if os(macOS)
+        .overlay { TableMessageKeys(keys: keys, controller: controller) }
+        .modifier(
+          JumpToTopReveal(
+            hasMoreHistory: state.hasMoreHistory && actions.loadOlder != nil,
+            isLoading: state.isLoadingHistory, jump: { controller.jumpToTop() },
+            feed: controller.scrollFeed)
+        )
+        .transcriptSelectionPopup(
+          reply: actions.replyWithSelection, ask: actions.askInSideChat,
           feed: controller.scrollFeed)
-      )
-      .transcriptSelectionPopup(
-        reply: actions.replyWithSelection, ask: actions.askInSideChat, feed: controller.scrollFeed
-      )
+      #endif
       .modifier(
         TurnRailOverlay(
           model: rail,
           jump: { [controller, focus] id in
             focus?.flash(id)
-            controller.show(id, at: .top, animated: true)
+            #if os(macOS)
+              controller.show(id, at: .top, animated: true)
+            #else
+              controller.show(id, at: .top)
+            #endif
           },
           preview: { TurnRailModel.responsePreview(after: $0, in: layout.entries(for: state)) },
           loadOlder: { controller.requestOlder() })
       )
       .overlay(alignment: .bottom) {
-        TableJumpPill(model: pill) { controller.jumpToLatest(animated: true) }
+        TableJumpPill(model: pill) { jumpToLatest() }
       }
       .background { if appearance.isCLI { CLICanvas() } }
       .cliPalette()
@@ -89,14 +117,26 @@
       .countsRenders("transcript")
     }
 
+    /// Goes to the latest row as the reader asks: the Mac's table eases there, and the
+    /// collection view animates a jump as it judges.
+    private func jumpToLatest() {
+      #if os(macOS)
+        controller.jumpToLatest(animated: true)
+      #else
+        controller.jumpToLatest()
+      #endif
+    }
+
     /// Hands the controller the callbacks that reach this view's state.
     private func wireController() {
-      controller.animatesJumps = Theme.Motion.isEnabled && !reduceMotion
-      controller.sourceTopRow = { [liveRows, state] in
-        (liveRows?.read().rows ?? state.rows).first?.id
-      }
-      controller.holdRows = { [pacer] in pacer.hold() }
-      controller.releaseRows = { [pacer] in pacer.release() }
+      #if os(macOS)
+        controller.animatesJumps = Theme.Motion.isEnabled && !reduceMotion
+        controller.sourceTopRow = { [liveRows, state] in
+          (liveRows?.read().rows ?? state.rows).first?.id
+        }
+        controller.holdRows = { [pacer] in pacer.hold() }
+        controller.releaseRows = { [pacer] in pacer.release() }
+      #endif
       controller.showPill = { [pill] in if pill.pill != $0 { pill.pill = $0 } }
       controller.visibleRowsChanged = { [rail] order, visible in
         guard rail.turns.count >= 2 else { return }
@@ -121,20 +161,22 @@
     var hasUserMessages = false
   }
 
-  /// The previous and next message keys (``MessageNavigationKeys``) over the table.
-  private struct TableMessageKeys: View {
-    let keys: TranscriptTableKeys
-    let controller: TranscriptTableController
+  #if os(macOS)
+    /// The previous and next message keys (``MessageNavigationKeys``) over the table.
+    private struct TableMessageKeys: View {
+      let keys: TranscriptTableKeys
+      let controller: TranscriptTableController
 
-    var body: some View {
-      Color.clear
-        .allowsHitTesting(false)
-        .modifier(
-          MessageNavigationKeys(
-            isEnabled: keys.hasUserMessages, previous: { controller.step(.previous) },
-            next: { controller.step(.next) }))
+      var body: some View {
+        Color.clear
+          .allowsHitTesting(false)
+          .modifier(
+            MessageNavigationKeys(
+              isEnabled: keys.hasUserMessages, previous: { controller.step(.previous) },
+              next: { controller.step(.next) }))
+      }
     }
-  }
+  #endif
 
   private struct TableJumpPill: View {
     let model: TranscriptTablePill
@@ -156,7 +198,7 @@
     let liveRows: LiveTranscriptRows?
     let pacer: TranscriptRowsPacer
     let layout: TranscriptLayoutMemo
-    let controller: TranscriptTableController
+    let controller: TranscriptListController
     let actions: ConversationActions
     let rail: TurnRailModel
     let keys: TranscriptTableKeys
@@ -175,17 +217,18 @@
         rows: rows, state: state, actions: actions, isCLI: isCLI, controller: controller
       )
       .background {
-        TranscriptTableEnvironmentFeed(environment: controller.environment)
-          .frame(width: 0, height: 0)
+        TranscriptTableEnvironmentFeed(controller: controller).frame(width: 0, height: 0)
       }
       .onChange(of: layout.turns(for: state), initial: true) { _, turns in rail.setTurns(turns) }
-      .onChange(of: isReadByAssistiveClient, initial: true) { _, isRead in
-        controller.setReadByAssistiveClient(isRead)
-      }
-      // Previous and next need a second message to move between.
-      .onChange(of: state.rows.count { $0.role == .user } > 1, initial: true) { _, hasSeveral in
-        if keys.hasUserMessages != hasSeveral { keys.hasUserMessages = hasSeveral }
-      }
+      #if os(macOS)
+        .onChange(of: isReadByAssistiveClient, initial: true) { _, isRead in
+          controller.setReadByAssistiveClient(isRead)
+        }
+        // Previous and next need a second message to move between.
+        .onChange(of: state.rows.count { $0.role == .user } > 1, initial: true) { _, several in
+          if keys.hasUserMessages != several { keys.hasUserMessages = several }
+        }
+      #endif
       .modifier(PacedWhileShown(pacer: pacer))
       .modifier(TableShownWatch(controller: controller))
       .modifier(messageFocus(state))
@@ -221,7 +264,7 @@
 
   /// Tells the controller when the tab hides and shows, without the row list reading it.
   private struct TableShownWatch: ViewModifier {
-    let controller: TranscriptTableController
+    let controller: TranscriptListController
     @Environment(\.isTabContentHidden) private var isHidden
 
     func body(content: Content) -> some View {
@@ -233,59 +276,84 @@
 
   /// Hands the cells the transcript's environment when it changes. On its own, apart from the
   /// rows, so new rows do not hand every cell on screen the same environment again.
-  private struct TranscriptTableEnvironmentFeed: NSViewRepresentable {
-    let environment: TranscriptTableEnvironment
-
-    func makeNSView(context: Context) -> NSView { NSView() }
-
-    func updateNSView(_ view: NSView, context: Context) {
-      // A hidden tab's cells keep the environment they were shown in: neither hiding nor
-      // showing the tab again renders them. A new environment always would, as its closures
-      // compare unequal.
-      if context.environment.isTabContentHidden {
-        context.coordinator.skippedWhileHidden = true
-        return
-      }
-      if context.coordinator.skippedWhileHidden {
-        context.coordinator.skippedWhileHidden = false
-        return
-      }
-      environment.values = context.environment
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    final class Coordinator {
-      /// The tab hid since the cells last took the environment.
-      var skippedWhileHidden = false
-    }
+  private struct TranscriptTableEnvironmentFeed {
+    let controller: TranscriptListController
   }
 
   /// The controller's scroll view in the SwiftUI tree; each update hands it the rows.
-  private struct TranscriptTableList: NSViewRepresentable {
+  private struct TranscriptTableList {
     let rows: [TranscriptTableRow]
     let state: ConversationViewState
     let actions: ConversationActions
     let isCLI: Bool
-    let controller: TranscriptTableController
+    let controller: TranscriptListController
 
-    func makeNSView(context: Context) -> NSScrollView { controller.scrollView }
-
-    /// It fills a size it is offered, with no layout of the scroll view's own; anything else
-    /// asks the scroll view as before.
-    func sizeThatFits(
-      _ proposal: ProposedViewSize, nsView: NSScrollView, context: Context
-    ) -> CGSize? {
-      guard let width = proposal.width, let height = proposal.height, width.isFinite,
-        height.isFinite
-      else { return nil }
-      return CGSize(width: width, height: height)
-    }
-
-    func updateNSView(_ view: NSScrollView, context: Context) {
+    func update(in environment: EnvironmentValues) {
       controller.update(
-        rows: rows, state: state, actions: actions, isCLI: isCLI,
-        environment: context.environment)
+        rows: rows, state: state, actions: actions, isCLI: isCLI, environment: environment)
     }
   }
+
+  #if os(macOS)
+    extension TranscriptTableEnvironmentFeed: NSViewRepresentable {
+      func makeNSView(context: Context) -> NSView { NSView() }
+
+      func updateNSView(_ view: NSView, context: Context) {
+        // A hidden tab's cells keep the environment they were shown in: neither hiding nor
+        // showing the tab again renders them. A new environment always would, as its closures
+        // compare unequal.
+        if context.environment.isTabContentHidden {
+          context.coordinator.skippedWhileHidden = true
+          return
+        }
+        if context.coordinator.skippedWhileHidden {
+          context.coordinator.skippedWhileHidden = false
+          return
+        }
+        controller.environment.values = context.environment
+      }
+
+      func makeCoordinator() -> Coordinator { Coordinator() }
+
+      final class Coordinator {
+        /// The tab hid since the cells last took the environment.
+        var skippedWhileHidden = false
+      }
+    }
+
+    extension TranscriptTableList: NSViewRepresentable {
+      func makeNSView(context: Context) -> NSScrollView { controller.scrollView }
+
+      /// It fills a size it is offered, with no layout of the scroll view's own; anything else
+      /// asks the scroll view as before.
+      func sizeThatFits(
+        _ proposal: ProposedViewSize, nsView: NSScrollView, context: Context
+      ) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height, width.isFinite,
+          height.isFinite
+        else { return nil }
+        return CGSize(width: width, height: height)
+      }
+
+      func updateNSView(_ view: NSScrollView, context: Context) {
+        update(in: context.environment)
+      }
+    }
+  #else
+    extension TranscriptTableEnvironmentFeed: UIViewRepresentable {
+      func makeUIView(context: Context) -> UIView { UIView() }
+
+      func updateUIView(_ view: UIView, context: Context) {
+        controller.environmentChanged(context.environment)
+      }
+    }
+
+    extension TranscriptTableList: UIViewRepresentable {
+      func makeUIView(context: Context) -> UICollectionView { controller.collectionView }
+
+      func updateUIView(_ view: UICollectionView, context: Context) {
+        update(in: context.environment)
+      }
+    }
+  #endif
 #endif

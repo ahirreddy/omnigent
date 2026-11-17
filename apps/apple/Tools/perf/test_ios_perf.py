@@ -27,6 +27,33 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(stats["renders.screen"], 5)
         self.assertEqual(stats["renders.transcript"], 6)
 
+    def test_reads_run_loop_passes_and_cpu(self):
+        stats = ios_perf.parse_stats(
+            "interval marked: fps=60.0 frames=6 hitch=0.0ms/s dropped=0 >8.3ms=0 >16.7ms=0 "
+            ">33ms=0 worst=16.7ms refresh=16.7ms cpu=412ms loop.passes=380 loop.busy=402.5ms "
+            "loop.p50=0.4ms loop.p95=3.1ms loop.p99=9.8ms loop.>8.3ms=5 loop.>16.7ms=1 "
+            "loop.worst=21.0ms renders=transcript:2"
+        )
+        self.assertEqual(stats["cpu"], 412)
+        self.assertEqual(stats["loop.p95"], 3.1)
+        self.assertEqual(stats["loop.>8.3ms"], 5)
+        self.assertEqual(stats["loop.worst"], 21.0)
+        self.assertEqual(stats["renders.transcript"], 2)
+        self.assertIn("loop.p99=9.8", ios_perf.format_numbers(stats))
+
+    def test_render_names_may_have_spaces(self):
+        stats = ios_perf.parse_stats(
+            "interval marked: fps=60.0 worst=16.7ms renders=composer:9,session row:6,tab:3"
+        )
+        self.assertEqual(stats["renders.session row"], 6)
+        self.assertEqual(stats["renders.tab"], 3)
+
+    def test_keeps_the_numbers_before_a_cut_line(self):
+        stats = ios_perf.parse_stats("interval marked: fps=60.0 worst=16.7ms renders=row:12,scr")
+        self.assertEqual(stats["fps"], 60.0)
+        self.assertEqual(stats["renders.row"], 12)
+        self.assertNotIn("renders.scr", stats)
+
     def test_ignores_lines_without_stats(self):
         self.assertIsNone(ios_perf.parse_stats("begin marked"))
 

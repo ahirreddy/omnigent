@@ -13,7 +13,10 @@ apps/apple/docs/performance.md.
 
 Scenarios: open, switch, scroll, type, stream, list-scroll, search, keyboard, rotate,
 sidebar, settings, usage, panel, new-session, browser (after open). ``--sample`` also runs
-``sample`` on each.
+``sample`` on each. ``--lists stack,table`` compares transcript lists in one job: each run
+launches once per list (``-omnigent:transcript-list <list>``), and the medians are per list.
+Each scenario reports the main thread's CPU (``main_cpu_ms`` from ``ps``, ``cpu`` from the
+app) and its run-loop pass times (``loop.*``, FrameMonitor's RunLoopPassStats).
 """
 
 from __future__ import annotations
@@ -50,12 +53,23 @@ def parse_stats(line: str) -> dict[str, float] | None:
     if "fps=" not in line:
         return None
     numbers: dict[str, float] = {}
-    for key, value in re.findall(r"(\S+?)=(\S+)", line[line.index("fps=") :]):
-        if key == "renders":
-            for name, count in (pair.split(":") for pair in value.split(",")):
-                numbers[f"renders.{name}"] = float(count)
-        else:
+    skipped: list[str] = []
+    stats, _, renders = line[line.index("fps=") :].partition(" renders=")
+    for key, value in re.findall(r"(\S+?)=(\S+)", stats):
+        try:
             numbers[key] = float(re.sub(r"(ms/s|ms)$", "", value))
+        except ValueError:
+            skipped.append(f"{key}={value}")
+    # Render names may have spaces ("session row"); the list runs to the end of the line.
+    for pair in filter(None, renders.strip().split(",")):
+        name, _, count = pair.rpartition(":")
+        try:
+            numbers[f"renders.{name}"] = float(count)
+        except ValueError:
+            skipped.append(pair)
+    if skipped:
+        # The log can cut a long line short; the numbers before the cut still count.
+        print(f"  (unreadable in the stats line: {', '.join(skipped)}; line: {line})")
     return numbers
 
 
@@ -105,6 +119,8 @@ class LogStream:
 class Device:
     def __init__(self, udid: str, style: str, sample: bool) -> None:
         self.udid, self.style, self.sample_on = udid, style, sample
+        # Launch arguments every launch adds, such as the transcript list.
+        self.launch_args: list[str] = []
         self.log = LogStream(udid)
         self.log.start()
         self.pid = 0
@@ -171,7 +187,7 @@ class Device:
         """Restarts the app; returns the launch time."""
         self.terminate()
         args = ["-OmnigentNoNotificationPrompt", "YES", "-omnigent.lastServer", SERVER]
-        args += ["-omnigent:transcript-style", self.style]
+        args += ["-omnigent:transcript-style", self.style, *self.launch_args]
         (self.container() / "tmp/perf-command").write_text("")
         if monitor:
             args += ["-OmnigentFrameMonitor", "YES", "-OmnigentPerfDriver", "YES"]
@@ -228,6 +244,19 @@ class Device:
         return stats
 
 
+# The run-loop pass numbers the frame monitor logs with each interval.
+LOOP_KEYS = [
+    "loop.passes",
+    "loop.busy",
+    "loop.p50",
+    "loop.p95",
+    "loop.p99",
+    "loop.>8.3ms",
+    "loop.>16.7ms",
+    "loop.worst",
+]
+
+
 def format_numbers(stats: dict[str, float]) -> str:
     keys = [
         "settled_s",
@@ -239,6 +268,8 @@ def format_numbers(stats: dict[str, float]) -> str:
         ">16.7ms",
         ">8.3ms",
         "worst",
+        "cpu",
+        *LOOP_KEYS,
     ]
     keys += sorted(key for key in stats if key.startswith("renders."))
     return ", ".join(f"{key}={stats[key]:g}" for key in keys if key in stats)
@@ -417,6 +448,9 @@ def main() -> None:
         "--transcript", type=int, choices=[1, 2, 3], help="long transcript (iPad 2, else 1)"
     )
     parser.add_argument("--sample", action="store_true")
+    parser.add_argument(
+        "--lists", help="transcript lists to compare, comma-separated (stack,table)"
+    )
     options = parser.parse_args()
     device = Device(options.udid, options.style, options.sample)
     if options.command == "launch":
@@ -428,7 +462,21 @@ def main() -> None:
         else SUITE + (IPAD_EXTRA if options.ipad else [])
     )
     transcript = options.transcript or (2 if options.ipad else 1)
-    repeat(options.runs, lambda: scenarios(device, names, options.ipad, transcript))
+    lists = options.lists.split(",") if options.lists else [None]
+
+    def run_lists() -> dict[str, dict[str, float]]:
+        results: dict[str, dict[str, float]] = {}
+        for transcript_list in lists:
+            device.launch_args = (
+                ["-omnigent:transcript-list", transcript_list] if transcript_list else []
+            )
+            if transcript_list:
+                print(f" list {transcript_list}")
+            for name, stats in scenarios(device, names, options.ipad, transcript).items():
+                results[f"{name} [{transcript_list}]" if transcript_list else name] = stats
+        return results
+
+    repeat(options.runs, run_lists)
 
 
 if __name__ == "__main__":

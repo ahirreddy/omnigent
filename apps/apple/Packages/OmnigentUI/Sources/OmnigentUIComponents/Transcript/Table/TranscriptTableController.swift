@@ -47,7 +47,7 @@
     lazy var clipView = TranscriptTableClipView()
     lazy var column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("transcript"))
     var model = TranscriptTableModel()
-    var pool = TranscriptTableCellPool()
+    var pool = TranscriptTableCellPool<any TranscriptTableCell>()
     /// One cell per kind measures rows away from the viewport, whose cells are not kept.
     var measuringCells: [TranscriptTableCellKind: any TranscriptTableCell] = [:]
     /// Measures the blocks only SwiftUI draws in messages away from the viewport.

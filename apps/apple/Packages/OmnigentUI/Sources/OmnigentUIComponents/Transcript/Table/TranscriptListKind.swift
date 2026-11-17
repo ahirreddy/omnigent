@@ -1,9 +1,9 @@
 import Foundation
 
-/// Which list lays out the chat transcript: SwiftUI's lazy stack (the default), or, on the Mac,
-/// a table whose rows are reused cells with cached heights (``TableTranscriptView``), a
-/// prototype read from `omnigent:transcript-list` (a launch argument
-/// `-omnigent:transcript-list table` or a stored default).
+/// Which list lays out the chat transcript: SwiftUI's lazy stack (the default), or a list of
+/// reused cells with cached heights (``TableTranscriptView``), a table on the Mac and a
+/// collection view on iPhone and iPad. A prototype read from `omnigent:transcript-list` (a
+/// launch argument `-omnigent:transcript-list table` or a stored default).
 nonisolated enum TranscriptListKind: String, Sendable, CaseIterable {
   case stack
   case table
@@ -18,11 +18,5 @@ nonisolated enum TranscriptListKind: String, Sendable, CaseIterable {
 
   /// The list this process uses, read once: switching lists takes a relaunch. A test sets it
   /// for its duration to host a screen over the other list.
-  @MainActor static var current: Self = {
-    #if os(macOS)
-      read(from: .standard)
-    #else
-      .stack
-    #endif
-  }()
+  @MainActor static var current: Self = read(from: .standard)
 }

@@ -1,5 +1,4 @@
-#if os(macOS)
-  import AppKit
+#if os(macOS) || os(iOS)
   import Observation
   import OmnigentPlatform
   import SwiftUI
@@ -201,6 +200,11 @@
     }
   }
 
+#endif
+
+#if os(macOS)
+  import AppKit
+
   /// A table cell: it shows one row at a width and reports when its content's ideal size
   /// changes (a fold opening, an image arriving) instead of asking Auto Layout.
   @MainActor
@@ -266,30 +270,50 @@
     }
   }
 
-  /// Cells not in the table, kept by the row they last showed so a row that comes back shows
-  /// without rendering again, and handed to rows of the same kind once the oldest are evicted.
+  extension TranscriptTableCellPool where Cell == any TranscriptTableCell {
+    /// A pool of the table's cells.
+    init() {
+      self.init(shownID: { $0.shown?.id }, kind: { $0.kind })
+    }
+  }
+#endif
+
+#if os(macOS) || os(iOS)
+  /// Cells not in the list, kept by the row they last showed so a row that comes back shows
+  /// without rendering again, and handed to rows of the same kind once the oldest are evicted:
+  /// the Mac table's cells, and the row hosts of the iPhone and iPad list.
   @MainActor
-  struct TranscriptTableCellPool {
+  struct TranscriptTableCellPool<Cell> {
     /// How many parked cells keep their row.
     var parkedLimit = 48
     /// How many spare cells of each kind are kept beyond those.
     var spareLimit = 4
 
-    private var parked: [String: any TranscriptTableCell] = [:]
+    private var parked: [String: Cell] = [:]
     /// Parked row ids, oldest first.
     private var order: [String] = []
-    private var spares: [TranscriptTableCellKind: [any TranscriptTableCell]] = [:]
+    private var spares: [TranscriptTableCellKind: [Cell]] = [:]
+    /// The row a cell shows, and its kind.
+    private let shownID: (Cell) -> String?
+    private let kindOf: (Cell) -> TranscriptTableCellKind?
+
+    init(
+      shownID: @escaping (Cell) -> String?, kind: @escaping (Cell) -> TranscriptTableCellKind?
+    ) {
+      self.shownID = shownID
+      kindOf = kind
+    }
 
     var parkedCount: Int { parked.count }
 
     /// A cell of `kind` for row `id`: the one that last showed it, else a spare of its kind,
     /// else, once the pool is full, the oldest parked cell of its kind; `nil` for a new one.
-    mutating func take(id: String, kind: TranscriptTableCellKind) -> (any TranscriptTableCell)? {
+    mutating func take(id: String, kind: TranscriptTableCellKind) -> Cell? {
       if let cell = parked[id] {
         parked[id] = nil
         order.removeAll { $0 == id }
         // A row whose kind changed (it settled, or the style did) takes another cell.
-        guard cell.kind == kind else {
+        guard kindOf(cell) == kind else {
           spare(cell)
           return take(id: id, kind: kind)
         }
@@ -297,20 +321,21 @@
       }
       if let cell = spares[kind]?.popLast() { return cell }
       guard parked.count >= parkedLimit,
-        let oldest = order.first(where: { parked[$0]?.kind == kind }),
+        let oldest = order.first(where: { parked[$0].map(kindOf) == kind }),
         let cell = parked.removeValue(forKey: oldest)
       else { return nil }
       order.removeAll { $0 == oldest }
       return cell
     }
 
-    /// Keeps a cell that left the table, under the row it shows.
-    mutating func park(_ cell: any TranscriptTableCell) {
-      guard let id = cell.shown?.id else {
+    /// Keeps a cell that left the list, under the row it shows.
+    mutating func park(_ cell: Cell) {
+      guard let id = shownID(cell) else {
         spare(cell)
         return
       }
-      if let other = parked[id], other !== cell { spare(other) }
+      // Cells are views, so the same cell is the same object.
+      if let other = parked[id], (other as AnyObject) !== (cell as AnyObject) { spare(other) }
       parked[id] = cell
       order.removeAll { $0 == id }
       order.append(id)
@@ -328,8 +353,8 @@
       order.removeAll { !ids.contains($0) }
     }
 
-    private mutating func spare(_ cell: any TranscriptTableCell) {
-      guard let kind = cell.kind else { return }
+    private mutating func spare(_ cell: Cell) {
+      guard let kind = kindOf(cell) else { return }
       if spares[kind, default: []].count < spareLimit { spares[kind, default: []].append(cell) }
     }
   }

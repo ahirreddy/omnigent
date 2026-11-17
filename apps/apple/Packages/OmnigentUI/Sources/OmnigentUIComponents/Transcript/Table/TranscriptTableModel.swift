@@ -344,6 +344,12 @@ nonisolated struct TranscriptTableModel: Sendable {
     return true
   }
 
+  /// Every row is measured again, its old height standing in until then: the text's size changed
+  /// (Dynamic Type), which changes every row's height without changing its content.
+  mutating func invalidateHeights() {
+    for id in ids { versions[id, default: 0] += 1 }
+  }
+
   func index(of id: String) -> Int? { indexByID[id] }
 
   func version(at index: Int) -> Int { versions[rows[index].id] ?? 0 }
@@ -356,6 +362,13 @@ nonisolated struct TranscriptTableModel: Sendable {
     let height = height(at: index)
     provided[rows[index].id] = height
     return height
+  }
+
+  /// The height the list was last given for row `index`, so laying rows out again after others
+  /// arrive keeps theirs while estimates move; a row never given one gets its height now.
+  mutating func givenHeight(at index: Int) -> CGFloat {
+    if let given = provided[rows[index].id] { return given }
+    return provideHeight(at: index)
   }
 
   /// Has the rows `ids` measured again, their heights kept until then.

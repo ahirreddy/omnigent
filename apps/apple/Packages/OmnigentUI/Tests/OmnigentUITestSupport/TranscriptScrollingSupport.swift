@@ -1,7 +1,5 @@
-#if os(macOS)
-  import AppKit
+#if os(macOS) || os(iOS)
   import Observation
-  import OmnigentViewTesting
   import SwiftUI
 
   @testable import OmnigentUIComponents
@@ -55,6 +53,11 @@
       append(reply)
     }
   }
+#endif
+
+#if os(macOS)
+  import AppKit
+  import OmnigentViewTesting
 
   /// Rows a transcript's list reads itself, kept apart from the screen's state as the app's store
   /// keeps them.
@@ -278,7 +281,9 @@
   extension TranscriptScrollDriver: CustomReflectable {
     nonisolated var customMirror: Mirror { Mirror(reflecting: "transcript scroll driver") }
   }
+#endif
 
+#if os(macOS) || os(iOS)
   extension TranscriptFixture {
     /// A message being sent: shown before the server has it, so with no author yet.
     static func sending(_ id: String, _ text: String) -> Row {
