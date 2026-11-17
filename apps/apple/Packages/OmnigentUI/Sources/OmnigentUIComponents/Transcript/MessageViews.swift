@@ -102,7 +102,7 @@ struct MessageRowView: View, Equatable {
           Text("Preparing a reply")
         }
       } else {
-        MarkdownView(row.text, isStreaming: row.isStreaming)
+        MessageMarkdown(text: row.text, isStreaming: row.isStreaming)
           .agentOutputRendering()
           .accessibilityIdentifier("message-text-\(row.id)")
       }

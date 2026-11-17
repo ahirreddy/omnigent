@@ -139,9 +139,15 @@ final class MarkdownWarmup {
     for text in texts { prepare(text) }
   }
 
-  /// Parses `text` and tokenizes the code blocks it holds.
+  /// Parses `text` and tokenizes the code blocks it holds; with the TextKit renderer, lays it
+  /// out too (``MessageTextPrewarm``).
   nonisolated static func prepare(_ text: String) {
     tokenize(MarkdownCache.shared.blocks(for: text))
+    #if os(macOS)
+      if MessageTextRenderer.launchValue == .textKit, MessageTextPrewarm.isEnabled {
+        MessageTextPrewarm.shared.offer(text)
+      }
+    #endif
   }
 
   nonisolated private static func tokenize(_ blocks: [MarkdownBlock]) {
