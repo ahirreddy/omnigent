@@ -22,6 +22,8 @@
     var prewarmed: [String: Int] = [:]
     /// The text idle measuring waits for the prewarm to lay out, and since when.
     var awaited: (id: String, since: CFTimeInterval)?
+    /// The specs of the texts idle measuring waits for, by their prewarm keys.
+    var awaitedSpecs: [String: CLITextSpec] = [:]
 
     init(environment: TranscriptTableEnvironment, textStyle: TranscriptTableTextStyle) {
       style = TranscriptTableCLIStyle(environment: environment, textStyle: textStyle)
@@ -103,7 +105,9 @@
       } else {
         cli.awaited = (id, now)
       }
-      return text.spec.key
+      let key = text.spec.key
+      cli.awaitedSpecs[key] = text.spec
+      return key
     }
 
     /// Tells the prewarms where the reader is and which way they scroll.
@@ -120,7 +124,15 @@
         MessageTextPrewarm.shared.prioritize(texts, at: positions)
         return
       }
-      CLITextPrewarm.shared.prioritize(keys: texts, at: positions)
+      var specs: [CLITextSpec] = []
+      var places: [Double] = []
+      for (key, position) in zip(texts, positions) {
+        guard let spec = cli.awaitedSpecs[key] else { continue }
+        specs.append(spec)
+        places.append(position)
+      }
+      cli.awaitedSpecs = [:]
+      CLITextPrewarm.shared.prioritize(specs, at: places)
     }
   }
 #endif

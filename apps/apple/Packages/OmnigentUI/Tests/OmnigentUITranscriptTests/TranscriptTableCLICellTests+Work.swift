@@ -67,7 +67,29 @@
       ]
     }
 
-    @Test("Opening a tool line's output or collapsing the group keeps the SwiftUI row's height")
+    @Test("Tool work is built off the main actor too, looked up by its key")
+    func workPrewarm() async throws {
+      let style = style(environment())
+      let column = style.column(width: Self.width)
+      let context = try #require(style.prewarmContext(width: column.width))
+      let palette = try #require(style.text?.palette)
+      let row = try #require(workRows.last)
+      let text = try #require(
+        TranscriptTableCLIText.make(
+          row, rendering: .styled, palette: palette, expansions: CLIWorkExpansions()))
+      #expect(text.kind == .work)
+      #expect(CLITextSpec(key: text.spec.key) == nil, "tool work's key doesn't spell it out")
+      let prewarm = CLITextPrewarm(limit: 8)
+      prewarm.note(context)
+      prewarm.prioritize([text.spec], at: [0])
+      let deadline = Date().addingTimeInterval(5)
+      while style.builtDocument(for: text.spec, width: column.width) == nil, Date() < deadline {
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      #expect(style.builtDocument(for: text.spec, width: column.width) != nil)
+    }
+
+    @Test("Opening a tool line's output or collapsing the group lays the cell out again")
     func workExpansions() throws {
       let environment = environment()
       let style = style(environment)

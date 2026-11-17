@@ -65,11 +65,6 @@ nonisolated final class CLITextPrewarm: Sendable {
     queue.prioritize(keys, at: positions)
   }
 
-  /// Asks again for texts by their keys, at their places.
-  func prioritize(keys: [String], at positions: [Double]) {
-    queue.prioritize(keys, at: positions)
-  }
-
   /// Where the reader is and which way they scroll (+1 down, -1 up, 0 still).
   func focus(at position: Double, direction: Int) {
     queue.focus(at: position, direction: direction)
