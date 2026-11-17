@@ -11,6 +11,8 @@
     case mentions([UserPrompt.Mention])
     /// A long prompt's "Show full prompt" button, or "Collapse prompt" once it shows whole.
     case promptToggle(title: String, collapses: Bool)
+    /// "Interrupted": under an answer's text, or under a prompt's bubble.
+    case interrupted
   }
 
   /// One accessory at the width its stack offers it, sized as that stack sizes it: as wide as
@@ -32,6 +34,7 @@
         case .mentions(let mentions): AttachedPathChips(mentions: mentions)
         case .promptToggle(let title, let collapses):
           UserPromptToggle(title: title, collapses: collapses) { action?() }
+        case .interrupted: InterruptedLabel(rowID: rowID)
         case nil: EmptyView()
         }
       }

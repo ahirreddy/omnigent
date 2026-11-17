@@ -227,5 +227,36 @@
       #expect(
         try await waitUntil(screen) { controller.model.height(at: index) == collapsedHeight })
     }
+
+    // MARK: Interrupted
+
+    @Test("An interrupted message says so where SwiftUI's row does, as tall as that row")
+    func interruptedMatchesSwiftUI() async throws {
+      let environment = textCellEnvironment()
+      let promptRow = Row(id: "u-cut", role: .user, text: "Cut off", interrupted: true)
+      let answerRow = Row(
+        id: "a-cut", role: .assistant, text: "Cut off too", responseId: "r1", interrupted: true)
+      // Under a prompt's bubble, at its trailing edge.
+      let prompt = try shownMatchingSwiftUI(textCellRow(promptRow), environment)
+      let line = try #require(prompt.accessoryViews.last)
+      #expect(line.accessory == .interrupted)
+      let bubble = try #require(prompt.subviews.first { $0 is TranscriptTableBubbleView })
+      #expect(abs(line.frame.minY - (bubble.frame.maxY + Theme.Spacing.extraSmall)) < 0.5)
+      #expect(abs(line.frame.maxX - bubble.frame.maxX) < 0.5)
+      // Under an answer's text, after its attachments.
+      var attached = answerRow
+      attached.attachments = [Self.attachment]
+      let answer = try shownMatchingSwiftUI(textCellRow(attached), environment)
+      #expect(
+        answer.accessoryViews.map(\.accessory) == [.attachments([Self.attachment]), .interrupted])
+      // Both read as SwiftUI's line does.
+      let screen = try await textTableScreen([promptRow, answerRow])
+      defer { screen.close() }
+      for id in ["u-cut", "a-cut"] {
+        let cell = try textCell(id, in: screen)
+        let shown = try #require(cell.accessoryViews.last)
+        #expect(try screen.shownText(under: shown) == ["Interrupted"], "\(id)")
+      }
+    }
   }
 #endif

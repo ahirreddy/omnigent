@@ -56,11 +56,14 @@
           palette: palette, width: textWidth, scale: style.drawsAhead ? style.scale : 0,
           raster: style.drawsAhead ? style.rasterStyle : nil)
       }
+      // What shows under the bubble is the last part hosted.
+      let below = message.belowBubble == nil ? nil : accessoryViews.last
       let frames = TranscriptTableTextFrames(
         role: .user, gaps: message.gaps,
         sizes: entrySizes(of: message, textWidth: textWidth, fillsWidth: false),
-        metrics: metrics, workedHeight: nil)
+        metrics: metrics, workedHeight: nil, belowBubbleSize: below?.idealSize)
       place(frames, message: message)
+      if let below, let frame = frames.belowBubble { below.frame = frame }
       if let bubble = frames.bubble {
         bubbleView.frame = bubble
         bubbleView.color = style.bubble

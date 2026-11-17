@@ -5,8 +5,8 @@
   /// A settled chat message a text cell draws in AppKit (``TranscriptTableTextCell``): an answer
   /// or a user's prompt as TextKit text runs, with the blocks only SwiftUI draws (math, a
   /// diagram, an image, a wide table) hosted between them, and the parts beside the text that
-  /// SwiftUI draws (attachments, mentions, a long prompt's toggle) hosted where the message row
-  /// stacks them.
+  /// SwiftUI draws (attachments, mentions, a long prompt's toggle, the Interrupted line) hosted
+  /// where the message row stacks them.
   struct TranscriptTableTextMessage {
     enum Role {
       case user
@@ -42,6 +42,8 @@
 
     /// A long prompt's fold; `nil` for any other message.
     var promptFold: PromptFold?
+    /// What shows under a prompt's bubble, at the column's trailing edge: its Interrupted line.
+    var belowBubble: TranscriptTableAccessory?
 
     /// The message row `row` shows, when a text cell can draw all of it at `ramp`.
     /// - Parameters:
@@ -56,26 +58,26 @@
         case .item(.message(let message)) =
           entry.segment
       else { return nil }
-      guard !message.isStreaming, message.activity == nil, !message.interrupted else {
-        return nil
-      }
+      guard !message.isStreaming, message.activity == nil else { return nil }
       let decoration = entry.decorations[message.id] ?? MessageDecoration()
       let attachments: [Entry] =
         message.attachments.isEmpty ? [] : [.accessory(.attachments(message.attachments))]
-      let made: Self
+      var made: Self
       switch message.role {
       case .assistant:
         guard !message.text.isEmpty else { return nil }
         let text = Self.pieces(of: message.text, ramp: ramp)
+        let interrupted: [Entry] = message.interrupted ? [.accessory(.interrupted)] : []
         made = Self(
           role: .answer, row: message, decoration: decoration, markdown: message.text,
           split: MessageTextSplits.shared.split(message.text, ramp: ramp),
-          entries: (text.isEmpty ? [.empty] : text) + attachments)
+          entries: (text.isEmpty ? [.empty] : text) + attachments + interrupted)
       case .user:
         guard !decoration.showsAvatar else { return nil }
         made = prompt(
           message, decoration: decoration, leading: attachments, ramp: ramp,
           expands: expandsPrompt)
+        if message.interrupted { made.belowBubble = .interrupted }
       case .tool:
         return nil
       }
@@ -120,12 +122,14 @@
       return MessageTextSplits.shared.split(markdown, ramp: ramp).pieces.map(Entry.piece)
     }
 
-    /// The parts beside the text, top to bottom.
+    /// The hosted parts beside the text, top to bottom: the entries', then what shows under a
+    /// prompt's bubble.
     var accessories: [TranscriptTableAccessory] {
-      entries.compactMap {
-        if case .accessory(let accessory) = $0 { return accessory }
+      let stacked = entries.compactMap { entry -> TranscriptTableAccessory? in
+        if case .accessory(let accessory) = entry { return accessory }
         return nil
       }
+      return stacked + (belowBubble.map { [$0] } ?? [])
     }
 
     /// The gap above each entry, as the row's stacks space them: a small gap between any two,
@@ -203,6 +207,8 @@
     var entries: [CGRect] = []
     /// A user's bubble.
     var bubble: CGRect?
+    /// What shows under a prompt's bubble, at the column's trailing edge.
+    var belowBubble: CGRect?
     /// An answer's "Worked for" line.
     var worked: CGRect?
     /// Where the actions' row starts (under the text, or on the "Worked for" line) and ends.
@@ -218,9 +224,11 @@
     ///   - sizes: Each entry's size: an answer's as wide as the column, a prompt's as its own.
     ///   - metrics: The column.
     ///   - workedHeight: The "Worked for" line's height, when an answer has one.
+    ///   - belowBubbleSize: The size of what shows under a prompt's bubble, if anything does.
     init(
       role: TranscriptTableTextMessage.Role, gaps: [CGFloat], sizes: [CGSize],
-      metrics: TranscriptTableTextMetrics, workedHeight: CGFloat?
+      metrics: TranscriptTableTextMetrics, workedHeight: CGFloat?,
+      belowBubbleSize: CGSize? = nil
     ) {
       func gap(_ index: Int) -> CGFloat { gaps.indices.contains(index) ? gaps[index] : 0 }
       actionsTrailing = metrics.columnX + metrics.columnWidth
@@ -261,8 +269,18 @@
         }
         let bubbleHeight = bottom + Theme.Spacing.bubbleVertical
         bubble = CGRect(x: bubbleX, y: 0, width: bubbleWidth, height: bubbleHeight)
-        actionsTop = bubbleHeight
-        height = (bubbleHeight + Theme.Spacing.extraSmall + Theme.Spacing.row).rounded(.up)
+        // The row's stack spaces what follows the bubble at its trailing edge: a line, then
+        // the actions.
+        bottom = bubbleHeight
+        if let belowBubbleSize {
+          bottom += Theme.Spacing.extraSmall
+          belowBubble = CGRect(
+            x: actionsTrailing - belowBubbleSize.width, y: bottom, width: belowBubbleSize.width,
+            height: belowBubbleSize.height)
+          bottom += belowBubbleSize.height
+        }
+        actionsTop = bottom
+        height = (bottom + Theme.Spacing.extraSmall + Theme.Spacing.row).rounded(.up)
       }
     }
   }

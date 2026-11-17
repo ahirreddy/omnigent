@@ -56,7 +56,9 @@
       }
       let frames = TranscriptTableTextFrames(
         role: message.role, gaps: message.gaps, sizes: sizes, metrics: metrics,
-        workedHeight: isAnswer ? message.decoration.workedFor.map { _ in workedLabelHeight } : nil)
+        workedHeight: isAnswer ? message.decoration.workedFor.map { _ in workedLabelHeight } : nil,
+        belowBubbleSize: message.belowBubble.map { measureAccessory($0, message.row.id, textWidth) }
+      )
       return frames.height
     }
 
