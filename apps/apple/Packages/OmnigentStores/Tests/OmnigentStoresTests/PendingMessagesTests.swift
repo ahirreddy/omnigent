@@ -173,6 +173,10 @@ struct OptimisticSendTests {
     #expect(conversation.sendCount == 1)
     #expect(!conversation.transcriptDigest.isEmpty)
     #expect(conversation.displayRevision != revision)
+    // Working shows before the server answers, in the transcript and in the list.
+    try await LiveConversationFixture.waitUntil("working") { conversation.isRunning }
+    #expect(connection.sessionList.session(liveSessionID)?.status == .running)
+    #expect(conversation.turnTimer.startedAt != nil)
 
     gate.setItems(Self.echo)
     gate.release(.json(#"{"queued":true,"item_id":"item_1"}"#))
@@ -195,12 +199,16 @@ struct OptimisticSendTests {
     let sending = Task { await conversation.composer.send() }
     try await LiveConversationFixture.waitUntil("the POST") { gate.isWaiting }
     #expect(conversation.displayRows.count == 1)
+    try await LiveConversationFixture.waitUntil("working") { conversation.isRunning }
     gate.release(.json(#"{"detail":"no"}"#, status: 400))
     _ = await sending.value
     #expect(conversation.displayRows.isEmpty)
     #expect(conversation.sendCount == 1)
     #expect(conversation.composer.lastError != nil)
     #expect(conversation.composer.text == "Ship it")
+    // The refusal takes the working state back, in the transcript and in the list.
+    try await LiveConversationFixture.waitUntil("idle again") { !conversation.isRunning }
+    #expect(connection.sessionList.session(liveSessionID)?.status == .idle)
   }
 
   @Test("a queued message shows when it goes out, not while it waits")

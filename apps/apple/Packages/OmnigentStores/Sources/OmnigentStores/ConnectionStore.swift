@@ -328,6 +328,7 @@ public final class ConnectionStore {
       sessionID: sessionID, core: core,
       listStatus: ListStatusExpectation(list: sessionList, sessionID: sessionID))
     store.composer.draftChanged = { [weak sessionList] in sessionList?.setDraft(sessionID, $0) }
+    store.composer.eventsBeforeAnswer = { [weak self] in await self?.eventsSentSoFarApplied() }
     keepDraft(of: store)
     withMutation(keyPath: \.[open: sessionID]) { conversations[sessionID] = store }
     core.openSession(sessionId: sessionID)

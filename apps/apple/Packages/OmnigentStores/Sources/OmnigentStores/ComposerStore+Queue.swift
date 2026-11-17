@@ -183,6 +183,7 @@ extension ComposerStore {
       followUps.remove(id)
       return true
     } catch {
+      await eventsBeforeAnswer()
       withdrawFork?()
       transcript?.messageNotSent(pendingRow)
       let failure = coreError(error)

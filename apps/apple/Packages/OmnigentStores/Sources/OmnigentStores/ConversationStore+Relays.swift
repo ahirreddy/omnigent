@@ -2,7 +2,8 @@ import OmnigentCoreFFI
 
 /// What the conversation learns from sends and the stream and tells the transcript or composer.
 extension ConversationStore {
-  /// Shows a message being sent until the server echoes it.
+  /// Shows a message being sent until the server echoes it, and an idle session working in the
+  /// list until its next server row (the transcript's working state comes from the core).
   /// - Parameters:
   ///   - text: The message.
   ///   - attachments: Its files.
@@ -10,6 +11,7 @@ extension ConversationStore {
   func showSending(_ text: String, attachments: [Attachment] = []) -> String? {
     sendCount += 1
     let rowID = pendingMessages.add(text: text, attachments: attachments, transcript: rows)
+    if let rowID, !isRunning { sendingListStatus[rowID] = listStatus.expect(.running) }
     digestRows()
     return rowID
   }
@@ -26,6 +28,7 @@ extension ConversationStore {
   ///   - sent: The acknowledgement.
   func messageAccepted(_ rowID: String?, _ sent: MessageSent) {
     guard let rowID else { return }
+    sendingListStatus[rowID] = nil
     pendingMessages.acknowledge(rowID, itemID: sent.itemId)
     retireEchoedMessages()
     digestRows()
@@ -35,6 +38,7 @@ extension ConversationStore {
   /// - Parameter rowID: The message's row, from ``showSending(_:attachments:)``.
   func messageNotSent(_ rowID: String?) {
     guard let rowID else { return }
+    sendingListStatus.removeValue(forKey: rowID)?.withdraw()
     pendingMessages.withdraw(rowID)
     digestRows()
   }
