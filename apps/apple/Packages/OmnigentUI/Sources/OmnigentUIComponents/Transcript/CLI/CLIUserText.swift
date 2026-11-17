@@ -1,6 +1,6 @@
 import SwiftUI
 
-extension UserPrompt {
+nonisolated extension UserPrompt {
   /// A run of a prompt: plain text, or a Markdown block quote without its `>` markers.
   struct Run: Hashable, Sendable {
     let text: String

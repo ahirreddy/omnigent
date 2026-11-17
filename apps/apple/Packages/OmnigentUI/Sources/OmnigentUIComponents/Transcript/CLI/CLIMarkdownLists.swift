@@ -12,7 +12,7 @@ extension EnvironmentValues {
 /// the column beside it.
 struct CLIListView: View {
   /// The columns from a marker to the list nested under it.
-  static let nestedColumns = 4
+  nonisolated static let nestedColumns = 4
 
   let ordered: Bool
   let start: Int
