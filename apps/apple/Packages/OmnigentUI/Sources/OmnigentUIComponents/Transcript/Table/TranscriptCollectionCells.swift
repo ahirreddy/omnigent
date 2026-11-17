@@ -37,19 +37,12 @@
   /// before, keeps its rendered content when a cell takes it (``TranscriptTableCellPool``). The
   /// view is a `UIHostingConfiguration`'s.
   @MainActor
-  final class TranscriptCollectionRowHost: TranscriptPooledCell {
-    /// What the host shows, by row id, content version and width.
-    struct Shown: Equatable {
-      var id: String
-      var version: Int
-      var width: CGFloat
-    }
-
+  final class TranscriptCollectionRowHost {
     typealias Configuration = UIHostingConfiguration<TranscriptCollectionRowRoot, EmptyView>
 
     let view: any UIView & UIContentView
-    private(set) var shown: Shown?
-    private(set) var kind: TranscriptTableRowKind?
+    private(set) var shown: TranscriptTableShown?
+    private(set) var kind: TranscriptTableCellKind?
     /// Told the height SwiftUI laid the row out at, each time it changes.
     var heightChanged: ((TranscriptCollectionRowHost, CGFloat) -> Void)?
     /// Times the row was measured again for what SwiftUI laid it out at, since it was shown.
@@ -71,10 +64,10 @@
 
     /// Shows `row`, unless the host shows that version of it at `width` already.
     func show(_ row: TranscriptTableRow, version: Int, width: CGFloat) {
-      let next = Shown(id: row.id, version: version, width: width)
+      let next = TranscriptTableShown(id: row.id, version: version, width: width)
       guard next != shown else { return }
       shown = next
-      kind = row.kind
+      kind = .hosted(row.kind)
       remeasures = 0
       view.configuration = Self.configuration(
         row: row, width: width, environment: environment, relay: relay)

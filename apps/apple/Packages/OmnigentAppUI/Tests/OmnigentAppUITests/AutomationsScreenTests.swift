@@ -49,6 +49,10 @@ struct AutomationsScreenTests {
         connection: connection, open: { opened.sessions.append($0) }, defaults: defaults),
       width: 900, height: 1100)
     try await settle(screen, untilShowing: "Standup")
+    // The page reads the agents and hosts after the list; a new draft starts from them.
+    try await settle(screen, until: "the agents and hosts") {
+      connection.pages?.automationCatalog.value != nil
+    }
     return (screen, opened)
   }
 

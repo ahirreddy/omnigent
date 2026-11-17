@@ -75,26 +75,138 @@
       let kept = shown.insetBy(dx: 0, dy: -shown.height * Self.keptReach)
       let deadline = CACurrentMediaTime() + Self.prefetchBudget
       var noted = IndexSet()
-      // Measures row `index` if it needs it; `false` once rows are out of reach.
-      func visit(_ index: Int) -> Bool {
+      var awaited: [String] = []
+      // Measures row `index` if it needs it: `.next` to go on, `.stop` once rows are out of
+      // reach, `.wait` for an answer the prewarm is still laying out.
+      func visit(_ index: Int) -> PrefetchStep {
         let rect = tableView.rect(ofRow: index)
-        guard rect.maxY >= reach.minY, rect.minY <= reach.maxY else { return false }
-        guard model.needsMeasure(at: index) else { return true }
+        guard rect.maxY >= reach.minY, rect.minY <= reach.maxY else { return .stop }
+        guard model.needsMeasure(at: index) else { return .next }
+        if let text = answerLaidOutAhead(at: index) {
+          awaited.append(text)
+          return .wait
+        }
         let isNear = rect.maxY >= kept.minY && rect.minY <= kept.maxY
         if isNear ? measureKeeping(index) : measureAway(index) { noted.insert(index) }
-        return true
+        return .next
       }
       let count = model.rows.count
-      while CACurrentMediaTime() < deadline, cursor.above >= 0 || cursor.below < count {
-        if cursor.below < count { cursor.below = visit(cursor.below) ? cursor.below + 1 : count }
-        if cursor.above >= 0 { cursor.above = visit(cursor.above) ? cursor.above - 1 : -1 }
+      var waits = false
+      while CACurrentMediaTime() < deadline, !waits, cursor.above >= 0 || cursor.below < count {
+        if cursor.below < count { waits = step(&cursor.below, by: 1, end: count, visit) }
+        if !waits, cursor.above >= 0 { waits = step(&cursor.above, by: -1, end: -1, visit) }
       }
       prefetchCursor = cursor
       noteHeights(noted)
+      prewarmAnswers(in: kept)
+      MessageTextPrewarm.shared.prioritize(awaited)
       guard cursor.above >= 0 || cursor.below < model.rows.count else { return }
-      MainRunLoop.perform { [weak self] in
+      // An answer being laid out ahead is measured once it is, a moment later.
+      MainRunLoop.perform(after: awaited.isEmpty ? 0 : Self.prewarmWait) { [weak self] in
         MainActor.assumeIsolated { self?.prefetch(generation) }
       }
+    }
+
+    /// Visits the row at one side of the idle measuring's cursor and moves that side on.
+    /// - Returns: Whether it waits there for the prewarm.
+    func step(
+      _ position: inout Int, by delta: Int, end: Int, _ visit: (Int) -> PrefetchStep
+    ) -> Bool {
+      switch visit(position) {
+      case .next:
+        position += delta
+        return false
+      case .stop:
+        position = end
+        return false
+      case .wait:
+        return true
+      }
+    }
+
+    /// What measuring a row while idle does next.
+    enum PrefetchStep {
+      case next
+      case stop
+      case wait
+    }
+
+    /// How often idle measuring looks again for an answer the prewarm is laying out, and how
+    /// long it waits for one before laying it out itself.
+    static let prewarmWait: TimeInterval = 0.03
+    static let prewarmPatience: CFTimeInterval = 0.5
+
+    /// The text of row `index` when it is an answer the prewarm lays out and its first run is
+    /// not built yet: idle measuring leaves it to the prewarm rather than lay it out here, for
+    /// a while.
+    func answerLaidOutAhead(at index: Int) -> String? {
+      guard MessageTextPrewarm.isEnabled, MessageTextPrewarm.shared.hasContext,
+        let message = textMessage(at: index), message.role == .answer,
+        let run = message.runs.first, let style = textStyle.style
+      else { return nil }
+      let key = MessageTextDocumentKey(
+        text: message.markdown, piece: run.id, style: style, linked: [])
+      let isBuilt =
+        MessageTextDocuments.shared.cached(key) != nil
+        || MessageTextPrewarm.shared.takeDocument(for: key) != nil
+      let id = model.rows[index].id
+      let now = CACurrentMediaTime()
+      guard !isBuilt else {
+        prewarmAwaited = nil
+        return nil
+      }
+      if let awaited = prewarmAwaited, awaited.id == id {
+        guard now - awaited.since < Self.prewarmPatience else { return nil }
+      } else {
+        prewarmAwaited = (id, now)
+      }
+      return message.markdown
+    }
+
+    // MARK: Cursor rects
+
+    /// `omnigent:transcript-cursor-rects paused`: the window stops rebuilding cursor rects at
+    /// each step of a reader's scroll, and rebuilds them once it ends.
+    static let pausesCursorRects =
+      UserDefaults.standard.string(forKey: "omnigent:transcript-cursor-rects") == "paused"
+
+    func pauseCursorRects(_ paused: Bool) {
+      guard Self.pausesCursorRects, paused != cursorRectsPaused,
+        let window = unsafe scrollView.window
+      else { return }
+      cursorRectsPaused = paused
+      if paused {
+        window.disableCursorRects()
+      } else {
+        window.enableCursorRects()
+        window.resetCursorRects()
+      }
+    }
+
+    // MARK: Prewarm
+
+    /// How many viewports past the measured lookahead a scroll lays answers out ahead.
+    static let prewarmReach: CGFloat = 2
+
+    /// Hands the settled answers in `rect` that a text cell draws to the prewarm, nearest the
+    /// viewport first, so they lay out off the main thread before they scroll in.
+    func prewarmAnswers(in rect: NSRect, upward: Bool = false) {
+      guard textStyle.isEnabled, MessageTextPrewarm.isEnabled, tableView.numberOfRows > 0 else {
+        return
+      }
+      let range = tableView.rows(in: rect)
+      guard range.length > 0 else { return }
+      var indexes = Array(range.location..<(range.location + range.length))
+      if upward { indexes.reverse() }
+      var texts: [String] = []
+      for index in indexes where model.rows.indices.contains(index) {
+        let id = model.rows[index].id
+        let version = model.version(at: index)
+        guard prewarmed[id] != version, let message = textMessage(at: index) else { continue }
+        prewarmed[id] = version
+        if message.role == .answer { texts.append(message.markdown) }
+      }
+      MessageTextPrewarm.shared.prioritize(texts)
     }
 
     func startingCursor() -> (above: Int, below: Int) {

@@ -191,7 +191,7 @@ extension WorkspaceFileLinks {
   }
 }
 
-extension MarkdownBlock {
+nonisolated extension MarkdownBlock {
   /// Every path the blocks cite, in order, without repeats.
   static func citedPaths(in blocks: [MarkdownBlock]) -> [CitedPath] {
     var seen = Set<CitedPath>()

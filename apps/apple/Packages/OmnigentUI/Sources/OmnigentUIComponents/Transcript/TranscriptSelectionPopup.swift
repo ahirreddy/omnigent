@@ -187,9 +187,14 @@ import SwiftUI
         changed?(nil)
       }
 
+      /// The selecting text view: a selectable `Text`'s field editor, or a message's own
+      /// TextKit 2 view (``MessageTextKitView``).
       private func selectionEditor(in window: NSWindow) -> NSTextView? {
-        guard let editor = window.firstResponder as? NSTextView, editor.isFieldEditor,
-          !editor.isEditable, let field = editor.delegate as? NSTextField, !field.isEditable
+        guard let editor = window.firstResponder as? NSTextView, !editor.isEditable else {
+          return nil
+        }
+        if editor is MessageTextKitView { return editor }
+        guard editor.isFieldEditor, let field = editor.delegate as? NSTextField, !field.isEditable
         else { return nil }
         return editor
       }

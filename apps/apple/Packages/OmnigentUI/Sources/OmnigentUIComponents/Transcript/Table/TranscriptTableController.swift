@@ -47,9 +47,16 @@
     lazy var clipView = TranscriptTableClipView()
     lazy var column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("transcript"))
     var model = TranscriptTableModel()
-    var pool = TranscriptTableCellPool<TranscriptTableCell>()
+    var pool = TranscriptTableCellPool<any TranscriptTableCell>()
     /// One cell per kind measures rows away from the viewport, whose cells are not kept.
-    var measuringCells: [TranscriptTableRowKind: TranscriptTableCell] = [:]
+    var measuringCells: [TranscriptTableCellKind: any TranscriptTableCell] = [:]
+    /// The style settled messages draw in as text cells.
+    lazy var textStyle = TranscriptTableTextStyle(environment: environment)
+    /// Each row's text-cell message by content version, `nil` for a row hosted in SwiftUI.
+    var textMessages: [String: (version: Int, message: TranscriptTableTextMessage?)] = [:]
+    /// Answers handed to the prewarm, by row id and version.
+    var prewarmed: [String: Int] = [:]
+    var awaitsEnvironment = false
 
     /// The follow rules (``TranscriptFollow``).
     var follow = TranscriptFollow() {
@@ -74,6 +81,9 @@
     var olderRequested = false
     var historyReads = 0
     var isShown = true
+    var cursorRectsPaused = false
+    /// The answer idle measuring waits for the prewarm to lay out, and since when.
+    var prewarmAwaited: (id: String, since: CFTimeInterval)?
 
     var isAdjusting = false
     var isMeasuring = false
@@ -81,7 +91,7 @@
     var isWheeling = false
     var wheelSteps = 0
     var visibleRange = 0..<0
-    var pendingCells: [ObjectIdentifier: TranscriptTableCell] = [:]
+    var pendingCells: [ObjectIdentifier: any TranscriptTableCell] = [:]
     var awaitsRemeasure = false
     var prefetchGeneration = 0
     var prefetchCursor: (above: Int, below: Int)?
@@ -142,6 +152,7 @@
       isCLI: Bool, environment values: EnvironmentValues
     ) {
       if environment.values == nil { environment.values = values }
+      syncTextStyle()
       self.actions = actions
       self.isCLI = isCLI
       let previous = self.state
@@ -242,7 +253,7 @@
       -> NSView?
     {
       guard model.rows.indices.contains(row) else { return nil }
-      let cell = keptCell(for: model.rows[row])
+      let cell = keptCell(at: row)
       if model.needsMeasure(at: row) {
         // A row the lookahead missed: measured now, its height given to the table next pass.
         if measure(row, with: cell) { scheduleRemeasure(cell) }
@@ -256,7 +267,7 @@
 
     func tableView(_ tableView: NSTableView, didRemove rowView: NSTableRowView, forRow row: Int) {
       guard rowView.numberOfColumns > 0,
-        let cell = rowView.view(atColumn: 0) as? TranscriptTableCell
+        let cell = rowView.view(atColumn: 0) as? any TranscriptTableCell
       else { return }
       pool.park(cell)
     }

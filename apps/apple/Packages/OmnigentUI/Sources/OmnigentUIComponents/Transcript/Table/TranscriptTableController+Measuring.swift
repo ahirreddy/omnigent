@@ -1,30 +1,60 @@
 #if os(macOS)
   import AppKit
+  import Observation
   import SwiftUI
 
   extension TranscriptTableController {
-    // MARK: Measuring
+    // MARK: Cells
 
-    /// A cell for `row` that the table keeps: from the pool, else a new one.
-    func keptCell(for row: TranscriptTableRow) -> TranscriptTableCell {
-      if let cell = pool.take(for: row) { return cell }
+    /// The text-cell message row `index` shows, or `nil` when the row stays hosted in SwiftUI;
+    /// worked out once per content version.
+    func textMessage(at index: Int) -> TranscriptTableTextMessage? {
+      guard textStyle.isEnabled else { return nil }
+      let row = model.rows[index]
+      let version = model.version(at: index)
+      if let known = textMessages[row.id], known.version == version { return known.message }
+      let message = TranscriptTableTextMessage.make(row, ramp: textStyle.ramp)
+      textMessages[row.id] = (version, message)
+      return message
+    }
+
+    /// The kind of cell row `index` shows in.
+    func cellKind(at index: Int) -> TranscriptTableCellKind {
+      let kind = model.rows[index].kind
+      return textMessage(at: index) == nil ? .hosted(kind) : .text(kind)
+    }
+
+    /// A cell for row `index` that the table keeps: from the pool, else a new one.
+    func keptCell(at index: Int) -> any TranscriptTableCell {
+      let kind = cellKind(at: index)
+      if let cell = pool.take(id: model.rows[index].id, kind: kind) { return cell }
       cellsMade += 1
-      let cell = TranscriptTableCell.make(environment: environment)
+      let cell = makeCell(kind)
       cell.idealSizeChanged = { [weak self] in self?.scheduleRemeasure($0) }
       return cell
     }
 
-    /// The cell showing row `index` in the table, if the row is laid out.
-    func realizedCell(at index: Int) -> TranscriptTableCell? {
-      guard model.rows.indices.contains(index), index < tableView.numberOfRows else { return nil }
-      return tableView.view(atColumn: 0, row: index, makeIfNecessary: false)
-        as? TranscriptTableCell
+    func makeCell(_ kind: TranscriptTableCellKind) -> any TranscriptTableCell {
+      switch kind {
+      case .hosted: TranscriptTableHostingCell.make(environment: environment)
+      case .text: TranscriptTableTextCell(style: textStyle)
+      }
     }
 
-    /// Shows row `index` in `cell` and records its height.
+    /// The cell showing row `index` in the table, if the row is laid out.
+    func realizedCell(at index: Int) -> (any TranscriptTableCell)? {
+      guard model.rows.indices.contains(index), index < tableView.numberOfRows else { return nil }
+      return tableView.view(atColumn: 0, row: index, makeIfNecessary: false)
+        as? any TranscriptTableCell
+    }
+
+    // MARK: Measuring
+
+    /// Shows row `index` in `cell` and records its height: a text cell's from its text's
+    /// TextKit measurement, a hosted one's from a SwiftUI layout.
     /// - Returns: Whether the table has another height for it.
     @discardableResult
-    func measure(_ index: Int, with cell: TranscriptTableCell) -> Bool {
+    func measure(_ index: Int, with cell: any TranscriptTableCell) -> Bool {
       // Before the viewport has a width there is nothing to measure at.
       guard model.width > 0 else { return false }
       cell.show(model.rows[index], version: model.version(at: index), width: model.width)
@@ -38,19 +68,24 @@
     /// Measures row `index` in a cell the table can then show it in: its own, or one parked
     /// under its id for when it comes into view.
     func measureKeeping(_ index: Int) -> Bool {
-      if let cell = realizedCell(at: index) { return measure(index, with: cell) }
-      let cell = keptCell(for: model.rows[index])
+      if let cell = realizedCell(at: index), cell.kind == cellKind(at: index) {
+        return measure(index, with: cell)
+      }
+      let cell = keptCell(at: index)
       let changed = measure(index, with: cell)
       pool.park(cell)
       return changed
     }
 
-    /// Measures row `index` in its kind's measuring cell, for a row far from view.
+    /// Measures row `index` in its kind's measuring cell, for a row far from view. A text cell
+    /// hands its laid-out text back, so the row's own cell later shows it without laying out.
     func measureAway(_ index: Int) -> Bool {
-      let kind = model.rows[index].kind
-      let cell = measuringCells[kind] ?? TranscriptTableCell.make(environment: environment)
+      let kind = cellKind(at: index)
+      let cell = measuringCells[kind] ?? makeCell(kind)
       measuringCells[kind] = cell
-      return measure(index, with: cell)
+      let changed = measure(index, with: cell)
+      (cell as? TranscriptTableTextCell)?.releaseContent()
+      return changed
     }
 
     /// Tells the table rows' heights changed, keeping the reader in place: at the bottom while
@@ -68,7 +103,7 @@
     }
 
     /// A cell's content changed size by itself: measured again on the next pass.
-    func scheduleRemeasure(_ cell: TranscriptTableCell) {
+    func scheduleRemeasure(_ cell: any TranscriptTableCell) {
       guard !isMeasuring else { return }
       pendingCells[ObjectIdentifier(cell)] = cell
       guard !awaitsRemeasure else { return }
@@ -104,6 +139,59 @@
         model.rows.indices.contains($0) && model.needsMeasure(at: $0)
       }
       return upward ? rows.reversed() : rows
+    }
+
+    // MARK: Text style
+
+    /// Follows the environment and the window's scale for the text cells.
+    func syncTextStyle() {
+      watchEnvironment()
+      let scale = unsafe scrollView.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor
+      if let scale { textStyleChanged(textStyle.setScale(scale)) }
+    }
+
+    /// Follows the transcript's environment: a new text style lays the text cells out again.
+    func watchEnvironment() {
+      guard !awaitsEnvironment else { return }
+      awaitsEnvironment = true
+      withObservationTracking {
+        _ = environment.values
+      } onChange: { [weak self] in
+        MainRunLoop.perform {
+          MainActor.assumeIsolated { self?.environmentChanged() }
+        }
+      }
+      textStyleChanged(textStyle.refresh())
+    }
+
+    func environmentChanged() {
+      awaitsEnvironment = false
+      watchEnvironment()
+    }
+
+    /// The text style changed: rows pick their cells again, and those on screen show and
+    /// measure in their new cells.
+    func textStyleChanged(_ changed: Bool) {
+      guard changed else { return }
+      textMessages = [:]
+      prewarmed = [:]
+      guard tableView.numberOfRows == model.rows.count, model.width > 0 else { return }
+      var reloaded = IndexSet()
+      var noted = IndexSet()
+      tableView.enumerateAvailableRowViews { _, row in
+        guard let cell = realizedCell(at: row) else { return }
+        if cell.kind != cellKind(at: row) {
+          reloaded.insert(row)
+        } else if cell is TranscriptTableTextCell, measure(row, with: cell) {
+          noted.insert(row)
+        }
+      }
+      if !reloaded.isEmpty {
+        withoutAnimation {
+          tableView.reloadData(forRowIndexes: reloaded, columnIndexes: IndexSet(integer: 0))
+        }
+      }
+      noteHeights(noted)
     }
   }
 #endif

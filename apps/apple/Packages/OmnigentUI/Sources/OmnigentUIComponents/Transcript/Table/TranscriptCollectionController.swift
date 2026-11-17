@@ -59,7 +59,8 @@
     var itemCount = 0
     /// Whether the collection view has asked for its items since it was last reloaded.
     var hasLoadedItems = false
-    var pool = TranscriptTableCellPool<TranscriptCollectionRowHost>()
+    var pool = TranscriptTableCellPool<TranscriptCollectionRowHost>(
+      shownID: \.shownID, kind: \.kind)
     /// One host per kind measures rows away from the viewport, whose hosts are not kept.
     var measuringHosts: [TranscriptTableRowKind: TranscriptCollectionRowHost] = [:]
 

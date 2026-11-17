@@ -15,6 +15,17 @@
       let height = clipView.bounds.height
       let upward = proposed.y < clipView.bounds.minY
       var origin = proposed
+      // Answers past what this frame measures lay out off the main thread meanwhile.
+      let farReach = height * Self.prewarmReach
+      prewarmAnswers(
+        in: upward
+          ? NSRect(
+            x: 0, y: proposed.y - height * Self.lookahead - farReach, width: model.width,
+            height: farReach + height * Self.lookahead)
+          : NSRect(
+            x: 0, y: proposed.y + height, width: model.width,
+            height: height * Self.lookahead + farReach),
+        upward: upward)
       for _ in 0..<3 {
         let visible = NSRect(x: 0, y: origin.y, width: model.width, height: height)
         let reach = height * Self.lookahead
@@ -95,6 +106,7 @@
     /// The reader started or stopped scrolling: idle measuring waits until they stop.
     func scrollPhaseChanged() {
       let isScrolling = isLiveScrolling || isWheeling
+      pauseCursorRects(isScrolling)
       if follow.scrollPhaseChanged(isUserScrolling: isScrolling) { pinBottom() }
       if isScrolling {
         prefetchGeneration += 1

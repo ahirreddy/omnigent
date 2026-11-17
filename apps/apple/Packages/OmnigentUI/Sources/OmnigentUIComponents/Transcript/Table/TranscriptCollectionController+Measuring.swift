@@ -7,7 +7,7 @@
 
     /// A host for `row` that a cell can show: from the pool, else a new one.
     func keptHost(for row: TranscriptTableRow) -> TranscriptCollectionRowHost {
-      if let host = pool.take(for: row) { return host }
+      if let host = pool.take(id: row.id, kind: .hosted(row.kind)) { return host }
       return makeHost()
     }
 
