@@ -77,8 +77,11 @@ private struct MarkdownTableControls: View {
   }
 }
 
-private struct ExpandedTable: View {
+/// The table on its own, scrolling both ways, with its controls and Done.
+struct ExpandedTable: View {
   let table: MarkdownTable
+  /// Closes it where AppKit presents it; a SwiftUI sheet dismisses itself.
+  var done: (() -> Void)?
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
@@ -88,7 +91,7 @@ private struct ExpandedTable: View {
           .font(.headline)
         Spacer()
         MarkdownTableControls(table: table, isExpanded: .constant(true))
-        Button("Done") { dismiss() }
+        Button("Done") { done.map { $0() } ?? dismiss() }
           .keyboardShortcut(.cancelAction)
           .accessibilityIdentifier("markdown.table.done")
       }
