@@ -23,10 +23,15 @@
       driver.move(to: driver.maximumOffset - 1200)
       window.settle()
       let shown = try #require(driver.scrollView).contentView.bounds
+      let isShown = { (view: NSView) in
+        view.convert(view.bounds, to: controller.tableView).intersects(shown)
+      }
+      // A run drawn ahead lays its live text over it on a press, as a click does.
+      let views = window.allViews
       let text = try #require(
-        window.allViews.compactMap { $0 as? MessageTextKitView }.first {
-          $0.convert($0.bounds, to: controller.tableView).intersects(shown)
-        })
+        views.compactMap { $0 as? MessageTextKitView }.first(where: isShown)
+          ?? views.compactMap { $0 as? MessageTextRasterView }.first(where: isShown)?
+          .activate().textView)
       #expect(window.window.makeFirstResponder(text))
       let start = driver.offset
       text.keyDown(with: try key(NSDownArrowFunctionKey))
