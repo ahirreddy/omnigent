@@ -105,7 +105,7 @@ struct DecisionStateGlyph: View {
     switch card.kind {
     case .approval: return "hand.raised.fill"
     case .choice, .form: return "questionmark.bubble.fill"
-    case .unsupported: return "safari"
+    case .externalPage, .unsupported: return "safari"
     }
   }
 

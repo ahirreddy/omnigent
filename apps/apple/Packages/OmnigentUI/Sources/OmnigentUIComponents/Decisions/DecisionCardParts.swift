@@ -47,7 +47,7 @@ struct DecisionPayloadView: View {
     }
     switch card.kind {
     case .approval: return first
-    case .choice, .form, .unsupported: return card.detail
+    case .choice, .form, .externalPage, .unsupported: return card.detail
     }
   }
 

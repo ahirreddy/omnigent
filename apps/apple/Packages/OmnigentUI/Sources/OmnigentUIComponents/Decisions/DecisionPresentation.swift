@@ -142,6 +142,8 @@ struct DecisionAvailability: Hashable {
     case .form(let fields):
       self.fields = fields
       canDismiss = true
+    case .externalPage(let url):
+      externalURL = url
     case .unsupported(_, let externalURL):
       self.externalURL = externalURL
     }
@@ -205,7 +207,7 @@ struct DecisionSummary: Hashable {
         answersInline: fits)
     case .form:
       self.init(lead: Self.isGeneric(card.title) ? (lede ?? "Questions") : card.title)
-    case .unsupported:
+    case .externalPage, .unsupported:
       self.init(lead: lede ?? card.title)
     }
   }
