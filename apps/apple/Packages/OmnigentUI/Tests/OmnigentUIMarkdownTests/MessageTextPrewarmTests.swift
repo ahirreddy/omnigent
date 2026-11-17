@@ -1,10 +1,37 @@
 #if os(macOS)
   import AppKit
   import SwiftUI
+  import Synchronization
   import Testing
 
   @testable import OmnigentUIComponents
   @testable import OmnigentUITestSupport
+
+  /// How many texts a queue's workers lay out at once, at most, and which they laid out.
+  nonisolated private final class Tally: Sendable {
+    private struct Counts {
+      var running = 0
+      var most = 0
+      var done: [String] = []
+    }
+
+    private let counts = Mutex(Counts())
+
+    var most: Int { counts.withLock { $0.most } }
+    var done: [String] { counts.withLock { $0.done } }
+
+    func run(_ text: String) {
+      counts.withLock {
+        $0.running += 1
+        $0.most = max($0.most, $0.running)
+      }
+      Thread.sleep(forTimeInterval: 0.05)
+      counts.withLock {
+        $0.running -= 1
+        $0.done.append(text)
+      }
+    }
+  }
 
   /// Answers laid out off the main actor ahead of their rows.
   @MainActor
@@ -70,6 +97,26 @@
       prewarm.offer(Self.answer)
       #expect(try await prepared(Self.answer, in: prewarm) != nil)
       #expect(try await prepared(text, in: prewarm) == nil)
+    }
+
+    @Test("Several workers lay texts out at once, and a text asked for once done isn't again")
+    func workers() async throws {
+      let tally = Tally()
+      let queue = MessageTextPrewarmQueue<Int>(limit: 8, workers: 3) { text, _, _ in
+        tally.run(text)
+      }
+      queue.setContext(1) { _ in false }
+      queue.prioritize(["a", "b", "c", "d"], at: [0, 1, 2, 3])
+      for _ in 0..<200 where tally.done.count < 4 {
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      #expect(tally.done.count == 4)
+      #expect(tally.most > 1, "laid out side by side")
+      queue.prioritize(["a"], at: [0])
+      queue.offer("b")
+      #expect(queue.pendingTexts.isEmpty, "both are laid out in this context")
+      try await Task.sleep(for: .milliseconds(100))
+      #expect(tally.done.count == 4)
     }
 
     @Test("The prewarm is on unless a launch argument or default turns it off")

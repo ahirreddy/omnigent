@@ -27,7 +27,7 @@ extension EnvironmentValues {
 }
 
 /// A transcript message's markdown, drawn by ``MarkdownView`` or, on the Mac with the TextKit
-/// renderer chosen, by ``MessageTextMarkdownView`` once the message has settled.
+/// renderer chosen, by ``MessageTextMarkdownView``, streaming or settled.
 struct MessageMarkdown: View {
   let text: String
   var isStreaming = false
@@ -38,8 +38,8 @@ struct MessageMarkdown: View {
 
   var body: some View {
     #if os(macOS)
-      if renderer == .textKit, rendering == .rich, !isStreaming {
-        MessageTextMarkdownView(text: text, fillsWidth: fillsWidth)
+      if renderer == .textKit, rendering == .rich {
+        MessageTextMarkdownView(text: text, isStreaming: isStreaming, fillsWidth: fillsWidth)
           .readingProseStyle()
           .tint(Theme.link)
           .countsRenders("markdown")

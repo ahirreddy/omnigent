@@ -51,6 +51,14 @@
       #expect(scrollView.contentView.bounds.width == 300)
     }
 
+    @Test("a run's environment passes settings as `key=value` pairs; malformed ones are skipped")
+    func environmentDefaults() {
+      let parsed = TestRunnerSettings.environmentDefaults(
+        "omnigent:message-text=textkit; other = a=b;novalue;=orphan;empty=")
+      #expect(parsed == ["omnigent:message-text": "textkit", "other": "a=b", "empty": ""])
+      #expect(TestRunnerSettings.environmentDefaults("").isEmpty)
+    }
+
     @Test("the scroll bar setting keeps what the process was launched with")
     func scrollBarsKeepLaunchArguments() {
       let defaults = UserDefaults.standard

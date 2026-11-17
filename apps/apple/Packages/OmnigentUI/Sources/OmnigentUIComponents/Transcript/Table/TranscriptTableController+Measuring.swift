@@ -20,8 +20,9 @@
 
     /// The kind of cell row `index` shows in.
     func cellKind(at index: Int) -> TranscriptTableCellKind {
-      let kind = model.rows[index].kind
-      return textMessage(at: index) == nil ? .hosted(kind) : .text(kind)
+      let row = model.rows[index]
+      if textMessage(at: index) != nil { return .text(row.kind) }
+      return cellStyle.drawsNatively(row, isCLI: isCLI) ? .native(row.kind) : .hosted(row.kind)
     }
 
     /// A cell for row `index` that the table keeps: from the pool, else a new one.
@@ -36,8 +37,12 @@
 
     func makeCell(_ kind: TranscriptTableCellKind) -> any TranscriptTableCell {
       switch kind {
+      case .hosted where hostingStyle == .fitted:
+        TranscriptTableFittedCell(environment: environment)
       case .hosted: TranscriptTableHostingCell.make(environment: environment)
       case .text: TranscriptTableTextCell(style: textStyle)
+      case .native(.worked): TranscriptTableFoldCell(style: textStyle, folds: folds)
+      case .native: TranscriptTableSpacerCell()
       }
     }
 
@@ -62,6 +67,7 @@
       let height = cell.idealHeight
       isMeasuring = false
       measurements += 1
+      if textStyle.isLiveResizing { measuredWhileResizing.insert(model.rows[index].id) }
       return model.record(height, at: index)
     }
 
@@ -77,15 +83,39 @@
       return changed
     }
 
-    /// Measures row `index` in its kind's measuring cell, for a row far from view. A text cell
-    /// hands its laid-out text back, so the row's own cell later shows it without laying out.
+    /// Measures row `index` just ahead of a scroll: a settled message from its runs' sizes, so
+    /// its cell is made only as it shows, by when its drawing has likely arrived; another row
+    /// in a cell kept for it.
+    func measureAhead(_ index: Int) -> Bool {
+      if case .text = cellKind(at: index) { return measureAway(index) }
+      return measureKeeping(index)
+    }
+
+    /// Measures row `index`, far from view: a settled message from its runs' laid-out sizes,
+    /// with no text view; another row in its kind's measuring cell.
     func measureAway(_ index: Int) -> Bool {
+      guard model.width > 0 else { return false }
       let kind = cellKind(at: index)
+      if case .text = kind, let message = textMessage(at: index),
+        let height = TranscriptTableTextCell.measuredHeight(
+          of: message, style: textStyle, width: model.width, blockHeight: measuredBlockHeight)
+      {
+        measurements += 1
+        return model.record(height, at: index)
+      }
       let cell = measuringCells[kind] ?? makeCell(kind)
       measuringCells[kind] = cell
       let changed = measure(index, with: cell)
       (cell as? TranscriptTableTextCell)?.releaseContent()
       return changed
+    }
+
+    /// A block's height at `width`, in a hosting view kept for measuring.
+    func measuredBlockHeight(_ block: MarkdownBlock, piece: Int, width: CGFloat) -> CGFloat {
+      let view = measuringBlock ?? TranscriptTableBlockView.make(environment: environment)
+      measuringBlock = view
+      view.show(block, piece: piece, width: width)
+      return view.idealHeight
     }
 
     /// Tells the table rows' heights changed, keeping the reader in place: at the bottom while
@@ -182,7 +212,9 @@
         guard let cell = realizedCell(at: row) else { return }
         if cell.kind != cellKind(at: row) {
           reloaded.insert(row)
-        } else if cell is TranscriptTableTextCell, measure(row, with: cell) {
+        } else if cell is TranscriptTableTextCell || cell is TranscriptTableFoldCell,
+          measure(row, with: cell)
+        {
           noted.insert(row)
         }
       }

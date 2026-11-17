@@ -14,6 +14,8 @@
     private(set) var layoutWidth = LayoutWidth.regular
     private(set) var maxWidth = Theme.transcriptWidth
     private(set) var bubble = NSColor.clear
+    /// The transcript's own text size, outside the reading ramp: a Worked fold's title.
+    private(set) var labelSize = TypeRamp.defaultBody
     /// Whether settled messages draw in text cells: the TextKit renderer, chat style, rich
     /// output.
     private(set) var isEnabled = false
@@ -21,9 +23,12 @@
     var surface = MessageTextSurface.launchValue
     /// The window's pixels per point, which runs are drawn ahead at.
     private(set) var scale: CGFloat = 0
-    /// The layers' colors for runs drawn ahead.
+    /// The layers' colors and the controls at rest for runs drawn ahead.
     private(set) var rasterStyle: MessageTextRasterStyle?
     private(set) var serial = 0
+    /// Documents that show as live text, not drawn ahead: the reader set a code block's long
+    /// lines scrolling sideways, which a drawing can't.
+    var liveDocuments: Set<UInt64> = []
 
     init(environment: TranscriptTableEnvironment) {
       self.environment = environment
@@ -44,19 +49,15 @@
         && appearance.outputRendering == .rich
       let maxWidth = appearance.contentWidth.maxWidth
       let bubble = NSColor(Color(ThemeColor.userBubble.resolve(in: values).resolve(in: values)))
+      let labelSize = values.typeRamp.body
       guard
         style != self.style || ramp != self.ramp || isEnabled != self.isEnabled
           || values.layoutWidth != layoutWidth || maxWidth != self.maxWidth
-          || bubble != self.bubble
+          || bubble != self.bubble || labelSize != self.labelSize
       else { return false }
       if style != self.style {
-        let palette = MessageTextPalette(style)
-        self.palette = palette
-        rasterStyle = MessageTextRasterStyle(
-          codeSurface: palette.codeSurface.cgColor, codeHeader: palette.hover.cgColor,
-          separator: palette.separator.cgColor, border: palette.border.cgColor,
-          quoteBar: palette.tertiary.cgColor, link: palette.link.cgColor,
-          codeRadius: Theme.Radius.large)
+        palette = MessageTextPalette(style)
+        makeRasterStyle()
       }
       self.style = style
       self.ramp = ramp
@@ -64,6 +65,7 @@
       layoutWidth = values.layoutWidth
       self.maxWidth = maxWidth
       self.bubble = bubble
+      self.labelSize = labelSize
       serial += 1
       return true
     }
@@ -74,18 +76,56 @@
     func setScale(_ scale: CGFloat) -> Bool {
       guard scale > 0, scale != self.scale else { return false }
       self.scale = scale
+      makeRasterStyle()
       serial += 1
       return true
+    }
+
+    /// The raster style for the palette and scale, its controls stamped at that scale.
+    private func makeRasterStyle() {
+      guard let palette else { return }
+      let stamps =
+        surface == .raster
+        ? MessageTextChromeStamps.stamps(for: palette, scale: scale)
+        : MessageTextChromeStamps.Stamps()
+      rasterStyle = MessageTextRasterStyle(
+        codeSurface: palette.codeSurface.cgColor, codeHeader: palette.hover.cgColor,
+        separator: palette.separator.cgColor, border: palette.border.cgColor,
+        quoteBar: palette.tertiary.cgColor, link: palette.link.cgColor,
+        codeRadius: Theme.Radius.large, codeChrome: stamps.code, tableChrome: stamps.table)
+    }
+
+    /// Whether the window is being resized live: text lays out at column widths snapped to
+    /// ``liveResizeSnap`` meanwhile, and exactly once the resize ends.
+    private(set) var isLiveResizing = false
+    static let liveResizeSnap: CGFloat = 32
+
+    /// Starts or ends a live resize.
+    /// - Returns: Whether that changed.
+    @discardableResult
+    func setLiveResizing(_ resizing: Bool) -> Bool {
+      guard resizing != isLiveResizing else { return false }
+      isLiveResizing = resizing
+      serial += 1
+      return true
+    }
+
+    /// Where a cell `width` wide puts its message's column.
+    func metrics(width: CGFloat) -> TranscriptTableTextMetrics {
+      TranscriptTableTextMetrics(
+        width: width, layoutWidth: layoutWidth, maxWidth: maxWidth,
+        snap: isLiveResizing ? Self.liveResizeSnap : 0)
     }
 
     /// Whether runs are drawn ahead, at a known scale.
     var drawsAhead: Bool { surface == .raster && scale > 0 && rasterStyle != nil }
 
-    /// The raster kept for `document` at `width`, if one was drawn.
+    /// The raster kept for `document` at `width`, if one was drawn and can show it.
     func raster(for document: MessageTextDocument, width: CGFloat) -> MessageTextRaster? {
       guard drawsAhead else { return nil }
-      return MessageTextRasters.shared.raster(
+      let raster = MessageTextRasters.shared.raster(
         for: MessageTextRasterKey(document: document.serial, width: width, scale: scale))
+      return raster?.overflows == false ? raster : nil
     }
   }
 
@@ -139,7 +179,8 @@
           if raster !== view.raster { view.show(raster) }
           return true
         }
-        return style.drawsAhead && view.raster.width == width && view.raster.scale == style.scale
+        return style.drawsAhead && !view.isReleased && view.raster.width == width
+          && view.raster.scale == style.scale
       case .live(let view):
         return unsafe raster == nil || view.window?.firstResponder === view.textView
       case .block:

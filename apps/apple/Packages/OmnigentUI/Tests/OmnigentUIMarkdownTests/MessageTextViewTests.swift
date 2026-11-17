@@ -65,6 +65,32 @@
       second.releaseContent()
     }
 
+    @Test("A new look drops the old one's idle views and documents; another display's keeps them")
+    func staleLooks() {
+      let light = MessageTextFixture.style
+      var darkEnvironment = EnvironmentValues()
+      darkEnvironment.colorScheme = .dark
+      let dark = MessageTextStyle(environment: darkEnvironment, code: MessageCodeFont())
+      var scaled = light
+      scaled.scale = light.scale + 1
+      func document(_ style: MessageTextStyle) -> MessageTextDocument {
+        var builder = MessageTextBuilder(palette: MessageTextPalette(style))
+        return builder.document(MarkdownParser.parse("Words"))
+      }
+      let views = MessageTextViews(limit: 8)
+      views.checkIn(views.checkOut(document(light)))
+      views.checkIn(views.checkOut(document(scaled)))
+      #expect(views.idleCount == 2, "a window on another display looks the same")
+      _ = views.checkOut(document(dark))
+      #expect(views.idleCount == 0, "the old theme's views go")
+      let documents = MessageTextDocuments(limit: 8)
+      for style in [light, scaled, dark] {
+        let key = MessageTextDocumentKey(text: "a", piece: 0, style: style, linked: [])
+        _ = documents.document(for: key) { document(style) }
+        #expect(documents.count == (style == dark ? 1 : style == light ? 1 : 2))
+      }
+    }
+
     @Test("Code blocks get a surface and a header with Copy; quotes a bar; tables their rules")
     func layersAndControls() throws {
       let markdown = """
@@ -140,7 +166,7 @@
       #expect(NSCursor.current == NSCursor.pointingHand)
     }
 
-    @Test("Only a settled message in the rich rendering draws with TextKit")
+    @Test("A message in the rich rendering draws with TextKit, streaming or settled, once chosen")
     func chooses() throws {
       let screen = transcriptScreen(
         VStack {
@@ -148,13 +174,18 @@
           MessageMarkdown(text: "Streaming", isStreaming: true)
             .environment(\.messageTextRenderer, .textKit)
           MessageMarkdown(text: "Default")
+          MessageMarkdown(text: "Plain").environment(\.messageTextRenderer, .textKit)
+            .environment(\.markdownOutputRendering, .plain)
         }, width: 400, height: 300)
       defer { screen.close() }
       let texts = MessageTextFixture.contentViews(in: screen).map(\.textView.string)
-      #expect(texts == ["Settled"])
+      // A run can choose the TextKit renderer for every view (OMNIGENT_TEST_DEFAULTS).
+      let byDefault = MessageTextRenderer.launchValue == .textKit
+      #expect(texts == ["Settled", "Streaming"] + (byDefault ? ["Default"] : []))
       #expect(
         MessageTextRenderer(defaults: Self.defaults(["omnigent:message-text": "textkit"]))
           == .textKit)
+      guard !byDefault else { return }
       #expect(
         MessageTextRenderer(defaults: Self.defaults(["omnigent:message-text": "other"])) == .swiftUI
       )

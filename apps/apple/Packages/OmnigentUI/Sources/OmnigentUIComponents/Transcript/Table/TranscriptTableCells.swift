@@ -100,10 +100,13 @@
         if let empty = header.empty { banner(EmptyTranscriptView(state: empty)) }
       }
       .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-      .padding(.top, Theme.Spacing.extraLarge)
+      .padding(.top, Self.topPadding(isCLI: appearance.isCLI))
       .padding(.bottom, hasContent ? spacing : 0)
       .transcriptStackColumn()
     }
+
+    /// The space above the header's content: all of an empty header.
+    static func topPadding(isCLI: Bool) -> CGFloat { Theme.Spacing.extraLarge }
 
     private var spacing: CGFloat { appearance.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row }
 
@@ -144,9 +147,12 @@
         }
       }
       .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-      .padding(.bottom, Theme.Spacing.extraLarge)
+      .padding(.bottom, Self.bottomPadding(isCLI: footer.isCLI))
       .transcriptStackColumn()
     }
+
+    /// The space under the footer's content: all of an empty footer.
+    static func bottomPadding(isCLI: Bool) -> CGFloat { Theme.Spacing.extraLarge }
 
     private var spacing: CGFloat { footer.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row }
 
@@ -162,11 +168,19 @@
     var width: CGFloat
   }
 
-  /// The kinds of cell the pool reuses: rows hosted in SwiftUI, and settled messages drawn as
-  /// TextKit text in AppKit (``TranscriptTableTextCell``), each by row kind.
+  /// The kinds of cell the pool reuses: rows hosted in SwiftUI, settled messages drawn as
+  /// TextKit text in AppKit (``TranscriptTableTextCell``), and Worked folds and an empty header
+  /// or footer drawn in AppKit (``TranscriptTableFoldCell``), each by row kind.
   enum TranscriptTableCellKind: Hashable {
     case hosted(TranscriptTableRowKind)
     case text(TranscriptTableRowKind)
+    case native(TranscriptTableRowKind)
+
+    /// A SwiftUI row, whose height takes a layout to know.
+    var isHosted: Bool {
+      if case .hosted = self { return true }
+      return false
+    }
   }
 
   /// A table cell: it shows one row at a width and reports when its content's ideal size

@@ -1,32 +1,66 @@
 #if os(macOS)
   import AppKit
   import OmnigentPlatform
+  import SwiftUI
 
-  /// A code block's header: its language and a Copy button that says "Copied" for a moment.
+  /// A code block's controls, as ``CodeBlockView`` draws them: Wrap, Download and a Copy button
+  /// that says "Copied" for a moment. The text draws the language beside them.
   final class MessageCodeHeaderView: NSView {
-    private let label: NSTextField
-    let copyButton: NSButton
+    private let labelFont: NSFont
+    let wrapButton: NSButton
+    let downloadButton: NSButton
+    let copyButton: MessageHoverButton
     private let code: String
+    private let language: String?
+    private let palette: MessageTextPalette
     private var reset: Task<Void, Never>?
+    /// Wrap was turned on or off.
+    var wrapChanged: ((Bool) -> Void)?
 
-    init(label text: String, code: String, palette: MessageTextPalette) {
+    /// Whether long lines wrap; otherwise they scroll sideways.
+    var wrapsLines: Bool {
+      get { wrapButton.state == .on }
+      set {
+        wrapButton.state = newValue ? .on : .off
+        showWrap()
+      }
+    }
+
+    init(language: String?, code: String, palette: MessageTextPalette) {
       self.code = code
-      label = NSTextField(labelWithString: text)
-      label.font = palette.sectionFont
-      label.textColor = palette.secondary
-      label.lineBreakMode = .byTruncatingTail
-      copyButton = NSButton(title: "Copy", target: nil, action: nil)
+      self.language = language
+      self.palette = palette
+      labelFont = palette.sectionFont
+      let symbolSize = palette.style.ramp.body
+      wrapButton = Self.iconButton(
+        "text.word.spacing", label: "Wrap code lines", size: symbolSize)
+      downloadButton = Self.iconButton(
+        "arrow.down.circle", label: "Download code", size: symbolSize)
+      copyButton = MessageHoverButton(highlight: palette.hover)
       super.init(frame: .zero)
+      wrapButton.setButtonType(.pushOnPushOff)
+      wrapButton.state = .on
+      wrapButton.setAccessibilityLabel("Wrap code lines")
+      wrapButton.target = self
+      wrapButton.action = #selector(toggleWrap)
+      downloadButton.toolTip = "Download code"
+      downloadButton.setAccessibilityLabel("Download code")
+      downloadButton.setAccessibilityIdentifier("markdown.code.download")
+      downloadButton.target = self
+      downloadButton.action = #selector(download)
       copyButton.isBordered = false
       copyButton.imagePosition = .imageLeading
+      copyButton.imageHugsTitle = true
       copyButton.font = palette.sectionFont
       copyButton.contentTintColor = palette.secondary
       copyButton.toolTip = "Copy code"
-      copyButton.setAccessibilityLabel("Copy code")
       copyButton.target = self
       copyButton.action = #selector(copyCode)
+      for button in [wrapButton, downloadButton] { button.contentTintColor = palette.secondary }
+      showWrap()
       showCopied(false)
-      addSubview(label)
+      addSubview(wrapButton)
+      addSubview(downloadButton)
       addSubview(copyButton)
     }
 
@@ -37,18 +71,46 @@
 
     override var isFlipped: Bool { true }
 
+    /// A borderless button showing one symbol, which names it to accessibility.
+    private static func iconButton(_ name: String, label: String, size: CGFloat) -> NSButton {
+      let button = NSButton(title: "", target: nil, action: nil)
+      button.isBordered = false
+      button.imagePosition = .imageOnly
+      button.setAccessibilityLabel(label)
+      button.image = NSImage(systemSymbolName: name, accessibilityDescription: label)?
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size, weight: .regular))
+      return button
+    }
+
     override func layout() {
       super.layout()
-      let inset = Theme.Spacing.medium
       let target = Theme.Control.target
-      let buttonWidth = max(target, copyButton.intrinsicContentSize.width)
-      copyButton.frame = CGRect(
-        x: bounds.maxX - inset - buttonWidth, y: ((bounds.height - target) / 2).rounded(),
-        width: buttonWidth, height: target)
-      let labelHeight = label.intrinsicContentSize.height
-      label.frame = CGRect(
-        x: inset, y: ((bounds.height - labelHeight) / 2).rounded(),
-        width: max(0, copyButton.frame.minX - inset * 2), height: labelHeight)
+      let top = ((bounds.height - target) / 2).rounded()
+      var trailing = bounds.maxX - Theme.Spacing.medium
+      for button in [copyButton, downloadButton, wrapButton] {
+        // Copy is as wide as its icon, the gap and its title, unrounded, as SwiftUI lays it out.
+        let content =
+          button === copyButton
+          ? (button.image?.size.width ?? 0) + Theme.Spacing.extraSmall
+            + button.attributedTitle.size().width : 0
+        let width = max(target, content)
+        button.frame = CGRect(x: trailing - width, y: top, width: width, height: target)
+        trailing -= width + Theme.Spacing.small
+      }
+    }
+
+    @objc private func toggleWrap() {
+      showWrap()
+      wrapChanged?(wrapsLines)
+    }
+
+    private func showWrap() {
+      wrapButton.toolTip = wrapsLines ? "Scroll long lines" : "Wrap long lines"
+    }
+
+    @objc private func download() {
+      MessageTextExport.save(
+        code, name: "snippet.\(CodeFileExtension.for(language))", from: self)
     }
 
     @objc private func copyCode() {
@@ -67,33 +129,36 @@
     }
 
     private func showCopied(_ copied: Bool) {
-      copyButton.title = copied ? "Copied" : "Copy"
+      copyButton.title = copied ? "Copied" : "Copy code"
       copyButton.image = NSImage(
-        systemSymbolName: copied ? "checkmark" : "doc.on.doc", accessibilityDescription: nil)
+        systemSymbolName: copied ? "checkmark" : "doc.on.doc",
+        accessibilityDescription: copied ? "Copied" : "Copy code")?
+        .withSymbolConfiguration(
+          NSImage.SymbolConfiguration(pointSize: labelFont.pointSize, weight: .medium))
       copyButton.setAccessibilityLabel(copied ? "Copied" : "Copy code")
       needsLayout = true
     }
   }
 
-  /// A table's Copy menu: as Markdown, CSV or TSV.
+  /// A table's controls in a row under it: the SwiftUI table's own row
+  /// (``MarkdownTableControlsRow``), Copy and Download menus and Expand, which shows the table on
+  /// its own in a sheet.
   final class MessageTableControlsView: NSView {
-    let copyButton: NSButton
-    private let table: MarkdownTable
+    let hosting: NSHostingView<AnyView>
 
     init(table: MarkdownTable, palette: MessageTextPalette) {
-      self.table = table
-      copyButton = NSButton(title: "", target: nil, action: nil)
+      let style = palette.style
+      hosting = NSHostingView(
+        rootView: AnyView(
+          MarkdownTableControlsRow(table: table)
+            .environment(\.typeRamp, style.ramp)
+            .environment(\.colorScheme, style.isDark ? .dark : .light)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)))
+      // Its frame is the controls' band, set in layout: it makes no constraints for the
+      // window's constraint pass.
+      hosting.sizingOptions = []
       super.init(frame: .zero)
-      copyButton.isBordered = false
-      copyButton.image = NSImage(
-        systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy table")
-      copyButton.contentTintColor = palette.secondary
-      copyButton.toolTip = "Copy table"
-      copyButton.setAccessibilityLabel("Copy table")
-      copyButton.setAccessibilityIdentifier("markdown.table.copy")
-      copyButton.target = self
-      copyButton.action = #selector(showMenu)
-      addSubview(copyButton)
+      addSubview(hosting)
     }
 
     @available(*, unavailable)
@@ -105,36 +170,7 @@
 
     override func layout() {
       super.layout()
-      let target = Theme.Control.target
-      copyButton.frame = CGRect(x: 0, y: 0, width: target, height: target)
-    }
-
-    /// The menu's items and what each copies.
-    var copyChoices: [(title: String, text: String)] {
-      [
-        ("Copy as Markdown", MarkdownTableText.markdown(table)),
-        ("Copy as CSV", MarkdownTableText.csv(table)),
-        ("Copy as TSV", MarkdownTableText.tsv(table)),
-      ]
-    }
-
-    @objc private func showMenu() {
-      let menu = NSMenu()
-      for (index, choice) in copyChoices.enumerated() {
-        let item = NSMenuItem(
-          title: choice.title, action: #selector(copyChoice(_:)), keyEquivalent: "")
-        item.target = self
-        item.tag = index
-        menu.addItem(item)
-      }
-      _ = menu.popUp(
-        positioning: nil, at: CGPoint(x: 0, y: copyButton.bounds.maxY), in: copyButton)
-    }
-
-    @objc private func copyChoice(_ item: NSMenuItem) {
-      let choices = copyChoices
-      guard choices.indices.contains(item.tag) else { return }
-      Pasteboard.copy(choices[item.tag].text)
+      if hosting.frame != bounds { hosting.frame = bounds }
     }
   }
 #endif

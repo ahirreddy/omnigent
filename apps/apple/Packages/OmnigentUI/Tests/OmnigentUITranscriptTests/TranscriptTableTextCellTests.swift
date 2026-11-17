@@ -102,6 +102,16 @@
       #expect(
         cell.idealHeight
           == (drawn.size.height + Theme.Spacing.small + Theme.Spacing.row).rounded(.up))
+      // Off screen the cell lets the bitmap go; shown again, it takes the cached one back.
+      cell.releaseBitmaps()
+      #expect(view.isReleased)
+      cell.show(answer, version: 0, width: Self.width)
+      guard case .raster(let shown)? = cell.runs.first else {
+        Issue.record("the run shows live once shown again")
+        return
+      }
+      #expect(shown === view)
+      #expect(shown.raster === drawn)
     }
 
     @Test("With runs drawn ahead, a short prompt is drawn at once instead of shown live")
@@ -157,7 +167,7 @@
       let expected: [String: TranscriptTableCellKind] = [
         "u1": .text(.userMessage), "a1": .text(.answer),
         "a-diagram": .text(.answer), "a-live": .hosted(.answer),
-        TranscriptTableRow.footerID: .hosted(.footer),
+        TranscriptTableRow.footerID: .native(.footer),
       ]
       for (id, kind) in expected {
         let index = try #require(controller.model.index(of: id))
@@ -228,14 +238,18 @@
       }
     }
 
-    @Test("Prioritized answers go to the front of the queue in order, once each")
+    @Test("Answers asked for ahead go nearest the reader first, those behind a moving one last")
     func prioritizeOrder() {
       let prewarm = MessageTextPrewarm(limit: 3)
-      prewarm.prioritize(["a", "b"])
-      prewarm.prioritize(["c", "b"])
-      #expect(prewarm.pendingTexts == ["c", "b", "a"])
-      prewarm.prioritize(["d"])
-      #expect(prewarm.pendingTexts == ["d", "c", "b"])
+      prewarm.focus(at: 100, direction: 1)
+      prewarm.prioritize(["a", "b", "c"], at: [400, 150, 60])
+      // Ahead of the reader: b 50 points, a 300; c is 40 behind, which counts as 120.
+      #expect(prewarm.pendingTexts == ["b", "c", "a"])
+      prewarm.focus(at: 500, direction: -1)
+      #expect(prewarm.pendingTexts == ["a", "b", "c"], "scrolling up from 500")
+      // Past the limit the oldest ask goes.
+      prewarm.prioritize(["d"], at: [450])
+      #expect(prewarm.pendingTexts == ["d", "b", "c"])
     }
 
     @Test("A parked cell goes back to its row only as the same kind of cell")

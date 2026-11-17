@@ -25,21 +25,50 @@
     }
   }
 
-  /// The hosting view for one such block, sized by its ideal height at the cell's width. It
-  /// reports a change of that height (a diagram drawn, an image loaded) once it has first shown.
-  final class TranscriptTableBlockView: NSHostingView<TranscriptTableBlockRoot> {
+  /// A piece of an AppKit cell that only SwiftUI draws, hosted on its own and sized by its ideal
+  /// height at the cell's width. It reports a change of that height (a diagram drawn, an image
+  /// loaded, a tool group opened) once it has first shown.
+  class TranscriptTablePieceView<Root: View>: NSHostingView<Root> {
+    /// Told when the piece's height may have changed.
+    var sizeChanged: (() -> Void)?
+    /// Until its content first shows, nothing it reports is a change.
+    private var isSettling = true
+
+    /// A piece for a cell: no window bridging, no safe area, sized by its content.
+    func configure() {
+      sizingOptions = [.intrinsicContentSize]
+      safeAreaRegions = []
+      sceneBridgingOptions = []
+    }
+
+    /// Shows `root`; the report its first layout makes is not a change.
+    func present(_ root: Root) {
+      rootView = root
+      isSettling = true
+      MainRunLoop.performAfterDisplay { [weak self] in
+        MainActor.assumeIsolated { self?.isSettling = false }
+      }
+    }
+
+    /// The piece's height at its width, laid out now if it has to be.
+    var idealHeight: CGFloat { intrinsicContentSize.height.rounded(.up) }
+
+    /// Reports the change; the cell, not Auto Layout, sizes the piece.
+    override func invalidateIntrinsicContentSize() {
+      guard !isSettling else { return }
+      sizeChanged?()
+    }
+  }
+
+  /// The hosting view for one such block.
+  final class TranscriptTableBlockView: TranscriptTablePieceView<TranscriptTableBlockRoot> {
     /// The piece of the message it shows.
     private(set) var piece = -1
-    /// Told when the block's height may have changed.
-    var sizeChanged: (() -> Void)?
-    private var isSettling = false
 
     static func make(environment: TranscriptTableEnvironment) -> TranscriptTableBlockView {
       let view = TranscriptTableBlockView(
         rootView: TranscriptTableBlockRoot(block: nil, width: 0, environment: environment))
-      view.sizingOptions = [.intrinsicContentSize]
-      view.safeAreaRegions = []
-      view.sceneBridgingOptions = []
+      view.configure()
       return view
     }
 
@@ -49,21 +78,8 @@
         return
       }
       self.piece = piece
-      rootView = TranscriptTableBlockRoot(
-        block: block, width: width, environment: rootView.environment)
-      isSettling = true
-      MainRunLoop.performAfterDisplay { [weak self] in
-        MainActor.assumeIsolated { self?.isSettling = false }
-      }
-    }
-
-    /// The block's height at its width, laid out now if it has to be.
-    var idealHeight: CGFloat { intrinsicContentSize.height.rounded(.up) }
-
-    /// Reports the change; the cell, not Auto Layout, sizes the block.
-    override func invalidateIntrinsicContentSize() {
-      guard !isSettling else { return }
-      sizeChanged?()
+      present(
+        TranscriptTableBlockRoot(block: block, width: width, environment: rootView.environment))
     }
   }
 #endif

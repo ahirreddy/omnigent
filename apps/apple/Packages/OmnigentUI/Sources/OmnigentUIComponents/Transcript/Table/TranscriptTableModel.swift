@@ -249,6 +249,11 @@ nonisolated struct TranscriptRowHeights: Sendable {
     measured[row.id] = Measured(version: version, width: width, height: height)
   }
 
+  /// Keeps `ids`' heights only as best guesses: they are measured again.
+  mutating func markStale(_ ids: Set<String>) {
+    for id in ids { measured[id]?.version = -1 }
+  }
+
   /// Drops the heights of rows that are gone.
   mutating func keep(only ids: Set<String>) {
     measured = measured.filter { ids.contains($0.key) }
@@ -351,6 +356,11 @@ nonisolated struct TranscriptTableModel: Sendable {
     let height = height(at: index)
     provided[rows[index].id] = height
     return height
+  }
+
+  /// Has the rows `ids` measured again, their heights kept until then.
+  mutating func markStale(_ ids: Set<String>) {
+    heights.markStale(ids)
   }
 
   /// Whether row `index` needs measuring: never measured, or for other content or width.

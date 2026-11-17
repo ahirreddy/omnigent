@@ -136,6 +136,12 @@
       var unvisited = scrollView.documentView.map { [$0] } ?? []
       while let view = unvisited.popLast() {
         unvisited.append(contentsOf: view.subviews)
+        if let text = view as? MessageTextKitView {
+          lines += paragraphs(of: text, in: scrollView.documentView).filter {
+            $0.frame.intersects(viewport)
+          }
+          continue
+        }
         guard let field = view as? NSTextField else { continue }
         let frame = field.convert(field.bounds, to: scrollView.documentView)
         if frame.intersects(viewport) {
@@ -146,6 +152,35 @@
       return CommittedFrame(
         viewport: viewport, bottomInset: scrollView.contentInsets.bottom, lines: lines,
         clips: scrollView.contentView.clipsToBounds)
+    }
+  }
+
+  extension CommittedFrames {
+    /// A TextKit message's paragraphs as SwiftUI's renderer draws them, one text each: its
+    /// plain text and the bounds of its lines, in `container`'s coordinates.
+    static func paragraphs(of text: MessageTextKitView, in container: NSView?)
+      -> [CommittedFrame.Line]
+    {
+      guard let layout = text.textLayoutManager, let content = layout.textContentManager else {
+        return []
+      }
+      var lines: [CommittedFrame.Line] = []
+      _ = layout.enumerateTextLayoutFragments(from: layout.documentRange.location) { fragment in
+        guard let range = fragment.textElement?.elementRange else { return true }
+        let start = content.offset(from: content.documentRange.location, to: range.location)
+        let length = content.offset(from: range.location, to: range.endLocation)
+        let string = text.copiedText(in: NSRange(location: start, length: length))
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+        let bounds = fragment.textLineFragments.map(\.typographicBounds).reduce(CGRect?.none) {
+          $0?.union($1) ?? $1
+        }
+        guard !string.isEmpty, let bounds else { return true }
+        let frame = bounds.offsetBy(
+          dx: fragment.layoutFragmentFrame.minX, dy: fragment.layoutFragmentFrame.minY)
+        lines.append(CommittedFrame.Line(text: string, frame: text.convert(frame, to: container)))
+        return true
+      }
+      return lines
     }
   }
 

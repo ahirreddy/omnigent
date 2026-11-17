@@ -198,6 +198,17 @@
 
     func makeNSView(context: Context) -> NSScrollView { controller.scrollView }
 
+    /// It fills a size it is offered, with no layout of the scroll view's own; anything else
+    /// asks the scroll view as before.
+    func sizeThatFits(
+      _ proposal: ProposedViewSize, nsView: NSScrollView, context: Context
+    ) -> CGSize? {
+      guard let width = proposal.width, let height = proposal.height, width.isFinite,
+        height.isFinite
+      else { return nil }
+      return CGSize(width: width, height: height)
+    }
+
     func updateNSView(_ view: NSScrollView, context: Context) {
       controller.update(
         rows: rows, state: state, actions: actions, isCLI: isCLI,

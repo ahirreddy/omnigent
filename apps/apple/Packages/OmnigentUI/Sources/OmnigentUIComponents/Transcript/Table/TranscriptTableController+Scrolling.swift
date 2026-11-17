@@ -15,7 +15,12 @@
       let height = clipView.bounds.height
       let upward = proposed.y < clipView.bounds.minY
       var origin = proposed
-      // Answers past what this frame measures lay out off the main thread meanwhile.
+      // Answers past what this frame measures lay out off the main thread meanwhile, those
+      // the reader reaches first first.
+      for prewarm in [MessageTextPrewarm.shared, .prompts] {
+        prewarm.focus(
+          at: Double(upward ? proposed.y : proposed.y + height), direction: upward ? -1 : 1)
+      }
       let farReach = height * Self.prewarmReach
       prewarmAnswers(
         in: upward
@@ -43,7 +48,7 @@
         let deadline = CACurrentMediaTime() + Self.lookaheadBudget
         for index in next {
           guard CACurrentMediaTime() < deadline else { break }
-          if measureKeeping(index) { noted.insert(index) }
+          if measureAhead(index) { noted.insert(index) }
         }
         guard !noted.isEmpty else { break }
         noteHeightsInPlace(noted)
@@ -263,6 +268,27 @@
       noteHeightsInPlace(IndexSet(integersIn: 0..<model.rows.count))
       schedulePrefetch()
       if frameIfReady() { return }
+      if follow.layoutGrew() { pinBottom() } else { restore(anchor) }
+    }
+
+    /// The window started or ended a live resize. Meanwhile text lays out at snapped widths, so
+    /// a drag lays each message out every few points, not at each; once it ends, the rows
+    /// measured meanwhile are measured again at the exact width, those on screen now.
+    func liveResizeChanged(_ isResizing: Bool) {
+      guard textStyle.setLiveResizing(isResizing), !isResizing else { return }
+      let anchor = readingAnchor()
+      model.markStale(measuredWhileResizing)
+      measuredWhileResizing = []
+      var noted = IndexSet()
+      tableView.enumerateAvailableRowViews { _, row in
+        if let cell = realizedCell(at: row), model.needsMeasure(at: row),
+          measure(row, with: cell)
+        {
+          noted.insert(row)
+        }
+      }
+      noteHeightsInPlace(noted)
+      schedulePrefetch()
       if follow.layoutGrew() { pinBottom() } else { restore(anchor) }
     }
 

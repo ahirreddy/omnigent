@@ -20,6 +20,8 @@
     /// The text the view draws now, one string per text view, read from SwiftUI's view tree. Text
     /// that is laid out counts even when it is transparent or scrolled out of the window. That
     /// includes the rows a `List` has made and a sheet over the window, not rows it hasn't made.
+    /// A read-only TextKit view counts too, one string per paragraph and tab-separated piece, as
+    /// SwiftUI would draw its paragraphs, list markers and table cells.
     /// - Returns: The strings; they are not in layout order.
     /// - Throws: `OffscreenWindowError` when SwiftUI doesn't report its tree.
     public func shownText() throws -> [String] {
@@ -51,6 +53,9 @@
       while let view = pending.popLast() {
         if let hosting = view as? any ViewTreeHosting {
           for node in hosting.viewTree { try ShownTextReader.collect(node, into: &found) }
+        }
+        if let text = TextKitTextReader.text(of: view) {
+          found += TextKitTextReader.pieces(of: text)
         }
         pending.append(contentsOf: view.subviews)
       }
@@ -93,6 +98,32 @@
         if let found = attributedString(in: child.value, depth: depth + 1) { return found }
       }
       return nil
+    }
+  }
+
+  /// Reads the text a read-only TextKit view draws: an `NSTextView` that is neither editable nor a
+  /// field editor (SwiftUI's tree already holds a clicked `Text`'s), or another view that draws
+  /// a TextKit 2 layout.
+  enum TextKitTextReader {
+    static func text(of view: NSView) -> String? {
+      if let textView = view as? NSTextView {
+        guard !textView.isEditable, !textView.isFieldEditor else { return nil }
+        return textView.string
+      }
+      let selector = NSSelectorFromString("textLayoutManager")
+      guard view.responds(to: selector),
+        let layout = view.value(forKey: "textLayoutManager") as? NSTextLayoutManager,
+        let storage = layout.textContentManager as? NSTextContentStorage
+      else { return nil }
+      return storage.attributedString?.string
+    }
+
+    /// `text` split at line breaks and tabs, without attachment characters, blank pieces or the
+    /// spaces around them.
+    static func pieces(of text: String) -> [String] {
+      text.split { $0.isNewline || $0 == "\t" }
+        .map { $0.replacing("\u{FFFC}", with: "").trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty }
     }
   }
 #endif

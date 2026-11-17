@@ -6,12 +6,16 @@
   /// again draws without typesetting. A table cell or a SwiftUI row hosts it through
   /// ``fittingSize(for:fillsWidth:)``.
   final class MessageTextContentView: NSView, NSTextViewDelegate {
-    let document: MessageTextDocument
+    private(set) var document: MessageTextDocument
+    /// The answer is still streaming: its text changes in place, and its view isn't kept for a
+    /// row shown again.
+    private(set) var isStreaming: Bool
     let textView: MessageTextKitView
     /// The stack laid out off the main actor that the text view shows, kept alive with it.
     private let prepared: MessageTextPreparedLayout?
     private let layers = MessageTextLayersView()
-    private var chromeViews: [Int: NSView] = [:]
+    /// Each block's control, by block.
+    private(set) var chromeViews: [Int: NSView] = [:]
     private var measurements: [CGFloat: Measurement] = [:]
     /// The width the text is laid out at.
     private(set) var laidOutWidth: CGFloat?
@@ -22,6 +26,17 @@
     private var foundLinkRects: [MessageTextLinkRect] = []
     private var linkRectsAreFound = false
     var openURL: (@MainActor (URL) -> Void)?
+    /// Each code block's and table's paragraphs.
+    lazy var spans = MessageTextBlockSpan.spans(in: document.text)
+    /// Code blocks whose long lines scroll sideways instead of wrapping.
+    private var unwrapped: Set<Int> = []
+    /// Blocks whose text is hidden here, drawn by a copy that scrolls sideways.
+    var hiddenBlocks: Set<Int> = []
+    /// The copies drawing blocks that scroll sideways, by block.
+    var overflows: [Int: MessageTextOverflowView] = [:]
+    /// The elements accessibility reads, once built (``accessibilityChildren()``).
+    var accessibilityItems: [Any] = []
+    var accessibilityItemsAreBuilt = false
 
     /// A size at one width: how tall the text is and how wide its widest line.
     struct Measurement: Equatable {
@@ -33,8 +48,9 @@
     static let minimumWidth: CGFloat = 40
     /// The width an unconstrained proposal lays out at.
     static let unconstrainedWidth: CGFloat = 10_000
-    init(document: MessageTextDocument) {
+    init(document: MessageTextDocument, isStreaming: Bool = false) {
       self.document = document
+      self.isStreaming = isStreaming
       // Text laid out off the main actor comes with its layout; anything else lays out here.
       prepared = document.takePreparedLayout()
       if let prepared {
@@ -47,6 +63,8 @@
       configureTextView()
       addSubview(layers)
       addSubview(textView)
+      // Accessibility reads the text as SwiftUI's renderer exposes it, not as one text area.
+      textView.setAccessibilityElement(false)
     }
 
     @available(*, unavailable)
@@ -57,25 +75,7 @@
     override var isFlipped: Bool { true }
 
     private func configureTextView() {
-      textView.isEditable = false
-      textView.isSelectable = true
-      textView.isRichText = true
-      textView.importsGraphics = false
-      textView.drawsBackground = false
-      textView.textContainerInset = .zero
-      textView.isVerticallyResizable = false
-      textView.isHorizontallyResizable = false
-      // Find stays the window's: one message's own find bar or panel would search only it.
-      textView.usesFindBar = false
-      textView.usesFindPanel = false
-      textView.isIncrementalSearchingEnabled = false
-      textView.displaysLinkToolTips = false
-      textView.isAutomaticLinkDetectionEnabled = false
-      textView.linkTextAttributes = [
-        .foregroundColor: document.palette.link,
-        .underlineStyle: NSUnderlineStyle.single.rawValue,
-        .cursor: NSCursor.pointingHand,
-      ]
+      textView.configureForMessage(palette: document.palette)
       textView.delegate = self
       textView.linkAt = { [weak self] point in self?.link(at: point) }
       guard prepared == nil else { return }
@@ -145,6 +145,11 @@
         return Measurement(height: 0, usedWidth: 0)
       }
       layoutPasses += 1
+      let overflowing = Set(
+        spans.compactMap { block, span in
+          span.overflows(width: width, wraps: !unwrapped.contains(block)) ? block : nil
+        })
+      hideText(of: overflowing)
       // The same size again would throw away a layout made off the main actor.
       let size = CGSize(width: width, height: MessageTextPreparedLayout.unlimitedHeight)
       if container.size != size { container.size = size }
@@ -165,6 +170,7 @@
       let shapes = collector.shapes
       layers.show(shapes, palette: document.palette)
       placeChrome(collector.chromeFrames)
+      placeOverflows(overflowing, collector: collector, width: width)
       linkRectsAreFound = false
       laidOutWidth = width
       let measured = Measurement(
@@ -182,49 +188,65 @@
         if let made = chromeViews[block] {
           view = made
         } else {
-          view = makeChrome(chrome)
+          view = makeChrome(chrome, block: block)
           chromeViews[block] = view
           addSubview(view)
+          // The elements read a block's controls with its text.
+          accessibilityItemsAreBuilt = false
         }
         view.frame = frame.offsetBy(dx: 0, dy: document.topInset)
       }
     }
 
-    private func makeChrome(_ chrome: MessageTextChrome) -> NSView {
+    private func makeChrome(_ chrome: MessageTextChrome, block: Int) -> NSView {
       switch chrome {
       case .code(let code, let language):
-        MessageCodeHeaderView(
-          label: CodeLanguageName.label(for: language), code: code, palette: document.palette)
+        let header = MessageCodeHeaderView(
+          language: language, code: code, palette: document.palette)
+        header.wrapsLines = !unwrapped.contains(block)
+        header.wrapChanged = { [weak self] wraps in self?.setWraps(wraps, block: block) }
+        return header
       case .table(let table):
-        MessageTableControlsView(table: table, palette: document.palette)
+        return MessageTableControlsView(table: table, palette: document.palette)
       }
+    }
+
+    // MARK: Blocks that scroll sideways
+
+    /// Wraps a code block's long lines, or has them scroll sideways; the text's height changes.
+    func setWraps(_ wraps: Bool, block: Int) {
+      guard wraps == unwrapped.contains(block) else { return }
+      if wraps { unwrapped.remove(block) } else { unwrapped.insert(block) }
+      forgetLayout()
+    }
+
+    /// Forgets every width's layout, after the text or its wrapping changed; whoever hosts the
+    /// view asks its size again.
+    private func forgetLayout() {
+      measurements.removeAll()
+      laidOutWidth = nil
+      linkRectsAreFound = false
+      accessibilityItemsAreBuilt = false
+      needsLayout = true
+      invalidateIntrinsicContentSize()
+      // AppKit declares `superview` unowned(unsafe); it is only messaged here.
+      unsafe superview?.invalidateIntrinsicContentSize()
     }
 
     // MARK: Links
 
     /// Each link's rectangle on each line, found once per layout when the pointer first asks.
+    /// A link in a block drawn by a copy that scrolls is the copy's.
     var linkRects: [MessageTextLinkRect] {
       if linkRectsAreFound { return foundLinkRects }
-      var rects: [MessageTextLinkRect] = []
-      guard let layout = textView.textLayoutManager, let content = layout.textContentManager
-      else {
-        return rects
+      guard let layout = textView.textLayoutManager else { return [] }
+      let hiddenRanges = hiddenBlocks.compactMap { spans[$0]?.range }
+      let shown = document.links.filter { link in
+        !hiddenRanges.contains { NSIntersectionRange($0, link.range).length > 0 }
       }
-      for link in document.links {
-        guard
-          let start = content.location(
-            content.documentRange.location, offsetBy: link.range.location),
-          let end = content.location(start, offsetBy: link.range.length),
-          let range = NSTextRange(location: start, end: end)
-        else { continue }
-        layout.enumerateTextSegments(in: range, type: .standard) { _, frame, _, _ in
-          rects.append(MessageTextLinkRect(rect: frame, url: link.url))
-          return true
-        }
-      }
-      foundLinkRects = rects
+      foundLinkRects = MessageTextLinkRect.rects(in: layout, links: shown)
       linkRectsAreFound = true
-      return rects
+      return foundLinkRects
     }
 
     /// The link at `point`, in the text view's coordinates.
@@ -239,11 +261,84 @@
       openURL(url)
       return true
     }
+
+  }
+
+  extension MessageTextContentView {
+    /// Shows `next`, the same answer further on, without making a new view: while it streams,
+    /// only the text from the last block on changes, as the parser leaves closed blocks alone;
+    /// once it settles, its links and math may change anywhere, so all of it is set again.
+    func show(_ next: MessageTextDocument, isStreaming streaming: Bool) {
+      guard next !== document, let storage = textView.textContentStorage?.textStorage else {
+        return
+      }
+      // A run that didn't change keeps its layout.
+      if streaming, next.endsOpen == document.endsOpen, next.text.string == document.text.string {
+        document = next
+        return
+      }
+      let start =
+        streaming ? Self.unchangedPrefix(of: document, and: next, upTo: storage.length) : 0
+      let changed = Set(
+        spans.compactMap { block, span in NSMaxRange(span.range) > start ? block : nil })
+      for block in changed {
+        chromeViews.removeValue(forKey: block)?.removeFromSuperview()
+        overflows.removeValue(forKey: block)?.removeFromSuperview()
+      }
+      hiddenBlocks.subtract(changed)
+      unwrapped.subtract(changed)
+      let tail = NSRange(location: start, length: next.text.length - start)
+      storage.beginEditing()
+      storage.replaceCharacters(
+        in: NSRange(location: start, length: storage.length - start),
+        with: next.text.attributedSubstring(from: tail))
+      storage.endEditing()
+      document = next
+      isStreaming = streaming
+      spans = MessageTextBlockSpan.spans(in: next.text)
+      forgetLayout()
+    }
+
+    /// How much of `old`'s text `next` keeps: up to the old last block, or to the start of the
+    /// paragraph where the two first differ, should a parse have changed an earlier block.
+    static func unchangedPrefix(
+      of old: MessageTextDocument, and next: MessageTextDocument, upTo length: Int
+    ) -> Int {
+      let before = Array(old.text.string.utf16)
+      let after = Array(next.text.string.utf16)
+      let limit = min(old.tailStart, length, before.count, after.count)
+      guard let differs = (0..<limit).first(where: { before[$0] != after[$0] }) else {
+        return limit
+      }
+      // A line break ends a paragraph.
+      return (before[..<differs].lastIndex(of: 0x0A) ?? -1) + 1
+    }
   }
 
   /// A link's rectangle on one line.
   struct MessageTextLinkRect: Equatable {
     var rect: CGRect
     var url: URL
+
+    /// Each of `links`' rectangles on each line, as `layout` laid them out.
+    static func rects(in layout: NSTextLayoutManager, links: [(range: NSRange, url: URL)])
+      -> [Self]
+    {
+      guard let content = layout.textContentManager else { return [] }
+      var rects: [Self] = []
+      for link in links {
+        guard
+          let start = content.location(
+            content.documentRange.location, offsetBy: link.range.location),
+          let end = content.location(start, offsetBy: link.range.length),
+          let range = NSTextRange(location: start, end: end)
+        else { continue }
+        layout.enumerateTextSegments(in: range, type: .standard) { _, frame, _, _ in
+          rects.append(Self(rect: frame, url: link.url))
+          return true
+        }
+      }
+      return rects
+    }
   }
 #endif

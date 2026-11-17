@@ -310,6 +310,13 @@ nonisolated struct BoundedCache<Key: Hashable, Value> {
     return value
   }
 
+  /// Forgets the entries `isRemoved` picks.
+  mutating func removeAll(where isRemoved: (Key, Value) -> Bool) {
+    entries = entries.filter { !isRemoved($0.key, $0.value) }
+    order = order[head...].filter { entries[$0] != nil }
+    head = 0
+  }
+
   /// Keeps `value` for `key`, unless `key` has one already.
   mutating func store(_ value: Value, for key: Key) {
     guard entries[key] == nil else { return }

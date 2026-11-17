@@ -36,6 +36,13 @@
     private var laidOut: (metrics: TranscriptTableTextMetrics, textWidth: CGFloat)?
     var isHovered = false
     var hoverArea: NSTrackingArea?
+    /// The row shown, to show again once its inline math is typeset.
+    private var shownRow: TranscriptTableRow?
+    /// Showing or laying out now, or waiting to lay out again on the next pass.
+    private var isLayingOut = false
+    private var awaitsLayout = false
+    /// Typesets the inline math the shown message doesn't have yet.
+    private var typesetting: Task<Void, Never>?
 
     init(style: TranscriptTableTextStyle) {
       self.style = style
@@ -56,8 +63,12 @@
     // MARK: Showing
 
     func show(_ row: TranscriptTableRow, version: Int, width: CGFloat) {
+      isLayingOut = true
+      defer { isLayingOut = false }
       let next = TranscriptTableShown(id: row.id, version: version, width: width)
       guard next != shown || styleSerial != style.serial || awaitsRasters else { return }
+      // Shown again as it was: its drawings come back from the cache, if all are there.
+      if next == shown, styleSerial == style.serial, takeBitmapsBack() { return }
       // The same content in a new style may take another height, which the table then asks.
       let isRestyle = next == shown
       guard let message = TranscriptTableTextMessage.make(row, ramp: style.ramp),
@@ -67,17 +78,21 @@
         return
       }
       shown = next
+      shownRow = row
       kind = .text(row.kind)
       styleSerial = style.serial
       self.message = message
       var documents: [Int: MessageTextDocument] = [:]
+      var untypeset: [String] = []
       for run in message.runs {
+        let math = Self.typesetMath(run.inlineMath, ramp: textStyle.ramp)
+        untypeset += run.inlineMath.filter { math[$0] == nil }
         documents[run.id] = MessageTextBlocksView.document(
           source: MessageTextSource(text: message.markdown, piece: run.id), blocks: run.blocks,
-          linked: [], style: textStyle, links: nil)
+          linked: [], math: math, style: textStyle, links: nil)
       }
-      let metrics = TranscriptTableTextMetrics(
-        width: width, layoutWidth: style.layoutWidth, maxWidth: style.maxWidth)
+      typeset(untypeset, ramp: textStyle.ramp, for: next)
+      let metrics = style.metrics(width: width)
       let textWidth =
         message.role == .answer ? metrics.columnWidth : metrics.promptWidth(style.layoutWidth)
       laidOut = (metrics, textWidth)
@@ -119,7 +134,10 @@
           adopted.append(.block(view))
           continue
         }
-        let raster = style.raster(for: document, width: width)
+        // A run whose long lines the reader set scrolling sideways shows live.
+        let raster =
+          style.liveDocuments.contains(document.serial)
+          ? nil : style.raster(for: document, width: width)
         if let run = kept.removeValue(forKey: document.serial) {
           if run.keeps(raster, width: width, style: style) {
             adopted.append(run)
@@ -135,8 +153,10 @@
     }
 
     /// A hosted block took another height: the cell lays out again and tells the table.
-    private func blockSizeChanged() {
-      guard let message, let laidOut else { return }
+    func blockSizeChanged() {
+      guard let message, let laidOut, !isLayingOut else { return }
+      isLayingOut = true
+      defer { isLayingOut = false }
       let previous = height
       height = layOutContent(
         metrics: laidOut.metrics, textWidth: laidOut.textWidth, message: message)
@@ -144,8 +164,25 @@
       if abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
     }
 
+    /// A live text view's height changed by itself (a code block's Wrap turned): the cell lays
+    /// out again on the next pass and tells the table. AppKit's own calls while the cell shows
+    /// or lays out change nothing it isn't laying out already.
+    override func invalidateIntrinsicContentSize() {
+      guard !isLayingOut, !awaitsLayout, message != nil else { return }
+      awaitsLayout = true
+      MainRunLoop.perform { [weak self] in
+        MainActor.assumeIsolated {
+          self?.awaitsLayout = false
+          self?.blockSizeChanged()
+        }
+      }
+    }
+
     /// Hands the text views back for the next cell that shows their documents.
     func releaseContent() {
+      typesetting?.cancel()
+      typesetting = nil
+      shownRow = nil
       for run in runs { run.release() }
       runs = []
       shown = nil
@@ -155,11 +192,15 @@
     var idealHeight: CGFloat { height }
 
     /// Whether a run shows live while runs draw ahead: its drawing may have arrived since.
+    /// A drawn run that let its bitmap go off screen takes it back too.
     private var awaitsRasters: Bool {
       style.drawsAhead
         && runs.contains {
-          if case .live = $0 { return true }
-          return false
+          switch $0 {
+          case .live: true
+          case .raster(let view): view.isReleased
+          case .block: false
+          }
         }
     }
 
@@ -182,7 +223,6 @@
     private func layOutAnswer(
       metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
     ) -> CGFloat {
-      let gaps = message.split.pieces.map(\.gapAbove)
       bubbleView.isHidden = true
       if let palette = style.palette, textWidth >= MessageTextContentView.minimumWidth {
         // The answers after this one lay out (and draw) ahead at this width.
@@ -190,72 +230,63 @@
           palette: palette, width: textWidth, scale: style.drawsAhead ? style.scale : 0,
           raster: style.drawsAhead ? style.rasterStyle : nil)
       }
-      var bottom: CGFloat = 0
-      for (index, run) in runs.enumerated() {
-        bottom += gaps.indices.contains(index) ? gaps[index] : 0
-        let size = run.size(for: textWidth, fillsWidth: true)
-        run.view.frame = CGRect(
-          x: metrics.columnX, y: bottom, width: size.width, height: size.height)
-        bottom += size.height
-      }
-      // The footer follows the stack's spacing; without "Worked for" it takes no height and
-      // the actions hang into the gap below the text.
-      bottom += Theme.Spacing.small
-      if let workedFor = message.decoration.workedFor {
+      let frames = TranscriptTableTextFrames(
+        role: .answer, gaps: message.split.pieces.map(\.gapAbove),
+        sizes: runs.map { $0.size(for: textWidth, fillsWidth: true) }, metrics: metrics,
+        workedHeight: message.decoration.workedFor.map { _ in Self.workedLabelHeight })
+      place(frames)
+      if let workedFor = message.decoration.workedFor, let frame = frames.worked {
         let label = workedLabel ?? makeWorkedLabel()
         label.stringValue = TurnElapsed.worked(workedFor)
         label.toolTip = message.decoration.timestamp.map {
           "Finished \(MessageTimestamp.format($0, now: Date()))"
         }
-        let labelHeight = label.intrinsicContentSize.height.rounded(.up)
-        label.frame = CGRect(
-          x: metrics.columnX, y: bottom, width: metrics.columnWidth / 2, height: labelHeight)
+        label.frame = frame
         label.isHidden = false
-        actionsTop = bottom
-        actionsLineHeight = labelHeight
-        bottom += labelHeight
       } else {
         workedLabel?.isHidden = true
-        actionsTop = bottom - Theme.Spacing.small
-        actionsLineHeight = 0
       }
-      actionsTrailing = metrics.columnX + metrics.columnWidth
-      return (bottom + Theme.Spacing.row).rounded(.up)
+      return frames.height
     }
 
     /// A user's prompt: its runs in a bubble that hugs them, at the column's trailing edge.
     private func layOutPrompt(
       metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
     ) -> CGFloat {
-      let gaps = message.split.pieces.map(\.gapAbove)
       workedLabel?.isHidden = true
-      var bottom: CGFloat = 0
-      var used: CGFloat = 0
-      var sizes: [CGSize] = []
-      for run in runs {
-        let size = run.size(for: textWidth, fillsWidth: false)
-        sizes.append(size)
-        used = max(used, size.width)
+      if let palette = style.palette, textWidth >= MessageTextContentView.minimumWidth {
+        // The prompts after this one draw ahead at this width.
+        MessageTextPrewarm.prompts.note(
+          palette: palette, width: textWidth, scale: style.drawsAhead ? style.scale : 0,
+          raster: style.drawsAhead ? style.rasterStyle : nil)
       }
-      let bubbleWidth = used + 2 * Theme.Spacing.large
-      let bubbleX = metrics.columnX + metrics.columnWidth - bubbleWidth
-      bottom = Theme.Spacing.bubbleVertical
-      for (index, run) in runs.enumerated() {
-        bottom += gaps.indices.contains(index) ? gaps[index] : 0
-        run.view.frame = CGRect(
-          x: bubbleX + Theme.Spacing.large, y: bottom, width: sizes[index].width,
-          height: sizes[index].height)
-        bottom += sizes[index].height
+      let frames = TranscriptTableTextFrames(
+        role: .user, gaps: message.split.pieces.map(\.gapAbove),
+        sizes: runs.map { $0.size(for: textWidth, fillsWidth: false) }, metrics: metrics,
+        workedHeight: nil)
+      place(frames)
+      if let bubble = frames.bubble {
+        bubbleView.frame = bubble
+        bubbleView.color = style.bubble
+        bubbleView.isHidden = false
       }
-      let bubbleHeight = bottom + Theme.Spacing.bubbleVertical
-      bubbleView.frame = CGRect(x: bubbleX, y: 0, width: bubbleWidth, height: bubbleHeight)
-      bubbleView.color = style.bubble
-      bubbleView.isHidden = false
-      actionsTop = bubbleHeight
-      actionsLineHeight = 0
-      actionsTrailing = metrics.columnX + metrics.columnWidth
-      return (bubbleHeight + Theme.Spacing.extraSmall + Theme.Spacing.row).rounded(.up)
+      return frames.height
     }
+
+    /// Puts the runs where `frames` says, and the actions' row.
+    private func place(_ frames: TranscriptTableTextFrames) {
+      for (run, frame) in zip(runs, frames.pieces) { run.view.frame = frame }
+      actionsTop = frames.actionsTop
+      actionsLineHeight = frames.actionsLineHeight
+      actionsTrailing = frames.actionsTrailing
+    }
+
+    /// The "Worked for" line's height: its caption's.
+    static let workedLabelHeight: CGFloat = {
+      let label = NSTextField(labelWithString: "Worked for 1s")
+      label.font = .preferredFont(forTextStyle: .caption1)
+      return label.intrinsicContentSize.height.rounded(.up)
+    }()
 
     private func makeWorkedLabel() -> NSTextField {
       let label = NSTextField(labelWithString: "")
@@ -269,46 +300,84 @@
   }
 
   extension TranscriptTableTextCell {
-    /// Runs this short draw now when none was drawn ahead: a prompt or a short answer costs
-    /// less drawn once than as a live view.
-    static let drawsNowBelow = 1_200
-
-    /// A new run for `document`: its raster (drawn now when the run is short), else a live view,
-    /// drawn ahead for next time.
-    private func makeRun(
-      _ document: MessageTextDocument, raster: MessageTextRaster?, width: CGFloat
-    ) -> TranscriptTableTextRun {
-      var raster = raster
-      if raster == nil, style.drawsAhead, let rasterStyle = style.rasterStyle,
-        document.text.length < Self.drawsNowBelow
-      {
-        let drawn = MessageTextRaster.make(
-          document.run, width: width, scale: style.scale, style: rasterStyle)
-        MessageTextRasters.shared.store(
-          drawn,
-          for: MessageTextRasterKey(document: document.serial, width: width, scale: style.scale))
-        raster = drawn
-      }
-      if let raster {
-        let view = MessageTextRasterView(document: document, raster: raster)
-        addSubview(view)
-        return .raster(view)
-      }
-      if style.drawsAhead, let rasterStyle = style.rasterStyle {
-        MessageTextPrewarm.shared.draw(
-          document, width: width, scale: style.scale, style: rasterStyle)
-      }
-      let view = MessageTextViews.shared.checkOut(document)
-      addSubview(view)
-      return .live(view)
+    /// Lets the drawn runs' bitmaps go once the cell leaves the table: the rasters' cache keeps
+    /// them under its memory budget, and showing the cell again takes them back from it.
+    func releaseBitmaps() {
+      for case .raster(let view) in runs { view.releaseBitmap() }
     }
 
-    private func makeBlockView() -> TranscriptTableBlockView {
-      let view = TranscriptTableBlockView.make(environment: style.environment)
-      view.sizeChanged = { [weak self] in self?.blockSizeChanged() }
+    /// Takes the drawn runs' bitmaps back from the rasters' cache.
+    /// - Returns: Whether every run shows its drawing again, with none left live.
+    fileprivate func takeBitmapsBack() -> Bool {
+      var shown = true
+      for run in runs {
+        switch run {
+        case .raster(let view) where view.isReleased:
+          if let raster = MessageTextRasters.shared.raster(for: view.key) {
+            view.show(raster)
+          } else {
+            shown = false
+          }
+        case .live:
+          shown = false
+        case .raster, .block:
+          break
+        }
+      }
+      return shown
+    }
+
+    /// Typesets `math` the shown message doesn't have yet, then shows it again with it; math
+    /// KaTeX rejects keeps its Unicode form, as in ``MarkdownParagraphText``.
+    fileprivate func typeset(_ math: [String], ramp: TypeRamp, for shown: TranscriptTableShown) {
+      typesetting?.cancel()
+      typesetting = nil
+      guard !math.isEmpty else { return }
+      typesetting = Task { [weak self] in
+        var typeset = false
+        for tex in math {
+          let request = Self.mathRequest(tex, ramp: ramp)
+          do {
+            let image = try await RichBlockRenderer.shared.render(request)
+            MessageTextTypesetMath.shared.store(image, for: request)
+            typeset = true
+          } catch is CancellationError {
+            return
+          } catch {
+            continue
+          }
+        }
+        guard typeset, !Task.isCancelled, let self, self.shown == shown,
+          let row = self.shownRow
+        else { return }
+        let previous = self.height
+        self.shown = nil
+        self.show(row, version: shown.version, width: shown.width)
+        if abs(previous - self.height) >= 0.5 { self.idealSizeChanged?(self) }
+      }
+    }
+
+    /// The reader turned a drawn run's code block Wrap: long lines that scroll sideways need
+    /// the live text, which shows instead of the drawing from now on.
+    func showLive(_ document: MessageTextDocument, block: Int, wraps: Bool) {
+      style.liveDocuments.insert(document.serial)
+      guard let index = runs.firstIndex(where: { $0.document === document }),
+        case .raster(let drawn) = runs[index], let laidOut
+      else { return }
+      let openURL = drawn.openURL
+      runs[index].release()
+      let view = MessageTextViews.shared.checkOut(document)
+      view.openURL = openURL
       addSubview(view)
-      return view
+      runs[index] = .live(view)
+      if index == 0, message?.role == .answer, let id = message?.row.id {
+        view.setAccessibilityIdentifier("message-text-\(id)")
+      }
+      view.setWraps(wraps, block: block)
+      // The header pressed was the drawing's; the live text's own shows the same state.
+      _ = view.measurement(for: laidOut.textWidth)
+      (view.chromeViews[block] as? MessageCodeHeaderView)?.wrapsLines = wraps
+      blockSizeChanged()
     }
   }
-
 #endif

@@ -50,12 +50,20 @@
     var pool = TranscriptTableCellPool()
     /// One cell per kind measures rows away from the viewport, whose cells are not kept.
     var measuringCells: [TranscriptTableCellKind: any TranscriptTableCell] = [:]
+    /// Measures the blocks only SwiftUI draws in messages away from the viewport.
+    var measuringBlock: TranscriptTableBlockView?
     /// The style settled messages draw in as text cells.
     lazy var textStyle = TranscriptTableTextStyle(environment: environment)
     /// Each row's text-cell message by content version, `nil` for a row hosted in SwiftUI.
     var textMessages: [String: (version: Int, message: TranscriptTableTextMessage?)] = [:]
     /// Answers handed to the prewarm, by row id and version.
     var prewarmed: [String: Int] = [:]
+    /// Which rows beyond settled messages draw in AppKit cells.
+    let cellStyle = TranscriptTableCellStyle.launchValue
+    /// How SwiftUI rows are sized.
+    let hostingStyle = TranscriptTableHostingStyle.launchValue
+    /// The Worked folds the reader opened or closed.
+    let folds = TranscriptTableFolds()
     var awaitsEnvironment = false
 
     /// The follow rules (``TranscriptFollow``).
@@ -95,6 +103,9 @@
     var awaitsRemeasure = false
     var prefetchGeneration = 0
     var prefetchCursor: (above: Int, below: Int)?
+
+    /// Rows measured during a live resize, at a snapped text width.
+    var measuredWhileResizing: Set<String> = []
 
     /// Counts for tests and the performance log.
     var measurements = 0
@@ -229,7 +240,11 @@
         }
         tableView.endUpdates()
       }
-      if !change.removed.isEmpty { pool.keep(only: Set(model.ids)) }
+      if !change.removed.isEmpty {
+        let kept = Set(model.ids)
+        pool.keep(only: kept)
+        folds.keep(only: kept)
+      }
       // Rows above moved the indices the idle measuring had reached.
       if !change.removed.isEmpty || !change.inserted.isEmpty { prefetchCursor = nil }
       var noted = IndexSet()
@@ -259,6 +274,11 @@
         if measure(row, with: cell) { scheduleRemeasure(cell) }
       } else {
         cell.show(model.rows[row], version: model.version(at: row), width: model.width)
+        // An AppKit cell knows its height without a layout: one that differs from what the
+        // row was measured at (in another cell, from sizes) is told to the table next pass.
+        if cell.kind?.isHosted == false, abs(cell.idealHeight - model.height(at: row)) >= 0.5 {
+          scheduleRemeasure(cell)
+        }
       }
       // Its row's height is known: going into the window and laying out there changes nothing.
       cell.settle()
@@ -269,6 +289,8 @@
       guard rowView.numberOfColumns > 0,
         let cell = rowView.view(atColumn: 0) as? any TranscriptTableCell
       else { return }
+      // Off screen, a drawn run's bitmap counts only against the rasters' cache.
+      (cell as? TranscriptTableTextCell)?.releaseBitmaps()
       pool.park(cell)
     }
 

@@ -145,15 +145,37 @@
       fatalError("init(coder:) is not supported")
     }
 
+    /// The buttons' looks, so items that look the same keep their buttons.
+    private var shownItems: [ShownItem] = []
+    private var shownTimestamp: String?
+
+    private struct ShownItem: Equatable {
+      var systemImage: String
+      var title: String
+      var identifier: String
+      var unavailableReason: String?
+    }
+
     func show(_ items: [MessageActionItem], timestamp date: Date?) {
+      performs = items.map(\.perform)
+      copyIndex = items.firstIndex { $0.kind == .copy }
+      let looks = items.map {
+        ShownItem(
+          systemImage: $0.systemImage, title: $0.title, identifier: $0.identifier,
+          unavailableReason: $0.unavailableReason)
+      }
+      let stamp = date.map { MessageTimestamp.format($0, now: Date()) }
+      // A cell shown again, or hovered again, keeps its buttons: only their actions change.
+      guard looks != shownItems || stamp != shownTimestamp else { return }
+      shownItems = looks
+      shownTimestamp = stamp
+      copyReset?.cancel()
       for button in buttons { button.removeFromSuperview() }
       buttons = []
-      performs = []
-      copyIndex = nil
       for (index, item) in items.enumerated() {
         let button = NSButton(
-          image: NSImage(systemSymbolName: item.systemImage, accessibilityDescription: item.title)
-            ?? NSImage(), target: self, action: #selector(press(_:)))
+          image: Self.symbol(item.systemImage, title: item.title), target: self,
+          action: #selector(press(_:)))
         button.isBordered = false
         button.contentTintColor = .secondaryLabelColor
         button.tag = index
@@ -161,13 +183,11 @@
         button.toolTip = item.unavailableReason ?? item.title
         button.setAccessibilityLabel(item.title)
         button.setAccessibilityIdentifier(item.identifier)
-        if item.kind == .copy { copyIndex = index }
         addSubview(button)
         buttons.append(button)
-        performs.append(item.perform)
       }
-      timestamp.stringValue = date.map { MessageTimestamp.format($0, now: Date()) } ?? ""
-      timestamp.isHidden = date == nil
+      timestamp.stringValue = stamp ?? ""
+      timestamp.isHidden = stamp == nil
       layOutControls()
     }
 
@@ -188,6 +208,16 @@
         leading -= Theme.Spacing.medium
       }
       setFrameSize(NSSize(width: max(0, leading), height: target))
+    }
+
+    private static var symbols: [String: NSImage] = [:]
+
+    /// The action's symbol, looked up once.
+    private static func symbol(_ name: String, title: String) -> NSImage {
+      if let kept = symbols[name] { return kept }
+      let image = NSImage(systemSymbolName: name, accessibilityDescription: title) ?? NSImage()
+      symbols[name] = image
+      return image
     }
 
     @objc private func press(_ sender: NSButton) {
