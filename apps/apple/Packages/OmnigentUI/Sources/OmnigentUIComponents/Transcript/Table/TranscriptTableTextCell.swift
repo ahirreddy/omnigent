@@ -37,6 +37,10 @@
     var actionsTrailing: CGFloat = 0
     /// The message's own frame, as its SwiftUI row lays it out.
     var contentFrame: CGRect = .zero
+    /// A linked message's tint, the row it tints for, and the wait before it fades.
+    var flashView: NSView?
+    var flashingRowID: String?
+    var flashFading: Task<Void, Never>?
     private var height: CGFloat = 0
     /// The column and text width the cell last laid out at.
     private var laidOut: (metrics: TranscriptTableTextMetrics, textWidth: CGFloat)?
@@ -97,18 +101,7 @@
       styleSerial = style.serial
       self.message = message
       if isNewRow { restartLinkCheck() }
-      let links = style.environment.values?.workspaceFileLinks
-      let linked = linkedPaths(of: message, links: links)
-      var documents: [Int: MessageTextDocument] = [:]
-      var untypeset: [String] = []
-      for run in message.runs {
-        let math = Self.typesetMath(run.inlineMath, ramp: textStyle.ramp)
-        untypeset += run.inlineMath.filter { math[$0] == nil }
-        documents[run.id] = MessageTextBlocksView.document(
-          source: MessageTextSource(text: message.markdown, piece: run.id), blocks: run.blocks,
-          linked: linked, math: math, style: textStyle, links: links)
-      }
-      typeset(untypeset, ramp: textStyle.ramp, for: next)
+      let documents = documents(for: message, in: textStyle, shown: next)
       let metrics = style.metrics(width: width)
       let textWidth =
         message.role == .answer ? metrics.columnWidth : metrics.promptWidth(style.layoutWidth)
@@ -125,7 +118,29 @@
       let previous = height
       height = layOutContent(metrics: metrics, textWidth: textWidth, message: message)
       refreshActions()
+      showFlash(style.environment.values?.transcriptFocus?.flashedRowID)
       if isRestyle, abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
+    }
+
+    /// Each text run's document, with its cited paths linked as far as they are known and the
+    /// inline math typeset so far; the rest of the math typesets for `shown` now.
+    private func documents(
+      for message: TranscriptTableTextMessage, in textStyle: MessageTextStyle,
+      shown: TranscriptTableShown
+    ) -> [Int: MessageTextDocument] {
+      let links = style.environment.values?.workspaceFileLinks
+      let linked = linkedPaths(of: message, links: links)
+      var documents: [Int: MessageTextDocument] = [:]
+      var untypeset: [String] = []
+      for run in message.runs {
+        let math = Self.typesetMath(run.inlineMath, ramp: textStyle.ramp)
+        untypeset += run.inlineMath.filter { math[$0] == nil }
+        documents[run.id] = MessageTextBlocksView.document(
+          source: MessageTextSource(text: message.markdown, piece: run.id), blocks: run.blocks,
+          linked: linked, math: math, style: textStyle, links: links)
+      }
+      typeset(untypeset, ramp: textStyle.ramp, for: shown)
+      return documents
     }
 
     /// Shows `pieces` laid out `width` wide. A text run shows as a raster drawn ahead when the
@@ -240,6 +255,7 @@
       typesetting?.cancel()
       typesetting = nil
       stopLinkCheck()
+      endFlash()
       shownRow = nil
       for run in runs { run.release() }
       runs = []

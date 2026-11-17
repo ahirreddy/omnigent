@@ -69,6 +69,8 @@
     var awaitsEnvironment = false
     /// Follows VoiceOver turning on or off, which shows or hides the text cells' actions.
     var voiceOverWatch: NSKeyValueObservation?
+    /// Follows the window's linked-message flash for the text cells (``watchFlash()``).
+    var awaitsFlash = false
 
     /// The follow rules (``TranscriptFollow``).
     var follow = TranscriptFollow() {
@@ -169,6 +171,7 @@
       if environment.values == nil { environment.values = values }
       syncTextStyle()
       watchVoiceOver()
+      watchFlash()
       self.actions = actions
       self.isCLI = isCLI
       let previous = self.state

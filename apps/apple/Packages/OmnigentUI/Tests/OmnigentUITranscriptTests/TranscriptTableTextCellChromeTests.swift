@@ -171,5 +171,36 @@
       try tableController(of: screen).refreshTextCellActions()
       #expect(cell.actionsView?.isHidden == true)
     }
+
+    // MARK: Linked-message flash
+
+    @Test("A linked message's text cell tints around it for a moment, as SwiftUI's row does")
+    func linkedMessageFlashes() async throws {
+      let focus = TranscriptFocus()
+      focus.flashDuration = .seconds(1)
+      let screen = try await textTableScreen(turns) { $0.transcriptFocus = focus }
+      defer { screen.close() }
+      let flashed = try textCell("a1", in: screen)
+      let prompt = try textCell("u2", in: screen)
+      focus.flash("a1")
+      #expect(try await waitUntil(screen) { flashed.flashView?.isHidden == false })
+      let tint = try #require(flashed.flashView)
+      // A little larger than the message, rounded, behind it; no other row tints.
+      #expect(
+        tint.frame
+          == flashed.contentFrame.insetBy(dx: -Theme.Spacing.small, dy: -Theme.Spacing.small))
+      #expect(tint.layer?.cornerRadius == Theme.Radius.medium)
+      #expect(flashed.subviews.first === tint)
+      #expect(prompt.flashView?.isHidden != false)
+      // It fades after a moment, and goes once the flash ends.
+      #expect(try await waitUntil(screen) { tint.alphaValue == 0 })
+      #expect(try await waitUntil(screen) { tint.isHidden })
+      // A prompt tints its whole row in the column, as its SwiftUI row's frame is.
+      focus.flash("u2")
+      #expect(try await waitUntil(screen) { prompt.flashView?.isHidden == false })
+      let bubble = try #require(prompt.subviews.first { $0 is TranscriptTableBubbleView })
+      #expect(prompt.contentFrame.width > bubble.frame.width)
+      #expect(prompt.contentFrame.contains(bubble.frame))
+    }
   }
 #endif

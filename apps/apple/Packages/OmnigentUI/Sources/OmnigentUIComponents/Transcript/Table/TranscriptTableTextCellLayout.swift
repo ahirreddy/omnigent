@@ -110,6 +110,7 @@
       if contentFrame != frames.content {
         contentFrame = frames.content
         noteFocusRingMaskChanged()
+        if flashingRowID != nil { flashView?.frame = flashFrame }
       }
     }
 
