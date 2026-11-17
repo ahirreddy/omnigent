@@ -11,7 +11,7 @@ final class TranscriptCurrentState {
   }
 }
 
-/// What the row list reports to ``TranscriptView`` when its rows change.
+/// What the row list reports to ``TranscriptView`` when its rows change, and what it asks of it.
 struct TranscriptRowEvents {
   /// The rows' revision changed.
   var revisionChanged: () -> Void
@@ -21,6 +21,10 @@ struct TranscriptRowEvents {
   var hasUserMessagesChanged: (Bool) -> Void
   /// The user turns changed, for the turn rail.
   var turnsChanged: ([TranscriptTurn]) -> Void
+  /// Asks for the page of history above the loaded rows.
+  var loadOlder: () -> Void
+  /// Scrolls to the row a `?message=` link points at.
+  var showMessage: (String) -> Void
 }
 
 /// Tells the pacer when the transcript's tab hides and shows. The row list does not read the
@@ -112,6 +116,20 @@ struct TranscriptRowsContent<Header: View>: View {
       events.turnsChanged(turns)
     }
     .modifier(PacedWhileShown(pacer: pacer))
+    .modifier(messageFocus(state))
+  }
+
+  /// Lands a `?message=` link on its row, found among the rows this list shows.
+  private func messageFocus(_ state: ConversationViewState) -> TranscriptMessageFocus {
+    TranscriptMessageFocus(
+      state: state, pages: actions.loadOlder != nil,
+      locate: { [layout] in
+        TranscriptFocus.entryID(forMessage: $0, in: layout.entries(for: state).map(\.segment))
+      },
+      readRows: { [liveRows] in
+        liveRows?.read() ?? (rows: state.rows, revision: state.revision)
+      },
+      loadOlder: events.loadOlder, show: events.showMessage)
   }
 
   /// The state with the live rows, when the transcript reads them itself.

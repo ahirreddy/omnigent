@@ -102,55 +102,100 @@ struct MessageFlash: View {
 }
 
 /// Scrolls a transcript to its session's linked message and flashes it, loading older history
-/// until the message is there. It waits for the transcript to frame its latest turn on open.
+/// until the message is there. It sits on the row list, so `state` holds the rows the list
+/// shows; the rows read reach the list a tick later. A link lands once it has waited out
+/// `settle`, which lets the transcript frame its latest turn on open.
 struct TranscriptMessageFocus: ViewModifier {
+  /// The conversation with the rows the list shows.
   let state: ConversationViewState
   /// The host can load older history.
   let pages: Bool
-  /// The scroll id of the row that shows a message, if it is loaded.
+  /// The scroll id of the shown row for a message, if there is one.
   let locate: (String) -> String?
+  /// The rows read so far, and their revision.
+  let readRows: () -> (rows: [Row], revision: UInt64)
   let loadOlder: () -> Void
   /// Scrolls to a row.
   let show: (String) -> Void
   /// How long a link waits before scrolling, so a newer link or session replaces it first.
   var settle: Duration = .milliseconds(150)
   @Environment(\.transcriptFocus) private var focus
+  /// The link that waited out `settle`; only it lands.
+  @State private var settled: String?
+  /// The first row read when this link asked for older history, until that read ends.
+  @State private var pageRequest: PageRequest?
+
+  private struct PageRequest: Equatable {
+    var topRowID: String?
+  }
 
   private var sessionID: String { state.header.id }
-  /// Older history is loading; the next page is asked for once it lands.
-  private var isLoadingHistory: Bool { state.isLoadingHistory }
+  private var messageID: String? { focus?.messageID(in: sessionID) }
 
   func body(content: Content) -> some View {
     content
-      .task(id: focus?.messageID(in: sessionID)) {
-        guard focus?.messageID(in: sessionID) != nil else { return }
+      .task(id: messageID) {
+        // A new link waits out its own settle and asks for pages afresh.
+        if settled != nil { settled = nil }
+        if pageRequest != nil { pageRequest = nil }
+        guard let linked = messageID else { return }
         do {
           try await Task.sleep(for: Theme.Timing.pause(settle))
         } catch {
           return  // Another link or session replaced it.
         }
-        attempt()
+        settled = linked
       }
-      .onChange(of: state.revision) {
-        if focus?.messageID(in: sessionID) != nil { attempt() }
-      }
-      .onChange(of: isLoadingHistory) { _, isLoading in
-        if !isLoading, focus?.messageID(in: sessionID) != nil { attempt() }
+      .onChange(of: settled) { attempt() }
+      .onChange(of: state.revision) { attempt() }
+      // The count too: a read that starts and ends between two renders never shows as loading.
+      .onChange(of: HistoryRead(isLoading: state.isLoadingHistory, ended: state.historyReads)) {
+        if !$1.isLoading { readEnded() }
       }
   }
 
   private func attempt() {
-    guard let focus, let messageID = focus.messageID(in: sessionID) else { return }
+    guard let focus, let messageID, settled == messageID else { return }
     if let target = locate(messageID) {
-      focus.clear(sessionID)
+      finish(focus)
       show(target)
       focus.flash(target)
-    } else if pages, state.hasMoreHistory {
-      // While a page is loading, the next one is asked for when it lands.
-      if !isLoadingHistory { loadOlder() }
+      return
+    }
+    let read = readRows()
+    let isRead = read.rows.contains { $0.id == messageID || $0.responseId == messageID }
+    if isRead, read.revision != state.revision {
+      return  // The list shows it with its next rows, which try again.
+    }
+    if pages, state.hasMoreHistory {
+      // A page asked for or loading is waited for: its end tries again.
+      guard pageRequest == nil, !state.isLoadingHistory else { return }
+      pageRequest = PageRequest(topRowID: read.rows.first?.id)
+      loadOlder()
     } else if !state.rows.isEmpty {
       // The whole history is loaded and the message isn't in it: stay at the latest.
-      focus.clear(sessionID)
+      finish(focus)
     }
+  }
+
+  /// A read of older history ended. One this link asked for that added no rows failed, and the
+  /// link stops there rather than ask again without end.
+  private func readEnded() {
+    guard let request = pageRequest else {
+      attempt()
+      return
+    }
+    pageRequest = nil
+    if let focus, readRows().rows.first?.id == request.topRowID {
+      finish(focus)
+    } else {
+      attempt()
+    }
+  }
+
+  /// The link landed or was given up.
+  private func finish(_ focus: TranscriptFocus) {
+    pageRequest = nil
+    focus.clear(sessionID)
   }
 }

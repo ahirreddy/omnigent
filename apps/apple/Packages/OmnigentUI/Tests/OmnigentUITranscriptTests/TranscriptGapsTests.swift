@@ -108,8 +108,8 @@
           .modifier(
             // Long against a run-loop pass that ends late on a busy machine.
             TranscriptMessageFocus(
-              state: state, pages: false, locate: { $0 }, loadOlder: {},
-              show: { shown.append($0) }, settle: .milliseconds(300))
+              state: state, pages: false, locate: { $0 }, readRows: { (rows: [], revision: 0) },
+              loadOlder: {}, show: { shown.append($0) }, settle: .milliseconds(300))
           )
           .environment(\.transcriptFocus, focus), width: 100, height: 100)
       defer { screen.close() }

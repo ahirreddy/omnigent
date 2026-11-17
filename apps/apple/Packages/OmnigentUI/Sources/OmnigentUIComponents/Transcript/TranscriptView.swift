@@ -149,7 +149,6 @@ public struct TranscriptView: View {
       .onChange(of: TranscriptSends(state)) { previous, latest in
         if latest.hasNewSend(since: previous), scroll.userSent() { jumpToLatest(proxy) }
       }
-      .modifier(messageFocus(proxy))
       .task(id: state.header.id) {
         follow.reset()
         scroll.sessionOpened()
@@ -205,7 +204,7 @@ public struct TranscriptView: View {
       turnsChanged: { turns in
         rail.setTurns(turns)
         updateActiveTurn()
-      })
+      }, loadOlder: loadOlder, showMessage: { showLinkedMessage($0, proxy) })
   }
 
   @ViewBuilder private var historyHeader: some View {
@@ -353,20 +352,13 @@ extension TranscriptView {
       order: layout.rowIDs(for: shown, isCLI: appearance.isCLI), visible: position.visible)
   }
 
-  /// Scrolls to the message a `?message=` link points at; a page still landing must not put
-  /// the old top row back.
-  private func messageFocus(_ proxy: ScrollViewProxy) -> TranscriptMessageFocus {
-    TranscriptMessageFocus(
-      state: state, pages: actions.loadOlder != nil,
-      locate: {
-        TranscriptFocus.entryID(forMessage: $0, in: layout.entries(for: state).map(\.segment))
-      }, loadOlder: loadOlder,
-      show: { target in
-        position.prependAnchor = nil
-        follow.readEarlier()
-        scroll.jumped(to: target)
-        proxy.scrollTo(target, anchor: .center)
-      })
+  /// Scrolls to the row a `?message=` link points at; a page still landing must not put the old
+  /// top row back.
+  private func showLinkedMessage(_ target: String, _ proxy: ScrollViewProxy) {
+    position.prependAnchor = nil
+    follow.readEarlier()
+    scroll.jumped(to: target)
+    proxy.scrollTo(target, anchor: .center)
   }
 
   /// Opening a session frames its latest user message at the top, as the web does, so a long
