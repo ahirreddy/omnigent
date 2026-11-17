@@ -111,6 +111,37 @@
       #expect(measured == cell.idealHeight)
     }
 
+    @Test("A run shown live before its drawing takes the drawing once it arrives")
+    func liveRunTakesItsDrawing() throws {
+      let style = textStyle()
+      style.surface = .raster
+      style.setScale(2)
+      let long = (0..<40).map { "Line \($0) of a long answer, drawn ahead later." }
+        .joined(separator: "\n\n")
+      let answer = row(TranscriptFixture.answer("a-long", long))
+      let cell = TranscriptTableTextCell(style: style)
+      cell.show(answer, version: 0, width: Self.width)
+      guard case .live(let live)? = cell.runs.first else {
+        Issue.record("a long run with no drawing shows live")
+        return
+      }
+      let height = cell.idealHeight
+      let width = TranscriptTableTextMetrics(
+        width: Self.width, layoutWidth: .regular, maxWidth: Theme.transcriptWidth
+      ).columnWidth
+      let drawn = MessageTextRaster.make(
+        live.document.run, width: width, scale: 2, style: try #require(style.rasterStyle))
+      MessageTextRasters.shared.store(
+        drawn, for: MessageTextRasterKey(document: live.document.serial, width: width, scale: 2))
+      cell.show(answer, version: 0, width: Self.width)
+      guard case .raster(let view)? = cell.runs.first else {
+        Issue.record("the run stays live")
+        return
+      }
+      #expect(view.raster === drawn)
+      #expect(cell.idealHeight == height)
+    }
+
     @Test("A message's actions keep their buttons when shown again alike, as a hover is")
     func actionsKeepTheirButtons() throws {
       let view = TranscriptMessageActionsView()

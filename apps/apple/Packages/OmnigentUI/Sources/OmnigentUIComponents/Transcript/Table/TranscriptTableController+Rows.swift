@@ -69,6 +69,7 @@
       guard generation == prefetchGeneration, isShown, !follow.isUserScrolling,
         model.width > 0, tableView.numberOfRows == model.rows.count
       else { return }
+      showArrivedDrawings()
       var cursor = prefetchCursor ?? startingCursor()
       let shown = clipView.bounds
       let reach = shown.insetBy(dx: 0, dy: -shown.height * Self.prefetchReach)
@@ -110,6 +111,20 @@
       // An answer being laid out ahead is measured once it is, a moment later.
       MainRunLoop.perform(after: awaited.isEmpty ? 0 : Self.prewarmWait) { [weak self] in
         MainActor.assumeIsolated { self?.prefetch(generation) }
+      }
+    }
+
+    /// Shows the drawings that arrived for runs on screen shown live meanwhile (rows that
+    /// showed before their drawings): a live text view lays out and draws as the transcript
+    /// scrolls, a drawing doesn't. A run the reader is selecting in stays live.
+    func showArrivedDrawings() {
+      tableView.enumerateAvailableRowViews { _, row in
+        guard model.rows.indices.contains(row),
+          let cell = realizedCell(at: row) as? TranscriptTableTextCell
+        else { return }
+        let height = cell.idealHeight
+        cell.show(model.rows[row], version: model.version(at: row), width: model.width)
+        if abs(cell.idealHeight - height) >= 0.5 { scheduleRemeasure(cell) }
       }
     }
 
