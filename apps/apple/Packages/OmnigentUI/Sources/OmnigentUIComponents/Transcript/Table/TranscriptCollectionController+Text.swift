@@ -140,6 +140,7 @@
       let kindsChanged = textKindsChanged
       textKindsChanged = false
       guard itemCount == model.rows.count, model.width > 0 else { return }
+      let anchor = readingAnchor()
       // Rows that change kind may take another height; those on screen are measured now.
       if kindsChanged { model.invalidateHeights() }
       var noted = IndexSet()
@@ -159,6 +160,9 @@
         measureShownRows()
         rebuildOffsets()
         schedulePrefetch()
+        // Every row took its kind's height: a follower stays at the end, a reader on their row.
+        if follow.layoutGrew() { pinBottom() } else { restore(anchor, proportionally: true) }
+        return
       }
       noteHeights(noted)
     }
