@@ -17,11 +17,15 @@ import SwiftUI
   struct TranscriptSelectionPopup: ViewModifier {
     let reply: (@MainActor (String) -> Void)?
     let ask: (@MainActor (String) -> Void)?
+    /// The table transcript's scrolls, which no SwiftUI scroll view reports.
+    var feed: TranscriptScrollFeed?
     @State private var selection: TranscriptSelection?
     @State private var clearRequest = 0
 
     func body(content: Content) -> some View {
-      content
+      feed?.selectionMoved = { if selection != nil { selection = nil } }
+      return
+        content
         .background {
           SelectionWatcher(clearRequest: clearRequest) { next in
             if next != selection { selection = next }
@@ -30,7 +34,7 @@ import SwiftUI
         .onScrollGeometryChange(for: CGFloat.self) {
           $0.contentOffset.y
         } action: { _, _ in
-          if selection != nil { selection = nil }
+          if feed == nil, selection != nil { selection = nil }
         }
         .overlay {
           // A layout places the popup; the overlay ignores alignment guides on a view in this `if`.
@@ -258,12 +262,14 @@ import SwiftUI
 #endif
 
 extension View {
-  /// The selection popup over the transcript on the Mac; `reply` `nil` hides it.
+  /// The selection popup over the transcript on the Mac; `reply` `nil` hides it. `feed` gives
+  /// it the table transcript's scrolls.
   func transcriptSelectionPopup(
-    reply: (@MainActor (String) -> Void)?, ask: (@MainActor (String) -> Void)?
+    reply: (@MainActor (String) -> Void)?, ask: (@MainActor (String) -> Void)?,
+    feed: TranscriptScrollFeed? = nil
   ) -> some View {
     #if os(macOS)
-      modifier(TranscriptSelectionPopup(reply: reply, ask: ask))
+      modifier(TranscriptSelectionPopup(reply: reply, ask: ask, feed: feed))
     #else
       self
     #endif

@@ -9,10 +9,13 @@ final class TranscriptScrollFeed {
   var offsetChanged: (CGFloat) -> Void = { _ in }
   /// Whether the reader is scrolling.
   var scrollPhaseChanged: (Bool) -> Void = { _ in }
+  /// The rows moved under the selection popup.
+  var selectionMoved: () -> Void = {}
 
   /// The viewport moved to `offset`.
   func moved(to offset: CGFloat) {
     offsetChanged(offset)
+    selectionMoved()
   }
 
   /// The reader started or stopped scrolling.

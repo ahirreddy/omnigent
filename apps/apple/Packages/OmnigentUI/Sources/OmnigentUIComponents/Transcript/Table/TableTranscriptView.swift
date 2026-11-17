@@ -73,7 +73,9 @@
           isLoading: state.isLoadingHistory, jump: { controller.jumpToTop() },
           feed: controller.scrollFeed)
       )
-      .transcriptSelectionPopup(reply: actions.replyWithSelection, ask: actions.askInSideChat)
+      .transcriptSelectionPopup(
+        reply: actions.replyWithSelection, ask: actions.askInSideChat, feed: controller.scrollFeed
+      )
       .modifier(
         TurnRailOverlay(
           model: rail,
