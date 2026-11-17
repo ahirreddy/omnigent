@@ -7,33 +7,38 @@
   extension TranscriptTableTextCell {
     // MARK: Actions
 
-    /// Whether the actions show: on hover, or always on the last settled answer.
-    private var revealsActions: Bool {
-      isHovered || message?.decoration.showsActions == true
+    /// Whether the actions show: on hover or keyboard focus, or always on the last settled
+    /// answer and while VoiceOver is on.
+    var revealsActions: Bool {
+      isHovered || message?.decoration.showsActions == true || hasKeyboardFocus
+        || Self.assistive.voiceOverIsOn()
     }
 
-    /// Builds the actions' row once it first shows, and places or hides it.
-    func refreshActions() {
+    /// Builds the actions' row once it first shows, and places or hides it; `animated` fades it
+    /// in or out, as SwiftUI's row does when hover or focus reveals it.
+    func refreshActions(animated: Bool = false) {
+      let fades = animated && !(style.environment.values?.accessibilityReduceMotion ?? false)
       guard let message, revealsActions, let values = style.environment.values else {
-        actionsView?.isHidden = true
+        actionsView?.setShown(false, animated: fades)
         return
       }
       let view = actionsView ?? makeActionsView()
       let items = MessageActionItem.items(
         for: message.row, actions: values.conversationActions,
         copy: values.copyWithConfirmation)
-      view.show(items, timestamp: message.decoration.timestamp)
+      view.show(items, timestamp: message.decoration.timestamp, hover: style.palette?.hover)
       let size = view.frame.size
       let top =
         actionsLineHeight > 0
         ? actionsTop + ((actionsLineHeight - size.height) / 2).rounded() : actionsTop
       view.frame = CGRect(
         x: actionsTrailing - size.width, y: top, width: size.width, height: size.height)
-      view.isHidden = false
+      view.setShown(true, animated: fades)
     }
 
     private func makeActionsView() -> TranscriptMessageActionsView {
       let view = TranscriptMessageActionsView()
+      view.focusChanged = { [weak self] in self?.focusMoved() }
       addSubview(view)
       actionsView = view
       return view
@@ -52,15 +57,16 @@
 
     override func mouseEntered(with event: NSEvent) {
       isHovered = true
-      refreshActions()
+      refreshActions(animated: true)
     }
 
     override func mouseExited(with event: NSEvent) {
       isHovered = false
-      refreshActions()
+      refreshActions(animated: true)
     }
 
-    /// The message's actions, then Copy Message ID.
+    /// The message's menu, as ``MessageContextMenu`` builds it: its actions (one that doesn't
+    /// apply disabled, with why), Share, then Copy Message ID.
     override func menu(for event: NSEvent) -> NSMenu? {
       guard let message, let values = style.environment.values else { return nil }
       let menu = NSMenu()
@@ -69,25 +75,52 @@
         for: message.row, actions: values.conversationActions,
         copy: values.copyWithConfirmation)
       for item in items {
-        menu.addItem(
-          menuItem(item.menuTitle, enabled: item.unavailableReason == nil, perform: item.perform))
+        let menuItem = menuItem(
+          item.menuTitle, systemImage: item.systemImage, enabled: item.unavailableReason == nil,
+          perform: item.perform)
+        if let reason = item.unavailableReason {
+          menuItem.subtitle = reason
+          menuItem.toolTip = reason
+        }
+        menu.addItem(menuItem)
       }
+      menu.addItem(shareItem(for: message.row.text))
       menu.addItem(.separator())
       let id = message.row.id
       let copy = values.copyWithConfirmation
       menu.addItem(
-        menuItem("Copy Message ID", enabled: true) { copy(id, confirmation: "Message ID copied") })
+        menuItem("Copy Message ID", systemImage: "number", enabled: true) {
+          copy(id, confirmation: "Message ID copied")
+        })
       return menu
     }
 
+    /// Share, for the message's text: the system's share item, as a SwiftUI `ShareLink` in a
+    /// menu gives, disabled when there is no text.
+    private func shareItem(for text: String) -> NSMenuItem {
+      let picker = NSSharingServicePicker(items: [text])
+      let item = picker.standardShareMenuItem
+      item.title = "Share"
+      item.image = Self.menuImage("square.and.arrow.up", title: "Share")
+      item.isEnabled = !text.isEmpty
+      return item
+    }
+
     private func menuItem(
-      _ title: String, enabled: Bool, perform: @escaping @MainActor () -> Void
+      _ title: String, systemImage: String, enabled: Bool,
+      perform: @escaping @MainActor () -> Void
     ) -> NSMenuItem {
       let item = NSMenuItem(title: title, action: #selector(runMenuItem(_:)), keyEquivalent: "")
       item.target = self
       item.isEnabled = enabled
+      item.image = Self.menuImage(systemImage, title: title)
       item.representedObject = TranscriptMenuAction(perform)
       return item
+    }
+
+    /// A menu item's symbol, as a SwiftUI menu's label shows it.
+    private static func menuImage(_ name: String, title: String) -> NSImage? {
+      NSImage(systemSymbolName: name, accessibilityDescription: title)
     }
 
     @objc private func runMenuItem(_ item: NSMenuItem) {
@@ -125,7 +158,9 @@
   /// A message's action buttons (Copy, Fork from here, Copy link) and its timestamp, in AppKit,
   /// as ``MessageActionRow`` draws them.
   final class TranscriptMessageActionsView: NSView {
-    private var buttons: [NSButton] = []
+    private(set) var buttons: [TranscriptMessageActionButton] = []
+    /// Told when one of the buttons takes or gives up the keyboard.
+    var focusChanged: (() -> Void)?
     private var performs: [@MainActor () -> Void] = []
     private let timestamp = NSTextField(labelWithString: "")
     private var copyReset: Task<Void, Never>?
@@ -156,8 +191,42 @@
       var unavailableReason: String?
     }
 
-    func show(_ items: [MessageActionItem], timestamp date: Date?) {
+    /// Whether the row is to show, which a fade out still under way may not show yet.
+    private(set) var isShown = false
+
+    /// Shows or hides the row, fading over SwiftUI's feedback animation when `animated` and
+    /// motion is on.
+    func setShown(_ shown: Bool, animated: Bool) {
+      guard shown != isShown || (shown && (isHidden || alphaValue < 1)) else { return }
+      isShown = shown
+      guard animated, Theme.Motion.isEnabled else {
+        alphaValue = 1
+        isHidden = !shown
+        return
+      }
+      if shown, isHidden {
+        alphaValue = 0
+        isHidden = false
+      }
+      NSAnimationContext.runAnimationGroup { context in
+        context.duration = TranscriptMessageActionButton.hoverFade
+        context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        animator().alphaValue = shown ? 1 : 0
+      } completionHandler: { [weak self] in
+        MainActor.assumeIsolated {
+          // A row shown again meanwhile stays.
+          guard let self, !self.isShown else { return }
+          self.isHidden = true
+          self.alphaValue = 1
+        }
+      }
+    }
+
+    /// Shows `items`' buttons and the timestamp; an enabled button under the pointer takes
+    /// `hover` behind it.
+    func show(_ items: [MessageActionItem], timestamp date: Date?, hover: NSColor? = nil) {
       performs = items.map(\.perform)
+      for button in buttons { button.hoverColor = hover }
       copyIndex = items.firstIndex { $0.kind == .copy }
       let looks = items.map {
         ShownItem(
@@ -173,9 +242,11 @@
       for button in buttons { button.removeFromSuperview() }
       buttons = []
       for (index, item) in items.enumerated() {
-        let button = NSButton(
+        let button = TranscriptMessageActionButton(
           image: Self.symbol(item.systemImage, title: item.title), target: self,
           action: #selector(press(_:)))
+        button.focusChanged = { [weak self] in self?.focusChanged?() }
+        button.hoverColor = hover
         button.isBordered = false
         button.contentTintColor = .secondaryLabelColor
         button.tag = index

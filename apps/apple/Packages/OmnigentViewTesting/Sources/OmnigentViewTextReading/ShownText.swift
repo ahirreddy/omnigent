@@ -20,8 +20,9 @@
     /// The text the view draws now, one string per text view, read from SwiftUI's view tree. Text
     /// that is laid out counts even when it is transparent or scrolled out of the window. That
     /// includes the rows a `List` has made and a sheet over the window, not rows it hasn't made.
-    /// A read-only TextKit view counts too, one string per paragraph and tab-separated piece, as
-    /// SwiftUI would draw its paragraphs, list markers and table cells.
+    /// A read-only TextKit view counts too, and a drawing of laid-out text that says what it
+    /// shows, one string per paragraph and tab-separated piece, as SwiftUI would draw its
+    /// paragraphs, list markers and table cells.
     /// - Returns: The strings; they are not in layout order.
     /// - Throws: `OffscreenWindowError` when SwiftUI doesn't report its tree.
     public func shownText() throws -> [String] {
@@ -102,13 +103,20 @@
   }
 
   /// Reads the text a read-only TextKit view draws: an `NSTextView` that is neither editable nor a
-  /// field editor (SwiftUI's tree already holds a clicked `Text`'s), or another view that draws
-  /// a TextKit 2 layout.
+  /// field editor (SwiftUI's tree already holds a clicked `Text`'s), another view that draws
+  /// a TextKit 2 layout, or a view that shows a drawing of laid-out text and says what it reads
+  /// (an `@objc` `drawnText` string).
   enum TextKitTextReader {
+    /// The property a view showing a drawing of laid-out text reads its text from.
+    static let drawnTextKey = "drawnText"
+
     static func text(of view: NSView) -> String? {
       if let textView = view as? NSTextView {
         guard !textView.isEditable, !textView.isFieldEditor else { return nil }
         return textView.string
+      }
+      if view.responds(to: NSSelectorFromString(drawnTextKey)) {
+        return view.value(forKey: drawnTextKey) as? String
       }
       let selector = NSSelectorFromString("textLayoutManager")
       guard view.responds(to: selector),

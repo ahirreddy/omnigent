@@ -13,10 +13,14 @@
     var idealSizeChanged: ((any TranscriptTableCell) -> Void)?
 
     let style: TranscriptTableTextStyle
+    /// Which long prompts the reader showed whole.
+    let folds: TranscriptTableFolds
     private var styleSerial = -1
     private(set) var message: TranscriptTableTextMessage?
     /// One view per run of text blocks, top to bottom.
     private(set) var runs: [TranscriptTableTextRun] = []
+    /// One hosting view per part beside the text, top to bottom.
+    private(set) var accessoryViews: [TranscriptTableAccessoryView] = []
     /// The runs shown as live text views.
     var texts: [MessageTextContentView] {
       runs.compactMap {
@@ -24,13 +28,21 @@
         return nil
       }
     }
-    private let bubbleView = TranscriptTableBubbleView()
-    private var workedLabel: NSTextField?
+    let bubbleView = TranscriptTableBubbleView()
+    var workedLabel: NSTextField?
     var actionsView: TranscriptMessageActionsView?
     /// Where the actions' row starts (under the text, or on the "Worked for" line) and ends.
-    private(set) var actionsTop: CGFloat = 0
-    private(set) var actionsLineHeight: CGFloat = 0
-    private(set) var actionsTrailing: CGFloat = 0
+    var actionsTop: CGFloat = 0
+    var actionsLineHeight: CGFloat = 0
+    var actionsTrailing: CGFloat = 0
+    /// The message's own frame, as its SwiftUI row lays it out.
+    var contentFrame: CGRect = .zero
+    /// A shared session author's initials beside their prompt, made once one shows.
+    var avatarView: TranscriptTableAvatarView?
+    /// A linked message's tint, the row it tints for, and the wait before it fades.
+    var flashView: NSView?
+    var flashingRowID: String?
+    var flashFading: Task<Void, Never>?
     private var height: CGFloat = 0
     /// The column and text width the cell last laid out at.
     private var laidOut: (metrics: TranscriptTableTextMetrics, textWidth: CGFloat)?
@@ -43,9 +55,14 @@
     private var awaitsLayout = false
     /// Typesets the inline math the shown message doesn't have yet.
     private var typesetting: Task<Void, Never>?
+    /// Lists the folders of the workspace paths the shown message cites, while in a window.
+    var linkCheck: Task<Void, Never>?
+    /// Counts reads of the links' state; only the latest read's change shows the row again.
+    var linkWatch = 0
 
-    init(style: TranscriptTableTextStyle) {
+    init(style: TranscriptTableTextStyle, folds: TranscriptTableFolds = TranscriptTableFolds()) {
       self.style = style
+      self.folds = folds
       super.init(frame: .zero)
       bubbleView.isHidden = true
       addSubview(bubbleView)
@@ -71,17 +88,49 @@
       if next == shown, styleSerial == style.serial, takeBitmapsBack() { return }
       // The same content in a new style may take another height, which the table then asks.
       let isRestyle = next == shown
-      guard let message = TranscriptTableTextMessage.make(row, ramp: style.ramp),
+      guard
+        let message = TranscriptTableTextMessage.make(
+          row, ramp: style.ramp, expandsPrompt: folds.isExpanded(row.id, isLive: false)),
         let textStyle = style.style
       else {
         releaseContent()
         return
       }
+      let isNewRow = next.id != shown?.id || next.version != shown?.version
       shown = next
       shownRow = row
       kind = .text(row.kind)
       styleSerial = style.serial
       self.message = message
+      if isNewRow { restartLinkCheck() }
+      let documents = documents(for: message, in: textStyle, shown: next)
+      let metrics = style.metrics(width: width)
+      let textWidth = message.textWidth(metrics, layoutWidth: style.layoutWidth)
+      laidOut = (metrics, textWidth)
+      adopt(message.split.pieces, documents: documents, width: textWidth)
+      adoptAccessories(message.accessories, rowID: message.row.id, width: textWidth)
+      let openURL = style.environment.values.map(Self.openURL(in:))
+      for run in runs { run.setOpenURL(openURL) }
+      setAccessibilityIdentifier("message-\(message.row.id)")
+      setAccessibilityLabel(message.speaker)
+      if message.role == .answer {
+        runs.first?.view.setAccessibilityIdentifier("message-text-\(message.row.id)")
+      }
+      let previous = height
+      height = layOutContent(metrics: metrics, textWidth: textWidth, message: message)
+      refreshActions()
+      showFlash(style.environment.values?.transcriptFocus?.flashedRowID)
+      if isRestyle, abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
+    }
+
+    /// Each text run's document, with its cited paths linked as far as they are known and the
+    /// inline math typeset so far; the rest of the math typesets for `shown` now.
+    private func documents(
+      for message: TranscriptTableTextMessage, in textStyle: MessageTextStyle,
+      shown: TranscriptTableShown
+    ) -> [Int: MessageTextDocument] {
+      let links = style.environment.values?.workspaceFileLinks
+      let linked = linkedPaths(of: message, links: links)
       var documents: [Int: MessageTextDocument] = [:]
       var untypeset: [String] = []
       for run in message.runs {
@@ -89,27 +138,10 @@
         untypeset += run.inlineMath.filter { math[$0] == nil }
         documents[run.id] = MessageTextBlocksView.document(
           source: MessageTextSource(text: message.markdown, piece: run.id), blocks: run.blocks,
-          linked: [], math: math, style: textStyle, links: nil)
+          linked: linked, math: math, style: textStyle, links: links)
       }
-      typeset(untypeset, ramp: textStyle.ramp, for: next)
-      let metrics = style.metrics(width: width)
-      let textWidth =
-        message.role == .answer ? metrics.columnWidth : metrics.promptWidth(style.layoutWidth)
-      laidOut = (metrics, textWidth)
-      adopt(message.split.pieces, documents: documents, width: textWidth)
-      let openURL = (style.environment.values?.openURL).map { open in
-        { @MainActor (url: URL) in open(url) }
-      }
-      for run in runs { run.setOpenURL(openURL) }
-      setAccessibilityIdentifier("message-\(message.row.id)")
-      setAccessibilityLabel(message.role == .user ? "You said" : nil)
-      if message.role == .answer {
-        runs.first?.view.setAccessibilityIdentifier("message-text-\(message.row.id)")
-      }
-      let previous = height
-      height = layOutContent(metrics: metrics, textWidth: textWidth, message: message)
-      refreshActions()
-      if isRestyle, abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
+      typeset(untypeset, ramp: textStyle.ramp, for: shown)
+      return documents
     }
 
     /// Shows `pieces` laid out `width` wide. A text run shows as a raster drawn ahead when the
@@ -152,6 +184,27 @@
       runs = adopted
     }
 
+    /// Shows message `rowID`'s parts beside its text, each offered `width`, in the views that
+    /// show parts already, in order; views left over go.
+    private func adoptAccessories(
+      _ accessories: [TranscriptTableAccessory], rowID: String, width: CGFloat
+    ) {
+      var adopted: [TranscriptTableAccessoryView] = []
+      for (index, accessory) in accessories.enumerated() {
+        let view =
+          accessoryViews.indices.contains(index) ? accessoryViews[index] : makeAccessoryView()
+        view.show(accessory, rowID: rowID, width: width)
+        adopted.append(view)
+      }
+      for view in accessoryViews.dropFirst(accessories.count) { release(view) }
+      accessoryViews = adopted
+    }
+
+    private func release(_ view: TranscriptTableAccessoryView) {
+      view.sizeChanged = nil
+      view.removeFromSuperview()
+    }
+
     /// A hosted block took another height: the cell lays out again and tells the table.
     func blockSizeChanged() {
       guard let message, let laidOut, !isLayingOut else { return }
@@ -164,9 +217,10 @@
       if abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
     }
 
-    /// A live text view's height changed by itself (a code block's Wrap turned): the cell lays
-    /// out again on the next pass and tells the table. AppKit's own calls while the cell shows
-    /// or lays out change nothing it isn't laying out already.
+    /// A live text view's or a hosted piece's height changed by itself (a code block's Wrap
+    /// turned, a part opened): the cell lays out again on the next pass and tells the table.
+    /// AppKit's own calls while the cell shows or lays out change nothing it isn't laying out
+    /// already.
     override func invalidateIntrinsicContentSize() {
       guard !isLayingOut, !awaitsLayout, message != nil else { return }
       awaitsLayout = true
@@ -178,13 +232,36 @@
       }
     }
 
+    /// The reader showed a long prompt whole, or collapsed it again: the choice outlasts the
+    /// cell, and the prompt shows again once the button's press is over.
+    func togglePrompt() {
+      guard let message, let fold = message.promptFold else { return }
+      folds.setExpanded(fold == .collapsed, for: message.row.id)
+      MainRunLoop.perform { [weak self] in
+        MainActor.assumeIsolated { self?.showAgain() }
+      }
+    }
+
+    /// Shows the row again as if it were new: its math typeset or its links found since.
+    func showAgain() {
+      guard let shown, let row = shownRow else { return }
+      let previous = height
+      self.shown = nil
+      show(row, version: shown.version, width: shown.width)
+      if abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
+    }
+
     /// Hands the text views back for the next cell that shows their documents.
     func releaseContent() {
       typesetting?.cancel()
       typesetting = nil
+      stopLinkCheck()
+      endFlash()
       shownRow = nil
       for run in runs { run.release() }
       runs = []
+      for view in accessoryViews { release(view) }
+      accessoryViews = []
       shown = nil
       message = nil
     }
@@ -206,97 +283,6 @@
 
     /// Its height is the text's, known at show: nothing reports later.
     func settle() {}
-
-    // MARK: Layout
-
-    /// Places the text, the bubble and the footer; returns the row's height.
-    private func layOutContent(
-      metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
-    ) -> CGFloat {
-      switch message.role {
-      case .answer: layOutAnswer(metrics: metrics, textWidth: textWidth, message: message)
-      case .user: layOutPrompt(metrics: metrics, textWidth: textWidth, message: message)
-      }
-    }
-
-    /// An answer: its runs down the column, then its footer.
-    private func layOutAnswer(
-      metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
-    ) -> CGFloat {
-      bubbleView.isHidden = true
-      if let palette = style.palette, textWidth >= MessageTextContentView.minimumWidth {
-        // The answers after this one lay out (and draw) ahead at this width.
-        MessageTextPrewarm.shared.note(
-          palette: palette, width: textWidth, scale: style.drawsAhead ? style.scale : 0,
-          raster: style.drawsAhead ? style.rasterStyle : nil)
-      }
-      let frames = TranscriptTableTextFrames(
-        role: .answer, gaps: message.split.pieces.map(\.gapAbove),
-        sizes: runs.map { $0.size(for: textWidth, fillsWidth: true) }, metrics: metrics,
-        workedHeight: message.decoration.workedFor.map { _ in Self.workedLabelHeight })
-      place(frames)
-      if let workedFor = message.decoration.workedFor, let frame = frames.worked {
-        let label = workedLabel ?? makeWorkedLabel()
-        label.stringValue = TurnElapsed.worked(workedFor)
-        label.toolTip = message.decoration.timestamp.map {
-          "Finished \(MessageTimestamp.format($0, now: Date()))"
-        }
-        label.frame = frame
-        label.isHidden = false
-      } else {
-        workedLabel?.isHidden = true
-      }
-      return frames.height
-    }
-
-    /// A user's prompt: its runs in a bubble that hugs them, at the column's trailing edge.
-    private func layOutPrompt(
-      metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
-    ) -> CGFloat {
-      workedLabel?.isHidden = true
-      if let palette = style.palette, textWidth >= MessageTextContentView.minimumWidth {
-        // The prompts after this one draw ahead at this width.
-        MessageTextPrewarm.prompts.note(
-          palette: palette, width: textWidth, scale: style.drawsAhead ? style.scale : 0,
-          raster: style.drawsAhead ? style.rasterStyle : nil)
-      }
-      let frames = TranscriptTableTextFrames(
-        role: .user, gaps: message.split.pieces.map(\.gapAbove),
-        sizes: runs.map { $0.size(for: textWidth, fillsWidth: false) }, metrics: metrics,
-        workedHeight: nil)
-      place(frames)
-      if let bubble = frames.bubble {
-        bubbleView.frame = bubble
-        bubbleView.color = style.bubble
-        bubbleView.isHidden = false
-      }
-      return frames.height
-    }
-
-    /// Puts the runs where `frames` says, and the actions' row.
-    private func place(_ frames: TranscriptTableTextFrames) {
-      for (run, frame) in zip(runs, frames.pieces) { run.view.frame = frame }
-      actionsTop = frames.actionsTop
-      actionsLineHeight = frames.actionsLineHeight
-      actionsTrailing = frames.actionsTrailing
-    }
-
-    /// The "Worked for" line's height: its caption's.
-    static let workedLabelHeight: CGFloat = {
-      let label = NSTextField(labelWithString: "Worked for 1s")
-      label.font = .preferredFont(forTextStyle: .caption1)
-      return label.intrinsicContentSize.height.rounded(.up)
-    }()
-
-    private func makeWorkedLabel() -> NSTextField {
-      let label = NSTextField(labelWithString: "")
-      label.font = .preferredFont(forTextStyle: .caption1)
-      label.textColor = .secondaryLabelColor
-      label.setAccessibilityIdentifier("worked-for")
-      addSubview(label)
-      workedLabel = label
-      return label
-    }
   }
 
   extension TranscriptTableTextCell {
@@ -347,13 +333,8 @@
             continue
           }
         }
-        guard typeset, !Task.isCancelled, let self, self.shown == shown,
-          let row = self.shownRow
-        else { return }
-        let previous = self.height
-        self.shown = nil
-        self.show(row, version: shown.version, width: shown.width)
-        if abs(previous - self.height) >= 0.5 { self.idealSizeChanged?(self) }
+        guard typeset, !Task.isCancelled, let self, self.shown == shown else { return }
+        self.showAgain()
       }
     }
 

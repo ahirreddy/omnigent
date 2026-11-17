@@ -4,8 +4,10 @@
 
   /// A settled chat message a text cell draws in AppKit (``TranscriptTableTextCell``): an answer
   /// or a user's prompt as TextKit text runs, with the blocks only SwiftUI draws (math, a
-  /// diagram, an image, a wide table) hosted between them, and nothing beside it that only
-  /// SwiftUI draws (attachments, mentions, a collapsed prompt, linked paths).
+  /// diagram, an image, a wide table) hosted between them, and the parts beside the text that
+  /// SwiftUI draws (attachments, mentions, a long prompt's toggle, content this app can't show,
+  /// the Interrupted line) hosted where the message row stacks them, and a shared session
+  /// author's avatar beside their prompt.
   struct TranscriptTableTextMessage {
     enum Role {
       case user
@@ -18,37 +20,159 @@
     /// The markdown shown: the answer's text, or the prompt's without its mentions.
     let markdown: String
     let split: MessageTextSplit
+    /// What the message stacks, top to bottom, as its row's stacks do: the parts beside the
+    /// text that SwiftUI draws, and the text's pieces.
+    let entries: [Entry]
+
+    /// One thing the message stacks.
+    enum Entry {
+      /// A part beside the text that SwiftUI draws, hosted.
+      case accessory(TranscriptTableAccessory)
+      /// A piece of the text: a run of text blocks, or a block SwiftUI draws.
+      case piece(MessageTextPiece)
+      /// A prompt's body that shows nothing (its text was only upload markers): it takes no
+      /// height, and its stack still spaces it.
+      case empty
+    }
+
+    /// Whether a prompt over ``UserPrompt/collapseThreshold`` characters shows whole.
+    enum PromptFold {
+      case collapsed
+      case expanded
+    }
+
+    /// A long prompt's fold; `nil` for any other message.
+    var promptFold: PromptFold?
+    /// What shows under a prompt's bubble, at the column's trailing edge: its Interrupted line.
+    var belowBubble: TranscriptTableAccessory?
+    /// The author whose initials show beside a shared session's prompt.
+    var avatar: String?
+
+    /// Who said it, as VoiceOver hears the message: "You said", or a shared session author's
+    /// name; `nil` for an answer.
+    var speaker: String? {
+      guard role == .user else { return nil }
+      return decoration.showsAvatar ? "\(row.author ?? "Someone") said" : "You said"
+    }
+
+    /// The width the message's text and parts lay out at: the column's for an answer, the
+    /// bubble's inside for a prompt, beside its avatar if it has one.
+    func textWidth(_ metrics: TranscriptTableTextMetrics, layoutWidth: LayoutWidth) -> CGFloat {
+      switch role {
+      case .answer: metrics.columnWidth
+      case .user: metrics.promptWidth(layoutWidth, besideAvatar: avatar != nil)
+      }
+    }
 
     /// The message row `row` shows, when a text cell can draw all of it at `ramp`.
-    static func make(_ row: TranscriptTableRow, ramp: TypeRamp) -> Self? {
+    /// - Parameters:
+    ///   - row: The row.
+    ///   - ramp: The reading ramp the text splits at.
+    ///   - expandsPrompt: A long prompt shows whole; it starts collapsed.
+    /// - Returns: The message, or `nil` for a row that stays SwiftUI's.
+    static func make(_ row: TranscriptTableRow, ramp: TypeRamp, expandsPrompt: Bool = false)
+      -> Self?
+    {
       guard case .segment(let entry) = row.content,
         case .item(.message(let message)) =
           entry.segment
       else { return nil }
-      guard !message.isStreaming, !message.text.isEmpty, message.attachments.isEmpty,
-        message.activity == nil, !message.interrupted
-      else { return nil }
+      guard !message.isStreaming else { return nil }
       let decoration = entry.decorations[message.id] ?? MessageDecoration()
-      let role: Role
-      let markdown: String
+      let attachments: [Entry] =
+        message.attachments.isEmpty ? [] : [.accessory(.attachments(message.attachments))]
+      // Content this app can't show follows the text and attachments, in a bubble or not.
+      let unsupported: [Entry] = message.activity.map { [.accessory(.unsupported($0))] } ?? []
+      var made: Self
       switch message.role {
       case .assistant:
-        role = .answer
-        markdown = message.text
+        guard !message.text.isEmpty else { return nil }
+        let text = Self.pieces(of: message.text, ramp: ramp)
+        let interrupted: [Entry] = message.interrupted ? [.accessory(.interrupted)] : []
+        made = Self(
+          role: .answer, row: message, decoration: decoration, markdown: message.text,
+          split: MessageTextSplits.shared.split(message.text, ramp: ramp),
+          entries: (text.isEmpty ? [.empty] : text) + attachments + unsupported + interrupted)
       case .user:
-        let prompt = UserPrompt.parse(message.text)
-        guard !decoration.showsAvatar, prompt.mentions.isEmpty, !prompt.text.isEmpty,
-          UserPrompt.collapsed(prompt.text) == nil
-        else { return nil }
-        role = .user
-        markdown = prompt.text
+        // Attachments lead the bubble, then the body, then content this app can't show.
+        let body = promptBody(message, ramp: ramp, expands: expandsPrompt)
+        made = Self(
+          role: .user, row: message, decoration: decoration, markdown: body.markdown,
+          split: MessageTextSplits.shared.split(body.markdown, ramp: ramp),
+          entries: attachments + body.entries + unsupported, promptFold: body.fold)
+        if message.interrupted { made.belowBubble = .interrupted }
+        // A shared session shows another author's initials beside their prompt.
+        if decoration.showsAvatar { made.avatar = message.author }
       case .tool:
         return nil
       }
-      let split = MessageTextSplits.shared.split(markdown, ramp: ramp)
-      guard split.cited.isEmpty, !split.pieces.isEmpty else { return nil }
-      return Self(
-        role: role, row: message, decoration: decoration, markdown: markdown, split: split)
+      // A message that shows nothing at all stays SwiftUI's.
+      guard made.entries.contains(where: { if case .empty = $0 { false } else { true } }) else {
+        return nil
+      }
+      return made
+    }
+
+    /// A user's prompt's body: the markdown it shows, what it stacks and a long prompt's fold.
+    private struct PromptBody {
+      var markdown: String
+      var entries: [Entry]
+      var fold: PromptFold?
+    }
+
+    /// A user's prompt's body as ``UserPromptBody`` stacks it: its mentions' chips, its text
+    /// and a long prompt's toggle. A prompt of attachments alone has no body.
+    private static func promptBody(_ message: Row, ramp: TypeRamp, expands: Bool) -> PromptBody {
+      let prompt = UserPrompt.parse(message.text)
+      var markdown = prompt.text
+      var fold: PromptFold?
+      var toggle: [Entry] = []
+      // A long prompt shows its start and "Show full prompt" until the reader expands it.
+      if let collapsed = UserPrompt.collapsed(prompt.text) {
+        fold = expands ? .expanded : .collapsed
+        if !expands { markdown = collapsed + "\u{2026}" }
+        let title = expands ? UserPrompt.collapseTitle : UserPrompt.expandTitle(prompt.text)
+        toggle = [.accessory(.promptToggle(title: title, collapses: expands))]
+      }
+      let mentions: [Entry] =
+        prompt.mentions.isEmpty ? [] : [.accessory(.mentions(prompt.mentions))]
+      var body = mentions + pieces(of: markdown, ramp: ramp) + toggle
+      if body.isEmpty, !message.text.isEmpty { body = [.empty] }
+      return PromptBody(markdown: markdown, entries: body, fold: fold)
+    }
+
+    /// The pieces `markdown` splits into at `ramp`.
+    private static func pieces(of markdown: String, ramp: TypeRamp) -> [Entry] {
+      guard !markdown.isEmpty else { return [] }
+      return MessageTextSplits.shared.split(markdown, ramp: ramp).pieces.map(Entry.piece)
+    }
+
+    /// The hosted parts beside the text, top to bottom: the entries', then what shows under a
+    /// prompt's bubble.
+    var accessories: [TranscriptTableAccessory] {
+      let stacked = entries.compactMap { entry -> TranscriptTableAccessory? in
+        if case .accessory(let accessory) = entry { return accessory }
+        return nil
+      }
+      return stacked + (belowBubble.map { [$0] } ?? [])
+    }
+
+    /// The gap above each entry, as the row's stacks space them: a small gap between any two,
+    /// and a piece of text its own gap after another piece.
+    var gaps: [CGFloat] {
+      var gaps: [CGFloat] = []
+      var afterPiece = false
+      for entry in entries {
+        switch entry {
+        case .piece(let piece):
+          gaps.append(piece.gapAbove + (gaps.isEmpty || afterPiece ? 0 : Theme.Spacing.small))
+          afterPiece = true
+        case .accessory, .empty:
+          gaps.append(gaps.isEmpty ? 0 : Theme.Spacing.small)
+          afterPiece = false
+        }
+      }
+      return gaps
     }
 
     /// One run of text blocks, the gap above it and the inline math its paragraphs typeset.
@@ -94,81 +218,15 @@
         + Theme.Spacing.small
     }
 
-    /// The width a user's prompt may lay out at inside its bubble.
-    func promptWidth(_ layoutWidth: LayoutWidth) -> CGFloat {
-      let bubble = min(Theme.userMessageWidth, columnWidth - Self.bubbleLead(layoutWidth))
+    /// The space a shared session's avatar takes at the bubble's trailing side, with the
+    /// stack's spacing before it.
+    static let avatarLane = TranscriptTableAvatarView.size + Theme.Spacing.small
+
+    /// The width a user's prompt may lay out at inside its bubble, beside an avatar or not.
+    func promptWidth(_ layoutWidth: LayoutWidth, besideAvatar: Bool = false) -> CGFloat {
+      let lane = besideAvatar ? Self.avatarLane : 0
+      let bubble = min(Theme.userMessageWidth, columnWidth - Self.bubbleLead(layoutWidth) - lane)
       return max(0, bubble - 2 * Theme.Spacing.large)
-    }
-  }
-
-  /// Where a text cell puts a message's pieces, from their sizes: the cell lays its views out
-  /// by it, and a row far from view is measured by it with no views.
-  struct TranscriptTableTextFrames: Equatable {
-    /// Each piece's frame, top to bottom.
-    var pieces: [CGRect] = []
-    /// A user's bubble.
-    var bubble: CGRect?
-    /// An answer's "Worked for" line.
-    var worked: CGRect?
-    /// Where the actions' row starts (under the text, or on the "Worked for" line) and ends.
-    var actionsTop: CGFloat = 0
-    var actionsLineHeight: CGFloat = 0
-    var actionsTrailing: CGFloat = 0
-    var height: CGFloat = 0
-
-    /// - Parameters:
-    ///   - role: An answer's pieces go down the column; a prompt's sit in a bubble that hugs
-    ///     them at its trailing edge.
-    ///   - gaps: The gap above each piece.
-    ///   - sizes: Each piece's size: an answer's as wide as the column, a prompt's as its text.
-    ///   - metrics: The column.
-    ///   - workedHeight: The "Worked for" line's height, when an answer has one.
-    init(
-      role: TranscriptTableTextMessage.Role, gaps: [CGFloat], sizes: [CGSize],
-      metrics: TranscriptTableTextMetrics, workedHeight: CGFloat?
-    ) {
-      func gap(_ index: Int) -> CGFloat { gaps.indices.contains(index) ? gaps[index] : 0 }
-      actionsTrailing = metrics.columnX + metrics.columnWidth
-      switch role {
-      case .answer:
-        var bottom: CGFloat = 0
-        for (index, size) in sizes.enumerated() {
-          bottom += gap(index)
-          pieces.append(
-            CGRect(x: metrics.columnX, y: bottom, width: size.width, height: size.height))
-          bottom += size.height
-        }
-        // The footer follows the stack's spacing; without "Worked for" it takes no height and
-        // the actions hang into the gap below the text.
-        bottom += Theme.Spacing.small
-        if let workedHeight {
-          worked = CGRect(
-            x: metrics.columnX, y: bottom, width: metrics.columnWidth / 2, height: workedHeight)
-          actionsTop = bottom
-          actionsLineHeight = workedHeight
-          bottom += workedHeight
-        } else {
-          actionsTop = bottom - Theme.Spacing.small
-        }
-        height = (bottom + Theme.Spacing.row).rounded(.up)
-      case .user:
-        let used = sizes.map(\.width).max() ?? 0
-        let bubbleWidth = used + 2 * Theme.Spacing.large
-        let bubbleX = metrics.columnX + metrics.columnWidth - bubbleWidth
-        var bottom = Theme.Spacing.bubbleVertical
-        for (index, size) in sizes.enumerated() {
-          bottom += gap(index)
-          pieces.append(
-            CGRect(
-              x: bubbleX + Theme.Spacing.large, y: bottom, width: size.width,
-              height: size.height))
-          bottom += size.height
-        }
-        let bubbleHeight = bottom + Theme.Spacing.bubbleVertical
-        bubble = CGRect(x: bubbleX, y: 0, width: bubbleWidth, height: bubbleHeight)
-        actionsTop = bubbleHeight
-        height = (bubbleHeight + Theme.Spacing.extraSmall + Theme.Spacing.row).rounded(.up)
-      }
     }
   }
 #endif

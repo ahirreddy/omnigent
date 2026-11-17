@@ -214,12 +214,16 @@
         let version = model.version(at: index)
         guard prewarmed[id] != version, let message = textMessage(at: index) else { continue }
         prewarmed[id] = version
+        // A prompt of attachments alone has no text to lay out.
+        guard !message.runs.isEmpty else { continue }
         let position = Double(tableView.rect(ofRow: index).midY)
         switch message.role {
         case .answer:
           answers.texts.append(message.markdown)
           answers.positions.append(position)
         case .user:
+          // A prompt beside an avatar lays out narrower than the prompts drawn ahead.
+          guard message.avatar == nil else { continue }
           prompts.texts.append(message.markdown)
           prompts.positions.append(position)
         }

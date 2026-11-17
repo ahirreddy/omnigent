@@ -179,6 +179,12 @@
 
     // MARK: Accessibility
 
+    /// The text the drawing shows, for a reader of shown text such as a test's; `nil` while the
+    /// live text lies over it, which reads itself.
+    @objc var drawnText: String? {
+      live == nil ? document.text.string : nil
+    }
+
     override func isAccessibilityElement() -> Bool { false }
 
     // The live text's elements, as SwiftUI exposes the message's: an assistive client reads

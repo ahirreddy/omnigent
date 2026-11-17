@@ -67,9 +67,43 @@
     func updateNSView(_ view: NSTextView, context: Context) {}
   }
 
+  /// A view showing a drawing of laid-out text, as a message's text drawn ahead is.
+  private final class DrawnTextView: NSView {
+    var text: String?
+
+    @objc var drawnText: String? { text }
+  }
+
+  private struct DrawnText: NSViewRepresentable {
+    let text: String?
+
+    func makeNSView(context: Context) -> DrawnTextView {
+      let view = DrawnTextView()
+      view.text = text
+      return view
+    }
+
+    func updateNSView(_ view: DrawnTextView, context: Context) {}
+  }
+
   @Suite("Shown text", .serialized)
   @MainActor
   struct ShownTextTests {
+    @Test("Reads a drawing of laid-out text by paragraph and cell, and nothing it doesn't show")
+    func drawnText() throws {
+      let screen = OffscreenWindow(
+        VStack {
+          Text("SwiftUI text")
+          DrawnText(text: "Drawn paragraph\n\t1.\tA step\nCell\t\u{FFFC}")
+            .frame(width: 300, height: 80)
+          DrawnText(text: nil).frame(width: 300, height: 40)
+        }, width: 320, height: 180)
+      defer { screen.close() }
+      let shown = try screen.shownText()
+      #expect(
+        shown.sorted() == ["1.", "A step", "Cell", "Drawn paragraph", "SwiftUI text"], "\(shown)")
+    }
+
     @Test("Reads a read-only TextKit view by paragraph and cell, and leaves editors out")
     func textKitViews() throws {
       let screen = OffscreenWindow(

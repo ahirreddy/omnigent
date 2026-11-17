@@ -198,7 +198,8 @@ struct AuthorAvatar: View {
   }
 }
 
-private struct InterruptedLabel: View {
+/// A message's "Interrupted" line, as the turn's other status lines draw.
+struct InterruptedLabel: View {
   let rowID: String
 
   var body: some View {

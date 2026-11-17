@@ -7,13 +7,19 @@
     // MARK: Cells
 
     /// The text-cell message row `index` shows, or `nil` when the row stays hosted in SwiftUI;
-    /// worked out once per content version.
+    /// worked out once per content version and, for a long prompt, whether it shows whole.
     func textMessage(at index: Int) -> TranscriptTableTextMessage? {
       guard textStyle.isEnabled else { return nil }
       let row = model.rows[index]
       let version = model.version(at: index)
-      if let known = textMessages[row.id], known.version == version { return known.message }
-      let message = TranscriptTableTextMessage.make(row, ramp: textStyle.ramp)
+      let expands = folds.isExpanded(row.id, isLive: false)
+      if let known = textMessages[row.id], known.version == version,
+        known.message?.promptFold.map({ ($0 == .expanded) == expands }) ?? true
+      {
+        return known.message
+      }
+      let message = TranscriptTableTextMessage.make(
+        row, ramp: textStyle.ramp, expandsPrompt: expands)
       textMessages[row.id] = (version, message)
       return message
     }
@@ -40,7 +46,7 @@
       case .hosted where hostingStyle == .fitted:
         TranscriptTableFittedCell(environment: environment)
       case .hosted: TranscriptTableHostingCell.make(environment: environment)
-      case .text: TranscriptTableTextCell(style: textStyle)
+      case .text: TranscriptTableTextCell(style: textStyle, folds: folds)
       case .native(.worked): TranscriptTableFoldCell(style: textStyle, folds: folds)
       case .native: TranscriptTableSpacerCell()
       }
@@ -98,7 +104,8 @@
       let kind = cellKind(at: index)
       if case .text = kind, let message = textMessage(at: index),
         let height = TranscriptTableTextCell.measuredHeight(
-          of: message, style: textStyle, width: model.width, blockHeight: measuredBlockHeight)
+          of: message, style: textStyle, width: model.width, blockHeight: measuredBlockHeight,
+          accessorySize: measuredAccessorySize)
       {
         measurements += 1
         return model.record(height, at: index)
@@ -116,6 +123,17 @@
       measuringBlock = view
       view.show(block, piece: piece, width: width)
       return view.idealHeight
+    }
+
+    /// A part beside a message's text's size, offered `width`, in a hosting view kept for
+    /// measuring.
+    func measuredAccessorySize(
+      _ accessory: TranscriptTableAccessory, rowID: String, width: CGFloat
+    ) -> CGSize {
+      let view = measuringAccessory ?? TranscriptTableAccessoryView.make(environment: environment)
+      measuringAccessory = view
+      view.show(accessory, rowID: rowID, width: width)
+      return view.idealSize
     }
 
     /// Tells the table rows' heights changed, keeping the reader in place: at the bottom while

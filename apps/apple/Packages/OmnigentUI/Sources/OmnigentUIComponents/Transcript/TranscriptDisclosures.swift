@@ -29,6 +29,12 @@ final class TranscriptDisclosures {
     return choice
   }
 
+  /// The reader's choice for `key`, `nil` before they made one, without making a ``Choice``
+  /// to observe: for the table's AppKit cells, which read it for every row they show.
+  func madeChoice(_ key: String) -> Bool? {  // swiftlint:disable:this discouraged_optional_boolean
+    choices[key]?.isExpanded
+  }
+
   /// Forgets every choice: another session opened.
   func reset() {
     choices = [:]

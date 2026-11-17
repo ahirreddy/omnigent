@@ -180,7 +180,8 @@
       let diagramRow = try #require(controller.model.index(of: "a-diagram"))
       let diagram = try #require(
         controller.realizedCell(at: diagramRow) as? TranscriptTableTextCell)
-      #expect(diagram.texts.count == 1, "the text before the diagram")
+      // Live or drawn ahead, as the surface the run is chosen.
+      #expect(diagram.runs.count { $0.document != nil } == 1, "the text before the diagram")
       let hostsBlock = diagram.runs.contains {
         if case .block = $0 { return true }
         return false

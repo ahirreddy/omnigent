@@ -36,21 +36,21 @@
     }
   }
 
-  /// The Worked folds the reader opened or closed, kept in the transcript's
-  /// ``TranscriptDisclosures`` under ``WorkedFold``'s keys. A fold's cell shows other rows once
-  /// it scrolls away, so the choice lives with the table (``TranscriptTableFoldCell``), and a
-  /// fold SwiftUI draws reads the same one.
+  /// The Worked folds and long prompts the reader opened or closed, kept in the transcript's
+  /// ``TranscriptDisclosures``: a fold under ``WorkedFold``'s key, which a fold SwiftUI draws
+  /// reads too, and a prompt under its row's id. A row's cell shows other rows once it scrolls
+  /// away, so the choice lives with the table.
   @MainActor
   final class TranscriptTableFolds {
     let disclosures: TranscriptDisclosures
 
-    init(disclosures: TranscriptDisclosures) {
+    init(disclosures: TranscriptDisclosures = TranscriptDisclosures()) {
       self.disclosures = disclosures
     }
 
     /// Whether fold `key` is open: as the reader left it, else open while its turn is live.
     func isExpanded(_ key: String, isLive: Bool) -> Bool {
-      disclosures.choice(key).isExpanded ?? isLive
+      disclosures.madeChoice(key) ?? isLive
     }
 
     func setExpanded(_ isExpanded: Bool, for key: String) {
