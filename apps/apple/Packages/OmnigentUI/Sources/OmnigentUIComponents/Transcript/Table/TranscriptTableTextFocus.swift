@@ -10,6 +10,8 @@
     var keyboardNavigates: @MainActor () -> Bool = {
       NSApplication.shared.isFullKeyboardAccessEnabled
     }
+    /// VoiceOver is on: every message shows its actions, as a SwiftUI row's do.
+    var voiceOverIsOn: @MainActor () -> Bool = { NSWorkspace.shared.isVoiceOverEnabled }
   }
 
   /// A text cell's keyboard focus, as a SwiftUI message row's: with keyboard navigation on, the

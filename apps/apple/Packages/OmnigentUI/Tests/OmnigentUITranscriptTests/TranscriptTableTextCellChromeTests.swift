@@ -136,5 +136,40 @@
       TranscriptTableTextCell.assistive.keyboardNavigates = { false }
       #expect(!cell.acceptsFirstResponder)
     }
+
+    // MARK: VoiceOver
+
+    @Test("VoiceOver gets the message's actions that apply, by title, and each one runs")
+    func voiceOverActions() throws {
+      var forked: [String] = []
+      let answer = cell(Fixture.answer("a1", "Body"), actions: everyAction { forked.append($0) })
+      let actions = try #require(answer.accessibilityCustomActions())
+      #expect(actions.map(\.name) == ["Copy", "Fork from here", "Copy link"])
+      for action in actions { #expect(action.handler?() == true, "\(action.name)") }
+      #expect(forked == ["a1"])
+      #expect(copied == "https://example.com/c?message=a1", "Copy link ran last")
+      // A fork the session refuses isn't offered.
+      var refused = ConversationActions()
+      refused.forkUnavailableReason = "Only the owner can fork"
+      let refusedCell = cell(Fixture.answer("a2", "Body"), actions: refused)
+      #expect(refusedCell.accessibilityCustomActions()?.map(\.name) == ["Copy"])
+    }
+
+    @Test("With VoiceOver on, every message shows its actions, as a SwiftUI row's do")
+    func voiceOverRevealsActions() async throws {
+      let saved = TranscriptTableTextCell.assistive
+      defer { TranscriptTableTextCell.assistive = saved }
+      let screen = try await textTableScreen(turns, actions: everyAction())
+      defer { screen.close() }
+      restKeyboard(screen)
+      let cell = try textCell("a1", in: screen)
+      #expect(cell.actionsView?.isHidden != false)
+      TranscriptTableTextCell.assistive.voiceOverIsOn = { true }
+      try tableController(of: screen).refreshTextCellActions()
+      #expect(cell.actionsView?.isHidden == false)
+      TranscriptTableTextCell.assistive.voiceOverIsOn = { false }
+      try tableController(of: screen).refreshTextCellActions()
+      #expect(cell.actionsView?.isHidden == true)
+    }
   }
 #endif

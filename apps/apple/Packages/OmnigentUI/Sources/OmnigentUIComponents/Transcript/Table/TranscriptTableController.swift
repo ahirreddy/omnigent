@@ -67,6 +67,8 @@
     /// The Worked folds and long prompts the reader opened or closed.
     let folds = TranscriptTableFolds()
     var awaitsEnvironment = false
+    /// Follows VoiceOver turning on or off, which shows or hides the text cells' actions.
+    var voiceOverWatch: NSKeyValueObservation?
 
     /// The follow rules (``TranscriptFollow``).
     var follow = TranscriptFollow() {
@@ -166,6 +168,7 @@
     ) {
       if environment.values == nil { environment.values = values }
       syncTextStyle()
+      watchVoiceOver()
       self.actions = actions
       self.isCLI = isCLI
       let previous = self.state

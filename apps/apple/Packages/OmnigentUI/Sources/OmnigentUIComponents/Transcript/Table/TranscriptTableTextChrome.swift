@@ -8,9 +8,10 @@
     // MARK: Actions
 
     /// Whether the actions show: on hover or keyboard focus, or always on the last settled
-    /// answer.
+    /// answer and while VoiceOver is on.
     var revealsActions: Bool {
       isHovered || message?.decoration.showsActions == true || hasKeyboardFocus
+        || Self.assistive.voiceOverIsOn()
     }
 
     /// Builds the actions' row once it first shows, and places or hides it.
