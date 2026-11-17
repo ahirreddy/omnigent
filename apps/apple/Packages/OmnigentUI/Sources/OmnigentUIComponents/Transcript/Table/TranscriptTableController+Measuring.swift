@@ -21,6 +21,7 @@
     /// The kind of cell row `index` shows in.
     func cellKind(at index: Int) -> TranscriptTableCellKind {
       let row = model.rows[index]
+      if cliText(at: index) != nil { return .cliText(row.kind) }
       if textMessage(at: index) != nil { return .text(row.kind) }
       return cellStyle.drawsNatively(row, isCLI: isCLI) ? .native(row.kind) : .hosted(row.kind)
     }
@@ -41,6 +42,7 @@
         TranscriptTableFittedCell(environment: environment)
       case .hosted: TranscriptTableHostingCell.make(environment: environment)
       case .text: TranscriptTableTextCell(style: textStyle)
+      case .cliText: TranscriptTableCLICell(style: cli.style)
       case .native(.worked): TranscriptTableFoldCell(style: textStyle, folds: folds)
       case .native: TranscriptTableSpacerCell()
       }
@@ -87,14 +89,20 @@
     /// its cell is made only as it shows, by when its drawing has likely arrived; another row
     /// in a cell kept for it.
     func measureAhead(_ index: Int) -> Bool {
-      if case .text = cellKind(at: index) { return measureAway(index) }
-      return measureKeeping(index)
+      switch cellKind(at: index) {
+      case .text, .cliText: return measureAway(index)
+      default: return measureKeeping(index)
+      }
     }
 
     /// Measures row `index`, far from view: a settled message from its runs' laid-out sizes,
     /// with no text view; another row in its kind's measuring cell.
     func measureAway(_ index: Int) -> Bool {
       guard model.width > 0 else { return false }
+      if let height = cliMeasuredHeight(at: index) {
+        measurements += 1
+        return model.record(height, at: index)
+      }
       let kind = cellKind(at: index)
       if case .text = kind, let message = textMessage(at: index),
         let height = TranscriptTableTextCell.measuredHeight(
@@ -191,7 +199,9 @@
           MainActor.assumeIsolated { self?.environmentChanged() }
         }
       }
-      textStyleChanged(textStyle.refresh())
+      let chat = textStyle.refresh()
+      let cliChanged = cli.style.refresh()
+      textStyleChanged(chat || cliChanged)
     }
 
     func environmentChanged() {
@@ -205,6 +215,7 @@
       guard changed else { return }
       textMessages = [:]
       prewarmed = [:]
+      cli.forget()
       guard tableView.numberOfRows == model.rows.count, model.width > 0 else { return }
       var reloaded = IndexSet()
       var noted = IndexSet()
@@ -212,7 +223,8 @@
         guard let cell = realizedCell(at: row) else { return }
         if cell.kind != cellKind(at: row) {
           reloaded.insert(row)
-        } else if cell is TranscriptTableTextCell || cell is TranscriptTableFoldCell,
+        } else if cell is TranscriptTableTextCell || cell is TranscriptTableFoldCell
+          || cell is TranscriptTableCLICell,
           measure(row, with: cell)
         {
           noted.insert(row)

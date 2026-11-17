@@ -17,10 +17,8 @@
       var origin = proposed
       // Answers past what this frame measures lay out off the main thread meanwhile, those
       // the reader reaches first first.
-      for prewarm in [MessageTextPrewarm.shared, .prompts] {
-        prewarm.focus(
-          at: Double(upward ? proposed.y : proposed.y + height), direction: upward ? -1 : 1)
-      }
+      focusPrewarms(
+        at: Double(upward ? proposed.y : proposed.y + height), direction: upward ? -1 : 1)
       let farReach = height * Self.prewarmReach
       prewarmAnswers(
         in: upward

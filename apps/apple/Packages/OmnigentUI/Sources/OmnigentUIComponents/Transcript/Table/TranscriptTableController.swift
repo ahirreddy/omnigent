@@ -58,6 +58,8 @@
     var textMessages: [String: (version: Int, message: TranscriptTableTextMessage?)] = [:]
     /// Answers handed to the prewarm, by row id and version.
     var prewarmed: [String: Int] = [:]
+    /// The CLI rows drawn as text cells.
+    lazy var cli = TranscriptTableCLIState(environment: environment, textStyle: textStyle)
     /// Which rows beyond settled messages draw in AppKit cells.
     let cellStyle = TranscriptTableCellStyle.launchValue
     /// How SwiftUI rows are sized.
@@ -291,6 +293,7 @@
       else { return }
       // Off screen, a drawn run's bitmap counts only against the rasters' cache.
       (cell as? TranscriptTableTextCell)?.releaseBitmaps()
+      (cell as? TranscriptTableCLICell)?.releaseBitmaps()
       pool.park(cell)
     }
 
