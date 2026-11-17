@@ -5,13 +5,17 @@
   /// A run of message text drawn ahead (``MessageTextRaster``), shown as layer contents, so
   /// scrolling moves it and draws nothing. A press in the text lays a live text view
   /// (``MessageTextContentView``) over it for selecting and copying until that view gives up
-  /// the keyboard; links take the pointing hand and open from the raster's link rectangles; a
-  /// code block's or a table's controls are light views over their bands.
+  /// the keyboard; links take the pointing hand and open from the raster's link rectangles. A
+  /// code block's or a table's controls are drawn at rest into the raster, and made as views
+  /// only once the pointer reaches them (or a click or an assistive client does).
   final class MessageTextRasterView: NSView {
     let document: MessageTextDocument
     private(set) var raster: MessageTextRaster
+    /// Whether the bitmap was let go while the view is off screen (``releaseBitmap()``).
+    private(set) var isReleased = false
     private let image = MessageTextImageView()
-    private var chromeViews: [Int: NSView] = [:]
+    /// The controls made so far, by block.
+    private(set) var chromeViews: [Int: NSView] = [:]
     /// The text view laid over the raster while the reader selects.
     private(set) var live: MessageTextContentView?
     var openURL: (@MainActor (URL) -> Void)?
@@ -26,9 +30,6 @@
       super.init(frame: .zero)
       addSubview(image)
       show(raster)
-      setAccessibilityElement(true)
-      setAccessibilityRole(.staticText)
-      setAccessibilityValue(document.text.string)
     }
 
     @available(*, unavailable)
@@ -38,18 +39,29 @@
 
     override var isFlipped: Bool { true }
 
-    /// Shows `raster`, a drawing of this view's document.
+    /// The key it was drawn under.
+    var key: MessageTextRasterKey {
+      MessageTextRasterKey(document: document.serial, width: raster.width, scale: raster.scale)
+    }
+
+    /// Shows `raster`, a drawing of this view's document. Controls the drawing leaves out are
+    /// made now.
     func show(_ raster: MessageTextRaster) {
       self.raster = raster
+      isReleased = false
       image.show(raster.surface, scale: raster.scale)
-      for (block, frame) in raster.chromeFrames {
-        guard chromeViews[block] == nil, let chrome = document.chrome[block] else { continue }
-        let view = makeChrome(chrome, block: block)
-        chromeViews[block] = view
-        addSubview(view)
-        view.frame = frame.offsetBy(dx: 0, dy: raster.topInset)
+      for block in raster.chromeFrames.keys where !raster.drawnChrome.contains(block) {
+        makeChrome(block)
       }
       needsLayout = true
+    }
+
+    /// Lets the bitmap go while the view is off screen; ``show(_:)`` takes one again.
+    func releaseBitmap() {
+      guard !isReleased, live == nil else { return }
+      raster = raster.withoutBitmap()
+      isReleased = true
+      image.show(nil, scale: raster.scale)
     }
 
     override func layout() {
@@ -65,17 +77,37 @@
       if let live, live.frame != bounds { live.frame = bounds }
     }
 
-    private func makeChrome(_ chrome: MessageTextChrome, block: Int) -> NSView {
+    // MARK: Controls
+
+    /// The control view for `block`, made now if it isn't yet.
+    @discardableResult
+    func makeChrome(_ block: Int) -> NSView? {
+      if let made = chromeViews[block] { return made }
+      guard let chrome = document.chrome[block], let frame = raster.chromeFrames[block] else {
+        return nil
+      }
+      let view: NSView
       switch chrome {
       case .code(let code, let language):
         let header = MessageCodeHeaderView(
           language: language, code: code, palette: document.palette)
         // Long lines that scroll sideways need the live text, which the cell shows instead.
         header.wrapChanged = { [weak self] wraps in self?.wrapChanged?(block, wraps) }
-        return header
+        view = header
       case .table(let table):
-        return MessageTableControlsView(table: table, palette: document.palette)
+        view = MessageTableControlsView(table: table, palette: document.palette)
       }
+      view.frame = frame.offsetBy(dx: 0, dy: raster.topInset)
+      view.isHidden = live != nil
+      chromeViews[block] = view
+      addSubview(view)
+      return view
+    }
+
+    /// The block whose controls are under `point`, in the view's coordinates.
+    private func chromeBlock(at point: CGPoint) -> Int? {
+      let text = CGPoint(x: point.x, y: point.y - raster.topInset)
+      return raster.chromeFrames.first { $0.value.contains(text) }?.key
     }
 
     // MARK: Pointer
@@ -87,6 +119,16 @@
     }
 
     override func mouseDown(with event: NSEvent) {
+      let point = convert(event.locationInWindow, from: nil)
+      // A press on a control drawn at rest goes to the control, made for it; one beside the
+      // controls selects, as it would over them.
+      if live == nil, let block = chromeBlock(at: point), let view = makeChrome(block) {
+        view.layoutSubtreeIfNeeded()
+        if let target = view.hitTest(point), target !== view {
+          target.mouseDown(with: event)
+          return
+        }
+      }
       if let url = raster.link(at: textPoint(event)) {
         pressedLink = url
         return
@@ -114,6 +156,10 @@
 
     override func mouseMoved(with event: NSEvent) {
       super.mouseMoved(with: event)
+      // The pointer reached controls drawn at rest: the real ones take over, hover and all.
+      if live == nil, let block = chromeBlock(at: convert(event.locationInWindow, from: nil)) {
+        makeChrome(block)
+      }
       setCursor(for: event)
     }
 
@@ -123,8 +169,24 @@
 
     private func setCursor(for event: NSEvent) {
       guard live == nil else { return }
+      if chromeBlock(at: convert(event.locationInWindow, from: nil)) != nil {
+        NSCursor.arrow.set()
+        return
+      }
       let isLink = raster.link(at: textPoint(event)) != nil
       (isLink ? NSCursor.pointingHand : NSCursor.iBeam).set()
+    }
+
+    // MARK: Accessibility
+
+    override func isAccessibilityElement() -> Bool { false }
+
+    // The live text's elements, as SwiftUI exposes the message's: an assistive client reads
+    // the text the drawing shows, laid over it while the run shows. AppKit's signature makes
+    // them optional.
+    // swiftlint:disable:next discouraged_optional_collection
+    override func accessibilityChildren() -> [Any]? {
+      activate().accessibilityChildren()
     }
 
     // MARK: Live text

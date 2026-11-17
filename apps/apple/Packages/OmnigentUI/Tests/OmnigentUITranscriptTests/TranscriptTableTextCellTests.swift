@@ -102,6 +102,16 @@
       #expect(
         cell.idealHeight
           == (drawn.size.height + Theme.Spacing.small + Theme.Spacing.row).rounded(.up))
+      // Off screen the cell lets the bitmap go; shown again, it takes the cached one back.
+      cell.releaseBitmaps()
+      #expect(view.isReleased)
+      cell.show(answer, version: 0, width: Self.width)
+      guard case .raster(let shown)? = cell.runs.first else {
+        Issue.record("the run shows live once shown again")
+        return
+      }
+      #expect(shown === view)
+      #expect(shown.raster === drawn)
     }
 
     @Test("With runs drawn ahead, a short prompt is drawn at once instead of shown live")

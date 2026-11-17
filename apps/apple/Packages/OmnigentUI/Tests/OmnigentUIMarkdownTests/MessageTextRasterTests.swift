@@ -130,6 +130,65 @@
       #expect(try !rasters.contains(#require(drawnKey(offered))))
     }
 
+    /// The bytes of `raster`'s bitmap inside `rect` (in the run's text coordinates).
+    private func pixels(in rect: CGRect, of raster: MessageTextRaster) throws -> [UInt8] {
+      let surface = try #require(raster.surface)
+      _ = unsafe surface.lock(options: .readOnly, seed: nil)
+      defer { _ = unsafe surface.unlock(options: .readOnly, seed: nil) }
+      var bytes: [UInt8] = []
+      for line in Int(rect.minY * raster.scale)..<Int(rect.maxY * raster.scale) {
+        for column in Int(rect.minX * raster.scale)..<Int(rect.maxX * raster.scale) {
+          for channel in 0..<4 {
+            let offset = line * surface.bytesPerRow + column * 4 + channel
+            bytes.append(unsafe surface.baseAddress.load(fromByteOffset: offset, as: UInt8.self))
+          }
+        }
+      }
+      return bytes
+    }
+
+    @Test("A drawn run draws its controls at rest, and makes them as views only when reached")
+    func controlsDrawnAtRest() throws {
+      let palette = MessageTextPalette(MessageTextFixture.style)
+      let stamps = MessageTextChromeStamps.stamps(for: palette, scale: 2)
+      let code = try #require(stamps.code, "the code header's controls draw in a stamp")
+      #expect(stamps.table != nil, "the table's controls draw in a stamp")
+      var stamped = style
+      stamped.codeChrome = code
+      stamped.tableChrome = stamps.table
+      let document = MessageTextFixture.document("Intro line.\n\n```swift\nlet a = 1\n```")
+      let plain = MessageTextRaster.make(document.run, width: 500, scale: 2, style: style)
+      let drawn = MessageTextRaster.make(document.run, width: 500, scale: 2, style: stamped)
+      let (block, header) = try #require(drawn.chromeFrames.first)
+      #expect(drawn.drawnChrome == [block])
+      #expect(plain.drawnChrome.isEmpty)
+      // The controls sit at the header's trailing edge, over its band.
+      let controls = CGRect(
+        x: header.maxX - 120, y: header.minY, width: 120, height: header.height)
+      #expect(try pixels(in: controls, of: drawn) != pixels(in: controls, of: plain))
+      let view = MessageTextRasterView(document: document, raster: drawn)
+      #expect(view.chromeViews.isEmpty, "nothing is made until the pointer reaches it")
+      #expect(view.makeChrome(block) is MessageCodeHeaderView)
+      // Without a stamp, a run makes its controls at once, as before.
+      let eager = MessageTextRasterView(document: document, raster: plain)
+      #expect(eager.chromeViews[block] is MessageCodeHeaderView)
+    }
+
+    @Test("A drawn run lets its bitmap go off screen and takes a drawing back")
+    func releasesBitmap() throws {
+      let document = MessageTextFixture.document(Self.answer)
+      let drawn = raster(document, width: 500, scale: 2)
+      let view = MessageTextRasterView(document: document, raster: drawn)
+      view.releaseBitmap()
+      #expect(view.isReleased)
+      #expect(view.raster.surface == nil)
+      #expect(view.raster.size == drawn.size, "it keeps its size and links")
+      #expect(view.raster.links == drawn.links)
+      view.show(drawn)
+      #expect(!view.isReleased)
+      #expect(view.raster === drawn)
+    }
+
     @Test("A press in a drawn run lays the live text view over it, and it goes once done")
     func liveOverlay() throws {
       let document = MessageTextFixture.document(Self.answer)

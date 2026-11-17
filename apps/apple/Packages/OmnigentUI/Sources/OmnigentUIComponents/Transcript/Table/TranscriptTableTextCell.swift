@@ -187,12 +187,22 @@
     var idealHeight: CGFloat { height }
 
     /// Whether a run shows live while runs draw ahead: its drawing may have arrived since.
+    /// A drawn run that let its bitmap go off screen takes it back too.
     private var awaitsRasters: Bool {
       style.drawsAhead
         && runs.contains {
-          if case .live = $0 { return true }
-          return false
+          switch $0 {
+          case .live: true
+          case .raster(let view): view.isReleased
+          case .block: false
+          }
         }
+    }
+
+    /// Lets the drawn runs' bitmaps go once the cell leaves the table: the rasters' cache keeps
+    /// them under its memory budget, and showing the cell again takes them back from it.
+    func releaseBitmaps() {
+      for case .raster(let view) in runs { view.releaseBitmap() }
     }
 
     /// Its height is the text's, known at show: nothing reports later.

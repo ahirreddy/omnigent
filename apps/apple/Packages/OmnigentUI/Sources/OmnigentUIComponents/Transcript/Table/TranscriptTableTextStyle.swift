@@ -23,7 +23,7 @@
     var surface = MessageTextSurface.launchValue
     /// The window's pixels per point, which runs are drawn ahead at.
     private(set) var scale: CGFloat = 0
-    /// The layers' colors for runs drawn ahead.
+    /// The layers' colors and the controls at rest for runs drawn ahead.
     private(set) var rasterStyle: MessageTextRasterStyle?
     private(set) var serial = 0
     /// Documents that show as live text, not drawn ahead: the reader set a code block's long
@@ -56,13 +56,8 @@
           || bubble != self.bubble || labelSize != self.labelSize
       else { return false }
       if style != self.style {
-        let palette = MessageTextPalette(style)
-        self.palette = palette
-        rasterStyle = MessageTextRasterStyle(
-          codeSurface: palette.codeSurface.cgColor, codeHeader: palette.hover.cgColor,
-          separator: palette.separator.cgColor, border: palette.border.cgColor,
-          quoteBar: palette.tertiary.cgColor, link: palette.link.cgColor,
-          codeRadius: Theme.Radius.large)
+        palette = MessageTextPalette(style)
+        makeRasterStyle()
       }
       self.style = style
       self.ramp = ramp
@@ -81,8 +76,23 @@
     func setScale(_ scale: CGFloat) -> Bool {
       guard scale > 0, scale != self.scale else { return false }
       self.scale = scale
+      makeRasterStyle()
       serial += 1
       return true
+    }
+
+    /// The raster style for the palette and scale, its controls stamped at that scale.
+    private func makeRasterStyle() {
+      guard let palette else { return }
+      let stamps =
+        surface == .raster
+        ? MessageTextChromeStamps.stamps(for: palette, scale: scale)
+        : MessageTextChromeStamps.Stamps()
+      rasterStyle = MessageTextRasterStyle(
+        codeSurface: palette.codeSurface.cgColor, codeHeader: palette.hover.cgColor,
+        separator: palette.separator.cgColor, border: palette.border.cgColor,
+        quoteBar: palette.tertiary.cgColor, link: palette.link.cgColor,
+        codeRadius: Theme.Radius.large, codeChrome: stamps.code, tableChrome: stamps.table)
     }
 
     /// Whether runs are drawn ahead, at a known scale.
@@ -147,7 +157,8 @@
           if raster !== view.raster { view.show(raster) }
           return true
         }
-        return style.drawsAhead && view.raster.width == width && view.raster.scale == style.scale
+        return style.drawsAhead && !view.isReleased && view.raster.width == width
+          && view.raster.scale == style.scale
       case .live(let view):
         return unsafe raster == nil || view.window?.firstResponder === view.textView
       case .block:

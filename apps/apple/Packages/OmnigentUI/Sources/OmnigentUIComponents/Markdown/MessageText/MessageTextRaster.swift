@@ -39,26 +39,6 @@ nonisolated struct MessageTextLinkArea: Equatable, Sendable {
   var url: URL
 }
 
-/// What a raster draws: a run's attributed text, the space above its first line and its links.
-nonisolated struct MessageTextRun: @unchecked Sendable {
-  var text: NSAttributedString
-  var topInset: CGFloat
-  /// Each link's range in `text` and where it goes.
-  var links: [(range: NSRange, url: URL)]
-}
-
-/// The colors a drawn run fills its layers with, resolved for one appearance.
-nonisolated struct MessageTextRasterStyle: @unchecked Sendable {
-  var codeSurface: CGColor
-  var codeHeader: CGColor
-  var separator: CGColor
-  var border: CGColor
-  var quoteBar: CGColor
-  var link: CGColor
-  /// A code block's corner radius.
-  var codeRadius: CGFloat
-}
-
 /// A run of message text laid out with TextKit 2 at one width and drawn into one bitmap at one
 /// scale, off the main actor, with what a cell needs to show it without a text view: its size,
 /// its links' rectangles and where its controls go. The bitmap holds the text and the layers
@@ -77,9 +57,34 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
   let chromeFrames: [Int: CGRect]
   /// A table is wider than the run: only a live view, which scrolls it sideways, shows it.
   let overflows: Bool
+  /// The blocks whose controls are drawn into the bitmap.
+  let drawnChrome: Set<Int>
 
   /// The bitmap's memory.
   var byteCount: Int { surface?.allocationSize ?? 0 }
+
+  private init(
+    width: CGFloat, scale: CGFloat, size: MessageTextSize, topInset: CGFloat,
+    surface: IOSurface?, links: [MessageTextLinkArea], chromeFrames: [Int: CGRect],
+    overflows: Bool, drawnChrome: Set<Int>
+  ) {
+    self.width = width
+    self.scale = scale
+    self.size = size
+    self.topInset = topInset
+    self.surface = surface
+    self.links = links
+    self.chromeFrames = chromeFrames
+    self.overflows = overflows
+    self.drawnChrome = drawnChrome
+  }
+
+  /// This run without its bitmap: what a view off screen keeps, its memory let go.
+  func withoutBitmap() -> MessageTextRaster {
+    MessageTextRaster(
+      width: width, scale: scale, size: size, topInset: topInset, surface: nil, links: links,
+      chromeFrames: chromeFrames, overflows: overflows, drawnChrome: drawnChrome)
+  }
 
   /// Draws `run` as `manager` lays it out (laying out what it has not yet).
   /// - Parameters:
@@ -119,9 +124,17 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
       $0.overflows(width: width, wraps: true)
     }
     links = Self.linkAreas(run.links, in: manager)
+    var stamps: [(CGRect, MessageTextChromeStamp)] = []
+    var drawn: Set<Int> = []
+    for (block, frame) in collector.chromeFrames {
+      guard let kind = run.chrome[block], let stamp = style.stamp(for: kind) else { continue }
+      stamps.append((frame, stamp))
+      drawn.insert(block)
+    }
+    drawnChrome = drawn
     surface = Self.draw(
-      fragments, shapes: collector.shapes, size: CGSize(width: width, height: textHeight),
-      scale: scale, style: style)
+      Drawing(fragments: fragments, shapes: collector.shapes, stamps: stamps),
+      size: CGSize(width: width, height: textHeight), scale: scale, style: style)
   }
 
   /// Lays `run` out on a TextKit stack of its own `width` wide, then draws it.
@@ -189,10 +202,17 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
   /// Premultiplied BGRA, as the layers' own backing stores are.
   private static let pixelFormat: UInt32 = 0x4247_5241
 
-  /// The layers, then the text, into a bitmap with its origin at the top left.
+  /// What a bitmap draws: the laid-out text, the layers behind it and the controls at rest.
+  private struct Drawing {
+    var fragments: [NSTextLayoutFragment]
+    var shapes: [MessageTextShape]
+    var stamps: [(CGRect, MessageTextChromeStamp)]
+  }
+
+  /// The layers, then the text, then the controls at rest, into a bitmap with its origin at
+  /// the top left.
   private static func draw(
-    _ fragments: [NSTextLayoutFragment], shapes: [MessageTextShape], size: CGSize,
-    scale: CGFloat, style: MessageTextRasterStyle
+    _ drawing: Drawing, size: CGSize, scale: CGFloat, style: MessageTextRasterStyle
   ) -> IOSurface? {
     let pixelWidth = Int((size.width * scale).rounded(.up))
     let pixelHeight = Int((size.height * scale).rounded(.up))
@@ -220,7 +240,7 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
     context.translateBy(x: 0, y: CGFloat(pixelHeight))
     context.scaleBy(x: scale, y: -scale)
     context.setShouldSmoothFonts(false)
-    for shape in shapes { fill(shape, in: context, style: style) }
+    for shape in drawing.shapes { fill(shape, in: context, style: style) }
     #if os(macOS)
       NSGraphicsContext.saveGraphicsState()
       NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
@@ -229,11 +249,26 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
       UIGraphicsPushContext(context)
       defer { UIGraphicsPopContext() }
     #endif
-    for fragment in fragments {
+    for fragment in drawing.fragments {
       fragment.draw(at: fragment.layoutFragmentFrame.origin, in: context)
+    }
+    for (frame, stamp) in drawing.stamps {
+      context.saveGState()
+      context.clip(to: frame)
+      drawImage(stamp.image, in: stamp.frame(in: frame), context: context)
+      context.restoreGState()
     }
     context.flush()
     return surface
+  }
+
+  /// Draws `image` into `rect` of the flipped context, the right way up.
+  private static func drawImage(_ image: CGImage, in rect: CGRect, context: CGContext) {
+    context.saveGState()
+    context.translateBy(x: rect.minX, y: rect.maxY)
+    context.scaleBy(x: 1, y: -1)
+    context.draw(image, in: CGRect(origin: .zero, size: rect.size))
+    context.restoreGState()
   }
 
   private static func roundedPath(_ rect: CGRect, radius: CGFloat) -> CGPath {
@@ -266,12 +301,7 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
       context.setLineWidth(1)
       context.strokePath()
     case .image(let image, let rect):
-      // The context is flipped; an image draws right way up in a frame flipped back.
-      context.saveGState()
-      context.translateBy(x: rect.minX, y: rect.maxY)
-      context.scaleBy(x: 1, y: -1)
-      context.draw(image, in: CGRect(origin: .zero, size: rect.size))
-      context.restoreGState()
+      drawImage(image, in: rect, context: context)
     case .fill(let rect, let fill):
       switch fill {
       case .separator: context.setFillColor(style.separator)

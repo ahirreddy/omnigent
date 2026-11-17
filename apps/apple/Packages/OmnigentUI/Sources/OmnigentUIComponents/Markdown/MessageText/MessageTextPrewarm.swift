@@ -28,11 +28,6 @@
     }
   }
 
-  nonisolated extension MessageTextDocument {
-    /// What a raster draws of it.
-    var run: MessageTextRun { MessageTextRun(text: text, topInset: topInset, links: links) }
-  }
-
   /// Builds and lays out settled answers off the main actor, newest first, once a TextKit answer
   /// has shown the style and width answers draw at: a row then only takes its laid-out text.
   /// With a raster style it also draws the answers asked for ahead (``MessageTextRaster``).

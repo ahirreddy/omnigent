@@ -277,6 +277,8 @@
       guard rowView.numberOfColumns > 0,
         let cell = rowView.view(atColumn: 0) as? any TranscriptTableCell
       else { return }
+      // Off screen, a drawn run's bitmap counts only against the rasters' cache.
+      (cell as? TranscriptTableTextCell)?.releaseBitmaps()
       pool.park(cell)
     }
 
