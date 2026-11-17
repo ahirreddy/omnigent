@@ -65,6 +65,32 @@
       second.releaseContent()
     }
 
+    @Test("A new look drops the old one's idle views and documents; another display's keeps them")
+    func staleLooks() {
+      let light = MessageTextFixture.style
+      var darkEnvironment = EnvironmentValues()
+      darkEnvironment.colorScheme = .dark
+      let dark = MessageTextStyle(environment: darkEnvironment, code: MessageCodeFont())
+      var scaled = light
+      scaled.scale = light.scale + 1
+      func document(_ style: MessageTextStyle) -> MessageTextDocument {
+        var builder = MessageTextBuilder(palette: MessageTextPalette(style))
+        return builder.document(MarkdownParser.parse("Words"))
+      }
+      let views = MessageTextViews(limit: 8)
+      views.checkIn(views.checkOut(document(light)))
+      views.checkIn(views.checkOut(document(scaled)))
+      #expect(views.idleCount == 2, "a window on another display looks the same")
+      _ = views.checkOut(document(dark))
+      #expect(views.idleCount == 0, "the old theme's views go")
+      let documents = MessageTextDocuments(limit: 8)
+      for style in [light, scaled, dark] {
+        let key = MessageTextDocumentKey(text: "a", piece: 0, style: style, linked: [])
+        _ = documents.document(for: key) { document(style) }
+        #expect(documents.count == (style == dark ? 1 : style == light ? 1 : 2))
+      }
+    }
+
     @Test("Code blocks get a surface and a header with Copy; quotes a bar; tables their rules")
     func layersAndControls() throws {
       let markdown = """

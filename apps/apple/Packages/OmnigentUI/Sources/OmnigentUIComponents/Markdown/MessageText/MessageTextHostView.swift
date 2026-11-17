@@ -11,6 +11,10 @@
     private var order: [UInt64] = []
     /// Views made because none was idle, for tests.
     private(set) var made = 0
+    /// The look the last view was checked out in.
+    private var style: MessageTextStyle?
+    /// Views kept for their documents' next showing, for tests.
+    var idleCount: Int { idle.count }
 
     init(limit: Int) {
       self.limit = limit
@@ -18,12 +22,24 @@
 
     /// The idle view for `document`, or a new one.
     func checkOut(_ document: MessageTextDocument) -> MessageTextContentView {
+      dropOtherLooks(than: document.palette.style)
       if let view = idle.removeValue(forKey: document.serial) {
         order.removeAll { $0 == document.serial }
         return view
       }
       made += 1
       return MessageTextContentView(document: document)
+    }
+
+    /// A new theme, text size or code font leaves the old one's idle views unused: they go.
+    private func dropOtherLooks(than style: MessageTextStyle) {
+      defer { self.style = style }
+      guard let last = self.style, !last.hasSameLook(as: style) else { return }
+      for serial in order
+      where idle[serial]?.document.palette.style.hasSameLook(as: style) == false {
+        idle[serial] = nil
+      }
+      order.removeAll { idle[$0] == nil }
     }
 
     /// Keeps `view` for its document's next showing.

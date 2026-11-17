@@ -216,6 +216,8 @@ final class MessageTextDocuments {
   static let shared = MessageTextDocuments(limit: 512)
 
   private var entries: BoundedCache<MessageTextDocumentKey, MessageTextDocument>
+  /// The look the last document was asked for in.
+  private var style: MessageTextStyle?
 
   init(limit: Int) {
     entries = BoundedCache(limit: limit)
@@ -224,6 +226,14 @@ final class MessageTextDocuments {
   func document(
     for key: MessageTextDocumentKey, make: () -> MessageTextDocument
   ) -> MessageTextDocument {
-    entries.value(for: key, make: make)
+    // A new theme, text size or code font leaves the old one's documents unused.
+    if let style, !style.hasSameLook(as: key.style) {
+      entries.removeAll { kept, _ in !kept.style.hasSameLook(as: key.style) }
+    }
+    style = key.style
+    return entries.value(for: key, make: make)
   }
+
+  /// Documents kept, for tests.
+  var count: Int { entries.count }
 }

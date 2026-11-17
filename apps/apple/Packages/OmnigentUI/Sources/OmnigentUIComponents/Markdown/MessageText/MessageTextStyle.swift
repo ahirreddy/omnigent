@@ -46,6 +46,14 @@ nonisolated struct MessageTextStyle: Hashable, Sendable {
   /// The display's pixels per point, which SwiftUI rounds a line's baseline to.
   var scale: CGFloat
 
+  /// Whether text in this style looks as in `other`'s, on whatever display: only the scale
+  /// differs, as between windows on two displays.
+  func hasSameLook(as other: Self) -> Bool {
+    var other = other
+    other.scale = scale
+    return self == other
+  }
+
   @MainActor init(environment: EnvironmentValues, code: MessageCodeFont) {
     ramp = environment.typeRamp
     self.code = code
