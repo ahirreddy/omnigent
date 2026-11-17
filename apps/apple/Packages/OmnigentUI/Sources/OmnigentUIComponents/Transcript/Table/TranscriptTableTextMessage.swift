@@ -5,7 +5,7 @@
   /// A settled chat message a text cell draws in AppKit (``TranscriptTableTextCell``): an answer
   /// or a user's prompt as TextKit text runs, with the blocks only SwiftUI draws (math, a
   /// diagram, an image, a wide table) hosted between them, and nothing beside it that only
-  /// SwiftUI draws (attachments, mentions, a collapsed prompt, linked paths).
+  /// SwiftUI draws (attachments, mentions, a collapsed prompt).
   struct TranscriptTableTextMessage {
     enum Role {
       case user
@@ -46,7 +46,7 @@
         return nil
       }
       let split = MessageTextSplits.shared.split(markdown, ramp: ramp)
-      guard split.cited.isEmpty, !split.pieces.isEmpty else { return nil }
+      guard !split.pieces.isEmpty else { return nil }
       return Self(
         role: role, row: message, decoration: decoration, markdown: markdown, split: split)
     }

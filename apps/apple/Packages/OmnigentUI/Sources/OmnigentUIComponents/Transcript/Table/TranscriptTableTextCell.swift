@@ -43,6 +43,10 @@
     private var awaitsLayout = false
     /// Typesets the inline math the shown message doesn't have yet.
     private var typesetting: Task<Void, Never>?
+    /// Lists the folders of the workspace paths the shown message cites, while in a window.
+    var linkCheck: Task<Void, Never>?
+    /// Counts reads of the links' state; only the latest read's change shows the row again.
+    var linkWatch = 0
 
     init(style: TranscriptTableTextStyle) {
       self.style = style
@@ -77,11 +81,15 @@
         releaseContent()
         return
       }
+      let isNewRow = next.id != shown?.id || next.version != shown?.version
       shown = next
       shownRow = row
       kind = .text(row.kind)
       styleSerial = style.serial
       self.message = message
+      if isNewRow { restartLinkCheck() }
+      let links = style.environment.values?.workspaceFileLinks
+      let linked = linkedPaths(of: message, links: links)
       var documents: [Int: MessageTextDocument] = [:]
       var untypeset: [String] = []
       for run in message.runs {
@@ -89,7 +97,7 @@
         untypeset += run.inlineMath.filter { math[$0] == nil }
         documents[run.id] = MessageTextBlocksView.document(
           source: MessageTextSource(text: message.markdown, piece: run.id), blocks: run.blocks,
-          linked: [], math: math, style: textStyle, links: nil)
+          linked: linked, math: math, style: textStyle, links: links)
       }
       typeset(untypeset, ramp: textStyle.ramp, for: next)
       let metrics = style.metrics(width: width)
@@ -97,9 +105,7 @@
         message.role == .answer ? metrics.columnWidth : metrics.promptWidth(style.layoutWidth)
       laidOut = (metrics, textWidth)
       adopt(message.split.pieces, documents: documents, width: textWidth)
-      let openURL = (style.environment.values?.openURL).map { open in
-        { @MainActor (url: URL) in open(url) }
-      }
+      let openURL = style.environment.values.map(Self.openURL(in:))
       for run in runs { run.setOpenURL(openURL) }
       setAccessibilityIdentifier("message-\(message.row.id)")
       setAccessibilityLabel(message.role == .user ? "You said" : nil)
@@ -178,10 +184,20 @@
       }
     }
 
+    /// Shows the row again as if it were new: its math typeset or its links found since.
+    func showAgain() {
+      guard let shown, let row = shownRow else { return }
+      let previous = height
+      self.shown = nil
+      show(row, version: shown.version, width: shown.width)
+      if abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
+    }
+
     /// Hands the text views back for the next cell that shows their documents.
     func releaseContent() {
       typesetting?.cancel()
       typesetting = nil
+      stopLinkCheck()
       shownRow = nil
       for run in runs { run.release() }
       runs = []
@@ -347,13 +363,8 @@
             continue
           }
         }
-        guard typeset, !Task.isCancelled, let self, self.shown == shown,
-          let row = self.shownRow
-        else { return }
-        let previous = self.height
-        self.shown = nil
-        self.show(row, version: shown.version, width: shown.width)
-        if abs(previous - self.height) >= 0.5 { self.idealSizeChanged?(self) }
+        guard typeset, !Task.isCancelled, let self, self.shown == shown else { return }
+        self.showAgain()
       }
     }
 

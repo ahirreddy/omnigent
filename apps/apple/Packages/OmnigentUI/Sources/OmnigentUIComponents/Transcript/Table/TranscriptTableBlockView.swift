@@ -17,6 +17,8 @@
       }
       .readingProseStyle()
       .agentOutputRendering()
+      // A wide table's cited files open in the app, as in the message's SwiftUI markdown.
+      .modifier(WorkspacePathLinking(paths: []))
       .frame(width: max(0, width), alignment: .leading)
       .fixedSize(horizontal: false, vertical: true)
       .transformEnvironment(\.self) { own in
