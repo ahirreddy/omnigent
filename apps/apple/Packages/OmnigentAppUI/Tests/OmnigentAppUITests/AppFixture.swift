@@ -172,8 +172,8 @@ func answerFormRequest<Content: View>(
   var field = try await focusField("Title", in: screen)
   try screen.type("Too long")
   try await settle(screen, untilShowing: problem)
-  // Submit leads the controls under the field once it can be pressed; until then Cancel does.
-  let withoutSubmit = controls(under: field, in: screen).count
+  // Submit leads the form's actions once it can be pressed; until then Cancel stands alone.
+  let withoutSubmit = formActions(under: field, in: screen).count
 
   field = try await focusField("Title", in: screen)
   field.currentEditor()?.selectAll(nil)
@@ -182,9 +182,9 @@ func answerFormRequest<Content: View>(
     (try? screen.shows(problem)) == false
   }
   try await settle(screen, until: "Submit to be offered") {
-    controls(under: field, in: screen).count > withoutSubmit
+    formActions(under: field, in: screen).count > withoutSubmit
   }
-  let offered = controls(under: field, in: screen)
+  let offered = formActions(under: field, in: screen)
   let submit = try #require(offered.first, "\(screen.controlFrames)")
   #expect(offered.count == withoutSubmit + 1, "only Submit was held back: \(offered)")
   try screen.click(CGPoint(x: submit.midX, y: submit.midY))
@@ -194,6 +194,17 @@ func answerFormRequest<Content: View>(
   let answers = try server.posted(formRequestResolvePath)
   #expect(answers.count == 1, "the title over the limit was never sent: \(answers)")
   #expect("\(answers)".contains("Fix"))
+}
+
+/// The controls on the first line under a form's `field`: its actions. Controls further down
+/// (the composer's) come and go on their own.
+@MainActor
+private func formActions<Content: View>(
+  under field: NSView, in screen: OffscreenWindow<Content>
+) -> [CGRect] {
+  let below = controls(under: field, in: screen)
+  guard let first = below.first else { return [] }
+  return below.filter { abs($0.midY - first.midY) < 8 }
 }
 
 /// A signed-in session over `server` whose links are only recorded.
