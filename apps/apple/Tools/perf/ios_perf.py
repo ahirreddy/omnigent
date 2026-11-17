@@ -14,8 +14,9 @@ apps/apple/docs/performance.md.
 Scenarios: open, switch, scroll, type, stream, list-scroll, search, keyboard, rotate,
 sidebar, settings, usage, panel, new-session, browser (after open). ``--sample`` also runs
 ``sample`` on each. ``--lists stack,table,text`` compares transcript lists in one job: each run
-launches once per list (``-omnigent:transcript-list <list>``; ``text`` is the table with settled
-messages drawn as text rows), and the medians are per list.
+launches once per list (``-omnigent:transcript-list <list>``; ``table`` is the collection with
+SwiftUI rows, ``text`` the default, settled messages drawn as text rows), and the medians are
+per list.
 Each scenario reports the main thread's CPU (``main_cpu_ms`` from ``ps``, ``cpu`` from the
 app) and its run-loop pass times (``loop.*``, FrameMonitor's RunLoopPassStats).
 """
@@ -46,6 +47,7 @@ QUIET_MS_PER_S = 100.0
 
 # The launch arguments of the transcript lists ``--lists`` names; another name is a list itself.
 LIST_ARGS = {
+    "table": ["-omnigent:transcript-list", "table", "-omnigent:message-text", "swiftui"],
     "text": ["-omnigent:transcript-list", "table", "-omnigent:message-text", "textkit"],
 }
 

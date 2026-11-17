@@ -8,16 +8,18 @@ builds, so wall-clock times are noisy; main-thread CPU time and sample shares ar
 
 On the Mac the transcript is an `NSTableView` of reused cells (`TableTranscriptView`). Settled
 messages are TextKit text cells, drawn ahead into bitmaps off the main thread, and CLI rows are CLI
-text cells. iPhone and iPad show the same list as a `UICollectionView` with SwiftUI text. SwiftUI's
-lazy stack with SwiftUI text stays as the fallback. Each setting is a user default or a launch
-argument (`-omnigent:transcript-list stack`), read at launch:
+text cells. iPhone and iPad show the same list as a `UICollectionView`, its settled messages text
+rows drawn ahead the same way (`TranscriptCollectionTextView`); a width change (a rotation, iPad's
+sidebar) keeps each row's drawing, fitted, until the drawing at the new width lands from off the
+main thread. SwiftUI's lazy stack with SwiftUI text stays as the fallback. Each setting is a user
+default or a launch argument (`-omnigent:transcript-list stack`), read at launch:
 
 | Setting | Default | Fallback |
 | --- | --- | --- |
 | `omnigent:transcript-list` | `table` | `stack`, with SwiftUI text unless `omnigent:message-text` says otherwise |
-| `omnigent:message-text` | `textkit` in the Mac's table, `swiftui` elsewhere | `swiftui`: SwiftUI rows hosted in the table |
-| `omnigent:message-text-surface` | `raster` | `textkit`: a live text view per run |
-| `omnigent:transcript-cli-text` | `text` | `hosted`: SwiftUI CLI rows |
+| `omnigent:message-text` | `textkit` in the table (the Mac's text cells, iPhone and iPad's text rows), `swiftui` in the stack | `swiftui`: SwiftUI rows hosted in the table |
+| `omnigent:message-text-surface` | `raster` | `textkit`: a live text view per run (Mac) |
+| `omnigent:transcript-cli-text` | `text` | `hosted`: SwiftUI CLI rows (Mac) |
 
 ```sh
 defaults write ai.omnigent.mac.lab omnigent:transcript-list stack  # the Debug build

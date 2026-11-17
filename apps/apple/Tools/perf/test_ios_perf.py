@@ -56,6 +56,11 @@ class ParseTests(unittest.TestCase):
 
     def test_list_launch_arguments(self):
         self.assertEqual(ios_perf.list_args("stack"), ["-omnigent:transcript-list", "stack"])
+        # The table pins SwiftUI rows, which the text rows replaced as its default.
+        self.assertEqual(
+            ios_perf.list_args("table"),
+            ["-omnigent:transcript-list", "table", "-omnigent:message-text", "swiftui"],
+        )
         self.assertEqual(
             ios_perf.list_args("text"),
             ["-omnigent:transcript-list", "table", "-omnigent:message-text", "textkit"],

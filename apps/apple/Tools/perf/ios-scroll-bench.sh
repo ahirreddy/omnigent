@@ -9,7 +9,8 @@
 #        [--devices "iPhone 18 Pro;iPad Pro 11-inch (M5)"] [--scenarios "open scroll stream"]
 #        [--style chat|cli] [--sample [--frames REGEX]] [--skip-build]
 #
-# The lists are ios_perf.py's: `text` is the table with settled messages drawn as text rows.
+# The lists are ios_perf.py's: `table` is the collection with SwiftUI rows, `text` the default,
+# with settled messages drawn as text rows.
 # Each device also runs a width change: the iPhone turns, the iPad hides and shows its sidebar.
 # --sample samples the main thread during each scenario, and --frames also lists the samples of
 # its frames matching REGEX; a run that fails prints the app's newest crash report.

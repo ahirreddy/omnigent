@@ -16,6 +16,8 @@
     var dock: CGFloat = 80
     var typeSize = DynamicTypeSize.large
     var layoutWidth = LayoutWidth.compact
+    /// The launch's text rows unless a test hosts SwiftUI rows on purpose.
+    var renderer = MessageTextRenderer.launchValue
     let focus = TranscriptFocus()
   }
 
@@ -35,6 +37,7 @@
       .environment(\.dynamicTypeSize, surroundings.typeSize)
       .environment(\.transcriptFocus, surroundings.focus)
       .environment(\.layoutWidth, surroundings.layoutWidth)
+      .environment(\.messageTextRenderer, surroundings.renderer)
     }
   }
 
@@ -104,10 +107,12 @@
   @MainActor
   func collectionScreen(
     _ conversation: LiveConversation, actions: ConversationActions = ConversationActions(),
-    size: CGSize = CGSize(width: 393, height: 852), layoutWidth: LayoutWidth = .compact
+    size: CGSize = CGSize(width: 393, height: 852), layoutWidth: LayoutWidth = .compact,
+    renderer: MessageTextRenderer = .launchValue
   ) async throws -> CollectionScreen {
     let surroundings = CollectionSurroundings()
     surroundings.layoutWidth = layoutWidth
+    surroundings.renderer = renderer
     let window = try InProcessWindow(
       CollectionHost(conversation: conversation, surroundings: surroundings, actions: actions),
       width: size.width, height: size.height,
@@ -300,7 +305,7 @@
 
     @Test("A host's measured height is the height SwiftUI lays the row out at in its cell")
     func measuredMatchesShown() async throws {
-      let screen = try await collectionScreen(collectionSession())
+      let screen = try await collectionScreen(collectionSession(), renderer: .swiftUI)
       defer { screen.window.close() }
       let controller = screen.controller
       var checked = 0
