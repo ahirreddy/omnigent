@@ -143,24 +143,19 @@ impl Engine {
         let Some(cache) = self.cache.clone() else {
             return;
         };
-        let Some(server) = cache::server_key(server_url) else {
-            return;
-        };
-        let account = match expected_user_id {
-            Some(user_id) => cache::account_key(user_id),
-            None => match cache.read_last_account(&server) {
-                Ok(Some(account)) => account,
-                Ok(None) => return,
-                Err(error) => {
-                    self.error(ErrorScope::Connection, error.into());
-                    return;
-                }
-            },
-        };
-        let scope = CacheScope::from_keys(server, account);
-        if self.saved.offline.is_some() && self.saved.scope.as_ref() == Some(&scope) {
+        let scope = self.offline_scope(&cache, server_url, expected_user_id);
+        if self.saved.offline.is_some() && scope.is_some() && self.saved.scope == scope {
             return;
         }
+        // Another server's or account's saved copy never shows for this one.
+        if self.saved.offline.is_some() {
+            self.leave_offline();
+            self.saved.scope = None;
+            self.saved.list = None;
+        }
+        let Some(scope) = scope else {
+            return;
+        };
         let list = match cache.read_list(&scope) {
             Ok(Some(list)) => list,
             Ok(None) => return,
@@ -178,7 +173,6 @@ impl Engine {
             self.error(ErrorScope::SessionList, error.into());
             return;
         };
-        self.leave_offline();
         self.saved.scope = Some(scope);
         self.saved.offline = Some(server_url.to_owned());
         self.saved.list = Some(list);
@@ -192,6 +186,28 @@ impl Engine {
             }
             self.report_session_offline(&id);
         }
+    }
+
+    /// The account whose saved copy of `server_url` shows offline: `expected_user_id`, else the
+    /// one that last connected; `None` when neither is known.
+    fn offline_scope(
+        &self,
+        cache: &MessageCache,
+        server_url: &str,
+        expected_user_id: Option<&str>,
+    ) -> Option<CacheScope> {
+        let server = cache::server_key(server_url)?;
+        let account = match expected_user_id {
+            Some(user_id) => cache::account_key(user_id),
+            None => match cache.read_last_account(&server) {
+                Ok(account) => account?,
+                Err(error) => {
+                    self.error(ErrorScope::Connection, error.into());
+                    return None;
+                }
+            },
+        };
+        Some(CacheScope::from_keys(server, account))
     }
 
     fn open_ids(&self) -> Vec<String> {

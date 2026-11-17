@@ -311,6 +311,18 @@ fn an_offline_launch_shows_the_saved_list_and_session_and_says_so() {
 }
 
 #[test]
+fn another_unreachable_server_never_shows_this_ones_saved_copy() {
+    let folder = TempFolder::new("other-server");
+    saved_on_first_launch(&folder);
+    let mut harness = launch_offline(&folder);
+    harness.events.take();
+    let result = harness
+        .call(|core| async move { core.connect("http://127.0.0.1:6768".into(), None).await });
+    assert!(result.is_err(), "{result:?}");
+    assert_eq!(offline_changes(&harness.events.take()), [None]);
+}
+
+#[test]
 fn reconnecting_after_offline_lets_the_server_state_win() {
     let folder = TempFolder::new("reconnect");
     saved_on_first_launch(&folder);
