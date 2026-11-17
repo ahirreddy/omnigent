@@ -34,6 +34,11 @@
       super.scrollWheel(with: event)
     }
 
+    /// The transcript fills what SwiftUI gives it; its size never follows its content. AppKit
+    /// invalidates it as the rows' height or the scrollers change, which would have SwiftUI lay
+    /// the whole window out again on a scroll's every step.
+    override func invalidateIntrinsicContentSize() {}
+
     override func viewWillStartLiveResize() {
       super.viewWillStartLiveResize()
       owner?.liveResizeChanged(true)
