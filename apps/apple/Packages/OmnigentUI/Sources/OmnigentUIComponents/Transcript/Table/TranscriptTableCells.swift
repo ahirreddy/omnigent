@@ -250,7 +250,7 @@
   /// without rendering again, and handed to rows of the same kind once the oldest are evicted:
   /// the Mac table's cells, and the row hosts of the iPhone and iPad list.
   @MainActor
-  struct TranscriptTableCellPool<Cell: AnyObject> {
+  struct TranscriptTableCellPool<Cell> {
     /// How many parked cells keep their row.
     var parkedLimit = 48
     /// How many spare cells of each kind are kept beyond those.
@@ -301,7 +301,8 @@
         spare(cell)
         return
       }
-      if let other = parked[id], other !== cell { spare(other) }
+      // Cells are views, so the same cell is the same object.
+      if let other = parked[id], (other as AnyObject) !== (cell as AnyObject) { spare(other) }
       parked[id] = cell
       order.removeAll { $0 == id }
       order.append(id)
