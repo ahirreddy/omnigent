@@ -42,7 +42,7 @@ public struct MarkdownView: View {
 
 /// Checks the workspace paths a message cites and routes in-app file links, when the host
 /// provided ``WorkspaceFileLinks``.
-private struct WorkspacePathLinking: ViewModifier {
+struct WorkspacePathLinking: ViewModifier {
   let paths: [CitedPath]
   @Environment(\.workspaceFileLinks) private var links
   @Environment(\.openURL) private var openURL
@@ -85,7 +85,8 @@ struct MarkdownBlocksView: View {
   }
 }
 
-private struct MarkdownBlockView: View {
+/// One block of markdown, as ``MarkdownBlocksView`` stacks them.
+struct MarkdownBlockView: View {
   let block: MarkdownBlock
   @Environment(\.markdownFillsWidth) private var fillsWidth
   @Environment(\.typeRamp) private var ramp

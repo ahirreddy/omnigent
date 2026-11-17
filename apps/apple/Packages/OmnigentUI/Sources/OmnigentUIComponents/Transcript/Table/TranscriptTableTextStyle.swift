@@ -1,0 +1,169 @@
+#if os(macOS)
+  import AppKit
+  import SwiftUI
+
+  /// The style text cells draw in, read from the transcript's environment: the reading ramp, the
+  /// built text's style and palette, the column and the bubble's color. ``serial`` rises when
+  /// any of it changes, and the cells showing the old style lay out again.
+  @MainActor
+  final class TranscriptTableTextStyle {
+    let environment: TranscriptTableEnvironment
+    private(set) var ramp = TypeRamp(body: TypeRamp.defaultBody)
+    private(set) var style: MessageTextStyle?
+    private(set) var palette: MessageTextPalette?
+    private(set) var layoutWidth = LayoutWidth.regular
+    private(set) var maxWidth = Theme.transcriptWidth
+    private(set) var bubble = NSColor.clear
+    /// Whether settled messages draw in text cells: the TextKit renderer, chat style, rich
+    /// output.
+    private(set) var isEnabled = false
+    /// Live text views, or runs drawn ahead.
+    var surface = MessageTextSurface.launchValue
+    /// The window's pixels per point, which runs are drawn ahead at.
+    private(set) var scale: CGFloat = 0
+    /// The layers' colors for runs drawn ahead.
+    private(set) var rasterStyle: MessageTextRasterStyle?
+    private(set) var serial = 0
+
+    init(environment: TranscriptTableEnvironment) {
+      self.environment = environment
+    }
+
+    /// Reads the environment again.
+    /// - Returns: Whether the style changed.
+    @discardableResult
+    func refresh() -> Bool {
+      guard let values = environment.values else { return false }
+      let appearance = values.transcriptAppearance
+      let ramp = TypeRamp(body: CGFloat(appearance.chatFontSize))
+      var reading = values
+      reading.typeRamp = ramp
+      let style = MessageTextStyle(environment: reading, code: MessageCodeFont())
+      let isEnabled =
+        values.messageTextRenderer == .textKit && !appearance.isCLI
+        && appearance.outputRendering == .rich
+      let maxWidth = appearance.contentWidth.maxWidth
+      let bubble = NSColor(Color(ThemeColor.userBubble.resolve(in: values).resolve(in: values)))
+      guard
+        style != self.style || ramp != self.ramp || isEnabled != self.isEnabled
+          || values.layoutWidth != layoutWidth || maxWidth != self.maxWidth
+          || bubble != self.bubble
+      else { return false }
+      if style != self.style {
+        let palette = MessageTextPalette(style)
+        self.palette = palette
+        rasterStyle = MessageTextRasterStyle(
+          codeSurface: palette.codeSurface.cgColor, codeHeader: palette.hover.cgColor,
+          separator: palette.separator.cgColor, border: palette.border.cgColor,
+          quoteBar: palette.tertiary.cgColor, link: palette.link.cgColor,
+          codeRadius: Theme.Radius.large)
+      }
+      self.style = style
+      self.ramp = ramp
+      self.isEnabled = isEnabled
+      layoutWidth = values.layoutWidth
+      self.maxWidth = maxWidth
+      self.bubble = bubble
+      serial += 1
+      return true
+    }
+
+    /// Takes the window's scale.
+    /// - Returns: Whether it changed.
+    @discardableResult
+    func setScale(_ scale: CGFloat) -> Bool {
+      guard scale > 0, scale != self.scale else { return false }
+      self.scale = scale
+      serial += 1
+      return true
+    }
+
+    /// Whether runs are drawn ahead, at a known scale.
+    var drawsAhead: Bool { surface == .raster && scale > 0 && rasterStyle != nil }
+
+    /// The raster kept for `document` at `width`, if one was drawn.
+    func raster(for document: MessageTextDocument, width: CGFloat) -> MessageTextRaster? {
+      guard drawsAhead else { return nil }
+      return MessageTextRasters.shared.raster(
+        for: MessageTextRasterKey(document: document.serial, width: width, scale: scale))
+    }
+  }
+
+  /// One piece of a text cell: a run of text as a live TextKit view or a drawing made ahead,
+  /// or a block only SwiftUI draws, hosted on its own.
+  enum TranscriptTableTextRun {
+    case live(MessageTextContentView)
+    case raster(MessageTextRasterView)
+    case block(TranscriptTableBlockView)
+
+    var view: NSView {
+      switch self {
+      case .live(let view): view
+      case .raster(let view): view
+      case .block(let view): view
+      }
+    }
+
+    /// The text it shows; `nil` for a hosted block.
+    var document: MessageTextDocument? {
+      switch self {
+      case .live(let view): view.document
+      case .raster(let view): view.document
+      case .block: nil
+      }
+    }
+
+    /// The run's size at a proposed width: the width when it fills it, else its text's.
+    func size(for width: CGFloat, fillsWidth: Bool) -> CGSize {
+      switch self {
+      case .live(let view):
+        return view.fittingSize(for: width, fillsWidth: fillsWidth)
+      case .raster(let view):
+        let size = view.raster.size
+        let hugs = !fillsWidth && !view.document.hasWideBlocks
+        return CGSize(width: hugs ? min(width, size.usedWidth) : width, height: size.height)
+      case .block(let view):
+        return CGSize(width: width, height: view.idealHeight)
+      }
+    }
+
+    /// Whether the run can keep showing its document at `width`: a raster of that width and
+    /// scale while runs draw ahead, a live view until a raster arrives or while the reader is
+    /// selecting in it. A newer raster replaces the one shown.
+    func keeps(_ raster: MessageTextRaster?, width: CGFloat, style: TranscriptTableTextStyle)
+      -> Bool
+    {
+      switch self {
+      case .raster(let view):
+        if let raster {
+          if raster !== view.raster { view.show(raster) }
+          return true
+        }
+        return style.drawsAhead && view.raster.width == width && view.raster.scale == style.scale
+      case .live(let view):
+        return unsafe raster == nil || view.window?.firstResponder === view.textView
+      case .block:
+        return true
+      }
+    }
+
+    /// Opens links with `openURL`.
+    func setOpenURL(_ openURL: (@MainActor (URL) -> Void)?) {
+      switch self {
+      case .live(let view): view.openURL = openURL
+      case .raster(let view): view.openURL = openURL
+      case .block: break
+      }
+    }
+
+    /// Hands a live view back for the next run that shows its document.
+    func release() {
+      view.removeFromSuperview()
+      switch self {
+      case .live(let view): MessageTextViews.shared.checkIn(view)
+      case .raster(let view): view.deactivate()
+      case .block(let view): view.sizeChanged = nil
+      }
+    }
+  }
+#endif

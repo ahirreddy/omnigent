@@ -29,7 +29,7 @@ struct TranscriptRowEvents {
 
 /// Tells the pacer when the transcript's tab hides and shows. The row list does not read the
 /// tab's state itself, so switching tabs does not run its body.
-private struct PacedWhileShown: ViewModifier {
+struct PacedWhileShown: ViewModifier {
   let pacer: TranscriptRowsPacer
   @Environment(\.isTabContentHidden) private var isHidden
 

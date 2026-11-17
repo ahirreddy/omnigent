@@ -17,6 +17,13 @@
       self.state = state
     }
 
+    /// The screen's state as the app builds it: no rows, which the list reads itself.
+    static func rowless(hasMore: Bool) -> LiveConversation {
+      var state = ConversationViewState(header: TranscriptFixture.header)
+      state.hasMoreHistory = hasMore
+      return LiveConversation(state)
+    }
+
     /// Adds rows at the end, with a new revision.
     func append(_ rows: Row...) {
       append(contentsOf: rows)
@@ -69,6 +76,29 @@
     func prepend(_ page: [Row]) {
       rows.insert(contentsOf: page, at: 0)
       revision += 1
+    }
+
+    /// A read of older history as the store reports it: the page reaches the rows read as the
+    /// read ends, before the list shows it.
+    func readPage(
+      _ page: [Row], of conversation: LiveConversation, hasMore: Bool,
+      on window: OffscreenWindow<AnyView>
+    ) async throws {
+      conversation.state.isLoadingHistory = true
+      try await letTasksRun(window)
+      prepend(page)
+      conversation.state.hasMoreHistory = hasMore
+      conversation.state.isLoadingHistory = false
+      conversation.state.historyReads += 1
+    }
+  }
+
+  extension TranscriptFocus {
+    /// A focus with a `?message=` link to `messageID` in the fixture's session waiting.
+    static func linking(to messageID: String) -> TranscriptFocus {
+      let focus = TranscriptFocus()
+      focus.focus(messageID, in: TranscriptFixture.header.id)
+      return focus
     }
   }
 

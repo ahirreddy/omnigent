@@ -41,7 +41,8 @@ struct TranscriptEnvironment: ViewModifier {
   let relay: TranscriptEnvironmentRelay
   /// Changes when the relay publishes new actions.
   let publications: Int
-  let scroll: TranscriptScrollState
+  /// The stack's scroll state; the table transcript has none.
+  let scroll: TranscriptScrollState?
 
   func body(content: Content) -> some View {
     content
