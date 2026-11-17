@@ -53,12 +53,23 @@
 
     /// Measures row `index` in a view a cell can then show it in: its own, or one parked under
     /// its id for when it comes into view. A settled message drawn as text is measured from its
-    /// run's size, its view made only as it shows, by when its drawing has likely arrived.
+    /// run's size, its view made only as it shows, by when its drawing has likely arrived; one
+    /// not laid out at the width yet that showed at another measures in its parked view, whose
+    /// drawing stands in while the new one is drawn off the main thread.
     func measureKeeping(_ index: Int) -> Bool {
       if let host = realizedHost(at: index), host.kind == cellKind(at: index) {
         return measure(index, with: host)
       }
-      if let message = textMessage(at: index) { return measureText(index, message, draws: true) }
+      if let message = textMessage(at: index) {
+        let id = model.rows[index].id
+        if !textStyle.isLaidOut(message, width: model.width),
+          let view = pool.take(id: id, kind: cellKind(at: index))
+        {
+          defer { pool.park(view) }
+          if view.shownID == id { return measure(index, with: view) }
+        }
+        return measureText(index, message, draws: true)
+      }
       let host = keptView(at: index)
       let changed = measure(index, with: host)
       pool.park(host)
@@ -91,11 +102,15 @@
 
     /// Tells the layout rows' heights changed, keeping the reader in place: at the bottom while
     /// following, else on the row under the viewport's top.
-    func noteHeights(_ indexes: IndexSet) {
+    func noteHeights(_ indexes: IndexSet, proportionally: Bool = false) {
       guard !indexes.isEmpty else { return }
       let anchor = readingAnchor()
       noteHeightsInPlace(indexes)
-      if follow.layoutGrew() { pinBottom() } else { restore(anchor) }
+      if follow.layoutGrew() {
+        pinBottom()
+      } else {
+        restore(anchor, proportionally: proportionally)
+      }
     }
 
     func noteHeightsInPlace(_ indexes: IndexSet) {
@@ -165,6 +180,18 @@
         if remeasured.count > 16 { remeasured.removeFirst() }
       }
       noteHeights(noted)
+    }
+
+    /// A text row's drawing at a new width landed at another height: the row takes it, and the
+    /// reader keeps their share of the row they read, as the width change kept it.
+    func drawingLanded(_ view: TranscriptCollectionTextView) {
+      guard let shown = view.shown, let index = model.index(of: shown.id),
+        shown.version == model.version(at: index), abs(shown.width - model.width) < 0.5
+      else { return }
+      measurements += 1
+      if model.record(view.idealHeight(at: model.width), at: index) {
+        noteHeights([index], proportionally: true)
+      }
     }
 
     /// The rows from `minY` to `maxY` that need measuring, top to bottom, or bottom to top for
@@ -246,9 +273,7 @@
       let kept = shown.insetBy(dx: 0, dy: -shown.height * Self.keptReach)
       let deadline = CACurrentMediaTime() + Self.prefetchBudget
       var noted = IndexSet()
-      // The reader is still: messages nearest the viewport, either way, build and draw first.
-      focusPrewarms(at: shown.midY, direction: 0)
-      prewarmTexts(from: kept.minY, to: kept.maxY)
+      prewarmAroundViewport()
       // Measures row `index` if it needs it: `.next` to go on, `.stop` once rows are out of
       // reach, `.wait` for a message the prewarm is still building.
       func visit(_ index: Int) -> PrefetchStep {

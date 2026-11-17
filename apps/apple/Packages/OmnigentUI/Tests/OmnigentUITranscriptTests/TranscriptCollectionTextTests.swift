@@ -214,5 +214,53 @@
       let measured = try #require(controller.model.heights.measurement(of: "a-last"))
       #expect(abs(cell.bounds.height - measured.height) < 1)
     }
+
+    @Test("Turning the window draws the rows on screen at the new width off the main thread")
+    func rotationDrawsAhead() async throws {
+      let conversation = collectionSession(turns: 16)
+      // Text of its own: the drawings other suites turn to the same width are kept process-wide.
+      let marker = UUID().uuidString
+      for index in conversation.state.rows.indices {
+        conversation.state.rows[index].text += " \(marker)"
+      }
+      let (window, controller) = try await screen(conversation)
+      defer { window.close() }
+      let list = controller.collectionView
+      controller.scrollViewWillBeginDragging(list)
+      list.contentOffset.y -= 1400
+      list.layoutIfNeeded()
+      controller.scrollViewDidEndDragging(list, willDecelerate: false)
+      // Idle measuring and the prewarm reach the rows around the reader.
+      await window.settle(.milliseconds(900))
+      let anchor = try #require(controller.readingAnchor())
+      let drawn = controller.textStyle.drawnNow
+      func textViews() -> [TranscriptCollectionTextView] {
+        list.visibleCells.compactMap {
+          ($0 as? TranscriptCollectionCell)?.host as? TranscriptCollectionTextView
+        }
+      }
+      window.window.frame = CGRect(x: 0, y: 0, width: 852, height: 393)
+      window.window.layoutIfNeeded()
+      list.layoutIfNeeded()
+      // The pass that took the width drew nothing: the rows show their old drawings, fitted.
+      #expect(controller.textStyle.drawnNow == drawn)
+      let turned = textViews()
+      #expect(!turned.isEmpty)
+      #expect(turned.allSatisfy { $0.runView?.image.showsDrawing == true })
+      #expect(turned.contains { $0.awaitedWidth != nil })
+      for _ in 0..<50 where textViews().contains(where: { $0.awaitedWidth != nil }) {
+        await window.settle(.milliseconds(40))
+      }
+      for view in textViews() {
+        let message = try #require(view.message)
+        let run = try #require(view.runView)
+        #expect(view.awaitedWidth == nil)
+        let width = controller.textStyle.textWidth(of: message, width: controller.model.width)
+        #expect(run.raster.width == width)
+        #expect(run.transform == .identity)
+        #expect(run.image.showsDrawing)
+      }
+      #expect(controller.readingAnchor()?.id == anchor.id)
+    }
   }
 #endif

@@ -23,8 +23,25 @@
       textViewsMade += 1
       let view = TranscriptCollectionTextView(style: textStyle)
       view.sizeChanged = { [weak self] in self?.scheduleRemeasure($0) }
+      view.drawingLanded = { [weak self] in self?.drawingLanded($0) }
       view.cannotDraw = { [weak self] in self?.textCannotDraw(rowID: $0) }
+      view.redrawPosition = { [weak self] in self?.redrawPosition(ofRow: $0) }
       return view
+    }
+
+    /// Where row `id`'s middle is in the content, for a drawing of its run at a new width,
+    /// which the prewarm then leaves to that drawing.
+    func redrawPosition(ofRow id: String) -> Double? {
+      guard let index = model.index(of: id), index < offsets.count else { return nil }
+      prewarmed[id] = model.version(at: index)
+      return Double(frame(ofRow: index).midY)
+    }
+
+    /// Tells the drawing of runs at a new width where the reader is: the nearest go first.
+    func focusRedraws() {
+      guard textStyle.isEnabled else { return }
+      let middle = collectionView.contentOffset.y + insets.top + visibleHeight / 2
+      textStyle.redraws.focus(at: Double(middle))
     }
 
     /// Records row `index`'s height as a text row shows it, from its run's laid-out size, with
@@ -161,6 +178,16 @@
       }
       MessageTextRunPrewarm.answers.prioritize(answers.texts, at: answers.positions)
       MessageTextRunPrewarm.prompts.prioritize(prompts.texts, at: prompts.positions)
+    }
+
+    /// The reader is still: the messages within ``keptReach`` viewports either way build and
+    /// draw first, nearest the viewport first.
+    func prewarmAroundViewport() {
+      guard textStyle.isEnabled else { return }
+      let shown = collectionView.bounds
+      let kept = shown.insetBy(dx: 0, dy: -shown.height * Self.keptReach)
+      focusPrewarms(at: shown.midY, direction: 0)
+      prewarmTexts(from: kept.minY, to: kept.maxY)
     }
 
     /// Tells the prewarms where the reader is and which way they scroll.
