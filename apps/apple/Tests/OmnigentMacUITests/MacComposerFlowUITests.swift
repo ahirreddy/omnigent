@@ -17,7 +17,8 @@ final class MacComposerFlowUITests: XCTestCase {
     super.tearDown()
   }
 
-  /// A follow-up shows in the transcript, empties the composer and gets a reply of its own.
+  /// A follow-up shows in the transcript with the session working at once, empties the composer
+  /// and gets a reply of its own.
   @MainActor
   func testFollowUpMessageGetsItsOwnReply() {
     let live = MacLiveUITestSupport(self)
@@ -27,9 +28,12 @@ final class MacComposerFlowUITests: XCTestCase {
     let replies = app.descendants(matching: .any).matching(
       NSPredicate(format: "identifier BEGINSWITH 'message-' AND identifier CONTAINS '-reply-'"))
     let before = replies.count
+    let working = live.element("transcript-working", in: app)
+    XCTAssertTrue(working.disappears(within: 15), "the stopped reply still shows working")
 
     let followUp = "Follow up \(UUID().uuidString.prefix(6))"
     live.send(followUp, in: app)
+    XCTAssertTrue(working.appears(within: 3), "Working did not show right after sending")
     live.assertShows(followUp, in: app)
     XCTAssertTrue(
       live.waitUntil(timeout: 60) { replies.count > before }, "the follow-up got no reply")
