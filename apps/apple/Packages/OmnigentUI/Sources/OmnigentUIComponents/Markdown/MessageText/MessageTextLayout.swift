@@ -4,14 +4,18 @@
   import AppKit
 #endif
 
-// What a built message's text carries for the layers drawn with it, and how a laid-out run is
-// read for them: shared by the Mac's text views and the drawn-ahead (raster) runs.
+// How a laid-out run is read for the layers drawn with it: shared by the Mac's text views and
+// the drawn-ahead (raster) runs, on and off the main actor.
 
 /// The design system's metrics the builder sets text with, as constants it can read off the
 /// main actor; a test checks they match `Theme`'s.
 nonisolated enum MessageTextMetrics {
-  /// `Theme.Control.target` on the Mac.
-  static let controlTarget: CGFloat = 28
+  /// `Theme.Control.target`.
+  #if os(macOS)
+    static let controlTarget: CGFloat = 28
+  #else
+    static let controlTarget: CGFloat = 44
+  #endif
   /// `Theme.Spacing`.
   static let extraSmall: CGFloat = 4
   static let small: CGFloat = 8
@@ -29,57 +33,14 @@ nonisolated enum MessageTextMetrics {
   static let quoteBarWidth: CGFloat = 3
 }
 
-nonisolated extension NSAttributedString.Key {
-  /// The block a paragraph belongs to, for the layers and controls drawn with it.
-  static let messageBlock = NSAttributedString.Key("omnigent.messageBlock")
-  /// The quotes a paragraph sits in, for their bars.
-  static let messageQuotes = NSAttributedString.Key("omnigent.messageQuotes")
-}
-
-/// What one paragraph of message text is part of: a code block's header or line, a table row
-/// or a rule. ``MessageTextLayersView`` draws them from the laid-out lines.
-nonisolated final class MessageBlockMark: NSObject {
-  enum Role {
-    /// The band a code block's language label and Copy button sit on.
-    case codeHeader
-    case codeLine(isLast: Bool)
-    case tableRow(isHeader: Bool, isLast: Bool, width: CGFloat)
-    case rule
-  }
-
-  let block: Int
-  let role: Role
-  /// The block's leading edge.
-  let indent: CGFloat
-
-  init(block: Int, role: Role, indent: CGFloat) {
-    self.block = block
-    self.role = role
-    self.indent = indent
-  }
-}
-
-/// The quotes around a paragraph, outermost first: each one's bar and its leading edge.
-nonisolated final class MessageQuoteMarks: NSObject {
-  let bars: [MessageQuoteBar]
-
-  init(_ bars: [MessageQuoteBar]) {
-    self.bars = bars
-  }
-}
-
-/// One quote's bar.
-nonisolated struct MessageQuoteBar: Hashable, Sendable {
-  var id: Int
-  var leading: CGFloat
-}
-
 /// What the layers behind the text draw.
-nonisolated enum MessageTextShape: Equatable, Sendable {
+nonisolated enum MessageTextShape: Equatable {
   /// A code block: its rounded surface, header band and the rule under the header.
   case codeBlock(CGRect)
   /// A rule, a table's rule or a quote's bar.
   case fill(CGRect, Fill)
+  /// Typeset inline math, over its clear attachment.
+  case image(CGImage, CGRect)
 
   enum Fill: Equatable, Sendable {
     case separator
@@ -90,7 +51,7 @@ nonisolated enum MessageTextShape: Equatable, Sendable {
 }
 
 /// Reads where a laid-out document's marked paragraphs landed: the code blocks, rules, table
-/// rules and quote bars to draw, and where each control goes.
+/// rules, quote bars and typeset math to draw, and where each control goes.
 nonisolated struct MessageTextLayerCollector {
   let width: CGFloat
   private var codeBlocks: [Int: CGRect] = [:]
@@ -104,7 +65,10 @@ nonisolated struct MessageTextLayerCollector {
     var bottom: CGFloat
   }
   private var fills: [MessageTextShape] = []
+  private var images: [MessageTextShape] = []
   private(set) var chromeFrames: [Int: CGRect] = [:]
+  /// Each table's rows, from the header's line to under the last row.
+  private var tables: [Int: CGRect] = [:]
   /// The lowest point any layer or control reaches.
   private(set) var bottom: CGFloat = 0
 
@@ -121,7 +85,7 @@ nonisolated struct MessageTextLayerCollector {
               x: bar.leading, y: bar.top, width: MessageTextMetrics.quoteBarWidth,
               height: bar.bottom - bar.top), .quoteBar)
         }
-      } + fills
+      } + fills + images
   }
 
   mutating func add(_ fragment: NSTextLayoutFragment) {
@@ -143,8 +107,10 @@ nonisolated struct MessageTextLayerCollector {
     // the last line's out.
     let lineHeight = style.map { $0.minimumLineHeight + $0.lineSpacing } ?? 0
     let lastTop = origin.y + last.typographicBounds.minY
-    var bottom = max(origin.y + last.typographicBounds.maxY, lastTop + lineHeight)
+    var bottom = max(
+      origin.y + last.typographicBounds.maxY + (style?.lineSpacing ?? 0), lastTop + lineHeight)
     self.bottom = max(self.bottom, bottom)
+    addMath(in: fragment, string: string)
     guard mark != nil || quotes != nil else { return }
     if let mark { bottom = place(mark, top: top, bottom: bottom) }
     for bar in quotes?.bars ?? [] {
@@ -152,6 +118,37 @@ nonisolated struct MessageTextLayerCollector {
       quoteBars[bar.id] = QuoteSpan(leading: bar.leading, top: start, bottom: bottom)
     }
     self.bottom = max(self.bottom, bottom)
+  }
+
+  /// Where a code block or table landed: a code block from its header's top to its bottom, a
+  /// table from its header row's line to under its last row.
+  func frame(of block: Int) -> CGRect? {
+    codeBlocks[block] ?? tables[block]
+  }
+
+  /// Each typeset math image, its baseline on its line's.
+  private mutating func addMath(in fragment: NSTextLayoutFragment, string: NSAttributedString) {
+    let origin = fragment.layoutFragmentFrame.origin
+    let lines = fragment.textLineFragments
+    var found: [MessageTextShape] = []
+    // The block's third argument is AppKit's stop pointer, unused here.
+    unsafe string.enumerateAttribute(
+      .messageMath, in: NSRange(location: 0, length: string.length)
+    ) { value, range, _ in
+      guard let math = value as? MessageMathMark,
+        let line = lines.first(where: { NSLocationInRange(range.location, $0.characterRange) })
+      else { return }
+      let bounds = line.typographicBounds
+      let baseline = origin.y + bounds.minY + line.glyphOrigin.y
+      let leading = origin.x + bounds.minX + line.locationForCharacter(at: range.location).x
+      found.append(
+        .image(
+          math.image,
+          CGRect(
+            x: leading, y: baseline - math.baseline, width: math.size.width,
+            height: math.size.height)))
+    }
+    images += found
   }
 
   /// Records a marked paragraph's layer and control; returns where its block ends below it.
@@ -179,6 +176,8 @@ nonisolated struct MessageTextLayerCollector {
       return bottom
     case .tableRow(let isHeader, let isLast, let tableWidth):
       let below = bottom + MessageTextMetrics.tableRowPadding
+      let start = isHeader ? top : tables[mark.block]?.minY ?? top
+      tables[mark.block] = CGRect(x: mark.indent, y: start, width: span, height: below - start)
       guard !isLast else {
         let controls = CGRect(
           x: mark.indent, y: below, width: min(span, max(tableWidth, 120)),

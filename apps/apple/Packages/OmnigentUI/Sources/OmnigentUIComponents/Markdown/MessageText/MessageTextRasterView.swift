@@ -15,6 +15,8 @@
     /// The text view laid over the raster while the reader selects.
     private(set) var live: MessageTextContentView?
     var openURL: (@MainActor (URL) -> Void)?
+    /// A code block's Wrap was turned on or off, by block.
+    var wrapChanged: ((Int, Bool) -> Void)?
     private var pointerArea: NSTrackingArea?
     private var pressedLink: URL?
 
@@ -42,7 +44,7 @@
       image.show(raster.surface, scale: raster.scale)
       for (block, frame) in raster.chromeFrames {
         guard chromeViews[block] == nil, let chrome = document.chrome[block] else { continue }
-        let view = Self.makeChrome(chrome, palette: document.palette)
+        let view = makeChrome(chrome, block: block)
         chromeViews[block] = view
         addSubview(view)
         view.frame = frame.offsetBy(dx: 0, dy: raster.topInset)
@@ -63,15 +65,16 @@
       if let live, live.frame != bounds { live.frame = bounds }
     }
 
-    private static func makeChrome(_ chrome: MessageTextChrome, palette: MessageTextPalette)
-      -> NSView
-    {
+    private func makeChrome(_ chrome: MessageTextChrome, block: Int) -> NSView {
       switch chrome {
       case .code(let code, let language):
-        MessageCodeHeaderView(
-          label: CodeLanguageName.label(for: language), code: code, palette: palette)
+        let header = MessageCodeHeaderView(
+          language: language, code: code, palette: document.palette)
+        // Long lines that scroll sideways need the live text, which the cell shows instead.
+        header.wrapChanged = { [weak self] wraps in self?.wrapChanged?(block, wraps) }
+        return header
       case .table(let table):
-        MessageTableControlsView(table: table, palette: palette)
+        return MessageTableControlsView(table: table, palette: document.palette)
       }
     }
 

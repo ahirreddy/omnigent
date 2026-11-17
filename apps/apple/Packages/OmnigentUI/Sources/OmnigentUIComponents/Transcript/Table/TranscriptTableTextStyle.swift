@@ -24,6 +24,9 @@
     /// The layers' colors for runs drawn ahead.
     private(set) var rasterStyle: MessageTextRasterStyle?
     private(set) var serial = 0
+    /// Documents that show as live text, not drawn ahead: the reader set a code block's long
+    /// lines scrolling sideways, which a drawing can't.
+    var liveDocuments: Set<UInt64> = []
 
     init(environment: TranscriptTableEnvironment) {
       self.environment = environment
@@ -81,11 +84,12 @@
     /// Whether runs are drawn ahead, at a known scale.
     var drawsAhead: Bool { surface == .raster && scale > 0 && rasterStyle != nil }
 
-    /// The raster kept for `document` at `width`, if one was drawn.
+    /// The raster kept for `document` at `width`, if one was drawn and can show it.
     func raster(for document: MessageTextDocument, width: CGFloat) -> MessageTextRaster? {
       guard drawsAhead else { return nil }
-      return MessageTextRasters.shared.raster(
+      let raster = MessageTextRasters.shared.raster(
         for: MessageTextRasterKey(document: document.serial, width: width, scale: scale))
+      return raster?.overflows == false ? raster : nil
     }
   }
 

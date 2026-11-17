@@ -205,8 +205,11 @@ import SwiftUI
           return
         }
         let range = editor.selectedRange()
-        let text = Range(range, in: editor.string).map { String(editor.string[$0]) }?
-          .trimmingCharacters(in: .whitespacesAndNewlines)
+        // A message's own text view leaves its list markers and placeholder lines out.
+        let selected =
+          (editor as? MessageTextKitView)?.copiedText(in: range)
+          ?? Range(range, in: editor.string).map { String(editor.string[$0]) }
+        let text = selected?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let text, !text.isEmpty, let rect = bounds(of: range, in: editor) else {
           changed?(nil)
           return

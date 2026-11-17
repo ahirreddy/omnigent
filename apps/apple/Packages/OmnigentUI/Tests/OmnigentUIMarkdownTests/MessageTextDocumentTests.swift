@@ -79,7 +79,7 @@
       let code = "let a = 1\n\nlet b = 2"
       let document = MessageTextFixture.document("Before\n\n```swift\n\(code)\n```")
       let text = document.text
-      #expect(text.string == "Before\n \nlet a = 1\n\nlet b = 2")
+      #expect(text.string == "Before\nSwift\nlet a = 1\n\nlet b = 2")
       #expect(document.hasWideBlocks)
       guard case .code(let copied, let language)? = document.chrome.values.first else {
         Issue.record("no code block control")
@@ -87,7 +87,7 @@
       }
       #expect(copied == code)
       #expect(language == "swift")
-      let header = MessageTextFixture.offset(of: " ", in: text, after: "Before")
+      let header = MessageTextFixture.offset(of: "Swift", in: text)
       let headerMark = MessageTextFixture.value(
         .messageBlock, at: header, in: text, as: MessageBlockMark.self)
       guard case .codeHeader? = headerMark?.role else {
@@ -96,8 +96,11 @@
       }
       let before = try #require(MessageTextFixture.paragraph(at: 0, in: text))
       let headerStyle = try #require(MessageTextFixture.paragraph(at: header, in: text))
-      #expect(headerStyle.lineSpacing == 0, "the header line is all line height")
-      #expect(headerStyle.minimumLineHeight == MessageTextBuilder.codeHeaderHeight + 1)
+      #expect(headerStyle.lineSpacing == 0, "the header's label line has no spacing of its own")
+      #expect(
+        headerStyle.minimumLineHeight + headerStyle.paragraphSpacing
+          == MessageTextBuilder.codeHeaderHeight + 1, "the band and its rule")
+      #expect(headerStyle.lineBreakMode == .byTruncatingTail)
       #expect(
         headerStyle.paragraphSpacingBefore == TypeRamp.paragraphSpacing + before.lineSpacing)
       let first = MessageTextFixture.offset(of: "let a", in: text)
@@ -172,6 +175,32 @@
       #expect(split.pieces.map(\.gapAbove) == [0, 16, 16, 16])
     }
 
+    @Test(
+      "A list or quote holding display math, a diagram, an image or a wide table stays whole",
+      arguments: [
+        "- item\n\n  $$\n  x^2\n  $$",
+        "> ```mermaid\n> graph TD\n>   A --> B\n> ```",
+        "- ![chart](data:image/png;base64,AAAA)",
+        "> | Notes |\n> | --- |\n> | \(String(repeating: "wide words ", count: 60)) |",
+        "- outer\n\n  > ![chart](data:image/png;base64,AAAA)",
+      ])
+    func nestedBlocks(markdown: String) {
+      let blocks = MarkdownParser.parse("Intro.\n\n\(markdown)\n\nOutro.")
+      let split = MessageTextSplit(blocks, ramp: MessageTextFixture.ramp)
+      let kinds = split.pieces.map { piece -> String in
+        switch piece.content {
+        case .text(let blocks): "text \(blocks.count)"
+        case .block(.list): "list"
+        case .block(.quote): "quote"
+        case .block: "other"
+        }
+      }
+      #expect(kinds == ["text 1", markdown.hasPrefix(">") ? "quote" : "list", "text 1"])
+      let textOnly = MarkdownParser.parse(
+        "- item\n\n  > quoted\n\n  | a | b |\n  | - | - |\n  | 1 | 2 |")
+      #expect(MessageTextSplit(textOnly, ramp: MessageTextFixture.ramp).pieces.count == 1)
+    }
+
     @Test("A rule is a line of its own; a last empty line keeps a space so it keeps its style")
     func ruleAndEnds() throws {
       let document = MessageTextFixture.document("Above\n\n---\n\nBelow")
@@ -184,6 +213,34 @@
       }
       let trailing = MessageTextFixture.document("Above\n\n---")
       #expect(trailing.text.string == "Above\n ")
+    }
+
+    @Test(
+      "A copy gives the SwiftUI renderer's plain text: no markers, task boxes or placeholder lines",
+      arguments: [
+        ("- one\n- two\n  - nested\n\n3. three", "one\ntwo\nnested\nthree"),
+        ("- [x] done\n- [ ] open", "done\nopen"),
+        (
+          "Before\n\n```swift\nlet a = 1\n\nlet b = 2\n```\n\nAfter",
+          "Before\nlet a = 1\n\nlet b = 2\nAfter"
+        ),
+        ("Above\n\n---\n\nBelow", "Above\nBelow"),
+        ("- ```\n  x\n  ```\n- y", "x\ny"),
+        ("| A | B |\n| --- | --- |\n| 1 | 2 |", "A\tB\n1\t2"),
+      ])
+    func copiedText(markdown: String, copied: String) {
+      let text = MessageTextFixture.document(markdown).text
+      let whole = text.messageCopyText(in: NSRange(location: 0, length: text.length))
+      #expect(whole.trimmingCharacters(in: .newlines) == copied, "\(text.string)")
+    }
+
+    @Test("A copy of part of a list item leaves its marker out")
+    func copiedPart() {
+      let text = MessageTextFixture.document("- first item\n- second item").text
+      let start = MessageTextFixture.offset(of: "item", in: text)
+      let end = MessageTextFixture.offset(of: "second", in: text) + 6
+      let copied = text.messageCopyText(in: NSRange(location: start, length: end - start))
+      #expect(copied == "item\nsecond")
     }
 
     @Test("Equal text and style build one document, shared")

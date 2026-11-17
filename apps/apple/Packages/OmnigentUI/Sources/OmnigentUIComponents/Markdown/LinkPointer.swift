@@ -65,14 +65,11 @@ extension View {
       private var rects: [CGRect] = []
       private var rectsAreFound = false
       private var area: NSTrackingArea?
-      private var turnObserver: CFRunLoopObserver?
+      private lazy var turns = LinkHandTurns { [weak self] in self?.turnEnded() }
       /// Where the pointer is in the window; tests give their own, the real one is far away.
       var pointerLocation: (() -> NSPoint)?
       private var isOverLink = false {
-        didSet {
-          guard isOverLink != oldValue else { return }
-          if isOverLink { watchTurns() } else { stopWatchingTurns() }
-        }
+        didSet { turns.isWatching = isOverLink }
       }
 
       override var isFlipped: Bool { true }
@@ -127,29 +124,8 @@ extension View {
         if NSCursor.current != NSCursor.pointingHand { NSCursor.pointingHand.set() }
       }
 
-      /// The window's views set their cursors as it lays out and refreshes (SwiftUI's arrow, the
-      /// text's I-beam). While the pointer rests on a link, the hand is put back as each turn of
-      /// the main run loop ends, after all of them, and given up once the link is not under it.
-      private func watchTurns() {
-        let observer = CFRunLoopObserverCreateWithHandler(
-          nil, CFRunLoopActivity.beforeWaiting.rawValue, true, CFIndex.max
-        ) { [weak self] _, _ in
-          MainActor.assumeIsolated { self?.turnEnded() }
-        }
-        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
-        turnObserver = observer
-      }
-
-      private func stopWatchingTurns() {
-        if let turnObserver { CFRunLoopObserverInvalidate(turnObserver) }
-        turnObserver = nil
-      }
-
       private func turnEnded() {
-        // A selection drag keeps the text's I-beam; a window behind another app's sets nothing.
-        // AppKit declares `window` unowned(unsafe); it is only read here, never retained.
-        guard NSEvent.pressedMouseButtons == 0, unsafe window?.isKeyWindow == true,
-          let location = unsafe pointerLocation?() ?? window?.mouseLocationOutsideOfEventStream
+        guard let location = unsafe turns.restingLocation(in: window, given: pointerLocation)
         else { return }
         pointerMoved(to: location)
       }
@@ -183,6 +159,57 @@ extension View {
       private static func isSelectableText(_ view: NSView?) -> Bool {
         view is NSText || (view as? NSTextField)?.isSelectable == true
       }
+    }
+  }
+
+  /// The window's views set their cursors as it lays out and refreshes (SwiftUI's arrow, the
+  /// text's I-beam). While the pointer rests on a link, the hand is put back as each turn of the
+  /// main run loop ends, after all of them, and given up once the link is not under it.
+  final class LinkHandTurns {
+    private var observer: CFRunLoopObserver?
+    private let turnEnded: @MainActor () -> Void
+
+    init(_ turnEnded: @escaping @MainActor () -> Void) {
+      self.turnEnded = turnEnded
+    }
+
+    /// Whether each turn's end is reported.
+    var isWatching = false {
+      didSet {
+        guard isWatching != oldValue else { return }
+        if isWatching { start() } else { stop() }
+      }
+    }
+
+    private func start() {
+      let turnEnded = turnEnded
+      let observer = CFRunLoopObserverCreateWithHandler(
+        nil, CFRunLoopActivity.beforeWaiting.rawValue, true, CFIndex.max
+      ) { _, _ in
+        MainActor.assumeIsolated { turnEnded() }
+      }
+      CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+      self.observer = observer
+    }
+
+    /// Reports a turn's end now, as the run loop does before it sleeps; for tests, whose loop
+    /// never sleeps.
+    func endTurn() {
+      guard isWatching else { return }
+      turnEnded()
+    }
+
+    private func stop() {
+      if let observer { CFRunLoopObserverInvalidate(observer) }
+      observer = nil
+    }
+
+    /// Where the pointer rests in `window` as a turn ends, or `nil` when the hand should be left
+    /// alone: a selection drag keeps the text's I-beam, and a window behind another app's sets
+    /// nothing. `location` stands in for the real pointer in tests.
+    func restingLocation(in window: NSWindow?, given location: (() -> NSPoint)?) -> NSPoint? {
+      guard NSEvent.pressedMouseButtons == 0, let window, window.isKeyWindow else { return nil }
+      return location?() ?? window.mouseLocationOutsideOfEventStream
     }
   }
 #endif

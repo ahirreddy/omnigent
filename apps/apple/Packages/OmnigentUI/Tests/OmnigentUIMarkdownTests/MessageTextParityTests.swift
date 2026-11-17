@@ -88,7 +88,7 @@
       #expect(abs(swiftUI - textKit) < 1, "SwiftUI \(swiftUI), TextKit \(textKit)")
     }
 
-    @Test("Body, heading, list and code lines sit on SwiftUI's baselines, within a point")
+    @Test("Body, heading, list and code lines sit on SwiftUI's baselines, on the same pixel")
     func baselines() throws {
       let markdown = """
         Hello there
@@ -112,8 +112,7 @@
       #expect(textKit.count == 7)
       for baseline in textKit {
         let nearest = swiftUI.min { abs($0 - baseline) < abs($1 - baseline) } ?? .infinity
-        // SwiftUI rounds a heading's baseline to the backing scale's pixel; TextKit to a point.
-        #expect(abs(nearest - baseline) <= 1, "\(baseline) vs \(swiftUI)")
+        #expect(abs(nearest - baseline) < 0.01, "\(baseline) vs \(swiftUI)")
       }
     }
 
@@ -198,4 +197,5 @@
   final class CapturedBaselines {
     var values: [CGFloat] = []
   }
+
 #endif

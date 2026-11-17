@@ -75,6 +75,8 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
   let links: [MessageTextLinkArea]
   /// Each block's control (a code block's header, a table's menu), by block.
   let chromeFrames: [Int: CGRect]
+  /// A table is wider than the run: only a live view, which scrolls it sideways, shows it.
+  let overflows: Bool
 
   /// The bitmap's memory.
   var byteCount: Int { surface?.allocationSize ?? 0 }
@@ -113,6 +115,9 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
     size = MessageTextSize(
       height: (textHeight + run.topInset).rounded(.up), usedWidth: usedWidth.rounded(.up))
     chromeFrames = collector.chromeFrames
+    overflows = MessageTextBlockSpan.spans(in: run.text).values.contains {
+      $0.overflows(width: width, wraps: true)
+    }
     links = Self.linkAreas(run.links, in: manager)
     surface = Self.draw(
       fragments, shapes: collector.shapes, size: CGSize(width: width, height: textHeight),
@@ -260,6 +265,13 @@ nonisolated final class MessageTextRaster: @unchecked Sendable {
       context.setStrokeColor(style.border)
       context.setLineWidth(1)
       context.strokePath()
+    case .image(let image, let rect):
+      // The context is flipped; an image draws right way up in a frame flipped back.
+      context.saveGState()
+      context.translateBy(x: rect.minX, y: rect.maxY)
+      context.scaleBy(x: 1, y: -1)
+      context.draw(image, in: CGRect(origin: .zero, size: rect.size))
+      context.restoreGState()
     case .fill(let rect, let fill):
       switch fill {
       case .separator: context.setFillColor(style.separator)

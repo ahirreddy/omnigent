@@ -7,17 +7,27 @@ import UniformTypeIdentifiers
 /// own, scrolling both ways.
 struct MarkdownTableBlock: View {
   let table: MarkdownTable
-  @State private var isExpanded = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       MarkdownTableView(table: table)
         .frame(maxWidth: .infinity, alignment: .leading)
-      MarkdownTableControls(table: table, isExpanded: $isExpanded)
+      MarkdownTableControlsRow(table: table)
     }
-    .expandedPresentation(isPresented: $isExpanded) {
-      ExpandedTable(table: table)
-    }
+  }
+}
+
+/// A table's controls row, which shows the table on its own when Expand is chosen: under a
+/// SwiftUI table, and under one a message's TextKit text draws.
+struct MarkdownTableControlsRow: View {
+  let table: MarkdownTable
+  @State private var isExpanded = false
+
+  var body: some View {
+    MarkdownTableControls(table: table, isExpanded: $isExpanded)
+      .expandedPresentation(isPresented: $isExpanded) {
+        ExpandedTable(table: table)
+      }
   }
 }
 

@@ -119,7 +119,10 @@
           adopted.append(.block(view))
           continue
         }
-        let raster = style.raster(for: document, width: width)
+        // A run whose long lines the reader set scrolling sideways shows live.
+        let raster =
+          style.liveDocuments.contains(document.serial)
+          ? nil : style.raster(for: document, width: width)
         if let run = kept.removeValue(forKey: document.serial) {
           if run.keeps(raster, width: width, style: style) {
             adopted.append(run)
@@ -142,6 +145,35 @@
         metrics: laidOut.metrics, textWidth: laidOut.textWidth, message: message)
       refreshActions()
       if abs(previous - height) >= 0.5 { idealSizeChanged?(self) }
+    }
+
+    /// A live text view's height changed by itself (a code block's Wrap turned): the cell lays
+    /// out again and tells the table.
+    override func invalidateIntrinsicContentSize() {
+      blockSizeChanged()
+    }
+
+    /// The reader turned a drawn run's code block Wrap: long lines that scroll sideways need
+    /// the live text, which shows instead of the drawing from now on.
+    private func showLive(_ document: MessageTextDocument, block: Int, wraps: Bool) {
+      style.liveDocuments.insert(document.serial)
+      guard let index = runs.firstIndex(where: { $0.document === document }),
+        case .raster(let drawn) = runs[index], let laidOut
+      else { return }
+      let openURL = drawn.openURL
+      runs[index].release()
+      let view = MessageTextViews.shared.checkOut(document)
+      view.openURL = openURL
+      addSubview(view)
+      runs[index] = .live(view)
+      if index == 0, message?.role == .answer, let id = message?.row.id {
+        view.setAccessibilityIdentifier("message-text-\(id)")
+      }
+      view.setWraps(wraps, block: block)
+      // The header pressed was the drawing's; the live text's own shows the same state.
+      _ = view.measurement(for: laidOut.textWidth)
+      (view.chromeViews[block] as? MessageCodeHeaderView)?.wrapsLines = wraps
+      blockSizeChanged()
     }
 
     /// Hands the text views back for the next cell that shows their documents.
@@ -287,10 +319,14 @@
         MessageTextRasters.shared.store(
           drawn,
           for: MessageTextRasterKey(document: document.serial, width: width, scale: style.scale))
-        raster = drawn
+        if !drawn.overflows { raster = drawn }
       }
       if let raster {
         let view = MessageTextRasterView(document: document, raster: raster)
+        view.wrapChanged = { [weak self, weak document] block, wraps in
+          guard let document else { return }
+          self?.showLive(document, block: block, wraps: wraps)
+        }
         addSubview(view)
         return .raster(view)
       }
