@@ -74,6 +74,12 @@ const METADATA_EVENTS: &[&str] = &[
     "session.interrupted",
 ];
 
+/// Whether `event` reports on the session's turn: a metadata event that is not a setting.
+fn reports_turn(event: &ServerStreamEvent) -> bool {
+    let kind = event.event_type();
+    METADATA_EVENTS.contains(&kind) && !SETTING_EVENTS.contains(&kind)
+}
+
 /// Accepts snapshots of one session in increasing revision order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConversationState {
@@ -971,8 +977,9 @@ impl ConversationSync {
     ///
     /// The read is merged into the live state: committed rows replace their previews, previews not
     /// in history yet keep their slot, buffered events are replayed onto the history (so a
-    /// consumed input is not repeated), and a newer header learned meanwhile is kept. A stale
-    /// request (superseded, or from a stopped stream) changes nothing.
+    /// consumed input is not repeated), a newer header learned meanwhile is kept, and so is the
+    /// turn status the stream reported meanwhile. A stale request (superseded, or from a stopped
+    /// stream) changes nothing.
     ///
     /// # Errors
     ///
@@ -988,9 +995,14 @@ impl ConversationSync {
         if !self.is_current(request) || session.id != self.session_id {
             return Ok(SyncUpdate::default());
         }
+        let read = header_from_snapshot(session, self.ledger.header(&session.id))?;
         let header = match self.ledger.newer_than(&session.id, request.epoch) {
-            Some(newer) => newer.clone(),
-            None => header_from_snapshot(session, self.ledger.header(&session.id))?,
+            // Newer settings stand, but no earlier read knows the turn status better than this one.
+            Some(newer) => SessionHeader {
+                status: read.status,
+                ..newer.clone()
+            },
+            None => read,
         };
         // Composed on a copy so a read that cannot be shown leaves paging as it was.
         let mut older = self.older.clone();
@@ -1014,7 +1026,12 @@ impl ConversationSync {
         for event in &self.buffered {
             again |= current.apply(event)?.effects.reconcile;
         }
-        let header = self.ledger.record(authoritative.header);
+        // What the stream said about the turn during the read is newer than the read.
+        let mut header = authoritative.header;
+        if self.buffered.iter().any(reports_turn) {
+            header.status = current.snapshot().header.status;
+        }
+        let header = self.ledger.record(header);
         self.ledger.cache(header.clone());
         current.set_header(header);
         self.buffered.clear();

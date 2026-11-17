@@ -952,3 +952,84 @@ fn hydration_shows_the_launch_follows_its_events_and_readies_it_when_a_read_says
         .expect("hydration");
     assert_eq!(stage(&sync), Some(LaunchStage::Ready));
 }
+
+/// What a native Codex send streamed on a local stack: the runner's running edge, the wrapper
+/// response that typed the prompt, then the harness's running edge for its own turn.
+fn native_turn_start() -> Vec<Value> {
+    vec![
+        json!({"type": "session.status", "conversation_id": SESSION, "status": "running"}),
+        json!({"type": "response.in_progress", "response": {"id": "resp_wrapper"}}),
+        json!({"type": "response.completed", "response": {"id": "resp_wrapper"}}),
+        json!({
+            "type": "session.status", "conversation_id": SESSION, "status": "running",
+            "response_id": "codex_turn"
+        }),
+    ]
+}
+
+fn status(sync: &ConversationSync) -> Option<TurnStatus> {
+    reducer_header(sync).map(|header| header.status)
+}
+
+#[test]
+fn a_turn_that_starts_during_a_read_stays_working_whatever_the_read_says() {
+    for read_status in ["idle", "running"] {
+        let mut sync = ConversationSync::new(SESSION);
+        let first = sync.open_stream();
+        sync.finish_hydration(&first, &minimal_session(&json!({})), &[])
+            .expect("first read");
+        assert_eq!(status(&sync), Some(TurnStatus::Idle));
+        // A send asks for a read, and the turn starts while it is in flight.
+        let request = sync.request_hydration().expect("hydration starts");
+        send(&mut sync, &native_turn_start());
+        assert_eq!(status(&sync), Some(TurnStatus::Running));
+        let read = minimal_session(&json!({ "status": read_status }));
+        let update = sync
+            .finish_hydration(&request, &read, &[])
+            .expect("hydration");
+        assert_eq!(
+            status(&sync),
+            Some(TurnStatus::Running),
+            "a read that answered {read_status} ended a turn the stream started"
+        );
+        if let Some(again) = update.hydrate {
+            let running = minimal_session(&json!({"status": "running"}));
+            sync.finish_hydration(&again, &running, &[])
+                .expect("follow-up read");
+            assert_eq!(status(&sync), Some(TurnStatus::Running));
+        }
+    }
+}
+
+#[test]
+fn a_turn_that_ends_during_a_read_stays_ended_and_settings_still_come_from_the_read() {
+    let mut sync = ConversationSync::new(SESSION);
+    let first = sync.open_stream();
+    sync.finish_hydration(&first, &minimal_session(&json!({"status": "running"})), &[])
+        .expect("first read");
+    let request = sync.request_hydration().expect("hydration starts");
+    send(
+        &mut sync,
+        &[json!({"type": "session.status", "conversation_id": SESSION, "status": "idle"})],
+    );
+    let read = minimal_session(&json!({"status": "running", "harness": "codex-native"}));
+    let update = sync
+        .finish_hydration(&request, &read, &[])
+        .expect("hydration");
+    assert_eq!(status(&sync), Some(TurnStatus::Idle));
+    // A read crossed only by settings keeps its own status.
+    let request = update
+        .hydrate
+        .expect("the turn's end asks for another read");
+    send(
+        &mut sync,
+        &[json!({"type": "session.model", "conversation_id": SESSION, "model": "other"})],
+    );
+    sync.finish_hydration(
+        &request,
+        &minimal_session(&json!({"status": "running"})),
+        &[],
+    )
+    .expect("hydration");
+    assert_eq!(status(&sync), Some(TurnStatus::Running));
+}
