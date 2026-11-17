@@ -1,3 +1,4 @@
+import OmnigentPlatform
 public import SwiftUI
 
 /// The Automations page (the web's `/tasks`): the caller's scheduled agent sessions with search,

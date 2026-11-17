@@ -1,5 +1,6 @@
 import Foundation
 import OmnigentCoreFFI
+import OmnigentPlatform
 import OmnigentRemoteBrowser
 import OmnigentStores
 public import OmnigentUIComponents
@@ -207,7 +208,7 @@ public struct ConnectedServerView: View {
       if let chat = chat(id, in: ownerID, sideChatOf: source) {
         chat.id(id)
       } else {
-        ProgressView("Opening the session\u{2026}")
+        LoadingCaption(title: "Opening the session\u{2026}")
       }
     case .newSession, .nestedSession:
       newSessionPage(nestedBeside: destination) { tabFailure = $0 }

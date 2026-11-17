@@ -1,4 +1,5 @@
 import OmnigentCoreFFI
+import OmnigentPlatform
 import OmnigentStores
 import OmnigentTerminalStores
 import OmnigentTerminalUI
@@ -35,7 +36,7 @@ struct TerminalTabView: View {
           "Terminal Closed", systemImage: "terminal",
           description: Text("This terminal is no longer running in the session."))
       } else {
-        ProgressView("Attaching the terminal\u{2026}")
+        LoadingCaption(title: "Attaching the terminal\u{2026}")
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)

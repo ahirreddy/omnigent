@@ -28,7 +28,7 @@ struct EmptyTranscriptView: View {
   }
 
   private var loading: some View {
-    ProgressView("Loading conversation\u{2026}")
+    LoadingCaption(title: "Loading conversation\u{2026}")
       .frame(maxWidth: .infinity)
       .padding(.vertical, Theme.Spacing.section * 2)
       .accessibilityIdentifier("transcript-loading")

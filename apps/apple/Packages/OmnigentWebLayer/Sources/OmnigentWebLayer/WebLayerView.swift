@@ -1,5 +1,6 @@
 public import AppKit
 internal import OmnigentInput
+internal import OmnigentPlatform
 public import SwiftUI
 
 /// Embeds a `WebView`: shows its layers, forwards user input through its renderer, reports
@@ -333,12 +334,10 @@ struct WebViewStatusOverlay: View {
   var body: some View {
     switch webView.status {
     case .waitingForHost, .creating:
-      ProgressView {
-        Text("Starting Chromium…")
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background(.background)
-      .accessibilityIdentifier("weblayer.starting")
+      LoadingCaption(title: "Starting Chromium…")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.background)
+        .accessibilityIdentifier("weblayer.starting")
     case .unavailable(let error):
       ContentUnavailableView {
         Label("This page stopped", systemImage: "exclamationmark.triangle")

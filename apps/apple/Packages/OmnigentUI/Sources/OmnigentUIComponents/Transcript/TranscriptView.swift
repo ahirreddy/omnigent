@@ -1,3 +1,4 @@
+import OmnigentPlatform
 public import SwiftUI
 
 /// The scrolling conversation: messages, grouped tool calls, activities, banners and the live
@@ -211,7 +212,7 @@ public struct TranscriptView: View {
     if state.isLoadingHistory {
       HStack {
         Spacer()
-        ProgressView("Loading earlier messages\u{2026}").controlSize(.small)
+        LoadingCaption(title: "Loading earlier messages\u{2026}").controlSize(.small)
         Spacer()
       }
       .accessibilityIdentifier("history-loading")

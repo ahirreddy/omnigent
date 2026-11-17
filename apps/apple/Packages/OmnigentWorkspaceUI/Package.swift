@@ -23,10 +23,15 @@ let package = Package(
   name: "OmnigentWorkspaceUI",
   platforms: [.iOS("26.0"), .macOS("26.0")],
   products: [.library(name: "OmnigentWorkspaceUI", targets: ["OmnigentWorkspaceUI"])],
-  dependencies: [.package(path: "../OmnigentViewTesting")],
+  dependencies: [
+    // The shared loading caption.
+    .package(path: "../OmnigentPlatform"),
+    .package(path: "../OmnigentViewTesting"),
+  ],
   targets: [
     .target(
       name: "OmnigentWorkspaceUI",
+      dependencies: [.product(name: "OmnigentPlatform", package: "OmnigentPlatform")],
       swiftSettings: mainActorSwiftSettings
     ),
     .testTarget(

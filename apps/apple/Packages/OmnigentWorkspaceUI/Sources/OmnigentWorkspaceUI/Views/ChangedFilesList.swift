@@ -1,3 +1,4 @@
+import OmnigentPlatform
 public import SwiftUI
 
 /// The session's changed files with their status and line counts. Selecting one opens its diff.
@@ -35,7 +36,7 @@ public struct ChangedFilesList: View {
   @ViewBuilder private var content: some View {
     switch model.state {
     case .idle, .loading:
-      ProgressView("Loading changes")
+      LoadingCaption(title: "Loading changes")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     case .failed(let failure):
       FailureView(failure: failure) { Task { await model.reload() } }

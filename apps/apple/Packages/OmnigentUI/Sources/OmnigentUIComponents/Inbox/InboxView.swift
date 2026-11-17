@@ -1,3 +1,4 @@
+import OmnigentPlatform
 import OmnigentWorkspaceUI
 public import SwiftUI
 
@@ -119,7 +120,7 @@ public struct InboxView: View {
   /// nothing failed, so it never claims "nothing waiting" too early.
   @ViewBuilder private var emptyState: some View {
     if state.isAssembling, search.isEmpty {
-      ProgressView("Loading inbox\u{2026}")
+      LoadingCaption(title: "Loading inbox\u{2026}")
         .controlSize(.small)
         .accessibilityIdentifier("inbox-loading")
     } else if state.failedSessionCount == 0 || !search.isEmpty {

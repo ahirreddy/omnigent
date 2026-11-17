@@ -21,6 +21,7 @@ let componentTestDependencies: [Target.Dependency] = [
   .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
   "OmnigentUIComponents", "OmnigentUITestSupport",
   .product(name: "OmnigentAuthUI", package: "OmnigentAuthUI"),
+  .product(name: "OmnigentPlatform", package: "OmnigentPlatform"),
   .product(name: "OmnigentWorkspaceUI", package: "OmnigentWorkspaceUI"),
 ]
 

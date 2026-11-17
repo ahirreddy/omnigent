@@ -28,6 +28,8 @@ let package = Package(
     .package(path: "../OmnigentCoreFFI"),
     // The omnibox's URL-or-search interpretation, shared with the local browser.
     .package(path: "../OmnigentBrowser"),
+    // The shared loading caption.
+    .package(path: "../OmnigentPlatform"),
     // Tests only: the live host test's transports and secure store.
     .package(path: "../OmnigentServices"),
     .package(path: "../OmnigentTestSupport"),
@@ -39,6 +41,7 @@ let package = Package(
         .product(name: "OmnigentInput", package: "OmnigentInput"),
         .product(name: "OmnigentBrowser", package: "OmnigentBrowser"),
         .product(name: "OmnigentCoreFFI", package: "OmnigentCoreFFI"),
+        .product(name: "OmnigentPlatform", package: "OmnigentPlatform"),
       ],
       // The shared protocol fixtures from client-core/fixtures/remote_browser (symlinks), played
       // by the fixture driver in previews, the playground and tests.

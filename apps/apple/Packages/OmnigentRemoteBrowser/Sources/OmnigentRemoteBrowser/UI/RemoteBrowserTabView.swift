@@ -1,4 +1,5 @@
 import OmnigentCoreFFI
+import OmnigentPlatform
 public import SwiftUI
 
 /// A remote browser tab. On the Mac: the local browser tab's toolbar layout (back, forward,
@@ -224,7 +225,7 @@ struct RemoteBrowserStatusOverlay: View {
     Group {
       switch store.snapshot.connection {
       case .idle, .connecting:
-        ProgressView("Connecting to the remote browser\u{2026}")
+        LoadingCaption(title: "Connecting to the remote browser\u{2026}")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .background(.background)
           .accessibilityIdentifier("remote-browser.connecting")

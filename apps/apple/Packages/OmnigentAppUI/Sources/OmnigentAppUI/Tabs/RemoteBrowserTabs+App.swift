@@ -1,5 +1,6 @@
 public import Foundation
 public import OmnigentCoreFFI
+import OmnigentPlatform
 public import OmnigentRemoteBrowser
 import OmnigentStores
 import OmnigentUIComponents
@@ -73,7 +74,7 @@ struct RemoteBrowserTabContainer: View {
           reopen: { url in reopen(url, RemoteBrowserTabRecord(url: url, profile: store.profile)) },
           showSessions: showSessions, tabsButton: tabsButton)
       } else {
-        ProgressView("Opening the remote browser\u{2026}")
+        LoadingCaption(title: "Opening the remote browser\u{2026}")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
