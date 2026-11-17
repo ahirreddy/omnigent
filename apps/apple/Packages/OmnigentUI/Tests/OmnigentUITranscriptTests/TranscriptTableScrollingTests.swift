@@ -24,11 +24,14 @@
     private struct Host: View {
       let conversation: LiveConversation
       let actions: ConversationActions
+      var renderer = MessageTextRenderer.swiftUI
 
       var body: some View {
         TableTranscriptView(
           state: conversation.state, liveRows: nil, actions: actions,
-          scrollToLatestRequest: conversation.scrollRequest)
+          scrollToLatestRequest: conversation.scrollRequest
+        )
+        .environment(\.messageTextRenderer, renderer)
       }
     }
 
@@ -54,11 +57,12 @@
     /// The transcript in a window, its scroll driver (whose `screen` is the window) and the
     /// table's controller.
     private func screen(
-      _ conversation: LiveConversation, actions: ConversationActions = ConversationActions()
+      _ conversation: LiveConversation, actions: ConversationActions = ConversationActions(),
+      renderer: MessageTextRenderer = .swiftUI
     ) async throws -> (TranscriptScrollDriver, TranscriptTableController) {
       let window = transcriptScreen(
-        Host(conversation: conversation, actions: actions), width: Self.width,
-        height: Self.height)
+        Host(conversation: conversation, actions: actions, renderer: renderer),
+        width: Self.width, height: Self.height)
       try await letTasksRun(window, milliseconds: 200)
       let driver = TranscriptScrollDriver(screen: window)
       let table = try #require(driver.scrollView?.documentView as? NSTableView)
@@ -162,10 +166,13 @@
       #expect(renders["rows", default: 0] == 0, "\(renders)")
     }
 
-    @Test("Older rows landing above keep the reader on the row they were reading")
-    func pagingKeepsPosition() async throws {
+    @Test(
+      "Older rows landing above keep the reader on the row they were reading",
+      arguments: [MessageTextRenderer.swiftUI, .textKit])
+    func pagingKeepsPosition(_ renderer: MessageTextRenderer) async throws {
       let conversation = session(hasMore: true)
-      let (driver, controller) = try await screen(conversation, actions: pagingActions)
+      let (driver, controller) = try await screen(
+        conversation, actions: pagingActions, renderer: renderer)
       let window = driver.screen
       defer { window.close() }
       try scroll(window, driver, to: 120)
