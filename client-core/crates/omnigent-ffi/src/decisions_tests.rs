@@ -9,7 +9,7 @@ use omnigent_protocol::ElicitationValue as CoreValue;
 
 use crate::decisions::{
     DecisionKind, DecisionResponse, EditKind, ElicitationValue, FieldKind, FormField, FormOption,
-    PermissionOptions, PersistMode, validate_form,
+    PermissionOptions, PersistMode, TextFormat, validate_form,
 };
 
 const KINDS: [(core::FieldKind, FieldKind); 6] = [
@@ -48,6 +48,8 @@ fn every_field_kind_and_a_full_field_map_both_ways() {
     field.max_length = Some(4);
     field.min_items = Some(5);
     field.max_items = Some(6);
+    field.format = Some(core::TextFormat::Email);
+    field.default_value = Some(CoreValue::TextList(vec!["v".into()]));
 
     let mapped = FormField::from(field.clone());
     assert_eq!(
@@ -71,9 +73,26 @@ fn every_field_kind_and_a_full_field_map_both_ways() {
             max_length: Some(4),
             min_items: Some(5),
             max_items: Some(6),
+            format: Some(TextFormat::Email),
+            default_value: Some(ElicitationValue::TextList {
+                values: vec!["v".into()]
+            }),
         }
     );
     assert_eq!(core::FormField::from(mapped), field);
+}
+
+#[test]
+fn every_text_format_maps_both_ways() {
+    for (on_core, on_ffi) in [
+        (core::TextFormat::Email, TextFormat::Email),
+        (core::TextFormat::Uri, TextFormat::Uri),
+        (core::TextFormat::Date, TextFormat::Date),
+        (core::TextFormat::DateTime, TextFormat::DateTime),
+    ] {
+        assert_eq!(TextFormat::from(on_core), on_ffi);
+        assert_eq!(core::TextFormat::from(on_ffi), on_core);
+    }
 }
 
 #[test]
@@ -100,6 +119,14 @@ fn every_decision_kind_maps() {
         panic!("not a form");
     };
     assert_eq!(fields[0].key, "k");
+    assert_eq!(
+        DecisionKind::from(core::DecisionKind::ExternalPage {
+            url: "https://example.invalid/page".into(),
+        }),
+        DecisionKind::ExternalPage {
+            url: "https://example.invalid/page".into(),
+        }
+    );
     let reason = core::UnsupportedReason::NonObjectSchema;
     assert_eq!(
         DecisionKind::from(core::DecisionKind::Unsupported {
@@ -205,7 +232,8 @@ fn every_value_and_response_maps() {
             CoreValue::TextList(vec!["a".into()]),
         ),
     ] {
-        assert_eq!(CoreValue::from(on_ffi), on_core);
+        assert_eq!(CoreValue::from(on_ffi.clone()), on_core);
+        assert_eq!(ElicitationValue::from(on_core), on_ffi);
     }
 
     for (on_ffi, on_core) in [

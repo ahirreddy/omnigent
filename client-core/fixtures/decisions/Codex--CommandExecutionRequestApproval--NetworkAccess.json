@@ -1,0 +1,64 @@
+{
+  "codex": {
+    "id": 32,
+    "method": "item/commandExecution/requestApproval",
+    "params": {
+      "kind": "command",
+      "threadId": "thread_fixture",
+      "turnId": "turn_fixture",
+      "itemId": "item_fixture",
+      "startedAtMs": 1763400000000,
+      "environmentId": null,
+      "reason": "Fetch the package index",
+      "networkApprovalContext": {
+        "host": "registry.example.com",
+        "protocol": "https"
+      },
+      "command": "curl https://registry.example.com/index.json",
+      "cwd": "/workspace/demo",
+      "proposedNetworkPolicyAmendments": [
+        {
+          "host": "registry.example.com",
+          "action": "allow"
+        }
+      ],
+      "availableDecisions": [
+        "accept",
+        {
+          "applyNetworkPolicyAmendment": {
+            "network_policy_amendment": {
+              "host": "registry.example.com",
+              "action": "allow"
+            }
+          }
+        },
+        "decline",
+        "cancel"
+      ]
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "Codex wants network access to **registry.example.com**",
+      "phase": "codex_command_approval",
+      "policy_name": "codex_native_command_approval",
+      "codex_method": "item/commandExecution/requestApproval",
+      "codex_request_id": 32,
+      "command": "curl https://registry.example.com/index.json",
+      "cwd": "/workspace/demo",
+      "reason": "Fetch the package index",
+      "network_host": "registry.example.com",
+      "thread_id": "thread_fixture",
+      "turn_id": "turn_fixture",
+      "item_id": "item_fixture"
+    }
+  },
+  "answer": {
+    "action": "decline"
+  },
+  "codex_result": {
+    "decision": "decline"
+  }
+}

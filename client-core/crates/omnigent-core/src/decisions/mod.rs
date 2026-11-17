@@ -2,8 +2,8 @@
 //!
 //! - [`Decision::from_request`] turns a wire [`ElicitationRequest`] into a card: a binary
 //!   approval (with any permission options the request advertises), a single-field choice, a
-//!   typed [`DecisionForm`], or an [`UnsupportedReason`]. Anything it cannot render exactly fails
-//!   closed; it never becomes a binary approval.
+//!   typed [`DecisionForm`], a page to complete (URL mode), or an [`UnsupportedReason`]. Anything
+//!   it cannot render exactly fails closed; it never becomes a binary approval.
 //! - [`resolve`]: a [`DecisionResponse`] is checked against the card and becomes the MCP
 //!   `ElicitationResult` body, and the request the host sends.
 //! - [`ledger`]: the pending cards one session shows, with exact-id resolution and tombstones so
@@ -18,6 +18,7 @@ pub mod form;
 pub mod ledger;
 mod partial_json;
 pub mod resolve;
+mod text_format;
 
 use omnigent_protocol::{ElicitationMode, ElicitationRequest};
 use serde_json::{Map, Value};
@@ -35,8 +36,8 @@ pub use resolve::{
     DecisionError, DecisionResponse, ResolveAcknowledgement, ResolveError, ResolveRequest,
     ResolveRoute, resolve_response,
 };
+pub use text_format::TextFormat;
 
-const NEEDS_WEB_SCHEMA: &str = "This form uses a schema that needs the web app.";
 const AGY_PERMISSION_PHASE: &str = "agy_permission";
 const ASK_USER_QUESTION_CALL: &str = "AskUserQuestion(";
 const PRE_TOOL_USE_PHASE: &str = "pre_tool_use";
@@ -59,6 +60,12 @@ pub enum DecisionKind {
     },
     /// A typed multi-field form or an `AskUserQuestion` form.
     Form(DecisionForm),
+    /// URL mode: the user completes the request on a page, then answers Done (accept) or
+    /// Decline. The page is a safe `http(s)` URL that is only ever opened explicitly.
+    ExternalPage {
+        /// The page.
+        url: String,
+    },
     /// Cannot be answered in the native app.
     Unsupported {
         /// Why.
@@ -69,35 +76,31 @@ pub enum DecisionKind {
     },
 }
 
-/// Why a card cannot be answered natively. The display text is user-facing.
+/// Why a card cannot be answered natively. The display text is user-facing and names what the
+/// app cannot do.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum UnsupportedReason {
     /// `requestedSchema` is not an object.
-    #[error("{NEEDS_WEB_SCHEMA}")]
+    #[error(
+        "This form's schema is not a JSON object, so the app cannot show its fields. Continue in the web app."
+    )]
     NonObjectSchema,
     /// The schema cannot become a native form.
-    #[error("{NEEDS_WEB_SCHEMA}")]
+    #[error("The app cannot show this form exactly: {0}. Continue in the web app.")]
     Schema(FormError),
     /// The `AskUserQuestion` payload cannot become a native form.
-    #[error("This structured question needs the web app's question form.")]
+    #[error("The app cannot show this question exactly: {0}. Continue in the web app.")]
     Question(FormError),
-    /// URL mode with a safe confirmation page: complete it there.
+    /// A page address that is not a credential-free `http(s)` URL.
     #[error(
-        "Complete this request on its confirmation page. The session will update when the server receives your response."
-    )]
-    ExternalConfirmation,
-    /// A confirmation address that is not a credential-free `http(s)` URL.
-    #[error(
-        "This request uses a confirmation address that cannot be opened safely here. Continue in the web app."
+        "This request's page address is not a plain http or https link, so the app will not open it. Continue in the web app."
     )]
     UnsafeConfirmationUrl,
-    /// URL mode without a confirmation address.
-    #[error(
-        "The server did not provide a confirmation address. Continue this request in the web app."
-    )]
+    /// URL mode without a page address.
+    #[error("This request asks you to open a page but did not say which. Continue in the web app.")]
     MissingConfirmationUrl,
     /// A `mode` this client does not know.
-    #[error("This request type is not supported in the native app yet.")]
+    #[error("This request uses the {mode:?} mode, which the app does not support yet.")]
     UnknownMode {
         /// The mode as sent.
         mode: String,
@@ -334,9 +337,13 @@ impl Decision {
             .map(str::trim)
             .filter(|message| !message.is_empty())
             .map(str::to_owned);
-        let shows_own_fields = matches!(kind, DecisionKind::Form(_))
-            || permissions.plan.is_some()
-            || permissions.command.is_some();
+        // Forms and pages show their own fields; the preview is the raw request.
+        let hides_preview = matches!(
+            kind,
+            DecisionKind::Form(_) | DecisionKind::ExternalPage { .. }
+        );
+        let shows_own_fields =
+            hides_preview || permissions.plan.is_some() || permissions.command.is_some();
         let tool_input = if shows_own_fields {
             None
         } else {
@@ -345,11 +352,13 @@ impl Decision {
         let detail = detail_text(
             params.message.as_deref(),
             preview,
-            matches!(kind, DecisionKind::Form(_)),
+            hides_preview,
             &permissions,
         );
         let title = if permissions.plan.is_some() {
             "Review the plan"
+        } else if matches!(kind, DecisionKind::ExternalPage { .. }) {
+            "Action required"
         } else if matches!(kind, DecisionKind::Choice { .. } | DecisionKind::Form(_)) {
             "Response requested"
         } else {
@@ -379,10 +388,11 @@ impl Decision {
         }
     }
 
-    /// The safe confirmation page to offer as an explicit handoff, if any.
+    /// The safe page to offer as an explicit handoff, if any.
     #[must_use]
     pub fn external_url(&self) -> Option<&str> {
         match &self.kind {
+            DecisionKind::ExternalPage { url } => Some(url),
             DecisionKind::Unsupported { external_url, .. } => external_url.as_deref(),
             _ => None,
         }
@@ -558,9 +568,8 @@ fn request_kind(request: &ElicitationRequest) -> DecisionKind {
     let url = params.url.as_deref().filter(|url| !url.is_empty());
     if let Some(url) = url.filter(|url| !url.starts_with("/approve/")) {
         kind = if is_safe_external_url(url) {
-            DecisionKind::Unsupported {
-                reason: UnsupportedReason::ExternalConfirmation,
-                external_url: Some(url.to_owned()),
+            DecisionKind::ExternalPage {
+                url: url.to_owned(),
             }
         } else {
             DecisionKind::Unsupported {
@@ -587,7 +596,7 @@ fn request_kind(request: &ElicitationRequest) -> DecisionKind {
 fn detail_text(
     message: Option<&str>,
     preview: &str,
-    is_form: bool,
+    hides_preview: bool,
     permissions: &PermissionOptions,
 ) -> String {
     let policy = permissions
@@ -598,7 +607,7 @@ fn detail_text(
     let parts = [
         message.map(str::to_owned),
         command.map(|command| command.command.clone()),
-        (!is_form).then(|| preview.to_owned()),
+        (!hides_preview).then(|| preview.to_owned()),
         permissions.plan.clone(),
         policy,
         command
@@ -626,5 +635,7 @@ fn detail_text(
 
 #[cfg(test)]
 mod changes_tests;
+#[cfg(test)]
+mod codex_tests;
 #[cfg(test)]
 mod tests;

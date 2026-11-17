@@ -1,0 +1,61 @@
+{
+  "codex": {
+    "id": 22,
+    "method": "mcpServer/elicitation/request",
+    "params": {
+      "threadId": "thread_fixture",
+      "turnId": null,
+      "serverName": "builds",
+      "environmentId": null,
+      "mode": "form",
+      "_meta": null,
+      "message": "The build failed. What next?",
+      "requestedSchema": {
+        "type": "object",
+        "properties": {
+          "next": {
+            "type": "string",
+            "enum": ["Retry", "Skip", "Stop"]
+          }
+        },
+        "required": ["next"]
+      }
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "The build failed. What next?",
+      "requestedSchema": {
+        "type": "object",
+        "properties": {
+          "next": {
+            "type": "string",
+            "enum": ["Retry", "Skip", "Stop"]
+          }
+        },
+        "required": ["next"]
+      },
+      "phase": "codex_mcp_elicitation",
+      "policy_name": "codex_native_mcp_elicitation",
+      "codex_method": "mcpServer/elicitation/request",
+      "codex_request_id": 22,
+      "server_name": "builds",
+      "thread_id": "thread_fixture"
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "next": "Retry"
+    }
+  },
+  "codex_result": {
+    "action": "accept",
+    "content": {
+      "next": "Retry"
+    },
+    "_meta": null
+  }
+}

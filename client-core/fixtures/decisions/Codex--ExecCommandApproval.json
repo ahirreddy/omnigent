@@ -1,0 +1,41 @@
+{
+  "codex": {
+    "id": 35,
+    "method": "execCommandApproval",
+    "params": {
+      "conversationId": "thread_fixture",
+      "callId": "call_fixture",
+      "approvalId": null,
+      "command": ["git", "status", "--short"],
+      "cwd": "/workspace/demo",
+      "reason": null,
+      "parsedCmd": [
+        {
+          "type": "unknown",
+          "cmd": "git status --short"
+        }
+      ]
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "Codex wants to run **git status --short**",
+      "phase": "codex_command_approval",
+      "policy_name": "codex_native_command_approval",
+      "codex_method": "execCommandApproval",
+      "codex_request_id": 35,
+      "command": "git status --short",
+      "cwd": "/workspace/demo",
+      "thread_id": "thread_fixture",
+      "call_id": "call_fixture"
+    }
+  },
+  "answer": {
+    "action": "decline"
+  },
+  "codex_result": {
+    "decision": "denied"
+  }
+}

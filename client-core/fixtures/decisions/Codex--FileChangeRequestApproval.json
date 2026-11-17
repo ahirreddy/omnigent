@@ -1,0 +1,36 @@
+{
+  "codex": {
+    "id": 33,
+    "method": "item/fileChange/requestApproval",
+    "params": {
+      "threadId": "thread_fixture",
+      "turnId": "turn_fixture",
+      "itemId": "item_fixture",
+      "startedAtMs": 1763400000000,
+      "reason": "Write the generated client",
+      "grantRoot": "/workspace/demo/generated"
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "Codex wants write access under **/workspace/demo/generated**",
+      "phase": "codex_file_change_approval",
+      "policy_name": "codex_native_file_change_approval",
+      "codex_method": "item/fileChange/requestApproval",
+      "codex_request_id": 33,
+      "reason": "Write the generated client",
+      "grant_root": "/workspace/demo/generated",
+      "thread_id": "thread_fixture",
+      "turn_id": "turn_fixture",
+      "item_id": "item_fixture"
+    }
+  },
+  "answer": {
+    "action": "accept"
+  },
+  "codex_result": {
+    "decision": "accept"
+  }
+}

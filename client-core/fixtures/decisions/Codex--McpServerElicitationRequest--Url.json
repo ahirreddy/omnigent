@@ -1,0 +1,40 @@
+{
+  "codex": {
+    "id": 23,
+    "method": "mcpServer/elicitation/request",
+    "params": {
+      "threadId": "thread_fixture",
+      "turnId": "turn_fixture",
+      "serverName": "payments",
+      "environmentId": null,
+      "mode": "url",
+      "_meta": null,
+      "message": "Review the payment details to continue.",
+      "url": "https://payments.example.com/checkout/123",
+      "elicitationId": "payment-123"
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "url",
+      "message": "Review the payment details to continue.",
+      "url": "https://payments.example.com/checkout/123",
+      "phase": "codex_mcp_elicitation",
+      "policy_name": "codex_native_mcp_elicitation",
+      "codex_method": "mcpServer/elicitation/request",
+      "codex_request_id": 23,
+      "server_name": "payments",
+      "thread_id": "thread_fixture",
+      "turn_id": "turn_fixture"
+    }
+  },
+  "answer": {
+    "action": "accept"
+  },
+  "codex_result": {
+    "action": "accept",
+    "content": null,
+    "_meta": null
+  }
+}

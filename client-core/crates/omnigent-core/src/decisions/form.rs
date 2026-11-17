@@ -1,15 +1,18 @@
 //! Typed decision forms: a flat MCP `requestedSchema` or an `AskUserQuestion` payload becomes a
 //! [`DecisionForm`], and answers are validated against it without coercion.
 //!
-//! Port of `NativeLab`'s `DecisionForm.swift`. Anything the native form cannot express exactly
-//! (nested objects, `pattern`, unions, malformed constraints) is a [`FormError`]: it never turns
-//! into a less restrictive form or a binary approval.
+//! Port of `NativeLab`'s `DecisionForm.swift`, extended to every MCP 2025-11-25 form schema:
+//! titled and untitled single and multi-select enums, `format`, and `default`. Anything the native
+//! form cannot express exactly (nested objects, `pattern`, unions, malformed constraints) is a
+//! [`FormError`]: it never turns into a less restrictive form or a binary approval.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use omnigent_protocol::ElicitationValue;
 use serde_json::{Map, Number, Value};
+
+use super::text_format::TextFormat;
 
 /// Most fields (schema properties or questions) one native form renders.
 pub const MAX_FORM_FIELDS: usize = 32;
@@ -25,12 +28,14 @@ const SCHEMA_KEYS: [&str; 7] = [
     "$schema",
     "additionalProperties",
 ];
-const PROPERTY_KEYS: [&str; 14] = [
+const PROPERTY_KEYS: [&str; 16] = [
     "type",
     "title",
     "description",
     "enum",
     "enumNames",
+    "oneOf",
+    "format",
     "default",
     "minimum",
     "maximum",
@@ -41,7 +46,9 @@ const PROPERTY_KEYS: [&str; 14] = [
     "items",
     "uniqueItems",
 ];
-const ITEMS_KEYS: [&str; 3] = ["type", "enum", "enumNames"];
+const ITEMS_KEYS: [&str; 5] = ["type", "enum", "enumNames", "anyOf", "oneOf"];
+/// Keys of one titled option (`{"const": "a", "title": "A"}`).
+const CONST_OPTION_KEYS: [&str; 3] = ["const", "title", "description"];
 
 /// One choice a field offers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,6 +119,11 @@ pub struct FormField {
     pub min_items: Option<usize>,
     /// Most choices (multiple choice).
     pub max_items: Option<usize>,
+    /// The format a text answer must match.
+    pub format: Option<TextFormat>,
+    /// The answer to start with (the schema's `default`, or a question's prefilled text). Only
+    /// kept when it is itself a valid answer.
+    pub default_value: Option<ElicitationValue>,
 }
 
 impl FormField {
@@ -133,6 +145,8 @@ impl FormField {
             max_length: None,
             min_items: None,
             max_items: None,
+            format: None,
+            default_value: None,
         }
     }
 
@@ -196,6 +210,12 @@ impl FormField {
         }
         if self.kind == FieldKind::SingleChoice && !self.allows_custom && !self.offers(text) {
             return Err(AnswerError::NotAnOption { field: field() });
+        }
+        if let Some(format) = self.format.filter(|format| !format.matches(text)) {
+            return Err(AnswerError::WrongFormat {
+                field: field(),
+                format,
+            });
         }
         Ok(())
     }
@@ -340,6 +360,14 @@ pub enum AnswerError {
         /// The field title.
         field: String,
     },
+    /// Text that is not in the field's `format`.
+    #[error("Enter {} for {field}.", format.expected())]
+    WrongFormat {
+        /// The field title.
+        field: String,
+        /// The format it must match.
+        format: TextFormat,
+    },
 }
 
 /// The first problem with an answer set, and the field it is about.
@@ -459,13 +487,14 @@ impl DecisionForm {
         Ok(Self { fields })
     }
 
-    /// Parses an `AskUserQuestion` payload (`{"questions": [...]}`). Every question is required
-    /// and accepts a custom answer.
+    /// Parses an `AskUserQuestion` payload (`{"questions": [...]}`), which Claude, Codex
+    /// (`requestUserInput`) and Pi questions share. Every question is required; see
+    /// `parse_question` for which take a custom or free-text answer.
     ///
     /// # Errors
     ///
-    /// [`FormError`] for a payload without questions, a question without text or options, or
-    /// duplicate options or keys.
+    /// [`FormError`] for a payload without questions, a question without text, a question
+    /// without options that does not take free text, or duplicate options or keys.
     pub fn from_questions(payload: &Value) -> Result<Self, FormError> {
         let questions = payload
             .get("questions")
@@ -523,7 +552,7 @@ pub enum FormError {
         /// The field key.
         field: String,
     },
-    /// A property keyword the form cannot honour (for example `pattern` or `format`).
+    /// A property keyword the form cannot honour (for example `pattern`).
     #[error("field {field:?} uses the unsupported keyword {keyword:?}")]
     UnsupportedKeyword {
         /// The field key.
@@ -560,6 +589,14 @@ pub enum FormError {
     MalformedOptions {
         /// The field key or question text.
         field: String,
+    },
+    /// A `format` other than `email`, `uri`, `date` and `date-time`.
+    #[error("field {field:?} needs the format {format:?}, which the app cannot check")]
+    UnsupportedFormat {
+        /// The field key.
+        field: String,
+        /// The format as sent.
+        format: String,
     },
     /// A question without text, or that is not an object.
     #[error("question {index} is malformed")]
@@ -679,22 +716,78 @@ fn enum_labels(property: &Map<String, Value>) -> Vec<Option<String>> {
         .unwrap_or_default()
 }
 
-fn choice_options(key: &str, property: &Map<String, Value>) -> Result<Vec<FormOption>, FormError> {
-    let labels = enum_labels(property);
-    Ok(string_options(key, property.get("enum"))?
+/// `enum` values, labelled by `enumNames` where it names them.
+fn labelled_options(key: &str, schema: &Map<String, Value>) -> Result<Vec<FormOption>, FormError> {
+    let labels = enum_labels(schema);
+    Ok(string_options(key, schema.get("enum"))?
         .into_iter()
         .enumerate()
-        .map(|(index, value)| {
-            let label = labels.get(index).cloned().flatten();
-            FormOption {
-                label: label.unwrap_or_else(|| value.clone()),
-                value,
-                detail: String::new(),
-            }
-        })
+        .map(
+            |(index, value)| match labels.get(index).cloned().flatten() {
+                Some(label) => FormOption {
+                    label,
+                    value,
+                    detail: String::new(),
+                },
+                None => FormOption::plain(value),
+            },
+        )
         .collect())
 }
 
+/// Titled options under `keyword` (`oneOf` or `anyOf`): `[{"const": "a", "title": "A"}, ...]`.
+/// Entries of any other shape make the keyword a union the form cannot express.
+fn const_options(
+    key: &str,
+    keyword: &str,
+    values: Option<&Value>,
+) -> Result<Vec<FormOption>, FormError> {
+    let malformed = || FormError::MalformedOptions {
+        field: key.to_owned(),
+    };
+    let union = || FormError::UnsupportedKeyword {
+        field: key.to_owned(),
+        keyword: keyword.to_owned(),
+    };
+    let entries = values
+        .and_then(Value::as_array)
+        .filter(|entries| !entries.is_empty() && entries.len() <= MAX_FIELD_OPTIONS)
+        .ok_or_else(malformed)?;
+    let options = entries
+        .iter()
+        .map(|entry| {
+            let entry = entry.as_object().ok_or_else(union)?;
+            if entry
+                .keys()
+                .any(|name| !CONST_OPTION_KEYS.contains(&name.as_str()))
+            {
+                return Err(union());
+            }
+            let value = entry
+                .get("const")
+                .and_then(Value::as_str)
+                .ok_or_else(union)?;
+            let text = |name: &str| match entry.get(name) {
+                None => Ok(None),
+                Some(Value::String(text)) => Ok(Some(text.clone())),
+                Some(_) => Err(malformed()),
+            };
+            Ok(FormOption {
+                value: value.to_owned(),
+                label: text("title")?.unwrap_or_else(|| value.to_owned()),
+                detail: text("description")?.unwrap_or_default(),
+            })
+        })
+        .collect::<Result<Vec<_>, FormError>>()?;
+    let distinct: BTreeSet<&str> = options.iter().map(|option| option.value.as_str()).collect();
+    if distinct.len() != options.len() {
+        return Err(malformed());
+    }
+    Ok(options)
+}
+
+/// A multi-select's options: `items.enum` (labelled by `items.enumNames`), or titled
+/// `items.anyOf` / `items.oneOf`, whose items may leave out `type`.
 fn array_options(key: &str, property: &Map<String, Value>) -> Result<Vec<FormOption>, FormError> {
     let unsupported = |keyword: &str| FormError::UnsupportedKeyword {
         field: key.to_owned(),
@@ -710,16 +803,32 @@ fn array_options(key: &str, property: &Map<String, Value>) -> Result<Vec<FormOpt
     {
         return Err(unsupported(keyword));
     }
-    if items.get("type").and_then(Value::as_str) != Some("string") {
+    let titled = match (items.get("anyOf"), items.get("oneOf")) {
+        (Some(_), Some(_)) => return Err(unsupported("oneOf")),
+        (Some(options), None) => Some(("anyOf", options)),
+        (None, Some(options)) => Some(("oneOf", options)),
+        (None, None) => None,
+    };
+    let string_items = items.get("type").map_or_else(
+        || titled.is_some(),
+        |kind| kind.as_str() == Some("string"),
+    );
+    if !string_items {
         return Err(FormError::UnsupportedType {
             field: key.to_owned(),
             type_name: "array of non-strings".to_owned(),
         });
     }
-    Ok(string_options(key, items.get("enum"))?
-        .into_iter()
-        .map(FormOption::plain)
-        .collect())
+    match titled {
+        Some((keyword, _)) if items.contains_key("enum") || items.contains_key("enumNames") => {
+            Err(FormError::ConstraintNotApplicable {
+                field: key.to_owned(),
+                keyword: keyword.to_owned(),
+            })
+        }
+        Some((keyword, options)) => const_options(key, keyword, Some(options)),
+        None => labelled_options(key, items),
+    }
 }
 
 fn property_kind(
@@ -727,7 +836,7 @@ fn property_kind(
     property: &Map<String, Value>,
 ) -> Result<(FieldKind, Vec<FormOption>), FormError> {
     let declared = match property.get("type") {
-        None if property.contains_key("enum") => "string",
+        None if property.contains_key("enum") || property.contains_key("oneOf") => "string",
         None => "",
         Some(Value::String(kind)) => kind.as_str(),
         Some(_) => {
@@ -738,9 +847,19 @@ fn property_kind(
         }
     };
     let (kind, options) = match declared {
-        "string" if property.contains_key("enum") => {
-            (FieldKind::SingleChoice, choice_options(key, property)?)
+        "string" if property.contains_key("enum") && property.contains_key("oneOf") => {
+            return Err(FormError::ConstraintNotApplicable {
+                field: key.to_owned(),
+                keyword: "oneOf".to_owned(),
+            });
         }
+        "string" if property.contains_key("enum") => {
+            (FieldKind::SingleChoice, labelled_options(key, property)?)
+        }
+        "string" if property.contains_key("oneOf") => (
+            FieldKind::SingleChoice,
+            const_options(key, "oneOf", property.get("oneOf"))?,
+        ),
         "string" => (FieldKind::Text, Vec::new()),
         "boolean" => (FieldKind::Boolean, Vec::new()),
         "number" => (FieldKind::Number, Vec::new()),
@@ -754,10 +873,13 @@ fn property_kind(
         }
     };
     // Unsupported constraints never silently turn into a less restrictive native form.
-    if property.contains_key("enum") && kind != FieldKind::SingleChoice {
+    if let Some(keyword) = ["enum", "oneOf"]
+        .into_iter()
+        .find(|keyword| property.contains_key(*keyword) && kind != FieldKind::SingleChoice)
+    {
         return Err(FormError::ConstraintNotApplicable {
             field: key.to_owned(),
-            keyword: "enum".to_owned(),
+            keyword: keyword.to_owned(),
         });
     }
     Ok((kind, options))
@@ -768,7 +890,7 @@ fn check_applicable(
     property: &Map<String, Value>,
     kind: FieldKind,
 ) -> Result<(), FormError> {
-    let groups: [(&[&str], bool); 3] = [
+    let groups: [(&[&str], bool); 4] = [
         (
             &["minimum", "maximum"],
             matches!(kind, FieldKind::Number | FieldKind::Integer),
@@ -781,6 +903,7 @@ fn check_applicable(
             &["items", "minItems", "maxItems", "uniqueItems"],
             kind == FieldKind::MultipleChoice,
         ),
+        (&["format"], kind == FieldKind::Text),
     ];
     for (keywords, applies) in groups {
         if !applies
@@ -831,6 +954,8 @@ fn parse_property(
     ordered(key, "minItems", min_items, max_items)?;
     let (kind, options) = property_kind(key, property)?;
     check_applicable(key, property, kind)?;
+    let format = text_format(key, property)?;
+    let default_value = schema_default(key, property, kind)?;
     let text = |name: &str| {
         property
             .get(name)
@@ -852,24 +977,118 @@ fn parse_property(
         max_length,
         min_items,
         max_items,
+        format,
+        default_value,
+    }
+    .without_invalid_default())
+}
+
+/// The property's `format`, when the native form can check it.
+fn text_format(key: &str, property: &Map<String, Value>) -> Result<Option<TextFormat>, FormError> {
+    let Some(value) = property.get("format") else {
+        return Ok(None);
+    };
+    let name = value
+        .as_str()
+        .ok_or_else(|| FormError::MalformedConstraint {
+            field: key.to_owned(),
+            keyword: "format".to_owned(),
+        })?;
+    TextFormat::parse(name)
+        .map(Some)
+        .ok_or_else(|| FormError::UnsupportedFormat {
+            field: key.to_owned(),
+            format: name.to_owned(),
+        })
+}
+
+/// A JSON number that is whole and within `i64`, as one: `3` and `3.0` alike.
+#[allow(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    reason = "the value is checked to be whole and within i64 before the cast"
+)]
+fn whole_number(number: &Number) -> Option<i64> {
+    const I64_BOUND: f64 = 9_223_372_036_854_775_808.0;
+    number.as_i64().or_else(|| {
+        number
+            .as_f64()
+            .filter(|value| value.fract() == 0.0 && (-I64_BOUND..I64_BOUND).contains(value))
+            .map(|value| value as i64)
     })
 }
 
-fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError> {
-    let malformed = || FormError::MalformedQuestion { index };
-    let object = question.as_object().ok_or_else(malformed)?;
-    let title = object
-        .get("question")
-        .and_then(Value::as_str)
-        .filter(|title| !title.is_empty())
-        .ok_or_else(malformed)?;
+/// The property's `default` as an answer. A default of the wrong JSON type is malformed.
+fn schema_default(
+    key: &str,
+    property: &Map<String, Value>,
+    kind: FieldKind,
+) -> Result<Option<ElicitationValue>, FormError> {
+    let Some(value) = property.get("default") else {
+        return Ok(None);
+    };
+    let malformed = || FormError::MalformedConstraint {
+        field: key.to_owned(),
+        keyword: "default".to_owned(),
+    };
+    let answer = match (kind, value) {
+        (FieldKind::Text | FieldKind::SingleChoice, Value::String(text)) => {
+            ElicitationValue::Text(text.clone())
+        }
+        (FieldKind::Boolean, Value::Bool(flag)) => ElicitationValue::Bool(*flag),
+        (FieldKind::Integer, Value::Number(number)) => {
+            ElicitationValue::Integer(whole_number(number).ok_or_else(malformed)?)
+        }
+        (FieldKind::Number, Value::Number(number)) => match number.as_i64() {
+            Some(integer) => ElicitationValue::Integer(integer),
+            None => ElicitationValue::Number(number.as_f64().ok_or_else(malformed)?),
+        },
+        (FieldKind::MultipleChoice, Value::Array(values)) => ElicitationValue::TextList(
+            values
+                .iter()
+                .map(|value| value.as_str().map(str::to_owned))
+                .collect::<Option<_>>()
+                .ok_or_else(malformed)?,
+        ),
+        _ => return Err(malformed()),
+    };
+    Ok(Some(answer))
+}
+
+impl FormField {
+    /// Drops a default that is not itself a valid answer, so a form never starts out answered
+    /// with something it would refuse.
+    fn without_invalid_default(mut self) -> Self {
+        if self
+            .default_value
+            .as_ref()
+            .is_some_and(|value| self.validate(Some(value)).is_err())
+        {
+            self.default_value = None;
+        }
+        self
+    }
+}
+
+/// Whether a question offers no options: `options` absent, `null` or empty.
+const fn has_no_options(options: Option<&Value>) -> bool {
+    match options {
+        None | Some(Value::Null) => true,
+        Some(Value::Array(options)) => options.is_empty(),
+        Some(_) => false,
+    }
+}
+
+fn question_options(
+    title: &str,
+    raw_options: Option<&Value>,
+) -> Result<Vec<FormOption>, FormError> {
     let malformed_options = || FormError::MalformedOptions {
         field: title.to_owned(),
     };
-    let raw_options = object
-        .get("options")
+    let raw_options = raw_options
         .and_then(Value::as_array)
-        .filter(|options| !options.is_empty() && options.len() <= MAX_FIELD_OPTIONS)
+        .filter(|options| options.len() <= MAX_FIELD_OPTIONS)
         .ok_or_else(malformed_options)?;
     let options = raw_options
         .iter()
@@ -883,6 +1102,7 @@ fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError
             let detail: Vec<&str> = ["description", "preview"]
                 .iter()
                 .filter_map(|key| option.get(*key).and_then(Value::as_str))
+                .filter(|detail| !detail.is_empty())
                 .collect();
             Ok(FormOption {
                 value: label.to_owned(),
@@ -895,9 +1115,27 @@ fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError
     if distinct.len() != options.len() {
         return Err(malformed_options());
     }
+    Ok(options)
+}
+
+/// One question, always required. With options it takes one of them (several with
+/// `multiSelect`), plus a typed answer unless `isOther` is `false`. A single-select question with
+/// no options and `isOther: true` takes free text, prefilled from `textInput.default` when sent;
+/// without `isOther: true` it has nothing to answer with and is malformed.
+fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError> {
+    let malformed = || FormError::MalformedQuestion { index };
+    let object = question.as_object().ok_or_else(malformed)?;
+    let title = object
+        .get("question")
+        .and_then(Value::as_str)
+        .filter(|title| !title.is_empty())
+        .ok_or_else(malformed)?;
+    let flag = |name: &str| object.get(name).and_then(Value::as_bool);
+    let multi = flag("multiSelect") == Some(true);
+    let is_other = flag("isOther");
+    let raw_options = object.get("options");
     let supplied_id = object.get("id").and_then(Value::as_str).unwrap_or_default();
-    let multi = object.get("multiSelect") == Some(&Value::Bool(true));
-    Ok(FormField {
+    let field = FormField {
         key: if supplied_id.is_empty() {
             title
         } else {
@@ -910,15 +1148,35 @@ fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_owned(),
+        is_secret: flag("isSecret") == Some(true),
+        ..FormField::new(String::new(), String::new(), FieldKind::Text)
+    };
+    if has_no_options(raw_options) {
+        if is_other != Some(true) || multi {
+            return Err(FormError::MalformedOptions {
+                field: title.to_owned(),
+            });
+        }
+        let prefill = object
+            .get("textInput")
+            .and_then(|input| input.get("default"))
+            .and_then(Value::as_str)
+            .map(|text| ElicitationValue::Text(text.to_owned()));
+        return Ok(FormField {
+            default_value: prefill,
+            ..field
+        }
+        .without_invalid_default());
+    }
+    Ok(FormField {
         kind: if multi {
             FieldKind::MultipleChoice
         } else {
             FieldKind::SingleChoice
         },
-        options,
-        allows_custom: true,
-        is_secret: object.get("isSecret") == Some(&Value::Bool(true)),
-        ..FormField::new(String::new(), String::new(), FieldKind::Text)
+        options: question_options(title, raw_options)?,
+        allows_custom: is_other != Some(false),
+        ..field
     })
 }
 

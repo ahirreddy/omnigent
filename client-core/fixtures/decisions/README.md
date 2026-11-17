@@ -33,7 +33,7 @@ Swift string interpolation was resolved to the concrete values each test uses, a
 - `DecisionForm--AskUserQuestionPreservesIDsAndSupportsCustomAndMultiAnswers.json`: AskUserQuestion with two questions: 'scope' (id kept, single select, option Native described as 'Phone UI') and 'What next?' (multi select, no id). Expect field keys ['scope','What next?']; custom answer for scope and multi answer for next is valid; scope answered with the option only is invalid.
 - `DecisionForm--CommandPolicyAndMetadataRemainExplicit.json`: Command approval with command 'swift test', cwd /workspace, reason 'Verify the change', execpolicy amendment [swift,test]. Expect execPolicyAmendment ['swift','test'] and detail containing 'Working directory: /workspace' and 'Reason: Verify the change'.
 - `DecisionForm--DecisionValuesEncodeAsFlatMCPScalars.json`: Flat MCP wire form of a decision form value set: string, number, boolean, string array. Expect encoding to plain JSON scalars/arrays and decode back to the same values.
-- `DecisionForm--ExternalRequestOnlyExposesSafeExplicitHandoff.jsonl`: Two URL-mode requests: https URL (externalURL kept, still unsupported) and javascript: URL (externalURL nil, unsupportedReason set). Expect only the https link exposed as a handoff.
+- `DecisionForm--ExternalRequestOnlyExposesSafeExplicitHandoff.jsonl`: Two URL-mode requests: https URL (a page card: the link is offered explicitly, Done accepts and Decline declines) and javascript: URL (externalURL nil, unsupportedReason set). Expect only the https link exposed as a handoff.
 - `DecisionForm--MalformedConstraintsFailClosed.jsonl`: Five independent malformed schemas (required as string, fractional minLength, negative minLength, string minimum, minimum greater than maximum). Each must fail closed with unsupportedReason.
 - `DecisionForm--MalformedQuestionCannotBecomeApproval.json`: AskUserQuestion question with no options. Expect unsupportedReason non-nil and form nil.
 - `DecisionForm--PlanAndRememberCapabilitiesAreExplicit.jsonl`: Plan review (isPlanReview true, allowAllEdits true) and remember-scope request (rememberLabel 'example.invalid'). Expect both capabilities explicit.
@@ -56,6 +56,44 @@ Swift string interpolation was resolved to the concrete values each test uses, a
 - `LocalServerSessionClient--StructuredFormPostsTypedContentWithoutCoercion.jsonl`: 2 HTTP exchange(s) in order: GET /v1/sessions/conv_a; POST /v1/sessions/conv_a/elicitations/form1/resolve; used by LocalServerSessionClientTests.swift::testStructuredFormPostsTypedContentWithoutCoercion; expected: typed form values resolve as accept with exact JSON types (string, number, bool, string array).
 - `LocalServerSessionClient--TypedQuestionNeverPostsBinaryApproval.jsonl`: 1 HTTP exchange(s) in order: GET /v1/sessions/conv_a; used by LocalServerSessionClientTests.swift::testTypedQuestionNeverPostsBinaryApproval; expected: a typed question cannot be answered with a binary approve; no POST is made.
 - `LocalServerSessionClient--UnadvertisedPermissionOptionsNeverPost.jsonl`: 1 HTTP exchange(s) in order: GET /v1/sessions/conv_a; used by LocalServerSessionClientTests.swift::testUnadvertisedPermissionOptionsNeverPost; expected: permission options absent from requestedSchema are rejected invalidDecision before any POST.
+
+## Codex request kinds
+
+`Codex--<CodexRequestKind>[--<shape>].json`, named after the Codex app-server request
+(`codex-rs/app-server-protocol`, `ServerRequest`). Each file holds four entries, shared by
+`codex_tests.rs` and `tests/server/routes/test_codex_elicitation.py`:
+
+- `codex`: the JSON-RPC request Codex sends, in the wire shape of Codex 0.142 and later.
+- `elicitation`: the elicitation the server publishes for it (`_codex_elicitation.py`), without
+  `content_preview`, which is the request's params as JSON capped at 1024 characters.
+- `answer`: the `ElicitationResult` the app posts.
+- `codex_result`: the JSON-RPC result Codex receives for that answer.
+
+Expected cards:
+
+- `ToolRequestUserInput--OptionsWithOther`: `request_user_input` from the model (`isOther` true):
+  one choice, labels with descriptions, a typed answer allowed.
+- `ToolRequestUserInput--OptionsOnly`: Codex's MCP tool approval question (`isOther` false): the
+  options only; a typed answer is refused.
+- `ToolRequestUserInput--FreeText`: `options: null`: a required text field.
+- `ToolRequestUserInput--SecretAndMultipleQuestions`: three questions in one card: a choice, a
+  masked text field (`isSecret`, no `options` key) and free text (`options: []`).
+- `RequestUserInputAsync--FreeText`: the forwarder's card for a `request_user_input_async`
+  question without options (`isBlocking` false): a text field.
+- `McpServerElicitationRequest--FormEveryField`: every MCP 2025-11-25 field shape: the four
+  string formats, number and integer ranges (integers as floats, as Codex 0.142 sends them),
+  boolean, legacy `enumNames`, untitled and titled (`oneOf`) single select, untitled and titled
+  (`items.anyOf`) multi-select with item counts, `default` on each, and `required`.
+- `McpServerElicitationRequest--SingleSelect`: one untitled enum: a choice card.
+- `McpServerElicitationRequest--ToolCallApproval`: `_meta.codex_approval_kind: mcp_tool_call`
+  with an empty schema: an approval offering session and always persistence.
+- `McpServerElicitationRequest--Url`: URL mode: a page card; Done accepts.
+- `CommandExecutionRequestApproval--CommandPolicy`: a command with `availableDecisions` offering
+  an execpolicy amendment.
+- `CommandExecutionRequestApproval--NetworkAccess`: a managed-network prompt: the message names
+  the host.
+- `FileChangeRequestApproval`, `PermissionsRequestApproval`, `ExecCommandApproval` (legacy) and
+  `ApplyPatchApproval` (legacy): binary approvals.
 
 ## Hand-built from the server's request shapes
 
