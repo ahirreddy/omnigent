@@ -112,7 +112,7 @@ nonisolated extension MessageTextBuilder {
   {
     let colored = NSMutableAttributedString(
       string: code, attributes: [.font: font, .foregroundColor: palette.text])
-    guard CodeHighlighting.supports(language) else { return colored }
+    guard !codeIsPlain, CodeHighlighting.supports(language) else { return colored }
     for span in CodeSpanCache.shared.spans(code, language: language) {
       let range = NSRange(location: span.range.lowerBound, length: span.range.count)
       // A span past the end would raise; the tokenizer's spans stay inside the code.

@@ -6,7 +6,10 @@
   /// again draws without typesetting. A table cell or a SwiftUI row hosts it through
   /// ``fittingSize(for:fillsWidth:)``.
   final class MessageTextContentView: NSView, NSTextViewDelegate {
-    let document: MessageTextDocument
+    private(set) var document: MessageTextDocument
+    /// The answer is still streaming: its text changes in place, and its view isn't kept for a
+    /// row shown again.
+    private(set) var isStreaming: Bool
     let textView: MessageTextKitView
     /// The stack laid out off the main actor that the text view shows, kept alive with it.
     private let prepared: MessageTextPreparedLayout?
@@ -45,8 +48,9 @@
     static let minimumWidth: CGFloat = 40
     /// The width an unconstrained proposal lays out at.
     static let unconstrainedWidth: CGFloat = 10_000
-    init(document: MessageTextDocument) {
+    init(document: MessageTextDocument, isStreaming: Bool = false) {
       self.document = document
+      self.isStreaming = isStreaming
       // Text laid out off the main actor comes with its layout; anything else lays out here.
       prepared = document.takePreparedLayout()
       if let prepared {
@@ -213,8 +217,16 @@
     func setWraps(_ wraps: Bool, block: Int) {
       guard wraps == unwrapped.contains(block) else { return }
       if wraps { unwrapped.remove(block) } else { unwrapped.insert(block) }
+      forgetLayout()
+    }
+
+    /// Forgets every width's layout, after the text or its wrapping changed; whoever hosts the
+    /// view asks its size again.
+    private func forgetLayout() {
       measurements.removeAll()
       laidOutWidth = nil
+      linkRectsAreFound = false
+      accessibilityItemsAreBuilt = false
       needsLayout = true
       invalidateIntrinsicContentSize()
       // AppKit declares `superview` unowned(unsafe); it is only messaged here.
@@ -250,6 +262,41 @@
       return true
     }
 
+  }
+
+  extension MessageTextContentView {
+    /// Shows `next`, the same answer further on, without making a new view: while it streams,
+    /// only the text from the last block on changes, as the parser leaves closed blocks alone;
+    /// once it settles, its links and math may change anywhere, so all of it is set again.
+    func show(_ next: MessageTextDocument, isStreaming streaming: Bool) {
+      guard next !== document, let storage = textView.textContentStorage?.textStorage else {
+        return
+      }
+      // A run that didn't change keeps its layout.
+      if streaming, next.endsOpen == document.endsOpen, next.text.string == document.text.string {
+        document = next
+        return
+      }
+      let start = streaming ? min(document.tailStart, storage.length) : 0
+      let changed = Set(
+        spans.compactMap { block, span in NSMaxRange(span.range) > start ? block : nil })
+      for block in changed {
+        chromeViews.removeValue(forKey: block)?.removeFromSuperview()
+        overflows.removeValue(forKey: block)?.removeFromSuperview()
+      }
+      hiddenBlocks.subtract(changed)
+      unwrapped.subtract(changed)
+      let tail = NSRange(location: start, length: next.text.length - start)
+      storage.beginEditing()
+      storage.replaceCharacters(
+        in: NSRange(location: start, length: storage.length - start),
+        with: next.text.attributedSubstring(from: tail))
+      storage.endEditing()
+      document = next
+      isStreaming = streaming
+      spans = MessageTextBlockSpan.spans(in: next.text)
+      forgetLayout()
+    }
   }
 
   /// A link's rectangle on one line.

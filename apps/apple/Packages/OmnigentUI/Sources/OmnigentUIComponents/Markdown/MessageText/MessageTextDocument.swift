@@ -145,6 +145,10 @@ nonisolated final class MessageTextDocument: @unchecked Sendable {
   let hasWideBlocks: Bool
   /// Space above the first line: TextKit drops a first paragraph's spacing, so the view adds it.
   let topInset: CGFloat
+  /// Where the last block starts: a streaming answer's next text changes nothing before it.
+  let tailStart: Int
+  /// Its last block is still streaming, so its code is plain.
+  let endsOpen: Bool
 
   private static let serials = Atomic<UInt64>(0)
   #if os(macOS)
@@ -154,7 +158,8 @@ nonisolated final class MessageTextDocument: @unchecked Sendable {
 
   init(
     text: NSAttributedString, palette: MessageTextPalette, chrome: [Int: MessageTextChrome],
-    hasWideBlocks: Bool, topInset: CGFloat = 0
+    hasWideBlocks: Bool, topInset: CGFloat = 0, tailStart: Int = 0,
+    endsOpen: Bool = false
   ) {
     serial = Self.serials.add(1, ordering: .relaxed).newValue
     self.text = text
@@ -162,6 +167,8 @@ nonisolated final class MessageTextDocument: @unchecked Sendable {
     self.chrome = chrome
     self.hasWideBlocks = hasWideBlocks
     self.topInset = topInset
+    self.tailStart = min(tailStart, text.length)
+    self.endsOpen = endsOpen
     links = Self.links(in: text)
   }
 

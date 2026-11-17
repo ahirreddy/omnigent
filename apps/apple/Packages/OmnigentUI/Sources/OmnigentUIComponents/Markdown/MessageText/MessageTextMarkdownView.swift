@@ -5,24 +5,36 @@
   /// A message's markdown with each run of text blocks in one TextKit 2 view
   /// (``MessageTextContentView``), so its layout is kept and selection crosses paragraphs. Display
   /// math, diagrams, images and tables too wide to draw as text stay ``MarkdownView``'s blocks,
-  /// between the runs.
+  /// between the runs. A streaming answer's text views take each update in place, and its last
+  /// block is drawn as still open, as ``MarkdownView`` draws it.
   struct MessageTextMarkdownView: View {
     let text: String
+    var isStreaming = false
     var fillsWidth = true
     @Environment(\.typeRamp) private var ramp
     @Environment(\.workspaceFileLinks) private var links
     /// Inline math typeset since the view appeared, by its TeX.
     @State private var typeset: [String: RenderedRichBlock] = [:]
+    /// A streaming answer's parse, which parses only its open block again.
+    @State private var memo = MarkdownRenderMemo()
 
     var body: some View {
-      let split = MessageTextSplits.shared.split(text, ramp: ramp)
-      // Reading the links' state here redraws the text once a cited file is found.
+      let split =
+        isStreaming
+        ? MessageTextSplit(memo.blocks(for: text, isStreaming: true), ramp: ramp)
+        : MessageTextSplits.shared.split(text, ramp: ramp)
+      // Reading the links' state here redraws the text once a cited file is found; a streaming
+      // answer links nothing yet, as in MarkdownView.
       let linked =
-        links.map { links in
+        isStreaming
+        ? []
+        : links.map { links in
           split.cited.map { links.target(for: $0.text, explicit: $0.explicit)?.url }
         } ?? []
       let code = MessageCodeFont()
-      let math = split.pieces.flatMap(\.inlineMath)
+      let last = split.pieces.last?.id
+      // The open block's math typesets once it closes.
+      let math = split.pieces.flatMap { mathTypeset(in: $0, isOpen: $0.id == last) }
       VStack(alignment: .leading, spacing: 0) {
         ForEach(split.pieces) { piece in
           Group {
@@ -30,18 +42,29 @@
             case .text(let blocks):
               MessageTextBlocksView(
                 source: MessageTextSource(text: text, piece: piece.id), blocks: blocks,
-                linked: linked, math: readyMath(piece.inlineMath), code: code,
-                fillsWidth: fillsWidth)
+                linked: linked,
+                math: readyMath(mathTypeset(in: piece, isOpen: piece.id == last)), code: code,
+                fillsWidth: fillsWidth, isStreaming: isStreaming,
+                lastBlockIsOpen: isStreaming && piece.id == last)
             case .block(let block):
               MarkdownBlockView(block: block)
+                .environment(\.markdownBlockIsOpen, isStreaming && piece.id == last)
             }
           }
           .padding(.top, piece.gapAbove)
         }
       }
       .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
-      .modifier(WorkspacePathLinking(paths: split.cited))
+      .modifier(WorkspacePathLinking(paths: isStreaming ? [] : split.cited))
       .task(id: math) { await typesetMath(math) }
+    }
+
+    /// The inline math `piece` typesets: none in a streaming answer's still open block.
+    private func mathTypeset(in piece: MessageTextPiece, isOpen: Bool) -> [String] {
+      guard isStreaming, isOpen, case .text(let blocks) = piece.content else {
+        return piece.inlineMath
+      }
+      return MarkdownBlock.inlineMath(in: blocks.dropLast())
     }
 
     private func request(_ tex: String) -> RichBlockRequest {
@@ -84,6 +107,10 @@
     var math: [String: RenderedRichBlock] = [:]
     let code: MessageCodeFont
     let fillsWidth: Bool
+    /// The answer still streams: its document is built for each update and shown in place.
+    var isStreaming = false
+    /// Its last block is the one still streaming.
+    var lastBlockIsOpen = false
 
     func makeNSView(context: Context) -> MessageTextHostView {
       MessageTextHostView()
@@ -91,12 +118,21 @@
 
     func updateNSView(_ view: MessageTextHostView, context: Context) {
       let environment = context.environment
-      let document = Self.document(
-        source: source, blocks: blocks, linked: linked, math: math,
-        style: MessageTextStyle(environment: environment, code: code),
-        links: environment.workspaceFileLinks)
+      let style = MessageTextStyle(environment: environment, code: code)
+      let document: MessageTextDocument
+      if isStreaming {
+        // Each update's text is new: it isn't kept for another row.
+        var builder = MessageTextBuilder(palette: MessageTextPalette(style))
+        builder.typesetMath = math
+        builder.lastBlockIsOpen = lastBlockIsOpen
+        document = builder.document(blocks)
+      } else {
+        document = Self.document(
+          source: source, blocks: blocks, linked: linked, math: math, style: style,
+          links: environment.workspaceFileLinks)
+      }
       let openURL = environment.openURL
-      view.show(document, fillsWidth: fillsWidth) { openURL($0) }
+      view.show(document, fillsWidth: fillsWidth, isStreaming: isStreaming) { openURL($0) }
     }
 
     func sizeThatFits(

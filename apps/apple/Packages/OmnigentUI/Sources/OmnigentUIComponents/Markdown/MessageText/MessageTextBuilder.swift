@@ -48,6 +48,13 @@ nonisolated struct MessageTextBuilder {
   /// Inline math typeset so far, by its TeX: a paragraph shows each as an image on its
   /// baseline, as ``MarkdownParagraphText`` does, and the rest in their Unicode form.
   var typesetMath: [String: RenderedRichBlock] = [:]
+  /// The last block is still streaming: its code isn't colored until it closes, as in
+  /// ``CodeBlockView``.
+  var lastBlockIsOpen = false
+  /// Code from here on is drawn plain.
+  var codeIsPlain = false
+  /// Where the last top-level block starts in the text.
+  private var tailStart = 0
 
   /// A code block's header band: a control's height and the padding around it, then a rule.
   static let codeHeaderHeight =
@@ -104,7 +111,15 @@ nonisolated struct MessageTextBuilder {
 
   /// The document for `blocks`.
   mutating func document(_ blocks: [MarkdownBlock]) -> MessageTextDocument {
-    append(blocks, in: Context(color: palette.text))
+    let context = Context(color: palette.text)
+    for (index, block) in blocks.enumerated() {
+      pendingGap += TypeRamp.spacing(above: block, after: index > 0 ? blocks[index - 1] : nil)
+      if index == blocks.count - 1 {
+        tailStart = output.length
+        codeIsPlain = lastBlockIsOpen
+      }
+      append(block, in: context)
+    }
     // The last paragraph ends the text; an empty one keeps a space so it keeps its style.
     if output.string.hasSuffix("\n") {
       let last = NSRange(location: output.length - 1, length: 1)
@@ -116,7 +131,8 @@ nonisolated struct MessageTextBuilder {
     }
     return MessageTextDocument(
       text: NSAttributedString(attributedString: output), palette: palette, chrome: chrome,
-      hasWideBlocks: hasWideBlocks, topInset: topInset)
+      hasWideBlocks: hasWideBlocks, topInset: topInset, tailStart: tailStart,
+      endsOpen: lastBlockIsOpen)
   }
 
   mutating func append(_ blocks: [MarkdownBlock], in context: Context) {

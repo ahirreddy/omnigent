@@ -63,13 +63,20 @@
     override var isFlipped: Bool { true }
 
     func show(
-      _ document: MessageTextDocument, fillsWidth: Bool,
+      _ document: MessageTextDocument, fillsWidth: Bool, isStreaming: Bool = false,
       openURL: @escaping @MainActor (URL) -> Void
     ) {
       self.fillsWidth = fillsWidth
+      // A streaming answer's view takes its next text in place, and its settled text too.
+      if let content, content.isStreaming, content.document !== document {
+        content.show(document, isStreaming: isStreaming)
+      }
       if content?.document !== document {
         releaseContent()
-        let adopted = MessageTextViews.shared.checkOut(document)
+        let adopted =
+          isStreaming
+          ? MessageTextContentView(document: document, isStreaming: true)
+          : MessageTextViews.shared.checkOut(document)
         adopted.frame = bounds
         addSubview(adopted)
         content = adopted
@@ -91,7 +98,8 @@
     func releaseContent() {
       guard let content else { return }
       content.removeFromSuperview()
-      MessageTextViews.shared.checkIn(content)
+      // A streaming text is never shown again as it is.
+      if !content.isStreaming { MessageTextViews.shared.checkIn(content) }
       self.content = nil
     }
 

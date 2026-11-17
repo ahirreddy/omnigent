@@ -166,7 +166,7 @@
       #expect(NSCursor.current == NSCursor.pointingHand)
     }
 
-    @Test("Only a settled message in the rich rendering draws with TextKit")
+    @Test("A message in the rich rendering draws with TextKit, streaming or settled, once chosen")
     func chooses() throws {
       let screen = transcriptScreen(
         VStack {
@@ -174,13 +174,18 @@
           MessageMarkdown(text: "Streaming", isStreaming: true)
             .environment(\.messageTextRenderer, .textKit)
           MessageMarkdown(text: "Default")
+          MessageMarkdown(text: "Plain").environment(\.messageTextRenderer, .textKit)
+            .environment(\.markdownOutputRendering, .plain)
         }, width: 400, height: 300)
       defer { screen.close() }
       let texts = MessageTextFixture.contentViews(in: screen).map(\.textView.string)
-      #expect(texts == ["Settled"])
+      // A run can choose the TextKit renderer for every view (OMNIGENT_TEST_DEFAULTS).
+      let byDefault = MessageTextRenderer.launchValue == .textKit
+      #expect(texts == ["Settled", "Streaming"] + (byDefault ? ["Default"] : []))
       #expect(
         MessageTextRenderer(defaults: Self.defaults(["omnigent:message-text": "textkit"]))
           == .textKit)
+      guard !byDefault else { return }
       #expect(
         MessageTextRenderer(defaults: Self.defaults(["omnigent:message-text": "other"])) == .swiftUI
       )
