@@ -1,5 +1,4 @@
-#if os(macOS)
-  import AppKit
+#if os(macOS) || os(iOS)
   import SwiftUI
 
   /// A settled chat message a text cell draws in AppKit (``TranscriptTableTextCell``): an answer
@@ -7,7 +6,8 @@
   /// diagram, an image, a wide table) hosted between them, and the parts beside the text that
   /// SwiftUI draws (attachments, mentions, a long prompt's toggle, content this app can't show,
   /// the Interrupted line) hosted where the message row stacks them, and a shared session
-  /// author's avatar beside their prompt.
+  /// author's avatar beside their prompt. iPhone and iPad text rows
+  /// (``TranscriptCollectionTextView``) draw those that are one text run.
   struct TranscriptTableTextMessage {
     enum Role {
       case user
@@ -218,9 +218,14 @@
         + Theme.Spacing.small
     }
 
-    /// The space a shared session's avatar takes at the bubble's trailing side, with the
-    /// stack's spacing before it.
-    static let avatarLane = TranscriptTableAvatarView.size + Theme.Spacing.small
+    #if os(macOS)
+      /// The space a shared session's avatar takes at the bubble's trailing side, with the
+      /// stack's spacing before it.
+      static let avatarLane = TranscriptTableAvatarView.size + Theme.Spacing.small
+    #else
+      /// The same for ``AuthorAvatar``, 24 points wide.
+      static let avatarLane: CGFloat = 24 + Theme.Spacing.small
+    #endif
 
     /// The width a user's prompt may lay out at inside its bubble, beside an avatar or not.
     func promptWidth(_ layoutWidth: LayoutWidth, besideAvatar: Bool = false) -> CGFloat {

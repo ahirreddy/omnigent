@@ -1,5 +1,4 @@
-#if os(macOS)
-  import AppKit
+#if os(macOS) || os(iOS)
   import SwiftUI
 
   /// A part of a settled message beside its text that SwiftUI draws, hosted on its own in a
@@ -16,6 +15,11 @@
     /// A content part this app can't show: one quiet line that opens to any safe text.
     case unsupported(Activity)
   }
+#endif
+
+#if os(macOS)
+  import AppKit
+  import SwiftUI
 
   /// One accessory at the width its stack offers it, sized as that stack sizes it: as wide as
   /// it lays out there, and as tall.
