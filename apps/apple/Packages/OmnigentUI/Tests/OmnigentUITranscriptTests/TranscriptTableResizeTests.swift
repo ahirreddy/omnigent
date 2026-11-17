@@ -137,5 +137,29 @@
       #expect(HangTrace.tallies().count("transcript width", since: showing) == 1)
       #expect(try drift(of: anchor, controller) < 2)
     }
+
+    @Test("The rows fade out across the bars over them")
+    func softEdges() async throws {
+      let (driver, controller) = try await open(PaneWidth(Self.wide))
+      let window = driver.screen
+      defer { window.close() }
+      let scrollView = try #require(driver.scrollView as? TranscriptTableScrollView)
+      #expect(scrollView.layer?.mask == nil)
+
+      controller.setInsets(EdgeInsets(top: 30, leading: 0, bottom: 120, trailing: 0))
+      window.settle()
+      let mask = try #require(scrollView.layer?.mask as? CAGradientLayer)
+      let height = Double(scrollView.bounds.height)
+      let locations = try #require(mask.locations).map(\.doubleValue)
+      // The layer's unit space runs up from the bottom of a view that is not flipped.
+      let (first, last): (Double, Double) = scrollView.isFlipped ? (30, 120) : (120, 30)
+      let expected = [0, first / height, 1 - last / height, 1]
+      #expect(zip(locations, expected).allSatisfy { abs($0 - $1) < 0.001 }, "\(locations)")
+      #expect(mask.colors?.count == 4)
+
+      controller.setInsets(EdgeInsets())
+      window.settle()
+      #expect(scrollView.layer?.mask == nil)
+    }
   }
 #endif
