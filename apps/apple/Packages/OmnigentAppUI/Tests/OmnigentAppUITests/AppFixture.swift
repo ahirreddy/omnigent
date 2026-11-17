@@ -163,10 +163,12 @@ func focusField<Content: View>(
 
 /// Answers `formRequestServer()`'s form on `screen`: a title over the limit, then one within
 /// it and Submit. The core's problem must show and keep Submit from being pressed, and only
-/// the second title be sent.
+/// the second title be sent. In a list's row Submit is the control that comes to lead the
+/// form's actions; in the transcript's table, whose cells' SwiftUI controls at times have no
+/// focus proxy to find, it is found by `submitID`, its accessibility identifier.
 @MainActor
 func answerFormRequest<Content: View>(
-  on screen: OffscreenWindow<Content>, server: AppServer
+  on screen: OffscreenWindow<Content>, server: AppServer, submitID: String? = nil
 ) async throws {
   let problem = "Title allows at most 5 characters."
   var field = try await focusField("Title", in: screen)
@@ -181,13 +183,17 @@ func answerFormRequest<Content: View>(
   try await settle(screen, until: "the problem to clear") {
     (try? screen.shows(problem)) == false
   }
-  try await settle(screen, until: "Submit to be offered") {
-    formActions(under: field, in: screen).count > withoutSubmit
+  if let submitID {
+    try screen.click(try center(of: submitID, in: screen))
+  } else {
+    try await settle(screen, until: "Submit to be offered") {
+      formActions(under: field, in: screen).count > withoutSubmit
+    }
+    let offered = formActions(under: field, in: screen)
+    let submit = try #require(offered.first, "\(screen.controlFrames)")
+    #expect(offered.count == withoutSubmit + 1, "only Submit was held back: \(offered)")
+    try screen.click(CGPoint(x: submit.midX, y: submit.midY))
   }
-  let offered = formActions(under: field, in: screen)
-  let submit = try #require(offered.first, "\(screen.controlFrames)")
-  #expect(offered.count == withoutSubmit + 1, "only Submit was held back: \(offered)")
-  try screen.click(CGPoint(x: submit.midX, y: submit.midY))
   try await settle(screen, until: "the answer to reach the server") {
     !server.requests("POST", formRequestResolvePath).isEmpty
   }
