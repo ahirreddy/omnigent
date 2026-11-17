@@ -146,5 +146,65 @@
       #expect(try !window.shows("Reply"))
     }
 
+    /// The strings an assistive client reads under `element`, in reading order.
+    private static func read(_ element: Any) -> [String] {
+      guard let element = element as? NSObject else { return [] }
+      var read: [String] = []
+      for name in ["accessibilityLabel", "accessibilityValue"]
+      where element.responds(to: NSSelectorFromString(name)) {
+        if let text = element.value(forKey: name) as? String, !text.isEmpty { read.append(text) }
+      }
+      guard element.responds(to: NSSelectorFromString("accessibilityChildren")) else { return read }
+      for child in element.value(forKey: "accessibilityChildren") as? [Any] ?? [] {
+        read += Self.read(child)
+      }
+      return read
+    }
+
+    @Test("The transcript is a labelled scroll area whose rows are read in order")
+    func rowsAsElements() async throws {
+      let (driver, controller) = try await screen(session(turns: 4))
+      let window = driver.screen
+      defer { window.close() }
+      let scrollView = try #require(driver.scrollView)
+      #expect(scrollView.accessibilityIdentifier() == "transcript-\(TranscriptFixture.header.id)")
+      #expect(scrollView.accessibilityLabel() == "Transcript")
+      #expect(controller.tableView.accessibilityRole() == .group)
+      try window.withAccessibilityTree {
+        var read: [String] = []
+        for _ in 0..<2 {
+          read = Self.read(window.window)
+          window.settle(0.3)
+        }
+        let question = read.firstIndex { $0.contains("Question 3") }
+        let answer = read.firstIndex { $0.contains("Line 0 of answer 3") }
+        let cells = controller.accessibilityRows().compactMap { $0 as? NSView }
+        let shapes = cells.map { cell in
+          let children = cell.accessibilityChildren()?.count ?? -1
+          let role = cell.accessibilityRole()?.rawValue ?? "none"
+          return "\(role) \(cell.isAccessibilityElement()) \(children)/\(cell.subviews.count)"
+        }
+        #expect(question != nil, "\(shapes): \(read.prefix(12))")
+        #expect(answer != nil, "\(read.prefix(12))")
+        if let question, let answer { #expect(question < answer) }
+      }
+    }
+
+    @Test("An assistive client reads every row, those far above the window too")
+    func assistiveClientReadsEveryRow() async throws {
+      let (driver, controller) = try await screen(session(turns: 30))
+      let window = driver.screen
+      defer { window.close() }
+      try window.withAccessibilityTree {
+        var read: [String] = []
+        for _ in 0..<2 {
+          read = Self.read(window.window)
+          window.settle(0.3)
+        }
+        #expect(controller.isReadByAssistiveClient)
+        #expect(read.contains { $0.contains("Line 2 of answer 0") })
+      }
+      #expect(AssistiveClientNotice.isWritten)
+    }
   }
 #endif

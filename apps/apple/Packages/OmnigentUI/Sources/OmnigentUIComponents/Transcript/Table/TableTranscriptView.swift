@@ -169,6 +169,7 @@
     let rail: TurnRailModel
     let keys: TranscriptTableKeys
     @Environment(\.transcriptAppearance) private var appearance
+    @Environment(\.accessibilityEnabled) private var isReadByAssistiveClient
 
     var body: some View {
       let state = rowsState
@@ -186,6 +187,9 @@
           .frame(width: 0, height: 0)
       }
       .onChange(of: layout.turns(for: state), initial: true) { _, turns in rail.setTurns(turns) }
+      .onChange(of: isReadByAssistiveClient, initial: true) { _, isRead in
+        controller.setReadByAssistiveClient(isRead)
+      }
       // Previous and next need a second message to move between.
       .onChange(of: state.rows.count { $0.role == .user } > 1, initial: true) { _, hasSeveral in
         if keys.hasUserMessages != hasSeveral { keys.hasUserMessages = hasSeveral }

@@ -90,5 +90,14 @@
       if owner?.scrolls(for: event) == true { return }
       super.keyDown(with: event)
     }
+
+    // An assistive client reads the rows in order, as it reads the stack's: a group of the rows'
+    // own elements, not a table of selectable rows.
+    override func accessibilityRole() -> NSAccessibility.Role? { .group }
+
+    // swiftlint:disable:next discouraged_optional_collection
+    override func accessibilityChildren() -> [Any]? {
+      owner?.accessibilityRows() ?? super.accessibilityChildren()
+    }
   }
 #endif

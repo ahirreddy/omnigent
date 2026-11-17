@@ -99,6 +99,9 @@
     let tableViewport = TranscriptTableViewport()
     /// The folds' open choices, which outlive the cells that show them.
     let disclosures = TranscriptDisclosures()
+    /// An assistive client reads the window: rows not laid out are read through stand-ins.
+    var isReadByAssistiveClient = false
+    var rowElements: [String: TranscriptRowElement] = [:]
 
     var isAdjusting = false
     var isMeasuring = false
@@ -141,6 +144,7 @@
       disclosures.changed = { [weak self] in self?.foldChanged() }
       // The keyboard goes through the rows' controls, not the scroll bar.
       scrollView.verticalScroller?.refusesFirstResponder = true
+      scrollView.setAccessibilityLabel("Transcript")
       tableView.usesAutomaticRowHeights = false
       tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
       column.resizingMask = .autoresizingMask
@@ -200,7 +204,10 @@
       }
       reportVisibleRows()
       reportFooterViewport()
-      if !change.inserted.isEmpty || !change.removed.isEmpty { schedulePrefetch() }
+      if !change.inserted.isEmpty || !change.removed.isEmpty {
+        schedulePrefetch()
+        if isReadByAssistiveClient { rowsChangedForAssistiveClient() }
+      }
     }
 
     /// A read of older history ended: the reader near the top may ask for the next.
@@ -220,6 +227,7 @@
       position.reset()
       cancelJump()
       disclosures.reset()
+      scrollView.setAccessibilityIdentifier("transcript-\(id)")
     }
 
     /// Rows changed: a follower goes to the end, and another reader stays on their row.
