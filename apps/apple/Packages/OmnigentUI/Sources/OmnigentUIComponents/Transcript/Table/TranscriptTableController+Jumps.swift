@@ -36,6 +36,7 @@
       arrived: @escaping @MainActor () -> Void = {}
     ) {
       cancelJump()
+      probe("transcript jump", "\(target()), \(follow)")
       // AppKit declares `window` unowned(unsafe); it is only compared here, never retained.
       guard animatesJumps, unsafe clipView.window != nil else {
         move(to: target())
@@ -144,6 +145,7 @@
     func arriveAtTop() {
       guard position.arrivesAtTop, state?.rows.first?.id == sourceTopRowID else { return }
       position.endSeekingTop()
+      probe("transcript jump", "top from \(Int(clipView.bounds.minY))")
       moveToTop()
       reportVisibleRows()
     }

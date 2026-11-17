@@ -191,6 +191,8 @@
       guard let anchor, let index = model.index(of: anchor.id) else { return }
       let offset = tableView.rect(ofRow: index).minY + anchor.offset - insets.top
       guard abs(offset - clipView.bounds.minY) >= 0.5 else { return }
+      probe(
+        "transcript top row kept", "\(anchor.id) \(Int(clipView.bounds.minY)) -> \(Int(offset))")
       move(to: offset)
     }
 
@@ -199,6 +201,8 @@
       guard !model.rows.isEmpty else { return }
       cancelJump()
       measureEnd()
+      guard abs(clipView.bounds.minY - maximumOffset) >= 0.5 else { return }
+      probe("transcript layout scroll", "end, \(follow)")
       move(to: maximumOffset)
     }
 
@@ -315,6 +319,7 @@
     func setInsets(_ edges: EdgeInsets) {
       let next = NSEdgeInsets(top: edges.top, left: 0, bottom: edges.bottom, right: 0)
       guard next.top != insets.top || next.bottom != insets.bottom else { return }
+      probe("transcript dock inset", "\(insets.bottom) -> \(next.bottom)")
       let grew = next.bottom > insets.bottom
       let anchor = readingAnchor()
       insets = next

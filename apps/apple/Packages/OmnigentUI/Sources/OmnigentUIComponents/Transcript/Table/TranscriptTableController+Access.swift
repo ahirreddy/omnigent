@@ -83,6 +83,7 @@
     func setReadByAssistiveClient(_ isRead: Bool) {
       guard isRead != isReadByAssistiveClient else { return }
       isReadByAssistiveClient = isRead
+      probe("transcript assistive client", "\(isRead)")
       if isRead {
         AssistiveClientNotice.write()
         // Cells made before a client read the window have no elements: the rows on screen

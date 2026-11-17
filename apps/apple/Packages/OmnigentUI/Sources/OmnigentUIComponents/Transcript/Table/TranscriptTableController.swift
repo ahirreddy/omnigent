@@ -190,7 +190,10 @@
       // A page landing under the header keeps the reader on the rows they were reading.
       let anchor =
         change.inserted.lowerBound == 1 && !change.inserted.isEmpty ? pageAnchor : topAnchor
-      if !change.isEmpty { apply(change) }
+      if !change.isEmpty {
+        probe("transcript rows changed", "\(change.removed) -> \(change.inserted), \(follow)")
+        apply(change)
+      }
       if frameIfReady() {
         // Opened: framed at its latest turn.
       } else if !change.isEmpty {

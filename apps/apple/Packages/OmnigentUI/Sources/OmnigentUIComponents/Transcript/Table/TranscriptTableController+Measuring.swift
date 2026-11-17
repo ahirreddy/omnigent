@@ -64,6 +64,7 @@
 
     func noteHeightsInPlace(_ indexes: IndexSet) {
       guard !indexes.isEmpty else { return }
+      probeRowHeights(indexes)
       withoutAnimation { tableView.noteHeightOfRows(withIndexesChanged: indexes) }
     }
 

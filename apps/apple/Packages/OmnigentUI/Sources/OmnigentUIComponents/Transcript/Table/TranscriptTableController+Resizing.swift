@@ -108,9 +108,11 @@
     /// kept at the end or on their row. The others keep their old heights, or estimates for
     /// it, until they come into view.
     func takeWidth(keeping anchor: WidthAnchor?) {
+      var measured = IndexSet()
       tableView.enumerateAvailableRowViews { _, row in
-        if let cell = realizedCell(at: row) { measure(row, with: cell) }
+        if let cell = realizedCell(at: row), measure(row, with: cell) { measured.insert(row) }
       }
+      probeRowHeights(measured)
       // Every row's height may differ at the new width: the table asks for all of them again.
       withoutAnimation {
         tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<model.rows.count))
@@ -166,6 +168,18 @@
     /// must hold nothing a conversation says: a loop's line reaches the unified log.
     func probe(_ name: String, _ detail: @autoclosure () -> String) {
       LoopProbe.record(name, tag: probeTag, detail())
+    }
+
+    /// Records rows the table was told changed height, in Debug builds, so a loop names them
+    /// as the stack's row height probe does.
+    func probeRowHeights(_ indexes: IndexSet) {
+      #if DEBUG
+        for index in indexes where model.rows.indices.contains(index) {
+          let id = model.rows[index].id
+          HangTrace.pass("row \(id)")
+          probe("transcript row height", "\(id) \(model.width)x\(model.height(at: index))")
+        }
+      #endif
     }
   }
 #endif
