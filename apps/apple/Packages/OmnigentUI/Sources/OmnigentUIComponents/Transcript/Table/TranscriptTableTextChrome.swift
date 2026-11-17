@@ -60,7 +60,8 @@
       refreshActions()
     }
 
-    /// The message's actions, then Copy Message ID.
+    /// The message's menu, as ``MessageContextMenu`` builds it: its actions (one that doesn't
+    /// apply disabled, with why), Share, then Copy Message ID.
     override func menu(for event: NSEvent) -> NSMenu? {
       guard let message, let values = style.environment.values else { return nil }
       let menu = NSMenu()
@@ -69,25 +70,52 @@
         for: message.row, actions: values.conversationActions,
         copy: values.copyWithConfirmation)
       for item in items {
-        menu.addItem(
-          menuItem(item.menuTitle, enabled: item.unavailableReason == nil, perform: item.perform))
+        let menuItem = menuItem(
+          item.menuTitle, systemImage: item.systemImage, enabled: item.unavailableReason == nil,
+          perform: item.perform)
+        if let reason = item.unavailableReason {
+          menuItem.subtitle = reason
+          menuItem.toolTip = reason
+        }
+        menu.addItem(menuItem)
       }
+      menu.addItem(shareItem(for: message.row.text))
       menu.addItem(.separator())
       let id = message.row.id
       let copy = values.copyWithConfirmation
       menu.addItem(
-        menuItem("Copy Message ID", enabled: true) { copy(id, confirmation: "Message ID copied") })
+        menuItem("Copy Message ID", systemImage: "number", enabled: true) {
+          copy(id, confirmation: "Message ID copied")
+        })
       return menu
     }
 
+    /// Share, for the message's text: the system's share item, as a SwiftUI `ShareLink` in a
+    /// menu gives, disabled when there is no text.
+    private func shareItem(for text: String) -> NSMenuItem {
+      let picker = NSSharingServicePicker(items: [text])
+      let item = picker.standardShareMenuItem
+      item.title = "Share"
+      item.image = Self.menuImage("square.and.arrow.up", title: "Share")
+      item.isEnabled = !text.isEmpty
+      return item
+    }
+
     private func menuItem(
-      _ title: String, enabled: Bool, perform: @escaping @MainActor () -> Void
+      _ title: String, systemImage: String, enabled: Bool,
+      perform: @escaping @MainActor () -> Void
     ) -> NSMenuItem {
       let item = NSMenuItem(title: title, action: #selector(runMenuItem(_:)), keyEquivalent: "")
       item.target = self
       item.isEnabled = enabled
+      item.image = Self.menuImage(systemImage, title: title)
       item.representedObject = TranscriptMenuAction(perform)
       return item
+    }
+
+    /// A menu item's symbol, as a SwiftUI menu's label shows it.
+    private static func menuImage(_ name: String, title: String) -> NSImage? {
+      NSImage(systemSymbolName: name, accessibilityDescription: title)
     }
 
     @objc private func runMenuItem(_ item: NSMenuItem) {
