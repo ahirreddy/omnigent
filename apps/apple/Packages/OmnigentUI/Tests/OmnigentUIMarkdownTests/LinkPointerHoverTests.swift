@@ -44,7 +44,10 @@
       let row = TranscriptFixture.user(
         "u1", "\(Self.address) and then enough plain words after it to wrap on to a second line")
       let views = [
-        AnyView(MessageRowView(row: row, decoration: MessageDecoration())),
+        // A `Text`'s hand; MessageTextLinkPointerTests checks the TextKit renderer's.
+        AnyView(
+          MessageRowView(row: row, decoration: MessageDecoration())
+            .environment(\.messageTextRenderer, .swiftUI)),
         AnyView(CLIUserBand(row: row, decoration: MessageDecoration())),
       ]
       for view in views {

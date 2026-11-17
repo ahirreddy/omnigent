@@ -100,19 +100,23 @@
           terminal: terminal))
     }
 
+    private static func isEditor(_ view: NSView) -> Bool {
+      view is NSTextView && !(view is MessageTextKitView)  // not a message's own text
+    }
+
     @Test("Chat shows the transcript and composer; Terminal swaps both for the terminal")
     func modes() async throws {
       let model = chat(terminal: .ready)
       let window = try await screen(model)
       defer { window.close() }
       #expect(try window.shows("Hello there"))
-      #expect(window.allViews.contains { $0 is NSTextView })
+      #expect(window.allViews.contains(where: Self.isEditor))
       #expect(try !window.shows("the terminal surface"))
 
       model.mode = .terminal
       try await letTasksRun(window)
       #expect(try window.shows("the terminal surface"))
-      #expect(!window.allViews.contains { $0 is NSTextView })
+      #expect(!window.allViews.contains(where: Self.isEditor))
     }
 
     @Test("A session without a terminal stays in chat whatever the mode says")
@@ -349,7 +353,7 @@
       #expect(try window.shows("Hello there"))
       #expect(try !window.shows("the terminal surface"))
       #expect(window.allViews.contains { $0 === transcript })
-      #expect(window.allViews.contains { $0 is NSTextView }, "the composer is back")
+      #expect(window.allViews.contains(where: Self.isEditor), "the composer is back")
     }
 
     @Test("A tab kept built while another shows lets go of its terminal surface")
