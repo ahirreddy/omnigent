@@ -32,6 +32,63 @@
       return LiveConversation(ConversationViewState(header: TranscriptFixture.header, rows: rows))
     }
 
+    private func screen(_ conversation: LiveConversation) async throws -> (
+      TranscriptScrollDriver, TranscriptTableController
+    ) {
+      let window = transcriptScreen(
+        TableTranscriptHost(conversation: conversation, actions: ConversationActions()),
+        width: 900, height: 500)
+      try await letOpeningEnd(window)
+      let driver = TranscriptScrollDriver(screen: window)
+      return (driver, try #require(driver.tableController))
+    }
+
+    /// The Worked fold row of `turn` and the id of its first item.
+    private func fold(of turn: Int, in controller: TranscriptTableController) throws -> (
+      row: String, item: String
+    ) {
+      for row in controller.model.rows {
+        guard case .segment(let entry) = row.content,
+          case .worked(_, _, let items, _) = entry.segment,
+          let first = items.first, first.id.contains("c\(turn)")
+        else { continue }
+        return (row.id, first.id)
+      }
+      throw OffscreenWindowError.notFound("the Worked fold of turn \(turn)")
+    }
+
+    @Test("A fold opened stays open when its cell goes to another row and the row comes back")
+    func foldOutlivesItsCell() async throws {
+      let (driver, controller) = try await screen(session(turns: 30))
+      let window = driver.screen
+      defer { window.close() }
+      let fold = try fold(of: 29, in: controller)
+      let index = try #require(controller.model.index(of: fold.row))
+      let closed = controller.model.height(at: index)
+      // The fold's title leads its row, in the transcript's column.
+      let row = controller.tableView.convert(
+        controller.tableView.rect(ofRow: index), to: window.host)
+      try window.click(CGPoint(x: row.minX + 100, y: row.minY + 20))
+      try await letTasksRun(window)
+      #expect(controller.disclosures.choice("worked-\(fold.item)").isExpanded == true)
+      // Open, it shows its tool's row under its title, and the table gives it the height.
+      let open = controller.model.height(at: index)
+      #expect(open > closed + 20, "\(closed) -> \(open)")
+      let opened = try #require(controller.realizedCell(at: index))
+
+      // Keep no cell for rows that leave: the fold's goes to another row.
+      controller.pool.parkedLimit = 0
+      controller.pool.spareLimit = 1
+      driver.move(to: controller.minimumOffset)
+      window.run(for: 0.2)
+      controller.show(fold.row, at: .top)
+      try await letTasksRun(window)
+      let shown = try #require(controller.realizedCell(at: index))
+      #expect(shown !== opened)
+      #expect(abs(shown.idealHeight - open) < 1, "\(shown.idealHeight) for \(open)")
+      #expect(abs(controller.model.height(at: index) - open) < 1)
+    }
+
     @Test("Text selected in a row offers Reply, and a scroll of the table hides it")
     func selectionPopupHidesOnScroll() async throws {
       let log = HostLog()

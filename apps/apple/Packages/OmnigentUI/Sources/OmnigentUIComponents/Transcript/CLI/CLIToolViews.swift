@@ -123,7 +123,12 @@ struct CLIToolLine: View {
   static let commandLines = 2
 
   let step: CLIToolStep
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "cli-tool-\(step.id)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
   @Environment(\.cliPalette) private var palette
   @Environment(\.transcriptAppearance) private var appearance
   private(set) var size = CLIFontSize()
@@ -209,14 +214,17 @@ struct CLIToolLine: View {
   @ViewBuilder
   private func detail(_ files: [CLIDiffFile]) -> some View {
     if case .command(let script) = step.call, !isEdit {
-      CLICommandLines(lines: Array(CLIShell.lines(script).dropFirst()), showsAll: $isExpanded)
+      CLICommandLines(
+        lines: Array(CLIShell.lines(script).dropFirst()),
+        showsAll: disclosure.binding(disclosureKey))
     }
     if case .plan(let note, let steps) = step.call {
       CLIPlanSteps(note: note, steps: steps)
     } else if !files.isEmpty, !entry.isFailure {
-      CLIDiffFiles(files: files, showsAll: $isExpanded)
+      CLIDiffFiles(files: files, showsAll: disclosure.binding(disclosureKey))
     } else if let output = step.output {
-      CLIOutputTree(text: output, limit: Self.previewLines, showsAll: $isExpanded)
+      CLIOutputTree(
+        text: output, limit: Self.previewLines, showsAll: disclosure.binding(disclosureKey))
     } else if !entry.isRunning {
       CLIOutputTree(text: "(no output)", limit: 1, showsAll: .constant(true))
     }

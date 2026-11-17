@@ -5,13 +5,13 @@ import SwiftUI
 struct ReasoningRowView: View {
   let row: Row
   let activity: Activity
-  // `nil` follows the stream: open while streaming. A new stream clears the reader's choice.
-  // swiftlint:disable:next discouraged_optional_boolean
-  @State private var expandedOverride: Bool?
+  // No choice follows the stream: open while streaming. A new stream clears the reader's choice.
+  @RowDisclosure private var disclosure
   @State private var startedAt: Date?
   @State private var duration: TimeInterval?
 
-  private var isExpanded: Bool { expandedOverride ?? row.isStreaming }
+  private var disclosureKey: String { "reasoning-\(row.id)" }
+  private var isExpanded: Bool { disclosure.choice(disclosureKey) ?? row.isStreaming }
 
   static func title(isStreaming: Bool, duration: TimeInterval?) -> String {
     if isStreaming { return "Thinking\u{2026}" }
@@ -22,7 +22,8 @@ struct ReasoningRowView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       ExpandableHeader(
-        isExpanded: Binding(get: { isExpanded }, set: { expandedOverride = $0 }),
+        isExpanded: Binding(
+          get: { isExpanded }, set: { disclosure.choose($0, for: disclosureKey) }),
         systemImage: "brain",
         title: Self.title(isStreaming: row.isStreaming, duration: duration),
         subtitle: isExpanded ? nil : activity.summary, identifier: "reasoning-toggle-\(row.id)"
@@ -31,7 +32,7 @@ struct ReasoningRowView: View {
       }
       .onChange(of: row.isStreaming, initial: true) { _, streaming in
         if streaming {
-          if expandedOverride != nil { expandedOverride = nil }
+          if disclosure.choice(disclosureKey) != nil { disclosure.forget(disclosureKey) }
           if startedAt == nil { startedAt = Date() }
         } else if let startedAt, duration == nil {
           duration = Date().timeIntervalSince(startedAt)

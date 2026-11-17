@@ -95,6 +95,8 @@
     var releaseRows: () -> Void = {}
     /// The scrolls the pills and the selection popup over the table follow.
     let scrollFeed = TranscriptScrollFeed()
+    /// The folds' open choices, which outlive the cells that show them.
+    let disclosures = TranscriptDisclosures()
 
     var isAdjusting = false
     var isMeasuring = false
@@ -134,6 +136,7 @@
       tableView.focusRingType = .none
       tableView.refusesFirstResponder = true
       tableView.owner = self
+      disclosures.changed = { [weak self] in self?.foldChanged() }
       // The keyboard goes through the rows' controls, not the scroll bar.
       scrollView.verticalScroller?.refusesFirstResponder = true
       tableView.usesAutomaticRowHeights = false
@@ -213,6 +216,7 @@
       olderRequested = false
       position.reset()
       cancelJump()
+      disclosures.reset()
     }
 
     /// Rows changed: a follower goes to the end, and another reader stays on their row.

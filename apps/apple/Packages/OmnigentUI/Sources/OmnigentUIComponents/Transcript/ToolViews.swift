@@ -106,9 +106,8 @@ struct DiffView: View {
 /// them and folds them once the run settles.
 struct ToolGroupView: View, Equatable {
   let entries: [ToolEntry]
-  // `nil` follows the run: expanded while a tool runs, folded once the run settles.
-  // swiftlint:disable:next discouraged_optional_boolean
-  @State private var expandedOverride: Bool?
+  // No choice follows the run: expanded while a tool runs, folded once the run settles.
+  @RowDisclosure private var disclosure
 
   static func == (lhs: Self, rhs: Self) -> Bool { lhs.entries == rhs.entries }
 
@@ -119,9 +118,10 @@ struct ToolGroupView: View, Equatable {
     if entries.count == 1, let entry = entries.first {
       ToolRowView(entry: entry)
     } else {
+      let key = "tools-\(entries.first?.id ?? "")"
       let expanded = Binding(
-        get: { expandedOverride ?? isRunning },
-        set: { expandedOverride = $0 })
+        get: { disclosure.choice(key) ?? isRunning },
+        set: { disclosure.choose($0, for: key) })
       VStack(alignment: .leading, spacing: 0) {
         ExpandableHeader(
           isExpanded: expanded, systemImage: "wrench.and.screwdriver",
@@ -161,7 +161,12 @@ struct ToolGroupView: View, Equatable {
 /// One tool call with its result.
 struct ToolRowView: View {
   let entry: ToolEntry
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "tool-\(entry.id)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
 
   private var activity: Activity? { entry.primary?.activity }
 
@@ -181,7 +186,7 @@ struct ToolRowView: View {
     let diff = found?.summary
     VStack(alignment: .leading, spacing: 0) {
       ExpandableHeader(
-        isExpanded: $isExpanded,
+        isExpanded: disclosure.binding(disclosureKey),
         systemImage: activity?.kind.systemImage ?? "wrench.and.screwdriver",
         tint: entry.isFailure ? Theme.failure : .secondary,
         title: activity?.displayTitle ?? "Tool",

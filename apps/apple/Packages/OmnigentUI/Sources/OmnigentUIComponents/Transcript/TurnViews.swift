@@ -10,13 +10,13 @@ struct WorkedFold: View {
   let duration: TimeInterval?
   let decorations: [String: MessageDecoration]
 
-  // `nil` follows the turn: open while live, closed once settled.
-  // swiftlint:disable:next discouraged_optional_boolean
-  @State private var expandedOverride: Bool?
+  // No choice follows the turn: open while live, closed once settled.
+  @RowDisclosure private var disclosure
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.typeRamp) private var ramp
 
-  private var isExpanded: Bool { expandedOverride ?? isLive }
+  private var disclosureKey: String { "worked-\(items.first?.id ?? "")" }
+  private var isExpanded: Bool { disclosure.choice(disclosureKey) ?? isLive }
 
   private var title: String {
     Self.title(items: items)
@@ -34,7 +34,7 @@ struct WorkedFold: View {
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       Button {
-        expandedOverride = !isExpanded
+        disclosure.choose(!isExpanded, for: disclosureKey)
       } label: {
         HStack(spacing: Theme.Spacing.small) {
           Text(title)
@@ -124,12 +124,17 @@ struct WorkingIndicator: View {
 /// past 150pt.
 struct PlanCard: View {
   let section: EventSection
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "plan-\(section.id)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
 
   var body: some View {
     let todos = SectionReading.todos(section)
     let done = todos.count { $0.state == .completed }
-    DisclosureGroup(isExpanded: $isExpanded) {
+    DisclosureGroup(isExpanded: disclosure.binding(disclosureKey)) {
       BoundedScrollView(maxHeight: 150) {
         VStack(alignment: .leading, spacing: Theme.Spacing.small) {
           ForEach(todos) { TodoRow(todo: $0) }

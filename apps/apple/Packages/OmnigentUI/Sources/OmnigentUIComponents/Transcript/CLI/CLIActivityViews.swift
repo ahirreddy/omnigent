@@ -5,7 +5,12 @@ import SwiftUI
 /// native rows: they carry controls or a visible placeholder.
 struct CLIActivityLine: View, Equatable {
   let row: Row
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "cli-activity-\(row.id)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
   @Environment(\.cliPalette) private var palette
   @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.conversationActions) private var conversationActions
@@ -183,7 +188,11 @@ struct CLIWorkGroup: View, Equatable {
   let items: [TranscriptItem]
   let isLive: Bool
   let decorations: [String: MessageDecoration]
-  @State private var isCollapsed = false
+  @RowDisclosure private var disclosure
+  private var isCollapsed: Bool {
+    get { disclosure.choice("cli-work-\(id)") ?? false }
+    nonmutating set { disclosure.choose(newValue, for: "cli-work-\(id)") }
+  }
   /// A tool line's cluster at its widest: its first line shares this group's top edge, and the
   /// fold button on top of Copy output would fold the group instead of copying.
   private static let lineClusterWidth =

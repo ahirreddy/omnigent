@@ -55,6 +55,19 @@
       reportVisibleRows()
     }
 
+    /// The reader opened or closed a fold: the rows on screen are measured again once it has
+    /// rendered, as a cell's own report of its new size comes only with its next layout.
+    func foldChanged() {
+      MainRunLoop.perform { [weak self] in
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          self.tableView.enumerateAvailableRowViews { _, row in
+            if let cell = self.realizedCell(at: row) { self.scheduleRemeasure(cell) }
+          }
+        }
+      }
+    }
+
     func withoutAnimation(_ body: () -> Void) {
       NSAnimationContext.runAnimationGroup { context in
         context.duration = 0

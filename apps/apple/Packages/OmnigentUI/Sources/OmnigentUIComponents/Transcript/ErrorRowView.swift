@@ -7,7 +7,12 @@ import SwiftUI
 struct ErrorRowView: View {
   let row: Row
   let activity: Activity
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "error-\(row.id)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
   @Environment(\.conversationActions) private var actions
 
   /// Failures a new session gets past, with the action's label.
@@ -63,7 +68,7 @@ struct ErrorRowView: View {
       actionRow
       let details = activity.details.filter { !Self.inlineDetails.contains($0.id) }
       if !details.isEmpty {
-        DisclosureGroup("View Diagnostics", isExpanded: $isExpanded) {
+        DisclosureGroup("View Diagnostics", isExpanded: disclosure.binding(disclosureKey)) {
           DetailSectionsView(sections: details, rowID: row.id)
             .padding(.top, Theme.Spacing.small)
         }

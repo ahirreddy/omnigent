@@ -179,7 +179,12 @@ struct CLIExploredCell: View {
 private struct CLIExploredRow: View {
   let line: CLIExploredLine
   let isFirst: Bool
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "cli-explored-\(line.id)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
   @Environment(\.cliPalette) private var palette
   private(set) var size = CLIFontSize()
 
