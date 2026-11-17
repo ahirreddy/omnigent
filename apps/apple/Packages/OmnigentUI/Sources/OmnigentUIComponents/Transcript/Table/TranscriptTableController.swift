@@ -287,12 +287,7 @@
       if !change.removed.isEmpty { pool.keep(only: Set(model.ids)) }
       // Rows above moved the indices the idle measuring had reached.
       if !change.removed.isEmpty || !change.inserted.isEmpty { prefetchCursor = nil }
-      var noted = IndexSet()
-      for index in change.changed {
-        guard let cell = realizedCell(at: index) else { continue }
-        if measure(index, with: cell) { noted.insert(index) }
-      }
-      noteHeights(noted)
+      showChanged(change.changed)
     }
 
     // MARK: Data source and delegate
