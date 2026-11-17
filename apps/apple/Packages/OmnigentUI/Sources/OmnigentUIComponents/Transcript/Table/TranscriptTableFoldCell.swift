@@ -36,19 +36,26 @@
     }
   }
 
-  /// The Worked folds the reader opened or closed, by row id. A fold's cell shows other rows
-  /// once it scrolls away, so the choice lives with the table (``TranscriptTableFoldCell``).
+  /// The Worked folds the reader opened or closed, kept in the transcript's
+  /// ``TranscriptDisclosures`` under ``WorkedFold``'s keys. A fold's cell shows other rows once
+  /// it scrolls away, so the choice lives with the table (``TranscriptTableFoldCell``), and a
+  /// fold SwiftUI draws reads the same one.
   @MainActor
   final class TranscriptTableFolds {
-    private var overrides: [String: Bool] = [:]
+    let disclosures: TranscriptDisclosures
 
-    /// Whether fold `id` is open: as the reader left it, else open while its turn is live.
-    func isExpanded(_ id: String, isLive: Bool) -> Bool { overrides[id] ?? isLive }
+    init(disclosures: TranscriptDisclosures) {
+      self.disclosures = disclosures
+    }
 
-    func setExpanded(_ isExpanded: Bool, for id: String) { overrides[id] = isExpanded }
+    /// Whether fold `key` is open: as the reader left it, else open while its turn is live.
+    func isExpanded(_ key: String, isLive: Bool) -> Bool {
+      disclosures.choice(key).isExpanded ?? isLive
+    }
 
-    /// Forgets the folds of rows that are gone.
-    func keep(only ids: Set<String>) { overrides = overrides.filter { ids.contains($0.key) } }
+    func setExpanded(_ isExpanded: Bool, for key: String) {
+      disclosures.choice(key).isExpanded = isExpanded
+    }
   }
 
   /// A Worked fold drawn in AppKit, as ``WorkedFold`` draws it: its title ("4 steps") and
@@ -78,6 +85,9 @@
       var items: [TranscriptItem]
       var decorations: [String: MessageDecoration]
       var isLive: Bool
+
+      /// Where the reader's choice is kept.
+      var key: String { WorkedFold.disclosureKey(items: items) }
     }
 
     init(style: TranscriptTableTextStyle, folds: TranscriptTableFolds) {
@@ -99,7 +109,7 @@
     /// Whether the fold it shows is open.
     var isExpanded: Bool {
       guard let fold else { return false }
-      return folds.isExpanded(fold.id, isLive: fold.isLive)
+      return folds.isExpanded(fold.key, isLive: fold.isLive)
     }
 
     func show(_ row: TranscriptTableRow, version: Int, width: CGFloat) {
@@ -132,7 +142,7 @@
     private func layOut() -> CGFloat {
       guard let fold else { return 0 }
       let metrics = style.metrics(width: width)
-      let isExpanded = folds.isExpanded(fold.id, isLive: fold.isLive)
+      let isExpanded = folds.isExpanded(fold.key, isLive: fold.isLive)
       button.isExpanded = isExpanded
       let size = button.fittingSize
       button.frame = CGRect(x: metrics.columnX, y: 0, width: size.width, height: size.height)
@@ -177,7 +187,7 @@
     /// The reader opened or closed the fold.
     private func toggle() {
       guard let fold else { return }
-      folds.setExpanded(!isExpanded, for: fold.id)
+      folds.setExpanded(!isExpanded, for: fold.key)
       let previous = height
       height = layOut()
       if let itemsView { button.reveal(itemsView) }

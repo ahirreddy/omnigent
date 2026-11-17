@@ -31,6 +31,8 @@
         .transformEnvironment(\.self) { own in
           if let values { own = values }
         }
+        // Where a row's views are in its cell, for those that ask the viewport over it.
+        .coordinateSpace(.named(TranscriptTableViewport.cellSpace))
     }
   }
 
@@ -105,10 +107,18 @@
       .transcriptStackColumn()
     }
 
-    /// The space above the header's content: all of an empty header.
-    static func topPadding(isCLI: Bool) -> CGFloat { Theme.Spacing.extraLarge }
+    /// The space above the header's content, all of an empty header: where the stack's rows
+    /// start, under its padding, its point-high top row and a row gap.
+    static func topPadding(isCLI: Bool) -> CGFloat {
+      Theme.Spacing.extraLarge + 1 + rowGap(isCLI: isCLI)
+    }
 
-    private var spacing: CGFloat { appearance.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row }
+    /// The gap the stack leaves between its rows.
+    static func rowGap(isCLI: Bool) -> CGFloat {
+      isCLI ? CLIMetrics.blockGap : Theme.Spacing.row
+    }
+
+    private var spacing: CGFloat { Self.rowGap(isCLI: appearance.isCLI) }
 
     private var hasContent: Bool {
       header.history != .none || header.plan != nil || header.superseded != nil
@@ -147,14 +157,22 @@
         }
       }
       .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-      .padding(.bottom, Self.bottomPadding(isCLI: footer.isCLI))
+      .padding(.bottom, Self.bottomPadding(isCLI: footer.isCLI, hasContent: hasContent))
       .transcriptStackColumn()
     }
 
-    /// The space under the footer's content: all of an empty footer.
-    static func bottomPadding(isCLI: Bool) -> CGFloat { Theme.Spacing.extraLarge }
+    /// The space under the footer's content, all of an empty footer: where the stack's end
+    /// rests, a row gap and its point-high bottom row under the rows.
+    static func bottomPadding(isCLI: Bool, hasContent: Bool) -> CGFloat {
+      (hasContent ? TranscriptTableHeaderView.rowGap(isCLI: isCLI) : 0) + 1
+    }
 
-    private var spacing: CGFloat { footer.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row }
+    private var spacing: CGFloat { TranscriptTableHeaderView.rowGap(isCLI: footer.isCLI) }
+
+    private var hasContent: Bool {
+      footer.decisions != nil || footer.startup != nil || footer.working != nil
+        || footer.turnFailure != nil || footer.sessionError != nil
+    }
 
     @ViewBuilder private func banner(_ view: some View) -> some View {
       if footer.isCLI { view.transcriptColumn() } else { view }

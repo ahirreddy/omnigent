@@ -19,20 +19,24 @@
     @State private var pacer = TranscriptRowsPacer()
     @State private var pill = TranscriptTablePill()
     @State private var rail = TurnRailModel()
+    @State private var keys = TranscriptTableKeys()
     @Environment(\.transcriptAppearance) private var appearance
     @Environment(\.transcriptFocus) private var focus
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
       let actions = environmentRelay.publish(self.actions)
       wireController()
       return TranscriptTableRowsContent(
         state: state, liveRows: liveRows, pacer: pacer, layout: layout, controller: controller,
-        actions: actions, rail: rail
+        actions: actions, rail: rail, keys: keys
       )
       .modifier(
         TranscriptEnvironment(
           relay: environmentRelay, publications: environmentRelay.publications, scroll: nil)
       )
+      .environment(\.transcriptDisclosures, controller.disclosures)
+      .environment(\.transcriptTableViewport, controller.tableViewport)
       // The rows scroll under the bars around them, which the scroll view insets them by.
       .ignoresSafeArea(.container, edges: .vertical)
       .onGeometryChange(for: EdgeInsets.self) {
@@ -47,24 +51,37 @@
             .padding(.top, Theme.Spacing.small)
         }
       }
-      .onChange(of: scrollToLatestRequest) { _, _ in controller.jumpToLatest() }
+      .onChange(of: scrollToLatestRequest) { _, _ in controller.jumpToLatest(animated: true) }
       .onChange(of: TranscriptSends(state)) { previous, latest in
-        if latest.hasNewSend(since: previous) { controller.jumpToLatest() }
+        if latest.hasNewSend(since: previous) { controller.jumpToLatest(animated: true) }
+      }
+      // The count too: a read that starts and ends between two renders never shows as loading.
+      .onChange(of: HistoryRead(isLoading: state.isLoadingHistory, ended: state.historyReads)) {
+        if !$1.isLoading { controller.olderHistoryEnded() }
       }
       .task(id: state.header.id) { pacer.release() }
-      .transcriptSelectionPopup(reply: actions.replyWithSelection, ask: actions.askInSideChat)
+      .overlay { TableMessageKeys(keys: keys, controller: controller) }
+      .modifier(
+        JumpToTopReveal(
+          hasMoreHistory: state.hasMoreHistory && actions.loadOlder != nil,
+          isLoading: state.isLoadingHistory, jump: { controller.jumpToTop() },
+          feed: controller.scrollFeed)
+      )
+      .transcriptSelectionPopup(
+        reply: actions.replyWithSelection, ask: actions.askInSideChat, feed: controller.scrollFeed
+      )
       .modifier(
         TurnRailOverlay(
           model: rail,
           jump: { [controller, focus] id in
             focus?.flash(id)
-            controller.show(id, at: .top)
+            controller.show(id, at: .top, animated: true)
           },
           preview: { TurnRailModel.responsePreview(after: $0, in: layout.entries(for: state)) },
           loadOlder: { controller.requestOlder() })
       )
       .overlay(alignment: .bottom) {
-        TableJumpPill(model: pill) { controller.jumpToLatest() }
+        TableJumpPill(model: pill) { controller.jumpToLatest(animated: true) }
       }
       .background { if appearance.isCLI { CLICanvas() } }
       .cliPalette()
@@ -74,6 +91,12 @@
 
     /// Hands the controller the callbacks that reach this view's state.
     private func wireController() {
+      controller.animatesJumps = Theme.Motion.isEnabled && !reduceMotion
+      controller.sourceTopRow = { [liveRows, state] in
+        (liveRows?.read().rows ?? state.rows).first?.id
+      }
+      controller.holdRows = { [pacer] in pacer.hold() }
+      controller.releaseRows = { [pacer] in pacer.release() }
       controller.showPill = { [pill] in if pill.pill != $0 { pill.pill = $0 } }
       controller.visibleRowsChanged = { [rail] order, visible in
         guard rail.turns.count >= 2 else { return }
@@ -88,6 +111,29 @@
   @Observable
   final class TranscriptTablePill {
     var pill = TranscriptFollow.Pill()
+  }
+
+  /// Whether the transcript has a second user message to move between, read by the message
+  /// keys alone.
+  @MainActor
+  @Observable
+  final class TranscriptTableKeys {
+    var hasUserMessages = false
+  }
+
+  /// The previous and next message keys (``MessageNavigationKeys``) over the table.
+  private struct TableMessageKeys: View {
+    let keys: TranscriptTableKeys
+    let controller: TranscriptTableController
+
+    var body: some View {
+      Color.clear
+        .allowsHitTesting(false)
+        .modifier(
+          MessageNavigationKeys(
+            isEnabled: keys.hasUserMessages, previous: { controller.step(.previous) },
+            next: { controller.step(.next) }))
+    }
   }
 
   private struct TableJumpPill: View {
@@ -113,7 +159,9 @@
     let controller: TranscriptTableController
     let actions: ConversationActions
     let rail: TurnRailModel
+    let keys: TranscriptTableKeys
     @Environment(\.transcriptAppearance) private var appearance
+    @Environment(\.accessibilityEnabled) private var isReadByAssistiveClient
 
     var body: some View {
       let state = rowsState
@@ -131,6 +179,13 @@
           .frame(width: 0, height: 0)
       }
       .onChange(of: layout.turns(for: state), initial: true) { _, turns in rail.setTurns(turns) }
+      .onChange(of: isReadByAssistiveClient, initial: true) { _, isRead in
+        controller.setReadByAssistiveClient(isRead)
+      }
+      // Previous and next need a second message to move between.
+      .onChange(of: state.rows.count { $0.role == .user } > 1, initial: true) { _, hasSeveral in
+        if keys.hasUserMessages != hasSeveral { keys.hasUserMessages = hasSeveral }
+      }
       .modifier(PacedWhileShown(pacer: pacer))
       .modifier(TableShownWatch(controller: controller))
       .modifier(messageFocus(state))
@@ -184,7 +239,25 @@
     func makeNSView(context: Context) -> NSView { NSView() }
 
     func updateNSView(_ view: NSView, context: Context) {
+      // A hidden tab's cells keep the environment they were shown in: neither hiding nor
+      // showing the tab again renders them. A new environment always would, as its closures
+      // compare unequal.
+      if context.environment.isTabContentHidden {
+        context.coordinator.skippedWhileHidden = true
+        return
+      }
+      if context.coordinator.skippedWhileHidden {
+        context.coordinator.skippedWhileHidden = false
+        return
+      }
       environment.values = context.environment
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+      /// The tab hid since the cells last took the environment.
+      var skippedWhileHidden = false
     }
   }
 

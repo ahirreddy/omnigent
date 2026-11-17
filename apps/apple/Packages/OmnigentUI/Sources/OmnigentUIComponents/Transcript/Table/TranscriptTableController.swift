@@ -62,8 +62,8 @@
     let cellStyle = TranscriptTableCellStyle.launchValue
     /// How SwiftUI rows are sized.
     let hostingStyle = TranscriptTableHostingStyle.launchValue
-    /// The Worked folds the reader opened or closed.
-    let folds = TranscriptTableFolds()
+    /// The Worked folds the reader opened or closed, in ``disclosures``.
+    lazy var folds = TranscriptTableFolds(disclosures: disclosures)
     var awaitsEnvironment = false
 
     /// The follow rules (``TranscriptFollow``).
@@ -92,6 +92,34 @@
     var cursorRectsPaused = false
     /// The answer idle measuring waits for the prewarm to lay out, and since when.
     var prewarmAwaited: (id: String, since: CFTimeInterval)?
+    /// Where a width change under way keeps the reader, taken before the viewport resized.
+    var resizeAnchor: WidthAnchor?
+    /// Where the reader was when the tab hid, for the width it takes when it shows.
+    var hiddenAnchor: WidthAnchor?
+    /// A short number for this transcript in loop reports.
+    private(set) lazy var probeTag = Int(
+      UInt(bitPattern: ObjectIdentifier(self).hashValue) % 10_000)
+
+    /// Jumps animate (motion on, not reduced); the transcript sets it.
+    var animatesJumps = false
+    var activeJump: TranscriptTableJump?
+    var jumpTimer: Timer?
+    /// Where Jump to top's paging stands.
+    let position = TranscriptReadingPosition()
+    /// The first row the source has read, ahead of the rows the list shows; the transcript sets
+    /// it, with the rows' pacing that Jump to top holds and releases.
+    var sourceTopRow: () -> String? = { nil }
+    var holdRows: () -> Void = {}
+    var releaseRows: () -> Void = {}
+    /// The scrolls the pills and the selection popup over the table follow.
+    let scrollFeed = TranscriptScrollFeed()
+    /// The viewport over the last row, for its inline request cards.
+    let tableViewport = TranscriptTableViewport()
+    /// The folds' open choices, which outlive the cells that show them.
+    let disclosures = TranscriptDisclosures()
+    /// An assistive client reads the window: rows not laid out are read through stand-ins.
+    var isReadByAssistiveClient = false
+    var rowElements: [String: TranscriptRowElement] = [:]
 
     var isAdjusting = false
     var isMeasuring = false
@@ -133,6 +161,11 @@
       tableView.allowsEmptySelection = true
       tableView.focusRingType = .none
       tableView.refusesFirstResponder = true
+      tableView.owner = self
+      disclosures.changed = { [weak self] in self?.foldChanged() }
+      // The keyboard goes through the rows' controls, not the scroll bar.
+      scrollView.verticalScroller?.refusesFirstResponder = true
+      scrollView.setAccessibilityLabel("Transcript")
       tableView.usesAutomaticRowHeights = false
       tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
       column.resizingMask = .autoresizingMask
@@ -168,37 +201,38 @@
       self.isCLI = isCLI
       let previous = self.state
       self.state = state
-      if state.header.id != sessionID {
-        sessionID = state.header.id
-        follow.reset()
-        needsFraming = true
-        pendingShow = nil
-        olderRequested = false
-      }
-      if state.historyReads != historyReads || !state.isLoadingHistory {
-        if state.historyReads != historyReads { olderRequested = false }
-        historyReads = state.historyReads
-      }
+      if state.header.id != sessionID { sessionOpened(state.header.id) }
+      historyChanged(state)
       _ = scrollView
-      syncWidth()
-      let anchor = readingAnchor()
+      // A hidden tab's rows keep their width until it shows.
+      if isShown { syncWidth() }
+      let topAnchor = readingAnchor()
+      let pageAnchor = readingAnchor(belowHeader: true)
       let change = model.replaceRows(rows)
-      if !change.isEmpty { apply(change) }
+      // A page landing under the header keeps the reader on the rows they were reading.
+      let anchor =
+        change.inserted.lowerBound == 1 && !change.inserted.isEmpty ? pageAnchor : topAnchor
+      if !change.isEmpty {
+        probe("transcript rows changed", "\(change.removed) -> \(change.inserted), \(follow)")
+        apply(change)
+      }
       if frameIfReady() {
         // Opened: framed at its latest turn.
       } else if !change.isEmpty {
-        let isNewOutput = previous?.revision != state.revision
-        if isNewOutput ? follow.contentChanged() : follow.layoutGrew() {
-          pinBottom()
-        } else {
-          restore(anchor)
-        }
+        keepReader(anchor, isNewOutput: previous?.revision != state.revision)
+      }
+      if previous?.header.id == state.header.id, previous?.rows.first?.id != state.rows.first?.id {
+        firstRowChanged()
       }
       if let pendingShow, model.index(of: pendingShow.id) != nil {
         show(pendingShow.id, at: pendingShow.placement)
       }
       reportVisibleRows()
-      if !change.inserted.isEmpty || !change.removed.isEmpty { schedulePrefetch() }
+      reportFooterViewport()
+      if !change.inserted.isEmpty || !change.removed.isEmpty {
+        schedulePrefetch()
+        if isReadByAssistiveClient { rowsChangedForAssistiveClient() }
+      }
     }
 
     func schedulePill() {
@@ -240,11 +274,7 @@
         }
         tableView.endUpdates()
       }
-      if !change.removed.isEmpty {
-        let kept = Set(model.ids)
-        pool.keep(only: kept)
-        folds.keep(only: kept)
-      }
+      if !change.removed.isEmpty { pool.keep(only: Set(model.ids)) }
       // Rows above moved the indices the idle measuring had reached.
       if !change.removed.isEmpty || !change.inserted.isEmpty { prefetchCursor = nil }
       var noted = IndexSet()
@@ -295,5 +325,45 @@
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { false }
+
+    func tableView(_ tableView: NSTableView, didAdd rowView: NSTableRowView, forRow row: Int) {
+      // A cell measured away from the window lays out its views now, so the frame that shows
+      // it has its text.
+      rowView.layoutSubtreeIfNeeded()
+    }
+  }
+
+  extension TranscriptTableController {
+    // MARK: Sessions and history
+
+    /// A read of older history ended: the reader near the top may ask for the next.
+    func historyChanged(_ state: ConversationViewState) {
+      guard state.historyReads != historyReads || !state.isLoadingHistory else { return }
+      if state.historyReads != historyReads { olderRequested = false }
+      historyReads = state.historyReads
+    }
+
+    /// Another session's rows are coming: it opens at its latest turn.
+    func sessionOpened(_ id: String) {
+      sessionID = id
+      follow.reset()
+      needsFraming = true
+      pendingShow = nil
+      olderRequested = false
+      position.reset()
+      cancelJump()
+      disclosures.reset()
+      scrollView.setAccessibilityIdentifier("transcript-\(id)")
+    }
+
+    /// Rows changed: a follower goes to the end, and another reader stays on their row.
+    func keepReader(_ anchor: ReadingAnchor?, isNewOutput: Bool) {
+      if isNewOutput ? follow.contentChanged() : follow.layoutGrew() {
+        pinBottom()
+      } else if activeJump == nil {
+        // A jump under way goes on to its row, wherever the rows put it.
+        restore(anchor)
+      }
+    }
   }
 #endif

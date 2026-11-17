@@ -77,6 +77,9 @@
         DockedTranscriptHost(conversation: conversation, pane: pane), width: 1200, height: 800)
       window.settle(0.5)
       try await letOpeningEnd(window)
+      // A list that framed the last question instead goes to the end, as a reader there does.
+      conversation.scrollRequest += 1
+      try await letTasksRun(window, milliseconds: 300)
       return window
     }
 

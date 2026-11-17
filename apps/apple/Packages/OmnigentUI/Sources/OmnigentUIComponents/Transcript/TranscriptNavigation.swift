@@ -183,6 +183,8 @@ struct JumpToTopReveal: ViewModifier {
   /// Older history is being read.
   let isLoading: Bool
   let jump: () -> Void
+  /// The table transcript's scrolls, which no SwiftUI scroll view reports.
+  var feed: TranscriptScrollFeed?
   @State private var isHovering = false
   @State private var scrolledUp = false
   @State private var isAtTop = true
@@ -197,7 +199,13 @@ struct JumpToTopReveal: ViewModifier {
   private var isShown: Bool { (isHovering || scrolledUp) && (hasMoreHistory || !isAtTop) }
 
   func body(content: Content) -> some View {
-    content
+    feed?.offsetChanged = { scrolled(to: $0) }
+    feed?.scrollPhaseChanged = { isScrolling in
+      tracker.isScrolling = isScrolling
+      if !isScrolling { updateIsAtTop() }
+    }
+    return
+      content
       .onContinuousHover { phase in
         let hovering =
           switch phase {
@@ -208,12 +216,14 @@ struct JumpToTopReveal: ViewModifier {
         if hovering { updateIsAtTop() }
         isHovering = hovering
       }
+      // Over the table the feed reports the scrolls: a scroll view here is some row's own.
       .onScrollGeometryChange(for: CGFloat.self) { geometry in
         geometry.contentOffset.y + geometry.contentInsets.top
       } action: { _, offset in
-        scrolled(to: offset)
+        if feed == nil { scrolled(to: offset) }
       }
       .onScrollPhaseChange { _, phase in
+        guard feed == nil else { return }
         tracker.isScrolling = phase.isScrolling
         if !phase.isScrolling { updateIsAtTop() }
       }

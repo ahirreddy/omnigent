@@ -48,6 +48,8 @@
         .transformEnvironment(\.self) { own in
           if let values { own = values }
         }
+        // Where a row's views are in its cell, for those that ask the viewport over it.
+        .coordinateSpace(.named(TranscriptTableViewport.cellSpace))
     }
   }
 

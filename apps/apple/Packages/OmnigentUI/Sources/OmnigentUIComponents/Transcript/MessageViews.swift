@@ -292,7 +292,12 @@ private struct AttachmentChip: View {
 struct UnsupportedContentView: View {
   let activity: Activity
   let rowID: String
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "unsupported-\(rowID)-\(activity.title)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {

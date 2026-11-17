@@ -121,12 +121,12 @@
       #expect(try await window.waitUntil { try window.shows("Jump to latest") })
 
       let viewport = TranscriptScrollDriver(screen: window)
-      let reading = viewport.offset
+      let place = viewport.readerPlace
       var other = TranscriptFixture.user("theirs", "Someone else asks")
       other.author = "Sam"
       conversation.append(other)
       #expect(try await newOutputShows(on: window))
-      #expect(abs(viewport.offset - reading) < 2)
+      #expect(viewport.distance(from: place) < 2)
     }
 
     @Test("A short conversation just keeps following")
@@ -163,11 +163,12 @@
       try pressMessageKey(.previous, on: window)
       #expect(try await scrollRests(from: end, viewport, on: window))
       let reading = viewport.offset
+      let place = viewport.readerPlace
       #expect(try window.shows("Jump to latest"))
 
       conversation.append(TranscriptFixture.answer("more", "Fresh output at the end"))
       #expect(try await newOutputShows(on: window))
-      #expect(abs(viewport.offset - reading) < 2)
+      #expect(viewport.distance(from: place) < 2)
 
       try window.click(jumpPill)
       #expect(try await jumpReachesEnd(from: reading, viewport, on: window))
@@ -342,13 +343,13 @@
       let sent = viewport.offset
       try pressMessageKey(.previous, on: window)
       #expect(try await scrollRests(from: sent, viewport, on: window))
-      let reading = viewport.offset
+      let place = viewport.readerPlace
       #expect(try window.shows("Jump to latest"))
 
       conversation.echo("sending-1", as: TranscriptFixture.user("item-1", "My new question"))
       conversation.stream("reply", "The reply starts")
       #expect(try await newOutputShows(on: window))
-      #expect(abs(viewport.offset - reading) < 2)
+      #expect(viewport.distance(from: place) < 2)
     }
 
     @Test("A message and a reply that arrive with no send leave a reader of earlier rows alone")
@@ -357,12 +358,12 @@
       let (window, viewport) = try await screen(conversation)
       defer { window.close() }
       viewport.move(to: 0)
-      let reading = viewport.offset
+      let place = viewport.readerPlace
       // A user row with no author, as another agent's forward is on a single-user server.
       conversation.append(TranscriptFixture.user("forwarded", "A sub-agent's result"))
       conversation.stream("reply", "A reply to it")
       #expect(try await newOutputShows(on: window))
-      #expect(abs(viewport.offset - reading) < 2)
+      #expect(viewport.distance(from: place) < 2)
       #expect(viewport.distanceToEnd() > 80)
     }
   }

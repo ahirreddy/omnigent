@@ -32,7 +32,12 @@ struct ActivityRowView: View, Equatable {
 private struct TerminalRowView: View {
   let row: Row
   let activity: Activity
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "terminal-\(row.id)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
 
   private var input: String? { activity.detail("input") }
   private var stdout: String? { activity.detail("stdout") }
@@ -160,7 +165,12 @@ private struct RetryRowView: View {
 private struct CompactionRowView: View {
   let row: Row
   let activity: Activity
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "compaction-\(row.id)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
 
   var body: some View {
     VStack(spacing: Theme.Spacing.small) {
@@ -242,12 +252,17 @@ private struct SidechatRowView: View {
 private struct UnknownRowView: View {
   let row: Row
   let activity: Activity
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "unknown-\(row.id)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       ExpandableHeader(
-        isExpanded: $isExpanded, systemImage: "questionmark.square.dashed",
+        isExpanded: disclosure.binding(disclosureKey), systemImage: "questionmark.square.dashed",
         title: activity.title.isEmpty ? "Unsupported item" : activity.title,
         subtitle: activity.summary.isEmpty
           ? "This item type is not supported in the app yet." : activity.summary,
@@ -274,7 +289,12 @@ private struct UnknownRowView: View {
 private struct GenericActivityRowView: View {
   let row: Row
   let activity: Activity
-  @State private var isExpanded = false
+  @RowDisclosure private var disclosure
+  private var disclosureKey: String { "activity-\(row.id)" }
+  private var isExpanded: Bool {
+    get { disclosure.choice(disclosureKey) ?? false }
+    nonmutating set { disclosure.choose(newValue, for: disclosureKey) }
+  }
 
   private var tint: ThemeColor {
     if activity.isFailure { return Theme.failure }
@@ -288,7 +308,8 @@ private struct GenericActivityRowView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       ExpandableHeader(
-        isExpanded: $isExpanded, systemImage: activity.kind.systemImage, tint: tint,
+        isExpanded: disclosure.binding(disclosureKey), systemImage: activity.kind.systemImage,
+        tint: tint,
         title: activity.title, subtitle: activity.summary,
         monospacedSubtitle: activity.kind == .command,
         isEnabled: !activity.details.isEmpty, identifier: "activity-toggle-\(row.id)"

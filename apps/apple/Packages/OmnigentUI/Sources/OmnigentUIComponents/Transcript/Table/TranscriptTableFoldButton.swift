@@ -217,7 +217,8 @@
       switch row.content {
       case .header: idealHeight = TranscriptTableHeaderView.topPadding(isCLI: false)
       case .footer(let footer):
-        idealHeight = TranscriptTableFooterView.bottomPadding(isCLI: footer.isCLI)
+        idealHeight = TranscriptTableFooterView.bottomPadding(
+          isCLI: footer.isCLI, hasContent: false)
       case .segment, .block: idealHeight = 0
       }
     }

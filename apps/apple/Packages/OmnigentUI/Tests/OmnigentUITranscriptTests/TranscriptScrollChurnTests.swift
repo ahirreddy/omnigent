@@ -146,6 +146,13 @@
       // The transcript's body reads the pill: opening's framing measures the rows that render
       // lays out, so the pill stays there.
       let once = ["transcript": 1, "rows": 1]
+      // Builds the rows the steps pass over, and comes back to the end.
+      window.liveScroll(scrollView, began: true)
+      scroll(viewport, by: -Self.step)
+      scroll(viewport, by: Self.step)
+      viewport.move(to: viewport.maximumOffset)
+      window.liveScroll(scrollView, began: false)
+      #expect(try !window.shows("Jump to latest"))
 
       let leaving = RenderTally.recording {
         window.liveScroll(scrollView, began: true)

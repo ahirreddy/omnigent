@@ -128,10 +128,28 @@ private struct InlineDecisionReporter: ViewModifier {
   let cardID: String
   let showsApprove: Bool
   @Environment(DecisionSurfaces.self) private var surfaces: DecisionSurfaces?
+  @Environment(\.transcriptTableViewport) private var tableViewport
   @State private var isOnScreen = false
+  /// The card in its table cell, whose viewport the table reports apart.
+  @State private var cardInCell: CGRect?
 
   func body(content: Content) -> some View {
-    if let surfaces {
+    if let surfaces, let tableViewport {
+      // Scrolling moves the table's cell, not the card in it: the viewport moves instead.
+      content
+        .onGeometryChange(for: CGRect.self) {
+          $0.frame(in: .named(TranscriptTableViewport.cellSpace))
+        } action: { frame in
+          cardInCell = frame
+          report(in: tableViewport.footer, to: surfaces)
+        }
+        .onChange(of: tableViewport.footer) { _, viewport in report(in: viewport, to: surfaces) }
+        .onChange(of: showsApprove) { _, approves in
+          surfaces.report(cardID, isOnScreen: isOnScreen, showsApprove: approves)
+        }
+        .onAppear { report(in: tableViewport.footer, to: surfaces) }
+        .onDisappear { surfaces.report(cardID, isOnScreen: false, showsApprove: showsApprove) }
+    } else if let surfaces {
       content
         .onGeometryChange(for: Bool.self) { [isOnScreen] proxy in
           guard let viewport = proxy.bounds(of: .scrollView) else { return false }
@@ -150,5 +168,19 @@ private struct InlineDecisionReporter: ViewModifier {
     } else {
       content
     }
+  }
+
+  /// Reports whether the card shows in `viewport`, the table's viewport in the card's cell.
+  private func report(in viewport: CGRect?, to surfaces: DecisionSurfaces) {
+    var shows = false
+    if let viewport, let card = cardInCell {
+      shows = InlineDecisionVisibility.isOnScreen(
+        InlineDecisionPlacement(
+          card: CGRect(origin: .zero, size: card.size),
+          viewport: viewport.offsetBy(dx: -card.minX, dy: -card.minY)),
+        wasOnScreen: isOnScreen)
+    }
+    isOnScreen = shows
+    surfaces.report(cardID, isOnScreen: shows, showsApprove: showsApprove)
   }
 }

@@ -65,9 +65,36 @@
     /// The clip view moved, for the reader or for the transcript's own reasons.
     func clipDidMove() {
       guard !isAdjusting else { return }
+      scrollFeed.moved(to: clipView.bounds.minY + insets.top)
       follow.geometryChanged(isNearBottom: isNearBottom)
       checkOlderHistory()
       reportVisibleRows()
+      reportFooterViewport()
+    }
+
+    /// The reader opened or closed a fold: the rows on screen are measured again once it has
+    /// rendered, as a cell's own report of its new size comes only with its next layout.
+    func foldChanged() {
+      MainRunLoop.perform { [weak self] in
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          self.tableView.enumerateAvailableRowViews { _, row in
+            if let cell = self.realizedCell(at: row) { self.scheduleRemeasure(cell) }
+          }
+        }
+      }
+    }
+
+    /// Tells the last row's request cards where the viewport is over that row.
+    func reportFooterViewport() {
+      guard let last = model.rows.indices.last, last < tableView.numberOfRows else {
+        tableViewport.setFooter(nil)
+        return
+      }
+      let row = tableView.rect(ofRow: last)
+      let visible = NSRect(
+        x: 0, y: clipView.bounds.minY + insets.top, width: row.width, height: visibleHeight)
+      tableViewport.setFooter(visible.offsetBy(dx: 0, dy: -row.minY))
     }
 
     func withoutAnimation(_ body: () -> Void) {
@@ -79,6 +106,7 @@
     }
 
     @objc func liveScrollStarted(_ note: Notification) {
+      cancelJump()
       isLiveScrolling = true
       scrollPhaseChanged()
     }
@@ -92,6 +120,7 @@
     /// mouse wheel, or a trackpad before its phase begins) it counts as the reader scrolling
     /// until no event follows within ``wheelEnd``.
     func readerScrolled() {
+      cancelJump()
       guard !isLiveScrolling else { return }
       wheelSteps += 1
       let step = wheelSteps
@@ -112,6 +141,7 @@
     func scrollPhaseChanged() {
       let isScrolling = isLiveScrolling || isWheeling
       pauseCursorRects(isScrolling)
+      scrollFeed.phaseChanged(isScrolling)
       if follow.scrollPhaseChanged(isUserScrolling: isScrolling) { pinBottom() }
       if isScrolling {
         prefetchGeneration += 1
@@ -144,17 +174,31 @@
 
     /// Moves the viewport's origin to `offset`, as the transcript's own move.
     func move(to offset: CGFloat) {
+      // A jump measures the rows it lands on first: the table moves the viewport again for
+      // heights it is told of while it is moving.
+      if abs(offset - clipView.bounds.minY) > clipView.bounds.height {
+        let landing = NSRect(
+          x: 0, y: offset, width: model.width, height: clipView.bounds.height * 1.5)
+        var noted = IndexSet()
+        for index in rowsNeedingMeasure(in: landing) where measureKeeping(index) {
+          noted.insert(index)
+        }
+        noteHeightsInPlace(noted)
+      }
       let target = min(max(offset, minimumOffset), maximumOffset)
       clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: target))
       scrollView.reflectScrolledClipView(clipView)
       follow.geometryChanged(isNearBottom: isNearBottom)
     }
 
-    /// The row under the viewport's top, and how far into it the top is.
-    func readingAnchor() -> ReadingAnchor? {
+    /// The row under the viewport's top, and how far into it the top is. `belowHeader` keeps a
+    /// reader at the top on the first row under the header instead, for rows that land between
+    /// them: a page of older history.
+    func readingAnchor(belowHeader: Bool = false) -> ReadingAnchor? {
       guard !model.rows.isEmpty, tableView.numberOfRows == model.rows.count else { return nil }
       let top = clipView.bounds.minY + insets.top
-      let row = tableView.row(at: NSPoint(x: 1, y: max(0, top)))
+      var row = tableView.row(at: NSPoint(x: 1, y: max(0, top)))
+      if belowHeader, row == 0, model.rows.count > 1 { row = 1 }
       guard model.rows.indices.contains(row) else { return nil }
       return ReadingAnchor(id: model.rows[row].id, offset: top - tableView.rect(ofRow: row).minY)
     }
@@ -164,12 +208,42 @@
       guard let anchor, let index = model.index(of: anchor.id) else { return }
       let offset = tableView.rect(ofRow: index).minY + anchor.offset - insets.top
       guard abs(offset - clipView.bounds.minY) >= 0.5 else { return }
+      probe(
+        "transcript top row kept", "\(anchor.id) \(Int(clipView.bounds.minY)) -> \(Int(offset))")
       move(to: offset)
     }
 
     /// Measures the rows from the end up through a viewport and a half, then goes to the end.
     func pinBottom() {
       guard !model.rows.isEmpty else { return }
+      cancelJump()
+      measureEnd()
+      guard abs(clipView.bounds.minY - maximumOffset) >= 0.5 else { return }
+      probe("transcript layout scroll", "end, \(follow)")
+      move(to: maximumOffset)
+    }
+
+    /// Measures the rows from the top down through a viewport and a half, then goes to the top.
+    /// The table can move the viewport again as rows it measures on the way change height, so it
+    /// goes again until it is there.
+    func moveToTop() {
+      var covered: CGFloat = 0
+      var noted = IndexSet()
+      var index = 0
+      while index < model.rows.count, covered < clipView.bounds.height * 1.5 {
+        if model.needsMeasure(at: index), measureKeeping(index) { noted.insert(index) }
+        covered += model.height(at: index)
+        index += 1
+      }
+      noteHeightsInPlace(noted)
+      for _ in 0..<3 where clipView.bounds.minY > minimumOffset + 0.5 {
+        move(to: minimumOffset)
+      }
+    }
+
+    /// Measures the rows from the end up through a viewport and a half, where a move to the end
+    /// lands.
+    func measureEnd() {
       var covered: CGFloat = 0
       var noted = IndexSet()
       var index = model.rows.count - 1
@@ -179,7 +253,6 @@
         index -= 1
       }
       noteHeightsInPlace(noted)
-      move(to: maximumOffset)
     }
 
     /// Opening frames the latest user message at the top, as the stack does, so a long answer
@@ -209,14 +282,22 @@
       }
     }
 
-    /// Follows the newest row again from the end.
-    func jumpToLatest() {
+    /// Follows the newest row again from the end; `animated` eases there, as the stack's pill.
+    func jumpToLatest(animated: Bool = false) {
       follow.jumpToLatest()
-      pinBottom()
+      guard animated, !model.rows.isEmpty else {
+        pinBottom()
+        return
+      }
+      measureEnd()
+      jump(
+        to: { [weak self] in self?.maximumOffset ?? 0 },
+        arrived: { [weak self] in self?.pinBottom() })
     }
 
     /// Scrolls row `id` into view; a row the table does not have yet is shown once it does.
-    func show(_ id: String, at placement: Placement) {
+    /// `animated` eases there, as the stack's message keys and rail do.
+    func show(_ id: String, at placement: Placement, animated: Bool = false) {
       // A reader sent to a row is not then framed at the latest turn.
       needsFraming = false
       guard let index = model.index(of: id) else {
@@ -234,10 +315,19 @@
         row += 1
       }
       noteHeightsInPlace(noted)
-      let rect = tableView.rect(ofRow: index)
-      switch placement {
-      case .top: move(to: rect.minY - insets.top)
-      case .center: move(to: rect.midY - insets.top - visibleHeight / 2)
+      let target: @MainActor () -> CGFloat = { [weak self] in
+        guard let self else { return 0 }
+        let rect = tableView.rect(ofRow: model.index(of: id) ?? index)
+        return switch placement {
+        case .top: rect.minY - insets.top
+        case .center: rect.midY - insets.top - visibleHeight / 2
+        }
+      }
+      if animated {
+        jump(to: target)
+      } else {
+        cancelJump()
+        move(to: target())
       }
       reportVisibleRows()
     }
@@ -246,67 +336,13 @@
     func setInsets(_ edges: EdgeInsets) {
       let next = NSEdgeInsets(top: edges.top, left: 0, bottom: edges.bottom, right: 0)
       guard next.top != insets.top || next.bottom != insets.bottom else { return }
+      probe("transcript dock inset", "\(insets.bottom) -> \(next.bottom)")
       let grew = next.bottom > insets.bottom
       let anchor = readingAnchor()
       insets = next
       scrollView.contentInsets = next
       if grew, follow.layoutGrew() { pinBottom() } else { restore(anchor) }
-    }
-
-    /// The viewport changed size: rows take a new width, and a follower stays at the end.
-    func viewportResized() {
-      let anchor = readingAnchor()
-      guard syncWidth() else {
-        if !frameIfReady(), follow.layoutGrew() { pinBottom() }
-        return
-      }
-      // Rows on screen are measured at the new width; the others keep their old heights, or
-      // estimates for it, until they come into view.
-      tableView.enumerateAvailableRowViews { _, row in
-        if let cell = realizedCell(at: row) { measure(row, with: cell) }
-      }
-      noteHeightsInPlace(IndexSet(integersIn: 0..<model.rows.count))
-      schedulePrefetch()
-      if frameIfReady() { return }
-      if follow.layoutGrew() { pinBottom() } else { restore(anchor) }
-    }
-
-    /// The window started or ended a live resize. Meanwhile text lays out at snapped widths, so
-    /// a drag lays each message out every few points, not at each; once it ends, the rows
-    /// measured meanwhile are measured again at the exact width, those on screen now.
-    func liveResizeChanged(_ isResizing: Bool) {
-      guard textStyle.setLiveResizing(isResizing), !isResizing else { return }
-      let anchor = readingAnchor()
-      model.markStale(measuredWhileResizing)
-      measuredWhileResizing = []
-      var noted = IndexSet()
-      tableView.enumerateAvailableRowViews { _, row in
-        if let cell = realizedCell(at: row), model.needsMeasure(at: row),
-          measure(row, with: cell)
-        {
-          noted.insert(row)
-        }
-      }
-      noteHeightsInPlace(noted)
-      schedulePrefetch()
-      if follow.layoutGrew() { pinBottom() } else { restore(anchor) }
-    }
-
-    /// Lays rows out at the viewport's width.
-    /// - Returns: Whether the width changed.
-    @discardableResult
-    func syncWidth() -> Bool {
-      let width = clipView.bounds.width
-      guard width > 0, model.setWidth(width) else { return false }
-      column.width = width
-      prefetchCursor = nil
-      return true
-    }
-
-    /// The tab hid or shows: a hidden transcript measures nothing while idle.
-    func setShown(_ isShown: Bool) {
-      self.isShown = isShown
-      if isShown { schedulePrefetch() }
+      reportFooterViewport()
     }
   }
 #endif

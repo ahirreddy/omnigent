@@ -45,16 +45,20 @@
       return style
     }
 
-    private static let steps: [TranscriptItem] = [
-      .activity(TranscriptFixture.activityRow(.error, id: "step-1", title: "A step")),
-      .activity(TranscriptFixture.activityRow(.error, id: "step-2", title: "Another step")),
-    ]
+    /// Fold `id`'s two steps; the reader's choice is kept by the first one's id.
+    private static func steps(_ id: String) -> [TranscriptItem] {
+      [
+        .activity(TranscriptFixture.activityRow(.error, id: "\(id)-step-1", title: "A step")),
+        .activity(
+          TranscriptFixture.activityRow(.error, id: "\(id)-step-2", title: "Another step")),
+      ]
+    }
 
     private func fold(_ id: String = "f1", isLive: Bool = false) -> TranscriptTableRow {
       TranscriptTableRow(
         .segment(
           SegmentEntry(
-            segment: .worked(id: id, responseID: "r1", items: Self.steps, isLive: isLive),
+            segment: .worked(id: id, responseID: "r1", items: Self.steps(id), isLive: isLive),
             decorations: [:], duration: 12)))
     }
 
@@ -71,7 +75,8 @@
     func sizing() {
       for size in [TypeRamp.defaultBody, 20] {
         let environment = environment(labelSize: size)
-        let cell = TranscriptTableFoldCell(style: style(environment), folds: TranscriptTableFolds())
+        let cell = TranscriptTableFoldCell(
+          style: style(environment), folds: TranscriptTableFolds(disclosures: .init()))
         cell.show(fold(), version: 0, width: Self.width)
         #expect(!cell.isExpanded)
         #expect(cell.itemsView == nil, "a closed fold hosts nothing")
@@ -103,7 +108,8 @@
     @Test("A press opens and closes the fold, and the reader's choice outlasts the cell")
     func toggles() throws {
       let environment = environment()
-      let folds = TranscriptTableFolds()
+      let disclosures = TranscriptDisclosures()
+      let folds = TranscriptTableFolds(disclosures: disclosures)
       let cell = TranscriptTableFoldCell(style: style(environment), folds: folds)
       var reports = 0
       cell.idealSizeChanged = { _ in reports += 1 }
@@ -112,12 +118,14 @@
       let button = cell.button
       #expect(button.accessibilityRole() == .button)
       #expect(button.accessibilityLabel() == "2 steps")
-      #expect(button.accessibilityIdentifier() == "worked-fold-step-1")
+      #expect(button.accessibilityIdentifier() == "worked-fold-f1-step-1")
       #expect(button.accessibilityValue() as? String == "Collapsed")
       #expect(button.toolTip == "Worked for 12s")
       #expect(button.accessibilityPerformPress())
       #expect(cell.isExpanded)
       #expect(button.accessibilityValue() as? String == "Expanded")
+      // Kept where SwiftUI's fold reads it.
+      #expect(disclosures.choice("worked-f1-step-1").isExpanded == true)
       #expect(reports == 1)
       let open = cell.idealHeight
       #expect(open > closed)
