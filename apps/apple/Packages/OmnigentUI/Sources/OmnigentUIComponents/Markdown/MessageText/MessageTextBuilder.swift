@@ -173,9 +173,13 @@ nonisolated struct MessageTextBuilder {
       return
     }
     let size = ramp.heading(level)
-    let content = inline(
-      text, size: size, weight: .semibold, codeSize: (size * TypeRamp.codeScale).rounded(.down),
-      color: context.color)
+    let content = NSMutableAttributedString(
+      attributedString: inline(
+        text, size: size, weight: .semibold, codeSize: (size * TypeRamp.codeScale).rounded(.down),
+        color: context.color))
+    content.addAttribute(
+      .messageAccessibility, value: MessageAccessibilityMark(.heading(level: level)),
+      range: NSRange(location: 0, length: content.length))
     emit(
       Paragraph(
         content: content, lineHeight: ramp.headingLineHeight(level),

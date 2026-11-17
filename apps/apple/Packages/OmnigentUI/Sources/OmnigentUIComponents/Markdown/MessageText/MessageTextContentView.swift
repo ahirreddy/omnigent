@@ -31,6 +31,9 @@
     var hiddenBlocks: Set<Int> = []
     /// The copies drawing blocks that scroll sideways, by block.
     var overflows: [Int: MessageTextOverflowView] = [:]
+    /// The elements accessibility reads, once built (``accessibilityChildren()``).
+    var accessibilityItems: [Any] = []
+    var accessibilityItemsAreBuilt = false
 
     /// A size at one width: how tall the text is and how wide its widest line.
     struct Measurement: Equatable {
@@ -56,6 +59,8 @@
       configureTextView()
       addSubview(layers)
       addSubview(textView)
+      // Accessibility reads the text as SwiftUI's renderer exposes it, not as one text area.
+      textView.setAccessibilityElement(false)
     }
 
     @available(*, unavailable)
@@ -182,6 +187,8 @@
           view = makeChrome(chrome, block: block)
           chromeViews[block] = view
           addSubview(view)
+          // The elements read a block's controls with its text.
+          accessibilityItemsAreBuilt = false
         }
         view.frame = frame.offsetBy(dx: 0, dy: document.topInset)
       }

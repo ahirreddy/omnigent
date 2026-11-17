@@ -1,9 +1,10 @@
+import SwiftUI
+
 #if canImport(AppKit)
   import AppKit
 #else
   import UIKit
 #endif
-import SwiftUI
 
 // MARK: Lists
 
@@ -37,14 +38,21 @@ nonisolated extension MessageTextBuilder {
     -> NSAttributedString
   {
     if task != .none, let checkbox = checkbox(checked: task == .checked, font: font) {
-      return checkbox
+      let marked = NSMutableAttributedString(attributedString: checkbox)
+      let label = task == .checked ? "Done" : "Not done"
+      marked.addAttribute(
+        .messageAccessibility, value: MessageAccessibilityMark(.task(label: label)),
+        range: NSRange(location: 0, length: marked.length))
+      return marked
     }
+    let text = ordered ? "\(number)." : "\u{2022}"
     let attributes: [NSAttributedString.Key: Any] = [
       .font: ordered
         ? PlatformFont.monospacedDigitSystemFont(ofSize: ramp.body, weight: .regular) : font,
       .foregroundColor: palette.secondary,
+      .messageAccessibility: MessageAccessibilityMark(ordered ? .number(text) : .bullet),
     ]
-    return NSAttributedString(string: ordered ? "\(number)." : "\u{2022}", attributes: attributes)
+    return NSAttributedString(string: text, attributes: attributes)
   }
 
   /// A task's checkbox, as ``MarkdownView`` draws it: the symbol at the body size, centered on

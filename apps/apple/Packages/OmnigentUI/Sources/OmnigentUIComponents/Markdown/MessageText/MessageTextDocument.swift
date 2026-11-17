@@ -17,6 +17,28 @@ nonisolated extension NSAttributedString.Key {
   static let messageCopy = NSAttributedString.Key("omnigent.messageCopy")
   /// Typeset inline math the layers draw over its clear attachment (``MessageMathMark``).
   static let messageMath = NSAttributedString.Key("omnigent.messageMath")
+  /// What accessibility makes of a heading's text or a list marker
+  /// (``MessageAccessibilityMark``).
+  static let messageAccessibility = NSAttributedString.Key("omnigent.messageAccessibility")
+}
+
+/// What accessibility makes of a heading or a list marker, as SwiftUI exposes them.
+nonisolated final class MessageAccessibilityMark: NSObject {
+  enum Kind: Equatable {
+    case heading(level: Int)
+    /// An ordered list's number, read as text.
+    case number(String)
+    /// A task's checkbox, an image read by its label.
+    case task(label: String)
+    /// A bullet, which reads as nothing.
+    case bullet
+  }
+
+  let kind: Kind
+
+  init(_ kind: Kind) {
+    self.kind = kind
+  }
 }
 
 /// Typeset inline math: its image in the text's color, its size and its baseline from the top.
