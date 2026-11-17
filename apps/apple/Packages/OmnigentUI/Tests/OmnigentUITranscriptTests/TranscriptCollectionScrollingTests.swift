@@ -161,14 +161,13 @@
       await screen.drag(to: screen.offset - 600)
       #expect(!screen.controller.follow.follows)
       let anchor = try #require(screen.controller.readingAnchor())
-      let offset = screen.offset
+      // Output below the reader leaves them on their row. (Rows above that idle measuring
+      // reaches meanwhile move the offset with that row, so the offset itself may change.)
       conversation.stream("streamed", "A reply\n\nwith\n\nseveral\n\nparagraphs")
       await screen.window.settle(.milliseconds(20))
-      // Output below the reader moves nothing; rows above measured while they rest keep them on
-      // their row.
       #expect(
-        abs(screen.offset - offset) < 1,
-        "\(screen.offset) from \(offset); \(screen.controller.remeasured)")
+        screen.isReading(anchor),
+        "\(String(describing: screen.controller.readingAnchor())) from \(anchor)")
       conversation.append(TranscriptFixture.user("u-next", "And then?"))
       await screen.settle()
       #expect(
@@ -176,8 +175,9 @@
         "\(String(describing: screen.controller.readingAnchor())) from \(anchor)")
       #expect(screen.controller.follow.pill.isShown)
       screen.controller.jumpToLatest()
-      await screen.settle(.milliseconds(600))
-      #expect(screen.isAtEnd)
+      // The jump is a short animated scroll; a loaded machine draws it slowly.
+      for _ in 0..<20 where !screen.isAtEnd { await screen.settle(.milliseconds(100)) }
+      #expect(screen.isAtEnd, "\(screen.offset) of \(screen.controller.maximumOffset)")
       #expect(screen.controller.follow.follows)
     }
 

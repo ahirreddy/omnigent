@@ -45,7 +45,8 @@
           break
         }
       }
-      if moved, abs(top - collectionView.contentOffset.y) >= 0.5 {
+      // Jump to latest's scroll animation would stop at a new offset; it is pinned when it ends.
+      if moved, !isJumpingToEnd, abs(top - collectionView.contentOffset.y) >= 0.5 {
         collectionView.contentOffset.y = top
       }
       laidOutOffset = top
@@ -127,6 +128,7 @@
 
     /// Jump to latest's scroll ended: rows that grew at the end meanwhile moved the end past it.
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+      isJumpingToEnd = false
       if follow.layoutGrew(), maximumOffset - collectionView.contentOffset.y >= 0.5 {
         pinBottom()
       }
@@ -146,6 +148,8 @@
     func scrollPhaseChanged(isScrolling: Bool) {
       guard isScrolling != isUserScrolling else { return }
       isUserScrolling = isScrolling
+      // A reader's drag ends a scroll animation.
+      if isScrolling { isJumpingToEnd = false }
       if follow.scrollPhaseChanged(isUserScrolling: isScrolling) { pinBottom() }
       if isScrolling {
         prefetchGeneration += 1
@@ -188,6 +192,7 @@
       } else {
         // This way also stops a scroll animation that would land on its own, older target.
         collectionView.setContentOffset(point, animated: false)
+        isJumpingToEnd = false
         laidOutOffset = target
       }
       follow.geometryChanged(isNearBottom: isNearBottom)
@@ -238,6 +243,7 @@
         index -= 1
       }
       noteHeightsInPlace(noted)
+      if animated { isJumpingToEnd = true }
       move(to: maximumOffset, animated: animated)
     }
 

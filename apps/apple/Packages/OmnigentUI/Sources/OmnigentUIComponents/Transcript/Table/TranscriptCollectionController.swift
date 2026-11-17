@@ -93,6 +93,8 @@
 
     var isAdjusting = false
     var isUserScrolling = false
+    /// Jump to latest is scrolling to the end with an animation.
+    var isJumpingToEnd = false
     /// The viewport's size at the last layout pass.
     var laidOutSize = CGSize.zero
     /// The content offset at the last layout pass, for the direction of the scroll.
