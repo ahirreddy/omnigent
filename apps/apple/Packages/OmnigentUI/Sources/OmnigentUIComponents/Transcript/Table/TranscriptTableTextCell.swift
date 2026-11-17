@@ -35,6 +35,8 @@
     var actionsTop: CGFloat = 0
     var actionsLineHeight: CGFloat = 0
     var actionsTrailing: CGFloat = 0
+    /// The message's own frame, as its SwiftUI row lays it out.
+    var contentFrame: CGRect = .zero
     private var height: CGFloat = 0
     /// The column and text width the cell last laid out at.
     private var laidOut: (metrics: TranscriptTableTextMetrics, textWidth: CGFloat)?

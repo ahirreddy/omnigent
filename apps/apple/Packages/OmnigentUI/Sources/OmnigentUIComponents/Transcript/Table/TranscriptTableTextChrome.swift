@@ -7,9 +7,10 @@
   extension TranscriptTableTextCell {
     // MARK: Actions
 
-    /// Whether the actions show: on hover, or always on the last settled answer.
-    private var revealsActions: Bool {
-      isHovered || message?.decoration.showsActions == true
+    /// Whether the actions show: on hover or keyboard focus, or always on the last settled
+    /// answer.
+    var revealsActions: Bool {
+      isHovered || message?.decoration.showsActions == true || hasKeyboardFocus
     }
 
     /// Builds the actions' row once it first shows, and places or hides it.
@@ -34,6 +35,7 @@
 
     private func makeActionsView() -> TranscriptMessageActionsView {
       let view = TranscriptMessageActionsView()
+      view.focusChanged = { [weak self] in self?.focusMoved() }
       addSubview(view)
       actionsView = view
       return view
@@ -153,7 +155,9 @@
   /// A message's action buttons (Copy, Fork from here, Copy link) and its timestamp, in AppKit,
   /// as ``MessageActionRow`` draws them.
   final class TranscriptMessageActionsView: NSView {
-    private var buttons: [NSButton] = []
+    private(set) var buttons: [TranscriptMessageActionButton] = []
+    /// Told when one of the buttons takes or gives up the keyboard.
+    var focusChanged: (() -> Void)?
     private var performs: [@MainActor () -> Void] = []
     private let timestamp = NSTextField(labelWithString: "")
     private var copyReset: Task<Void, Never>?
@@ -201,9 +205,10 @@
       for button in buttons { button.removeFromSuperview() }
       buttons = []
       for (index, item) in items.enumerated() {
-        let button = NSButton(
+        let button = TranscriptMessageActionButton(
           image: Self.symbol(item.systemImage, title: item.title), target: self,
           action: #selector(press(_:)))
+        button.focusChanged = { [weak self] in self?.focusChanged?() }
         button.isBordered = false
         button.contentTintColor = .secondaryLabelColor
         button.tag = index

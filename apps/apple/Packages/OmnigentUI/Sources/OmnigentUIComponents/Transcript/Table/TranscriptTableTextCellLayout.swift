@@ -107,6 +107,10 @@
       actionsTop = frames.actionsTop
       actionsLineHeight = frames.actionsLineHeight
       actionsTrailing = frames.actionsTrailing
+      if contentFrame != frames.content {
+        contentFrame = frames.content
+        noteFocusRingMaskChanged()
+      }
     }
 
     /// The "Worked for" line's height: its caption's.

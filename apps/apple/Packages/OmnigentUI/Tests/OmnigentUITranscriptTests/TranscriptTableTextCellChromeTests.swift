@@ -99,5 +99,42 @@
       #expect(!promptMenu.items.contains { $0.title == "Copy" })
       #expect(promptMenu.items.first { $0.title == "Share" }?.isEnabled == false)
     }
+
+    // MARK: Keyboard focus
+
+    /// Two turns: `a1`'s actions wait for hover or focus, `a2`'s stay shown.
+    private let turns = [
+      Fixture.user("u1", "First"), Fixture.answer("a1", "An older answer", responseID: "r1"),
+      Fixture.user("u2", "Second"), Fixture.answer("a2", "The latest answer", responseID: "r2"),
+    ]
+
+    @Test("Keyboard focus on a message rings it and reveals its actions, as SwiftUI's row does")
+    func focusRevealsActions() async throws {
+      let saved = TranscriptTableTextCell.assistive
+      defer { TranscriptTableTextCell.assistive = saved }
+      TranscriptTableTextCell.assistive.keyboardNavigates = { true }
+      let screen = try await textTableScreen(turns, actions: everyAction())
+      defer { screen.close() }
+      restKeyboard(screen)
+      let cell = try textCell("a1", in: screen)
+      #expect(cell.actionsView?.isHidden != false, "an older answer's actions wait")
+      #expect(cell.acceptsFirstResponder && cell.canBecomeKeyView)
+      #expect(screen.window.makeFirstResponder(cell))
+      #expect(cell.actionsView?.isHidden == false, "focus reveals them")
+      #expect(cell.focusRingMaskBounds == cell.contentFrame && !cell.contentFrame.isEmpty)
+      // Focus moving on to one of them keeps them; moving away hides them.
+      let button = try #require(cell.actionsView?.buttons.first)
+      if button.acceptsFirstResponder {
+        #expect(screen.window.makeFirstResponder(button))
+        try await letTasksRun(screen)
+        #expect(cell.actionsView?.isHidden == false, "a button with the keyboard keeps them")
+      }
+      screen.window.makeFirstResponder(nil)
+      try await letTasksRun(screen)
+      #expect(cell.actionsView?.isHidden == true, "focus gone, they hide again")
+      // Without keyboard navigation a message takes no focus, as SwiftUI's doesn't.
+      TranscriptTableTextCell.assistive.keyboardNavigates = { false }
+      #expect(!cell.acceptsFirstResponder)
+    }
   }
 #endif
