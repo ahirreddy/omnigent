@@ -275,7 +275,7 @@ pub enum SessionChange {
 }
 
 /// One page of the session list.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionPage {
     /// Summaries in server order, repeated ids dropped.
     pub sessions: Vec<SessionSummary>,
@@ -284,6 +284,30 @@ pub struct SessionPage {
     /// How many of the server's rows the page selected itself, before the members of their
     /// session families it appended: what a read of the same window asks for again.
     pub selected_rows: usize,
+    /// The server's rows as read, for the device's saved copy of the list.
+    pub rows: Vec<SessionListItem>,
+}
+
+/// The summaries of session list rows saved on this device, as the list shows them with no other
+/// read merged in: repeated ids and side chats dropped.
+///
+/// # Errors
+///
+/// [`SessionError::MalformedResponse`] for a row the list cannot show.
+pub fn saved_summaries(rows: &[SessionListItem]) -> Result<Vec<SessionSummary>, SessionError> {
+    let mut seen = BTreeSet::new();
+    let mut summaries = Vec::new();
+    for row in rows {
+        let projection = SessionProjection::from_list_item(row);
+        if !seen.insert(row.id.as_str()) || projection.is_side_chat() {
+            continue;
+        }
+        let summary = projection
+            .summary(None)
+            .map_err(|detail| SessionError::MalformedResponse { detail })?;
+        summaries.push(summary);
+    }
+    Ok(summaries)
 }
 
 /// The fields of a list row or snapshot that a summary is derived from, presence kept.
@@ -1302,6 +1326,7 @@ impl<T: HttpTransport> ClientCore<T> {
             sessions: state.shown_rows(sessions),
             next_cursor: next,
             selected_rows,
+            rows: page.data,
         })
     }
 

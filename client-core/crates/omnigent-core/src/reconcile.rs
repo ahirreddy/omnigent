@@ -28,7 +28,7 @@ use serde_json::Value;
 
 mod older;
 
-pub use older::{HistoryPaging, OlderHistoryRequest};
+pub use older::{HistoryItems, HistoryPaging, OlderHistoryRequest};
 
 use crate::reducer::{
     ChangeSet, ConversationSnapshot, Decision, Effects, LiveReducer, ProjectionError, ReducerError,
