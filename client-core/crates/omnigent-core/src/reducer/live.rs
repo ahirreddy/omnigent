@@ -21,6 +21,7 @@ use super::state::{
     ActivityKind, ConversationSnapshot, Decision, LIVE_PREFIX, ReportedValue, Row, RowRole,
     SessionEventState, SessionHeader, TurnStatus,
 };
+use crate::config::session::canonical_harness;
 use crate::sandbox_state::SandboxLaunch;
 
 /// The launch the event state reports, as the header carries it.
@@ -127,6 +128,8 @@ pub struct LiveReducer {
     pub(super) journal: Journal,
     pub(super) state_dirty: bool,
     pub(super) published_sections: Vec<EventSection>,
+    /// The turn status the server last reported for the session.
+    pub(super) server_status: TurnStatus,
 }
 
 impl LiveReducer {
@@ -143,6 +146,7 @@ impl LiveReducer {
             .collect();
         let published_sections = sections(&snapshot.event_state);
         snapshot.header.sandbox_launch = launch_of(&snapshot.event_state);
+        let server_status = snapshot.header.status;
         Self {
             snap: snapshot,
             response_id: None,
@@ -162,6 +166,7 @@ impl LiveReducer {
             journal: Journal::default(),
             state_dirty: false,
             published_sections,
+            server_status,
         }
     }
 
@@ -237,6 +242,7 @@ impl LiveReducer {
     /// Replaces the header (a newer metadata read for the same session).
     pub fn set_header(&mut self, header: SessionHeader) -> ChangeSet {
         let checkpoint = self.checkpoint();
+        self.server_status = header.status;
         self.snap.header = header;
         self.finish(&checkpoint)
     }
@@ -289,6 +295,16 @@ impl LiveReducer {
         } else {
             TurnStatus::Running
         }
+    }
+
+    /// The session runs a native harness (its own terminal program), once its settings are known.
+    pub(crate) fn is_native_session(&self) -> bool {
+        self.snap
+            .header
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.harness.as_deref())
+            .is_some_and(|harness| canonical_harness(Some(harness)).ends_with("-native"))
     }
 
     pub(super) fn idle_status(&self) -> TurnStatus {
@@ -785,9 +801,11 @@ impl LiveReducer {
                 }
                 self.accepts_response_deltas = true;
                 self.accepts_native_deltas = true;
+                self.server_status = TurnStatus::Running;
                 self.snap.header.status = TurnStatus::Running;
             }
             SessionStatus::Idle | SessionStatus::Failed => {
+                self.server_status = TurnStatus::Idle;
                 self.snap.header.status = TurnStatus::Idle;
                 let failed = event.status == SessionStatus::Failed;
                 self.seal_live_content(if failed { "failed" } else { "completed" }, false);
@@ -867,6 +885,11 @@ impl LiveReducer {
         self.seal_live_content(if completed { "completed" } else { "stopped" }, completed);
         if !self.snap.has_pending_decisions() && self.snap.rows.iter().any(|row| row.is_streaming) {
             self.snap.header.status = TurnStatus::Running;
+        }
+        // A native harness's turn outlives the response that typed its prompt, and the server
+        // still reports it running until the harness says the turn ended.
+        if completed && self.server_status == TurnStatus::Running && self.is_native_session() {
+            self.snap.header.status = self.active_status();
         }
         let error = response.and_then(|response| response.error.as_ref());
         let mut message = error.map(|error| error.message.clone());

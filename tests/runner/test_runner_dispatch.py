@@ -2662,6 +2662,13 @@ _SSE_RESPONSE_COMPLETED = (
             ["running", "idle"],
             id="failure-superseded-by-completion",
         ),
+        pytest.param(
+            "codex-native",
+            [_SSE_RESPONSE_CREATED, _SSE_RESPONSE_COMPLETED],
+            "running",
+            ["running"],
+            id="codex-native-delivered-turn-stays-running",
+        ),
     ],
 )
 async def test_runner_publishes_terminal_failed_when_harness_stream_fails(
@@ -2688,6 +2695,11 @@ async def test_runner_publishes_terminal_failed_when_harness_stream_fails(
     A ``response.completed`` after an earlier in-stream ``response.failed``
     supersedes the failure: the turn ended successfully, so the terminal
     edge must be ``idle``.
+
+    A codex-native turn reports ``running`` the moment the runner takes the
+    message, before Codex has it, and a clean delivery publishes no ``idle``:
+    the response only typed the prompt, and the app-server forwarder reports
+    the turn's end. Clients keep showing the turn working on that contract.
 
     :param harness: Harness name baked into the resolved spec, driving
         the runner's native-vs-subprocess status-edge policy.
