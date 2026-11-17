@@ -101,7 +101,9 @@
       prefetchCursor = cursor
       noteHeights(noted)
       // The reader is still: answers nearest the viewport, either way, go first.
-      MessageTextPrewarm.shared.focus(at: Double(shown.midY), direction: 0)
+      for prewarm in [MessageTextPrewarm.shared, .prompts] {
+        prewarm.focus(at: Double(shown.midY), direction: 0)
+      }
       prewarmAnswers(in: kept)
       MessageTextPrewarm.shared.prioritize(awaited, at: awaitedAt)
       guard cursor.above >= 0 || cursor.below < model.rows.count else { return }
@@ -154,7 +156,7 @@
         math: math.keys.sorted())
       let isBuilt =
         MessageTextDocuments.shared.cached(key) != nil
-        || MessageTextPrewarm.shared.takeDocument(for: key) != nil
+        || MessageTextPrewarm.preparedDocument(for: key) != nil
       let id = model.rows[index].id
       let now = CACurrentMediaTime()
       guard !isBuilt else {
@@ -205,18 +207,25 @@
       guard range.length > 0 else { return }
       var indexes = Array(range.location..<(range.location + range.length))
       if upward { indexes.reverse() }
-      var texts: [String] = []
-      var positions: [Double] = []
+      var answers: (texts: [String], positions: [Double]) = ([], [])
+      var prompts: (texts: [String], positions: [Double]) = ([], [])
       for index in indexes where model.rows.indices.contains(index) {
         let id = model.rows[index].id
         let version = model.version(at: index)
         guard prewarmed[id] != version, let message = textMessage(at: index) else { continue }
         prewarmed[id] = version
-        guard message.role == .answer else { continue }
-        texts.append(message.markdown)
-        positions.append(Double(tableView.rect(ofRow: index).midY))
+        let position = Double(tableView.rect(ofRow: index).midY)
+        switch message.role {
+        case .answer:
+          answers.texts.append(message.markdown)
+          answers.positions.append(position)
+        case .user:
+          prompts.texts.append(message.markdown)
+          prompts.positions.append(position)
+        }
       }
-      MessageTextPrewarm.shared.prioritize(texts, at: positions)
+      MessageTextPrewarm.shared.prioritize(answers.texts, at: answers.positions)
+      MessageTextPrewarm.prompts.prioritize(prompts.texts, at: prompts.positions)
     }
 
     func startingCursor() -> (above: Int, below: Int) {

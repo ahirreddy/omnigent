@@ -37,6 +37,9 @@
   /// (``prioritize(_:at:)``).
   nonisolated final class MessageTextPrewarm: Sendable {
     static let shared = MessageTextPrewarm(limit: 256)
+    /// Users' prompts, at the width of their bubbles: the table transcript asks for those about
+    /// to scroll in, one at a time.
+    static let prompts = MessageTextPrewarm(limit: 64, workers: 1)
 
     /// `omnigent:message-text-prewarm`: `NO` leaves every answer to lay out on the main actor
     /// as its row shows, to measure what laying out ahead saves.
@@ -147,6 +150,11 @@
     /// The document prepared for `key`, if one was.
     func takeDocument(for key: MessageTextDocumentKey) -> MessageTextDocument? {
       store.documents.withLock { $0.cached(key) }
+    }
+
+    /// The document an answer's or a prompt's prewarm prepared for `key`, if either did.
+    static func preparedDocument(for key: MessageTextDocumentKey) -> MessageTextDocument? {
+      shared.takeDocument(for: key) ?? prompts.takeDocument(for: key)
     }
 
     /// Draws `document` at `width` and `scale` off the main actor, unless it is drawn or being

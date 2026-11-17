@@ -254,6 +254,12 @@
       metrics: TranscriptTableTextMetrics, textWidth: CGFloat, message: TranscriptTableTextMessage
     ) -> CGFloat {
       workedLabel?.isHidden = true
+      if let palette = style.palette, textWidth >= MessageTextContentView.minimumWidth {
+        // The prompts after this one draw ahead at this width.
+        MessageTextPrewarm.prompts.note(
+          palette: palette, width: textWidth, scale: style.drawsAhead ? style.scale : 0,
+          raster: style.drawsAhead ? style.rasterStyle : nil)
+      }
       let frames = TranscriptTableTextFrames(
         role: .user, gaps: message.split.pieces.map(\.gapAbove),
         sizes: runs.map { $0.size(for: textWidth, fillsWidth: false) }, metrics: metrics,

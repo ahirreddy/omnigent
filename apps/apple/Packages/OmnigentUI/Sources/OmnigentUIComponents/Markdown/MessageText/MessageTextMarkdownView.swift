@@ -155,7 +155,7 @@
         math: math.keys.sorted())
       return MessageTextDocuments.shared.document(for: key) {
         // An answer laid out ahead, off the main actor, comes with its layout.
-        if let prepared = MessageTextPrewarm.shared.takeDocument(for: key) { return prepared }
+        if let prepared = MessageTextPrewarm.preparedDocument(for: key) { return prepared }
         let shown = links.map { links in blocks.map { $0.linking(with: links) } } ?? blocks
         var builder = MessageTextBuilder(palette: MessageTextPalette(style))
         builder.typesetMath = math
