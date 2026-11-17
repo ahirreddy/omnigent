@@ -4,7 +4,7 @@ import Foundation
 /// a table whose rows are reused cells with cached heights (``TableTranscriptView``), a
 /// prototype read from `omnigent:transcript-list` (a launch argument
 /// `-omnigent:transcript-list table` or a stored default).
-nonisolated enum TranscriptListKind: String, Sendable {
+nonisolated enum TranscriptListKind: String, Sendable, CaseIterable {
   case stack
   case table
 
@@ -16,8 +16,9 @@ nonisolated enum TranscriptListKind: String, Sendable {
     defaults.string(forKey: key).flatMap(Self.init(rawValue:)) ?? .stack
   }
 
-  /// The list this process uses, read once: switching lists takes a relaunch.
-  @MainActor static let current: Self = {
+  /// The list this process uses, read once: switching lists takes a relaunch. A test sets it
+  /// for its duration to host a screen over the other list.
+  @MainActor static var current: Self = {
     #if os(macOS)
       read(from: .standard)
     #else

@@ -53,6 +53,7 @@
       follow.geometryChanged(isNearBottom: isNearBottom)
       checkOlderHistory()
       reportVisibleRows()
+      reportFooterViewport()
     }
 
     /// The reader opened or closed a fold: the rows on screen are measured again once it has
@@ -66,6 +67,18 @@
           }
         }
       }
+    }
+
+    /// Tells the last row's request cards where the viewport is over that row.
+    func reportFooterViewport() {
+      guard let last = model.rows.indices.last, last < tableView.numberOfRows else {
+        tableViewport.setFooter(nil)
+        return
+      }
+      let row = tableView.rect(ofRow: last)
+      let visible = NSRect(
+        x: 0, y: clipView.bounds.minY + insets.top, width: row.width, height: visibleHeight)
+      tableViewport.setFooter(visible.offsetBy(dx: 0, dy: -row.minY))
     }
 
     func withoutAnimation(_ body: () -> Void) {
@@ -307,6 +320,7 @@
       insets = next
       scrollView.contentInsets = next
       if grew, follow.layoutGrew() { pinBottom() } else { restore(anchor) }
+      reportFooterViewport()
     }
   }
 #endif

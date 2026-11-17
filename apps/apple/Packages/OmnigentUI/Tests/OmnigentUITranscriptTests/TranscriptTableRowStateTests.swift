@@ -89,6 +89,37 @@
       #expect(abs(controller.model.height(at: index) - open) < 1)
     }
 
+    @Test("A request card in the last row tells the conversation whether it is on screen")
+    func inlineCardReportsItsPlace() async throws {
+      let card = DecisionCard(
+        id: "card", carryingSessionId: TranscriptFixture.header.id, title: "Approval requested",
+        detail: "Do it", kind: .approval)
+      var state = ConversationViewState(
+        header: TranscriptFixture.header, rows: TranscriptFixture.turns(6))
+      state.decisions = [card]
+      let conversation = LiveConversation(state)
+      let surfaces = DecisionSurfaces()
+      let window = transcriptScreen(
+        TableTranscriptHost(conversation: conversation, actions: ConversationActions())
+          .environment(surfaces),
+        width: 900, height: 500)
+      defer { window.close() }
+      try await letOpeningEnd(window)
+      let driver = TranscriptScrollDriver(screen: window)
+      let controller = try #require(driver.tableController)
+      controller.jumpToLatest()
+      try await letTasksRun(window)
+      #expect(
+        surfaces.visibility.onScreen == ["card"],
+        "footer viewport \(String(describing: controller.tableViewport.footer))")
+      #expect(surfaces.visibility.approvable == ["card"])
+
+      // Scrolled away above, the card is off screen and the dock answers it.
+      driver.move(to: controller.minimumOffset)
+      try await letTasksRun(window)
+      #expect(surfaces.visibility.onScreen.isEmpty)
+    }
+
     @Test("Text selected in a row offers Reply, and a scroll of the table hides it")
     func selectionPopupHidesOnScroll() async throws {
       let log = HostLog()

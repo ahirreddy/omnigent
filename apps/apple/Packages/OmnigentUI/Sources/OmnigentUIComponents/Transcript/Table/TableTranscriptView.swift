@@ -34,6 +34,7 @@
       .environment(\.conversationActions, actions)
       .environment(\.openURL, environmentRelay.openURL)
       .environment(\.transcriptDisclosures, controller.disclosures)
+      .environment(\.transcriptTableViewport, controller.tableViewport)
       // The rows scroll under the bars around them, which the scroll view insets them by.
       .ignoresSafeArea(.container, edges: .vertical)
       .onGeometryChange(for: EdgeInsets.self) {

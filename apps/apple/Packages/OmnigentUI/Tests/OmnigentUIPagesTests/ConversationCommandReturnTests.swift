@@ -92,11 +92,18 @@
     /// The Approve button names the shortcut while it owns it.
     private static let shortcutHint = "\u{2318}\u{21A9}"
 
-    @Test("Command-Return approves the request until a draft waits, then sends it")
-    func draftTakesCommandReturn() async throws {
+    @Test(
+      "Command-Return approves the request until a draft waits, then sends it",
+      arguments: [TranscriptListKind.stack, .table])
+    func draftTakesCommandReturn(list: TranscriptListKind) async throws {
+      let launched = TranscriptListKind.current
+      TranscriptListKind.current = list
+      defer { TranscriptListKind.current = launched }
       let model = waiting()
       let window = try await open(model)
       defer { window.close() }
+      // The request's card is on screen inline, so it answers and the dock only names it.
+      #expect(try window.shows("Answer it above"))
       #expect(try window.shows(Self.shortcutHint))
       #expect(model.commands?.approveOwnsCommandReturn == true)
       #expect(model.commands?.send == nil)

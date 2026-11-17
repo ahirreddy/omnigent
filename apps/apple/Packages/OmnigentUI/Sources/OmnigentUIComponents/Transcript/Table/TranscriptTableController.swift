@@ -95,6 +95,8 @@
     var releaseRows: () -> Void = {}
     /// The scrolls the pills and the selection popup over the table follow.
     let scrollFeed = TranscriptScrollFeed()
+    /// The viewport over the last row, for its inline request cards.
+    let tableViewport = TranscriptTableViewport()
     /// The folds' open choices, which outlive the cells that show them.
     let disclosures = TranscriptDisclosures()
 
@@ -197,6 +199,7 @@
         show(pendingShow.id, at: pendingShow.placement)
       }
       reportVisibleRows()
+      reportFooterViewport()
       if !change.inserted.isEmpty || !change.removed.isEmpty { schedulePrefetch() }
     }
 

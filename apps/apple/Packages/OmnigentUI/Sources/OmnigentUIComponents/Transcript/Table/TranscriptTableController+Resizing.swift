@@ -116,6 +116,7 @@
         tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<model.rows.count))
       }
       schedulePrefetch()
+      defer { reportFooterViewport() }
       // The frame that shows the new width has the rows' views laid out at it.
       defer {
         tableView.enumerateAvailableRowViews { rowView, _ in rowView.layoutSubtreeIfNeeded() }
