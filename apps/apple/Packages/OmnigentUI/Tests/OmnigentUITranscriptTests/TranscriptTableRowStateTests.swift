@@ -120,6 +120,33 @@
       #expect(surfaces.visibility.onScreen.isEmpty)
     }
 
+    @Test("An empty first or last row on screen shows what it gains: older history, a request")
+    func edgeRowsShowWhatArrives() async throws {
+      var actions = ConversationActions()
+      actions.loadOlder = {}
+      // Short enough that both edge rows are on screen.
+      let rows = [TranscriptFixture.user("u", "Question"), TranscriptFixture.answer("a", "Answer")]
+      let conversation = LiveConversation(
+        ConversationViewState(header: TranscriptFixture.header, rows: rows))
+      let window = transcriptScreen(
+        TableTranscriptHost(conversation: conversation, actions: actions), width: 900,
+        height: 500)
+      defer { window.close() }
+      try await letOpeningEnd(window)
+      #expect(try !window.shows("Load earlier messages"))
+      #expect(try !window.shows("Apply the change?"))
+
+      conversation.state.hasMoreHistory = true
+      conversation.state.decisions = [
+        DecisionCard(
+          id: "card", carryingSessionId: TranscriptFixture.header.id,
+          title: "Apply the change?", detail: "Do it", kind: .approval)
+      ]
+      try await letTasksRun(window)
+      #expect(try window.shows("Load earlier messages"))
+      #expect(try window.shows("Apply the change?"))
+    }
+
     @Test("Text selected in a row offers Reply, and a scroll of the table hides it")
     func selectionPopupHidesOnScroll() async throws {
       let log = HostLog()

@@ -148,7 +148,7 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   1 s of opening a session.
 - [ ] **iPhone:** transcript content shows briefly under the dock and composer while the layout
   settles.
-- [ ] **iPhone and iPad collection transcript** (`omnigent:transcript-list table`):
+- [ ] **iPhone and iPad collection transcript** (the default list; `stack` falls back):
   - Settled messages as TextKit text cells, drawn from the shared document builder and raster
     with a `UITextView` for selection, once the builder (message-textkit-parity) and the raster
     (transcript-60hz) are on one branch.

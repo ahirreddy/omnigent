@@ -46,8 +46,11 @@ final class MacLinkPointerFlowUITests: XCTestCase {
     XCTAssertTrue(working.appears(within: 15), "no reply started")
     XCTAssertTrue(working.disappears(within: 30), "the reply never ended")
 
-    // The message's text holds its link as an element of its own, the size of the link.
-    let linked = app.links.matching(NSPredicate(format: "title == %@", Self.address)).firstMatch
+    // The message's text holds its link as an element of its own, the size of the link: titled
+    // by SwiftUI's text, labeled by the transcript's text cells.
+    let linked = app.links.matching(
+      NSPredicate(format: "title == %@ OR label == %@", Self.address, Self.address)
+    ).firstMatch
     XCTAssertTrue(
       linked.appears(within: 15), "the message's link is not there\n\(app.debugDescription)")
     let link = linked.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))

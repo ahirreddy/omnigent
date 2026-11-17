@@ -16,7 +16,7 @@
     typealias TranscriptListController = TranscriptCollectionController
   #endif
 
-  /// The transcript as a list of reused cells (`omnigent:transcript-list table`): an
+  /// The transcript as a list of reused cells (the default `omnigent:transcript-list`): an
   /// `NSTableView` on the Mac (``TranscriptTableController``), a `UICollectionView` on iPhone and
   /// iPad (``TranscriptCollectionController``). Cells host the stack's row views, with heights
   /// measured once per row, content version and width. It keeps the stack's follow rules,

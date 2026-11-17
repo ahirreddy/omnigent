@@ -91,6 +91,29 @@
       return changed
     }
 
+    /// Kept rows on screen whose content changed show it and are measured now. A spacer can't
+    /// show what an empty header or footer gained (older history, a request): its row is
+    /// measured in a cell of the new kind, which a reload then shows.
+    func showChanged(_ indexes: [Int]) {
+      var noted = IndexSet()
+      var reloaded = IndexSet()
+      for index in indexes {
+        guard let cell = realizedCell(at: index) else { continue }
+        if case .native? = cell.kind, cell.kind != cellKind(at: index) {
+          if measureKeeping(index) { noted.insert(index) }
+          reloaded.insert(index)
+        } else if measure(index, with: cell) {
+          noted.insert(index)
+        }
+      }
+      if !reloaded.isEmpty {
+        withoutAnimation {
+          tableView.reloadData(forRowIndexes: reloaded, columnIndexes: IndexSet(integer: 0))
+        }
+      }
+      noteHeights(noted)
+    }
+
     /// Measures row `index` just ahead of a scroll: a settled message from its runs' sizes, so
     /// its cell is made only as it shows, by when its drawing has likely arrived; another row
     /// in a cell kept for it.

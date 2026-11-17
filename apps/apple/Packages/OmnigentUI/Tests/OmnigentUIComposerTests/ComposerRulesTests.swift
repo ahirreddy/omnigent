@@ -179,7 +179,9 @@ struct ComposerRulesTests {
     var state = ComposerSamples.running
     state.queue = []
     state.attachments = [DraftAttachment(id: "a", title: "trace.json", kind: .file)]
-    let rules = ComposerSendRules(state: state, draft: "see attached", canQueue: true)
+    // The card's placeholder names its keys; touch's never does.
+    let rules = ComposerSendRules(
+      state: state, draft: "see attached", canQueue: true, layout: .card)
     #expect(rules.intent == .steer)
     #expect(rules.blockedReason(for: .steer) == nil)
     #expect(rules.blockedReason(for: .queue) == nil)

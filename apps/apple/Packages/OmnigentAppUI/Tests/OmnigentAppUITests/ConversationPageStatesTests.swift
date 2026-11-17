@@ -66,7 +66,9 @@ extension ConversationWiringTests {
       forkFlow: ForkFlow(), livenessSheets: SessionLivenessSheets())
     let screen = OffscreenWindow(page, width: 1000, height: 700)
     defer { screen.close() }
-    try await answerFormRequest(on: screen, server: server)
+    // The request shows in the transcript's last row.
+    try await answerFormRequest(
+      on: screen, server: server, submitID: "decision-form-submit-req")
   }
 
   @Test("A save panel that couldn't write the transcript says why; a saved file says nothing")

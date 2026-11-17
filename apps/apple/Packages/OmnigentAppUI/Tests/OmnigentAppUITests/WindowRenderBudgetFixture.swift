@@ -145,8 +145,11 @@ import Testing
         IndexSet(integer: try sidebarRow(title)), byExtendingSelection: false)
     }
 
+    /// The sidebar's list: the window's first table that isn't a transcript's.
     private func sidebarList() throws -> NSTableView {
-      try #require(screen.allViews.lazy.compactMap { $0 as? NSTableView }.first)
+      try #require(
+        screen.allViews.lazy.compactMap { $0 as? NSTableView }
+          .first { !($0 is TranscriptTableNSView) })
     }
 
     /// Where the sidebar's own list draws `title`, counted from its top.

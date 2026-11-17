@@ -168,10 +168,8 @@
       #expect(late == 0)
     }
 
-    // The table takes a width where the reader is, so no jump can land at a passage's top.
-    @Test(
-      "A jump to the latest row that lands while the rows take a width ends at the end",
-      .enabled(if: TranscriptListKind.read(from: .standard) == .stack))
+    // The stack's: the table takes a width where the reader is, so no jump lands mid-passage.
+    @Test("A jump to the latest row that lands while the rows take a width ends at the end")
     func jumpLandingMidPassageEndsAtTheEnd() async throws {
       let width = PaneWidth(Self.narrow)
       let conversation = session()
