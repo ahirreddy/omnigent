@@ -29,6 +29,9 @@
     /// the document they were made for.
     var overflowViews: [MessageTextOverflowView] = []
     weak var overflowsDocument: CLITextDocument?
+    /// Tool work's region elements, and the document they were made for.
+    var workElements: (document: CLITextDocument?, elements: [TranscriptTableCLIRegionElement]) =
+      (nil, [])
     /// The text's frame and the column's trailing edge, where the actions sit.
     private(set) var textFrame = CGRect.zero
     private(set) var actionsTrailing: CGFloat = 0

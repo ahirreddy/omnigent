@@ -44,30 +44,34 @@ nonisolated final class CLITextDocument: @unchecked Sendable {
   let decorations: [CLITextDecoration]
   /// Tables wider than the text, which scroll sideways.
   let overflows: [CLITextOverflow]
+  /// What each region reads as, by its id (``CLITextBuild/labels``).
+  let regionLabels: [String: String]
 
   init(
     text: MessageTextDocument, width: CGFloat, height: CGFloat,
-    decorations: [CLITextDecoration], overflows: [CLITextOverflow] = []
+    decorations: [CLITextDecoration], overflows: [CLITextOverflow] = [],
+    regionLabels: [String: String] = [:]
   ) {
     self.text = text
     self.width = width
     self.height = height
     self.decorations = decorations
     self.overflows = overflows
+    self.regionLabels = regionLabels
   }
 
   /// Builds `spec` in `style` and lays it out `width` wide.
   static func make(
     _ spec: CLITextSpec, style: CLITextStyle, width: CGFloat, palette: MessageTextPalette
   ) -> CLITextDocument {
-    let laidOut = CLITextLayout.layOut(
-      CLITextBuilder.build(spec, style: style), width: width, metrics: style.metrics)
+    let build = CLITextBuilder.build(spec, style: style)
+    let laidOut = CLITextLayout.layOut(build, width: width, metrics: style.metrics)
     let document = MessageTextDocument(
       text: laidOut.text, palette: palette, chrome: [:], hasWideBlocks: false,
       topInset: laidOut.topInset)
     return CLITextDocument(
       text: document, width: width, height: laidOut.height, decorations: laidOut.decorations,
-      overflows: laidOut.overflows)
+      overflows: laidOut.overflows, regionLabels: build.labels)
   }
 }
 
