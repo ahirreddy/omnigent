@@ -84,7 +84,10 @@ bytes fed to `ghostty_surface_*` on iOS, and a C++ runtime link.
   the stamp, so changing one rebuilds. Make one by editing the extracted tree and diffing it
   against the tarball's files (`a/` and `b/` prefixes); a rebuild after a patch change took
   about 2 min with the caches warm. `0001-macos-never-draw-into-a-shown-iosurface.patch`: see
-  "Output" in section 3.
+  "Output" in section 3. `0002-macos-start-and-stop-the-display-link-on-main.patch`: the
+  renderer thread only asks for display link changes and the main thread makes them, because a
+  stop racing CoreVideo's own restart during a display change never returned, and freeing the
+  surface then hung.
 - **CI.** Cache `apps/apple/Vendor/ghostty/{downloads,zig-cache,out}` keyed on the hash of
   `scripts/fetch-ghostty.sh` and the patches, and install the Metal toolchain before the step.
 - **Linking.** The static library carries C++ objects (glslang, SPIRV-Cross), so

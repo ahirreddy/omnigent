@@ -1,0 +1,658 @@
+macOS: start, stop and rebind the CVDisplayLink only on the main thread.
+Ported from upstream ghostty-org/ghostty ffaaf5d7a9 by way of the fork's
+43118b22d; the renderer's vsync check also counts a stop not yet applied.
+
+--- a/src/Surface.zig
++++ b/src/Surface.zig
+@@ -1111,6 +1111,17 @@
+
+     // We need to deinit AFTER everything is stopped, since there are
+     // shared values between the two threads.
++    //
++    // The display link must be closed before the renderer thread is
++    // deinitialized: on macOS the display link callback points at the
++    // thread's `draw_now` handle, and the render thread only asks the
++    // main thread to stop the link. `closeDisplayLink` detaches the
++    // callback before it returns (on any thread) and stops the link on
++    // the main thread. It runs even when the renderer's GPU teardown is
++    // skipped below. See renderer/DisplayLink.zig.
++    if (@hasDecl(rendererpkg.Renderer, "closeDisplayLink")) {
++        self.renderer.closeDisplayLink();
++    }
+     self.renderer_thread.deinit();
+     if (renderer_context_ok) self.renderer.deinit();
+     self.io_thread.deinit();
+--- a/src/renderer.zig
++++ b/src/renderer.zig
+@@ -244,4 +244,5 @@
+     _ = size;
+     _ = Thread;
+     _ = State;
++    if (comptime builtin.os.tag == .macos) _ = @import("renderer/DisplayLink.zig");
+ }
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -38,8 +38,14 @@
+     else => void,
+ };
+
++/// The display link used to pace drawing to the display's refresh
++/// rate. Only macOS has one. Everywhere else this is void and the
++/// display link code paths compile away.
++///
++/// The link is only ever started and stopped on the main thread. See
++/// `renderer/DisplayLink.zig` for why (ghostty-org/ghostty#14150).
+ const DisplayLink = switch (builtin.os.tag) {
+-    .macos => *macos.video.DisplayLink,
++    .macos => @import("DisplayLink.zig"),
+     else => void,
+ };
+
+@@ -310,10 +316,14 @@
+         /// Graphics API state.
+         api: GraphicsAPI,
+
+-        /// The CVDisplayLink used to drive the rendering loop in
+-        /// sync with the display. This is void on platforms that
+-        /// don't support a display link.
+-        display_link: ?DisplayLink = null,
++        /// The display link that paces drawing to the display's refresh
++        /// rate. Null if vsync is disabled or creation failed. This is
++        /// void on platforms without a display link.
++        ///
++        /// The link is only ever started and stopped on the main thread.
++        /// See `renderer/DisplayLink.zig` for why that matters.
++        display_link: if (DisplayLink != void) ?*DisplayLink else void =
++            if (DisplayLink != void) null else {},
+
+         /// Health of the most recently completed frame.
+         health: std.atomic.Value(Health) = .{ .raw = .healthy },
+@@ -965,9 +975,9 @@
+                 };
+             };
+
+-            const display_link: ?DisplayLink = switch (builtin.os.tag) {
++            const display_link: if (DisplayLink != void) ?*DisplayLink else void = switch (builtin.os.tag) {
+                 .macos => if (options.config.vsync) display_link: {
+-                    break :display_link macos.video.DisplayLink.createWithActiveCGDisplays() catch |err| {
++                    break :display_link DisplayLink.create(alloc) catch |err| {
+                         log.warn(
+                             "error creating display link, falling back to non-vsync renderer loop err={}",
+                             .{err},
+@@ -975,9 +985,11 @@
+                         break :display_link null;
+                     };
+                 } else null,
+-                else => null,
++                else => {},
+             };
+-            errdefer if (display_link) |v| v.release();
++            errdefer if (DisplayLink != void) {
++                if (display_link) |v| v.close();
++            };
+
+             var result: Self = .{
+                 .alloc = alloc,
+@@ -1092,12 +1104,7 @@
+                 self.api.finishFrameGeneration();
+             }
+
+-            if (DisplayLink != void) {
+-                if (self.display_link) |display_link| {
+-                    display_link.stop() catch {};
+-                    display_link.release();
+-                }
+-            }
++            self.closeDisplayLink();
+
+             self.cells.deinit(self.alloc);
+
+@@ -1200,7 +1207,10 @@
+                 &displayLinkCallback,
+                 &thr.draw_now,
+             );
+-            display_link.start() catch {};
++
++            // Ask for the link to start. The start happens on the main
++            // thread shortly after; see `renderer/DisplayLink.zig`.
++            display_link.setRunning(true);
+         }
+
+         /// Called by renderer.Thread when it exits the main loop.
+@@ -1213,13 +1223,26 @@
+             // If we don't support a display link we have no work to do.
+             if (comptime DisplayLink == void) return;
+
+-            // Stop our display link. If this fails its okay it just means
+-            // that we either never started it or the view its attached to
+-            // is gone which is fine.
++            // Ask the display link to stop. The stop itself happens on
++            // the main thread shortly after. `closeDisplayLink` later
++            // detaches the callback before anything it references is freed.
+             const display_link = self.display_link orelse return;
+-            display_link.stop() catch {};
++            display_link.setRunning(false);
+         }
+
++        /// Stop and release the display link for good. Call after the
++        /// render thread has exited and before the render thread's
++        /// `draw_now` handle (the display link callback's userdata) is
++        /// freed. Any thread: the callback is detached before this
++        /// returns, and the stop itself runs on the main thread. Safe to
++        /// call more than once.
++        pub fn closeDisplayLink(self: *Self) void {
++            if (comptime DisplayLink == void) return;
++            const display_link = self.display_link orelse return;
++            display_link.close();
++            self.display_link = null;
++        }
++
+         /// This is called by the GTK apprt after the surface is
+         /// reinitialized due to any of the events mentioned in
+         /// the doc comment for `displayUnrealized`.
+@@ -1317,10 +1340,9 @@
+         pub fn setMacOSDisplayID(self: *Self, id: u32) !void {
+             if (comptime DisplayLink == void) return;
+             const display_link = self.display_link orelse return;
+-            log.info("updating display link display id={}", .{id});
+-            display_link.setCurrentCGDisplay(id) catch |err| {
+-                log.warn("error setting display link display id err={}", .{err});
+-            };
++            // Bound on the main thread shortly after; see
++            // `renderer/DisplayLink.zig`.
++            display_link.setDisplay(id);
+         }
+
+         /// True if our renderer has animations so that a higher frequency
+@@ -1332,10 +1354,13 @@
+         /// True if our renderer is using vsync. If true, the renderer or apprt
+         /// is responsible for triggering draw_now calls to the render thread.
+         /// That is the only way to trigger a drawFrame.
++        ///
++        /// A stop that the main thread has not applied yet already counts:
++        /// no draw may wait for a refresh that will not come.
+         pub fn hasVsync(self: *const Self) bool {
+             if (comptime DisplayLink == void) return false;
+             const display_link = self.display_link orelse return false;
+-            return display_link.isRunning();
++            return display_link.willKeepRunning();
+         }
+
+         /// Callback when the focus changes for the terminal this is rendering.
+@@ -1354,11 +1379,8 @@
+             // change-driven updates.
+             if (comptime DisplayLink != void) link: {
+                 const display_link = self.display_link orelse break :link;
+-                if (focus) {
+-                    display_link.start() catch {};
+-                } else {
+-                    display_link.stop() catch {};
+-                }
++                // Applied on the main thread; see `renderer/DisplayLink.zig`.
++                display_link.setRunning(focus);
+             }
+         }
+
+@@ -1371,11 +1393,8 @@
+             // change-driven updates.
+             if (comptime DisplayLink != void) link: {
+                 const display_link = self.display_link orelse break :link;
+-                if (visible and self.focused) {
+-                    display_link.start() catch {};
+-                } else {
+-                    display_link.stop() catch {};
+-                }
++                // Applied on the main thread; see `renderer/DisplayLink.zig`.
++                display_link.setRunning(visible and self.focused);
+             }
+         }
+
+--- a/src/renderer/Thread.zig
++++ b/src/renderer/Thread.zig
+@@ -1861,7 +1861,8 @@
+ }
+
+ /// Retry a frame dropped while every target was in use, one display refresh
+-/// later. Without a display link nothing else would draw it.
++/// later, unless a display link that stays running draws it. A link with a
++/// stop still queued for the main thread does not.
+ fn retryWhenTargetsFree(self: *Thread) void {
+     if (self.externalDrainActive() or self.renderer.hasVsync()) return;
+     if (self.targets_in_use_retry_c.state() == .active) return;
+--- /dev/null
++++ b/src/renderer/DisplayLink.zig
+@@ -0,0 +1,434 @@
++//! A CVDisplayLink that is only ever started, stopped, or re-targeted
++//! from the main thread.
++//!
++//! ## Why start and stop must happen on the main thread
++//!
++//! CoreVideo's `CVDisplayLinkStop` clears the link's running flag and
++//! then waits, once and unconditionally, for the link's IO thread to
++//! notice and exit. While it waits, the link's mutex is released. If any
++//! thread calls `CVDisplayLinkStart` during that wait, the flag is set
++//! again and a second IO thread is created. The first IO thread wakes up,
++//! sees the flag set, and keeps running. Nothing ever signals the waiting
++//! `CVDisplayLinkStop`, so it blocks forever.
++//!
++//! CoreVideo itself performs exactly this stop and start sequence, on the
++//! main thread, inside its display reconfiguration callback. That fires
++//! whenever the display the link is bound to changes mode, which happens
++//! on display sleep and wake, resolution changes, and hotplug.
++//! `CVDisplayLinkSetCurrentCGDisplay` performs the same sequence. None of
++//! these calls take a lock that protects against each other.
++//!
++//! So a start or stop issued from the render thread can collide with
++//! CoreVideo's own, and whichever side loses is stuck in
++//! `CVDisplayLinkStop` forever. In Ghostty that first wedged the render
++//! thread, then the main thread as soon as it waited on the renderer, and
++//! the whole app froze. See
++//! https://github.com/ghostty-org/ghostty/discussions/14150.
++//!
++//! The fix is to issue every state change from the main thread, where it
++//! is serialized with CoreVideo's own reconfiguration handling simply by
++//! running on the same thread.
++const DisplayLink = @This();
++
++const std = @import("std");
++const assert = std.debug.assert;
++const Allocator = std.mem.Allocator;
++const macos = @import("macos");
++const global = @import("../global.zig");
++
++const log = std.log.scoped(.display_link);
++
++alloc: Allocator,
++
++/// The underlying CVDisplayLink. Its state is only changed on the
++/// main thread.
++link: *macos.video.DisplayLink,
++
++/// Set when `close` finishes on the main thread. A sync that was already
++/// queued at that point sees this, skips its work, and frees the struct.
++/// Main thread only.
++closed: bool = false,
++
++/// cmux fork: the owner's callback and its userdata. CoreVideo calls
++/// `outputCallback` with this struct as its userdata, and that forwards
++/// to the owner's callback under `target_mutex`. `close` clears both
++/// under the same mutex, so once `close` returns the owner's userdata is
++/// never touched again, even before the main thread stops the link. That
++/// lets `close` run on any thread: cmux frees some surfaces off the main
++/// thread.
++target: ?*anyopaque = null,
++target_fn: ?*const fn (*macos.video.DisplayLink, *anyopaque) void = null,
++target_mutex: std.Io.Mutex = .init,
++
++/// The display the link was last bound to with `setDisplay`, or zero
++/// if `setDisplay` was never called. Main thread only.
++display: u32 = 0,
++
++/// The state the owner has asked for. Written by `setRunning` and
++/// `setDisplay` on the owner's thread and read by the sync on the
++/// main thread. Packing both fields into one atomic means the sync
++/// always sees them together as they were last requested.
++requested: std.atomic.Value(Requested) = .init(.{}),
++
++/// True while a sync is queued on the main thread and has not yet
++/// started. Used to collapse many requests into one sync, and by
++/// `close` to know whether a queued sync still needs this struct.
++sync_queued: std.atomic.Value(bool) = .init(false),
++
++/// The state the owner wants the link in. This is a single 64-bit
++/// value so that it can be read and written atomically as a whole.
++const Requested = packed struct(u64) {
++    /// Whether the link should be running.
++    running: bool = false,
++
++    _padding: u31 = 0,
++
++    /// The CGDirectDisplayID the link should be bound to, or zero if
++    /// no display has been requested.
++    display: u32 = 0,
++};
++
++/// Create a display link bound to the active displays. The link starts
++/// out stopped and has no output callback. Call `setOutputCallback`, then
++/// `setRunning` to start it.
++///
++/// This can be called from any thread. Creating a link does not change
++/// its running state, so it does not collide with CoreVideo's
++/// reconfiguration handling.
++///
++/// Fails if no display is available, which can happen briefly while
++/// the session is locked or a display is asleep. Callers can continue
++/// without vsync.
++pub fn create(alloc: Allocator) !*DisplayLink {
++    const link = try macos.video.DisplayLink.createWithActiveCGDisplays();
++    errdefer link.release();
++
++    const self = try alloc.create(DisplayLink);
++    errdefer alloc.destroy(self);
++    self.* = .{
++        .alloc = alloc,
++        .link = link,
++    };
++
++    return self;
++}
++
++/// Set the output callback. `callbackFn` is invoked by CoreVideo on its
++/// own thread once per display refresh while the link is running, with
++/// `userdata` as its argument. `userdata` must stay valid until `close`
++/// returns.
++///
++/// cmux fork: the renderer sets the callback on the render thread when
++/// its loop starts, because that is when `draw_now` has a stable address.
++/// The link is stopped at that point. Setting the callback does not
++/// change the link's running state, so it is safe off the main thread.
++pub fn setOutputCallback(
++    self: *DisplayLink,
++    comptime Userdata: type,
++    comptime callbackFn: *const fn (*macos.video.DisplayLink, ?*Userdata) void,
++    userdata: ?*Userdata,
++) !void {
++    const Trampoline = struct {
++        fn call(link: *macos.video.DisplayLink, ud: *anyopaque) void {
++            callbackFn(link, @ptrCast(@alignCast(ud)));
++        }
++    };
++
++    {
++        self.target_mutex.lockUncancelable(global.io());
++        defer self.target_mutex.unlock(global.io());
++        self.target = userdata;
++        self.target_fn = &Trampoline.call;
++    }
++
++    try self.link.setOutputCallback(DisplayLink, &outputCallback, self);
++}
++
++/// The callback CoreVideo invokes on its IO thread. Forwards to the
++/// owner's callback unless `close` has detached it.
++fn outputCallback(link: *macos.video.DisplayLink, ud: ?*DisplayLink) void {
++    const self = ud orelse return;
++    self.target_mutex.lockUncancelable(global.io());
++    defer self.target_mutex.unlock(global.io());
++    const target = self.target orelse return;
++    const target_fn = self.target_fn orelse return;
++    target_fn(link, target);
++}
++
++/// Stop and release the display link. The pointer is invalid after
++/// this call.
++///
++/// Can be called on any thread. The owner's callback is detached before
++/// this returns, so whatever its userdata pointed at can be freed right
++/// after. The stop and release themselves happen on the main thread:
++/// inline if this is the main thread, otherwise shortly after through the
++/// main queue. Stopping waits for CoreVideo's IO thread to exit, and that
++/// is only safe on the main thread, where CoreVideo's own stop and start
++/// also run and so cannot restart the link while we wait.
++///
++/// No other method may be called on this link after or concurrently
++/// with `close`. In practice the render thread that makes those calls
++/// has already exited by the time the renderer is deinitialized.
++pub fn close(self: *DisplayLink) void {
++    {
++        self.target_mutex.lockUncancelable(global.io());
++        defer self.target_mutex.unlock(global.io());
++        self.target = null;
++        self.target_fn = null;
++    }
++
++    if (pthread_main_np() != 0) {
++        self.finishClose();
++        return;
++    }
++
++    macos.dispatch.c.dispatch_async_f(
++        macos.dispatch.c.dispatch_get_main_queue(),
++        self,
++        &closeCallback,
++    );
++}
++
++extern "c" fn pthread_main_np() c_int;
++
++fn closeCallback(ud: ?*anyopaque) callconv(.c) void {
++    const self: *DisplayLink = @ptrCast(@alignCast(ud.?));
++    self.finishClose();
++}
++
++/// The main-thread half of `close`.
++fn finishClose(self: *DisplayLink) void {
++    assert(!self.closed);
++    self.closed = true;
++
++    if (self.link.isRunning()) self.link.stop() catch |err| {
++        log.warn("error stopping display link err={}", .{err});
++    };
++    self.link.release();
++
++    // If a sync is still queued on the main thread it runs after us and
++    // still needs this struct, so it frees it instead of us. Both run on
++    // the main thread, and the render thread that queues syncs has exited,
++    // so this read cannot race a new queueSync.
++    if (!self.sync_queued.load(.seq_cst)) self.destroy();
++}
++
++fn destroy(self: *DisplayLink) void {
++    const alloc = self.alloc;
++    self.* = undefined;
++    alloc.destroy(self);
++}
++
++/// Returns true if the link is running right now, meaning CoreVideo is
++/// invoking the output callback on every display refresh.
++///
++/// This reports the link's actual state, not the state most recently
++/// requested with `setRunning`. The two differ briefly after a request,
++/// and also when a start failed or CoreVideo stopped the link itself
++/// during a display reconfiguration. Can be called from any thread.
++pub fn isRunning(self: *DisplayLink) bool {
++    return self.link.isRunning();
++}
++
++/// Returns true if the link is running and the latest request keeps it
++/// running, so its next refresh invokes the output callback. A stop still
++/// queued for the main thread already makes this false, while `isRunning`
++/// is still true. Call it on the thread that calls `setRunning`.
++pub fn willKeepRunning(self: *DisplayLink) bool {
++    return self.requested.load(.seq_cst).running and self.link.isRunning();
++}
++
++/// Request that the link run, or stop running. Never blocks.
++///
++/// The change is applied shortly after on the main thread. Until then
++/// `isRunning` keeps reporting the old state. Calling this repeatedly
++/// with the same value is cheap, and calling it with alternating values
++/// in quick succession results in at most one real change.
++///
++/// This and `setDisplay` must be called from a single thread, which
++/// for the renderer is the render thread. That thread is the only
++/// writer of the requested state, so no compare-and-swap is needed.
++pub fn setRunning(self: *DisplayLink, running: bool) void {
++    var requested = self.requested.load(.seq_cst);
++
++    // cmux fork: queue a sync whenever the request changes, not only when
++    // it differs from the link's current state. A sync that already read
++    // the old request may not have applied it yet, so the current state
++    // can still match the new request while the pending start or stop is
++    // about to undo it. Upstream calls this every frame and recovers; the
++    // fork only calls it on focus, visibility and loop enter or exit.
++    if (requested.running == running and
++        running == self.link.isRunning()) return;
++
++    requested.running = running;
++    self.requested.store(requested, .seq_cst);
++    self.queueSync();
++}
++
++/// Request that the link be bound to the given CGDirectDisplayID, so
++/// that it follows that display's refresh rate. Never blocks.
++///
++/// Call this when the window moves to a different screen. A display ID
++/// of zero means no display and is ignored. See `setRunning` for the
++/// threading requirement.
++pub fn setDisplay(self: *DisplayLink, display_id: u32) void {
++    if (display_id == 0) return;
++    var requested = self.requested.load(.seq_cst);
++    requested.display = display_id;
++    self.requested.store(requested, .seq_cst);
++    self.queueSync();
++}
++
++/// Queue a sync onto the main thread, unless one is already queued and
++/// has not started yet.
++///
++/// A sync that has already started clears `sync_queued` before it reads
++/// the requested state, so a request that arrives too late for it will
++/// queue another sync rather than be lost.
++fn queueSync(self: *DisplayLink) void {
++    if (self.sync_queued.swap(true, .seq_cst)) return;
++    macos.dispatch.c.dispatch_async_f(
++        macos.dispatch.c.dispatch_get_main_queue(),
++        self,
++        &syncCallback,
++    );
++}
++
++fn syncCallback(ud: ?*anyopaque) callconv(.c) void {
++    const self: *DisplayLink = @ptrCast(@alignCast(ud.?));
++
++    // Clear this before reading the requested state. See queueSync.
++    self.sync_queued.store(false, .seq_cst);
++
++    // If the owner closed the link while we were queued, it left the
++    // struct for us to free. See close.
++    if (self.closed) {
++        self.destroy();
++        return;
++    }
++
++    self.sync();
++}
++
++/// Make the link's actual state match the requested state. Main thread
++/// only. Every CoreVideo call that changes the link's state is made
++/// from here or from `close`.
++fn sync(self: *DisplayLink) void {
++    const requested = self.requested.load(.seq_cst);
++
++    if (requested.display != 0 and requested.display != self.display) {
++        // Record the display even if binding fails so that we don't
++        // retry on every sync. The next display change tries again.
++        self.display = requested.display;
++        log.info("updating display link display id={}", .{requested.display});
++
++        // If the link is running, CoreVideo stops and restarts it
++        // internally. That is safe here for the same reason our own
++        // stop below is.
++        self.link.setCurrentCGDisplay(requested.display) catch |err| {
++            log.warn("error setting display link display id err={}", .{err});
++        };
++    }
++
++    const running = self.link.isRunning();
++    if (requested.running and !running) {
++        // If this fails the link stays stopped. The renderer notices
++        // through isRunning and draws without vsync, and the next
++        // request retries. This is logged at debug level because a
++        // display can be unavailable for a while, such as during a
++        // locked session, and we would otherwise log once per frame.
++        self.link.start() catch |err| {
++            log.debug("error starting display link err={}", .{err});
++        };
++    } else if (!requested.running and running) {
++        self.link.stop() catch |err| {
++            log.warn("error stopping display link err={}", .{err});
++        };
++    }
++}
++
++// The tests run on the main thread, which drains the main queue through
++// CFRunLoop. Without a display to create a link for they are skipped.
++
++fn createForTest() !*DisplayLink {
++    if (pthread_main_np() == 0) return error.SkipZigTest;
++    return create(std.testing.allocator) catch error.SkipZigTest;
++}
++
++fn countTick(_: *macos.video.DisplayLink, ticks: ?*std.atomic.Value(u32)) void {
++    _ = ticks.?.fetchAdd(1, .seq_cst);
++}
++
++fn runMainQueue(seconds: f64) void {
++    _ = macos.c.CFRunLoopRunInMode(macos.c.kCFRunLoopDefaultMode, seconds, 0);
++}
++
++/// Runs the main queue until no sync is queued and the link runs as
++/// `running`, or for a second.
++fn runMainQueueUntil(self: *DisplayLink, running: bool) bool {
++    for (0..100) |_| {
++        if (!self.sync_queued.load(.seq_cst) and self.link.isRunning() == running)
++            return true;
++        runMainQueue(0.01);
++    }
++    return false;
++}
++
++test "display link requests apply on the main queue and a stop counts at once" {
++    const testing = std.testing;
++    const self = try createForTest();
++    defer self.close();
++    var ticks: std.atomic.Value(u32) = .init(0);
++    try self.setOutputCallback(std.atomic.Value(u32), &countTick, &ticks);
++
++    self.setRunning(true);
++    try testing.expect(!self.isRunning());
++    try testing.expect(!self.willKeepRunning());
++    try testing.expect(runMainQueueUntil(self, true));
++    try testing.expect(self.willKeepRunning());
++
++    // The link keeps running until the main queue stops it, but nothing
++    // should wait for its next refresh any more.
++    self.setRunning(false);
++    try testing.expect(self.isRunning());
++    try testing.expect(!self.willKeepRunning());
++    try testing.expect(runMainQueueUntil(self, false));
++
++    // Alternating requests end in the last one; `close` stops the link.
++    for (0..21) |i| self.setRunning(i % 2 == 0);
++    try testing.expect(runMainQueueUntil(self, true));
++    try testing.expect(self.willKeepRunning());
++}
++
++test "display link close off the main thread detaches the callback before it returns" {
++    const testing = std.testing;
++    const self = try createForTest();
++    var ticks: std.atomic.Value(u32) = .init(0);
++    try self.setOutputCallback(std.atomic.Value(u32), &countTick, &ticks);
++    self.setRunning(true);
++    try testing.expect(runMainQueueUntil(self, true));
++    for (0..100) |_| {
++        if (ticks.load(.seq_cst) >= 2) break;
++        runMainQueue(0.01);
++    }
++    try testing.expect(ticks.load(.seq_cst) >= 2);
++
++    const closer = try std.Thread.spawn(.{}, close, .{self});
++    closer.join();
++    // The link still runs until the main queue stops it, without the callback.
++    const after = ticks.load(.seq_cst);
++    try std.Io.sleep(testing.io, .fromMilliseconds(100), .awake);
++    try testing.expectEqual(after, ticks.load(.seq_cst));
++
++    // The main queue stops and frees it; the testing allocator reports a leak otherwise.
++    runMainQueue(0.1);
++}
++
++test "display link sync still queued at close frees the link after it" {
++    const testing = std.testing;
++    const self = try createForTest();
++    self.setRunning(true);
++    try testing.expect(self.sync_queued.load(.seq_cst));
++    self.close();
++    runMainQueue(0.1);
++}
