@@ -101,7 +101,8 @@
         if let empty = header.empty { banner(EmptyTranscriptView(state: empty)) }
       }
       .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-      .padding(.top, Theme.Spacing.extraLarge)
+      // Where the stack's rows start: its padding, its point-high top row and a row gap.
+      .padding(.top, Theme.Spacing.extraLarge + 1 + spacing)
       .padding(.bottom, hasContent ? spacing : 0)
       .transcriptStackColumn()
     }
@@ -145,11 +146,17 @@
         }
       }
       .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-      .padding(.bottom, Theme.Spacing.extraLarge)
+      // Where the stack's end rests: a row gap and its point-high bottom row under the rows.
+      .padding(.bottom, (hasContent ? spacing : 0) + 1)
       .transcriptStackColumn()
     }
 
     private var spacing: CGFloat { footer.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row }
+
+    private var hasContent: Bool {
+      footer.decisions != nil || footer.startup != nil || footer.working != nil
+        || footer.turnFailure != nil || footer.sessionError != nil
+    }
 
     @ViewBuilder private func banner(_ view: some View) -> some View {
       if footer.isCLI { view.transcriptColumn() } else { view }

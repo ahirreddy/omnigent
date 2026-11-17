@@ -326,5 +326,11 @@
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { false }
+
+    func tableView(_ tableView: NSTableView, didAdd rowView: NSTableRowView, forRow row: Int) {
+      // A cell measured away from the window lays out its views now, so the frame that shows
+      // it has its text.
+      rowView.layoutSubtreeIfNeeded()
+    }
   }
 #endif
