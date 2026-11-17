@@ -86,6 +86,15 @@
     var animatesJumps = false
     var activeJump: TranscriptTableJump?
     var jumpTimer: Timer?
+    /// Where Jump to top's paging stands.
+    let position = TranscriptReadingPosition()
+    /// The first row the source has read, ahead of the rows the list shows; the transcript sets
+    /// it, with the rows' pacing that Jump to top holds and releases.
+    var sourceTopRow: () -> String? = { nil }
+    var holdRows: () -> Void = {}
+    var releaseRows: () -> Void = {}
+    /// The scrolls the pills and the selection popup over the table follow.
+    let scrollFeed = TranscriptScrollFeed()
 
     var isAdjusting = false
     var isMeasuring = false
@@ -178,6 +187,9 @@
       } else if !change.isEmpty {
         keepReader(anchor, isNewOutput: previous?.revision != state.revision)
       }
+      if previous?.header.id == state.header.id, previous?.rows.first?.id != state.rows.first?.id {
+        firstRowChanged()
+      }
       if let pendingShow, model.index(of: pendingShow.id) != nil {
         show(pendingShow.id, at: pendingShow.placement)
       }
@@ -199,6 +211,7 @@
       needsFraming = true
       pendingShow = nil
       olderRequested = false
+      position.reset()
       cancelJump()
     }
 

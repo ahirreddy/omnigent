@@ -51,6 +51,10 @@
       .onChange(of: TranscriptSends(state)) { previous, latest in
         if latest.hasNewSend(since: previous) { controller.jumpToLatest(animated: true) }
       }
+      // The count too: a read that starts and ends between two renders never shows as loading.
+      .onChange(of: HistoryRead(isLoading: state.isLoadingHistory, ended: state.historyReads)) {
+        if !$1.isLoading { controller.olderHistoryEnded() }
+      }
       .modifier(
         TranscriptMessageFocus(
           state: state, pages: actions.loadOlder != nil,
@@ -63,6 +67,12 @@
       )
       .task(id: state.header.id) { pacer.release() }
       .overlay { TableMessageKeys(keys: keys, controller: controller) }
+      .modifier(
+        JumpToTopReveal(
+          hasMoreHistory: state.hasMoreHistory && actions.loadOlder != nil,
+          isLoading: state.isLoadingHistory, jump: { controller.jumpToTop() },
+          feed: controller.scrollFeed)
+      )
       .transcriptSelectionPopup(reply: actions.replyWithSelection, ask: actions.askInSideChat)
       .modifier(
         TurnRailOverlay(
@@ -86,6 +96,11 @@
     /// Hands the controller the callbacks that reach this view's state.
     private func wireController() {
       controller.animatesJumps = Theme.Motion.isEnabled && !reduceMotion
+      controller.sourceTopRow = { [liveRows, state] in
+        (liveRows?.read().rows ?? state.rows).first?.id
+      }
+      controller.holdRows = { [pacer] in pacer.hold() }
+      controller.releaseRows = { [pacer] in pacer.release() }
       controller.showPill = { [pill] in if pill.pill != $0 { pill.pill = $0 } }
       controller.visibleRowsChanged = { [rail] order, visible in
         guard rail.turns.count >= 2 else { return }

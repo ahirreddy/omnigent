@@ -49,6 +49,7 @@
     /// The clip view moved, for the reader or for the transcript's own reasons.
     func clipDidMove() {
       guard !isAdjusting else { return }
+      scrollFeed.moved(to: clipView.bounds.minY + insets.top)
       follow.geometryChanged(isNearBottom: isNearBottom)
       checkOlderHistory()
       reportVisibleRows()
@@ -97,6 +98,7 @@
     /// The reader started or stopped scrolling: idle measuring waits until they stop.
     func scrollPhaseChanged() {
       let isScrolling = isLiveScrolling || isWheeling
+      scrollFeed.phaseChanged(isScrolling)
       if follow.scrollPhaseChanged(isUserScrolling: isScrolling) { pinBottom() }
       if isScrolling {
         prefetchGeneration += 1
@@ -129,6 +131,17 @@
 
     /// Moves the viewport's origin to `offset`, as the transcript's own move.
     func move(to offset: CGFloat) {
+      // A jump measures the rows it lands on first: the table moves the viewport again for
+      // heights it is told of while it is moving.
+      if abs(offset - clipView.bounds.minY) > clipView.bounds.height {
+        let landing = NSRect(
+          x: 0, y: offset, width: model.width, height: clipView.bounds.height * 1.5)
+        var noted = IndexSet()
+        for index in rowsNeedingMeasure(in: landing) where measureKeeping(index) {
+          noted.insert(index)
+        }
+        noteHeightsInPlace(noted)
+      }
       let target = min(max(offset, minimumOffset), maximumOffset)
       clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: target))
       scrollView.reflectScrolledClipView(clipView)

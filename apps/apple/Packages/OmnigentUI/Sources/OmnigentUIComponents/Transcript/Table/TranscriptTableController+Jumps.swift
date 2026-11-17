@@ -81,11 +81,71 @@
       let target = TranscriptNavigation.target(
         direction, order: model.ids, userMessages: users, visible: Set(visibleRowIDs))
       guard let target else {
-        if direction == .previous { requestOlder() } else { jumpToLatest(animated: true) }
+        if direction == .previous { loadOlderPage() } else { jumpToLatest(animated: true) }
         return
       }
       show(target, at: .top, animated: true)
     }
 
+    // MARK: Jump to top
+
+    /// The first row of the history read so far, from the source: the list shows its rows a
+    /// tick later.
+    var sourceTopRowID: String? { sourceTopRow() }
+
+    /// Jump to top pages in the rest of the history first, as the web does, and shows it once
+    /// it is all read, not page by page above the reader.
+    func jumpToTop() {
+      follow.readEarlier()
+      needsFraming = false
+      pendingShow = nil
+      if let state, state.hasMoreHistory, actions.loadOlder != nil {
+        position.seeksTop = true
+        holdRows()
+        loadOlderPage()
+      } else {
+        jump(
+          to: { [weak self] in self?.minimumOffset ?? 0 },
+          arrived: { [weak self] in self?.moveToTop() })
+      }
+    }
+
+    /// Asks for the page above the loaded rows, remembering where the history started.
+    func loadOlderPage() {
+      guard let state, state.hasMoreHistory, !state.isLoadingHistory,
+        let loadOlder = actions.loadOlder
+      else { return }
+      position.awaitsPage = true
+      position.topBeforePage = sourceTopRowID
+      olderRequested = true
+      loadOlder()
+    }
+
+    /// A read of older history ended. Jump to top keeps paging while pages add rows; a failed
+    /// or empty page stops it where it is. The page's rows may reach the list before or after.
+    func olderHistoryEnded() {
+      guard let state else { return }
+      let hasMore = state.hasMoreHistory && actions.loadOlder != nil
+      switch position.pageEnded(sourceTop: sourceTopRowID, hasMore: hasMore) {
+      case .settled: break
+      case .readNext: loadOlderPage()
+      case .arrive:
+        releaseRows()
+        arriveAtTop()
+      }
+    }
+
+    /// The list's first row changed: Jump to top arrives once the rows read are shown.
+    func firstRowChanged() {
+      if position.seeksTop { arriveAtTop() }
+    }
+
+    /// Ends Jump to top at the first row, once the list shows the rows that were read.
+    func arriveAtTop() {
+      guard position.arrivesAtTop, state?.rows.first?.id == sourceTopRowID else { return }
+      position.endSeekingTop()
+      moveToTop()
+      reportVisibleRows()
+    }
   }
 #endif

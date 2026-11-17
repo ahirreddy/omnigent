@@ -156,6 +156,86 @@
       #expect(driver.offset > start + 100)
     }
 
+    @Test("Jump to top shows on pointing at the top and goes there")
+    func jumpToTop() async throws {
+      let (driver, controller) = try await screen(session())
+      let window = driver.screen
+      defer { window.close() }
+      #expect(driver.offset > 100)
+      let pill = CGPoint(x: Self.width / 2, y: 22)
+      // Hidden until the pointer is at the top.
+      try window.click(pill)
+      #expect(driver.offset > 100)
+      try window.hover(CGPoint(x: Self.width / 2, y: 40))
+      try window.click(pill)
+      #expect(await window.waitUntil { driver.offset <= controller.minimumOffset + 1 })
+      #expect(!controller.follow.follows)
+    }
+
+    @Test("Scrolling up shows Jump to top, which then goes there")
+    func jumpToTopOnScrollingUp() async throws {
+      let (driver, controller) = try await screen(session())
+      let window = driver.screen
+      defer { window.close() }
+      let scrollView = try #require(driver.scrollView)
+      window.liveScroll(scrollView, began: true)
+      for _ in 1...6 { driver.move(to: driver.offset - 20) }
+      window.liveScroll(scrollView, began: false)
+      try window.click(CGPoint(x: Self.width / 2, y: 22))
+      #expect(await window.waitUntil { driver.offset <= controller.minimumOffset + 1 })
+    }
+
+    @Test("Jump to top pages in the rest of the history, then goes to its first row")
+    func jumpToTopPages() async throws {
+      let conversation = session(hasMore: true)
+      let (driver, controller) = try await screen(conversation, actions: pagingActions)
+      let window = driver.screen
+      defer { window.close() }
+      log.clear()
+      controller.jumpToTop()
+      #expect(log.entries == ["older"])
+      #expect(controller.position.seeksTop)
+
+      conversation.state.isLoadingHistory = true
+      try await letTasksRun(window)
+      conversation.state.rows.insert(contentsOf: TranscriptFixture.turns(2), at: 0)
+      conversation.state.revision += 1
+      conversation.state.isLoadingHistory = false
+      try await letTasksRun(window)
+      #expect(log.entries == ["older", "older"])
+      #expect(driver.offset > 100, "the reader waits on their row while pages land")
+
+      conversation.state.isLoadingHistory = true
+      try await letTasksRun(window)
+      conversation.state.rows.insert(contentsOf: TranscriptFixture.turns(2, startingAt: 2), at: 0)
+      conversation.state.revision += 1
+      conversation.state.hasMoreHistory = false
+      conversation.state.isLoadingHistory = false
+      #expect(
+        await window.waitUntil { driver.offset <= controller.minimumOffset + 1 },
+        "at \(driver.offset), on \(topRow(controller) ?? "no row")")
+      #expect(log.entries.count == 2)
+      #expect(!controller.position.seeksTop)
+      // Idle measuring of the rows below leaves the reader at the top.
+      window.run(for: TranscriptTableController.prefetchDelay + 0.3)
+      #expect(driver.offset <= controller.minimumOffset + 1)
+    }
+
+    @Test("A page that brings nothing ends Jump to top at the top of what is loaded")
+    func jumpToTopEmptyPage() async throws {
+      let conversation = session(hasMore: true)
+      let (driver, controller) = try await screen(conversation, actions: pagingActions)
+      let window = driver.screen
+      defer { window.close() }
+      log.clear()
+      controller.jumpToTop()
+      conversation.state.isLoadingHistory = true
+      try await letTasksRun(window)
+      conversation.state.isLoadingHistory = false
+      #expect(await window.waitUntil { driver.offset <= controller.minimumOffset + 1 })
+      #expect(!controller.position.seeksTop)
+    }
+
     @Test("With motion on a jump eases to where it goes, and the reader's scroll stops it")
     func animatedJumps() async throws {
       Theme.Motion.isEnabled = true
