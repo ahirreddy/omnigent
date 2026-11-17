@@ -160,15 +160,20 @@ extension ConnectedWindowFlowTests {
     #expect(tabs.groups["conv_b"] != nil, "the tabs wait for the server")
 
     let saved = server.hold("/v1/sessions/conv_b", method: "DELETE")
+    // An earlier test's late alert, even one of the same title, can land in the shared record:
+    // only the alerts after the refusal is released count.
+    let earlier = SystemSideEffects.record.alertMessages.count
     refused.release()
     try await settle(mounted.screen, untilShowing: "Beta")
-    // A loaded VM can take seconds to present it. An earlier test's late alert can land in the
-    // same record, so only this one's count matters.
+    // A loaded VM can take seconds to present it.
     let refusal = "Could Not Update the Session"
-    try await settle(mounted.screen, until: "the alert", timeout: .seconds(15)) {
-      SystemSideEffects.record.alertMessages.contains(refusal)
+    func alertsSince() -> [String] {
+      Array(SystemSideEffects.record.alertMessages.dropFirst(earlier))
     }
-    let alerts = SystemSideEffects.record.alertMessages
+    try await settle(mounted.screen, until: "the alert", timeout: .seconds(15)) {
+      alertsSince().contains(refusal)
+    }
+    let alerts = alertsSince()
     #expect(alerts.filter { $0 == refusal }.count == 1, "alerts: \(alerts)")
     try await Task.sleep(for: .milliseconds(60))
     #expect(tabs.groups["conv_b"] != nil, "a refused delete keeps the tabs")
