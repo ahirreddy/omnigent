@@ -14,6 +14,8 @@
     private(set) var layoutWidth = LayoutWidth.regular
     private(set) var maxWidth = Theme.transcriptWidth
     private(set) var bubble = NSColor.clear
+    /// The transcript's own text size, outside the reading ramp: a Worked fold's title.
+    private(set) var labelSize = TypeRamp.defaultBody
     /// Whether settled messages draw in text cells: the TextKit renderer, chat style, rich
     /// output.
     private(set) var isEnabled = false
@@ -47,10 +49,11 @@
         && appearance.outputRendering == .rich
       let maxWidth = appearance.contentWidth.maxWidth
       let bubble = NSColor(Color(ThemeColor.userBubble.resolve(in: values).resolve(in: values)))
+      let labelSize = values.typeRamp.body
       guard
         style != self.style || ramp != self.ramp || isEnabled != self.isEnabled
           || values.layoutWidth != layoutWidth || maxWidth != self.maxWidth
-          || bubble != self.bubble
+          || bubble != self.bubble || labelSize != self.labelSize
       else { return false }
       if style != self.style {
         let palette = MessageTextPalette(style)
@@ -67,6 +70,7 @@
       layoutWidth = values.layoutWidth
       self.maxWidth = maxWidth
       self.bubble = bubble
+      self.labelSize = labelSize
       serial += 1
       return true
     }

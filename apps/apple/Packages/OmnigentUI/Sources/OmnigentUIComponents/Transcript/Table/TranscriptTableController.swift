@@ -56,6 +56,10 @@
     var textMessages: [String: (version: Int, message: TranscriptTableTextMessage?)] = [:]
     /// Answers handed to the prewarm, by row id and version.
     var prewarmed: [String: Int] = [:]
+    /// Which rows beyond settled messages draw in AppKit cells.
+    let cellStyle = TranscriptTableCellStyle.launchValue
+    /// The Worked folds the reader opened or closed.
+    let folds = TranscriptTableFolds()
     var awaitsEnvironment = false
 
     /// The follow rules (``TranscriptFollow``).
@@ -229,7 +233,11 @@
         }
         tableView.endUpdates()
       }
-      if !change.removed.isEmpty { pool.keep(only: Set(model.ids)) }
+      if !change.removed.isEmpty {
+        let kept = Set(model.ids)
+        pool.keep(only: kept)
+        folds.keep(only: kept)
+      }
       // Rows above moved the indices the idle measuring had reached.
       if !change.removed.isEmpty || !change.inserted.isEmpty { prefetchCursor = nil }
       var noted = IndexSet()

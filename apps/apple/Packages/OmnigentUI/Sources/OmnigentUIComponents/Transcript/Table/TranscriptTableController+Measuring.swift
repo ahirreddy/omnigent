@@ -20,8 +20,9 @@
 
     /// The kind of cell row `index` shows in.
     func cellKind(at index: Int) -> TranscriptTableCellKind {
-      let kind = model.rows[index].kind
-      return textMessage(at: index) == nil ? .hosted(kind) : .text(kind)
+      let row = model.rows[index]
+      if textMessage(at: index) != nil { return .text(row.kind) }
+      return cellStyle.drawsNatively(row) ? .native(row.kind) : .hosted(row.kind)
     }
 
     /// A cell for row `index` that the table keeps: from the pool, else a new one.
@@ -38,6 +39,8 @@
       switch kind {
       case .hosted: TranscriptTableHostingCell.make(environment: environment)
       case .text: TranscriptTableTextCell(style: textStyle)
+      case .native(.worked): TranscriptTableFoldCell(style: textStyle, folds: folds)
+      case .native: TranscriptTableSpacerCell()
       }
     }
 
@@ -182,7 +185,9 @@
         guard let cell = realizedCell(at: row) else { return }
         if cell.kind != cellKind(at: row) {
           reloaded.insert(row)
-        } else if cell is TranscriptTableTextCell, measure(row, with: cell) {
+        } else if cell is TranscriptTableTextCell || cell is TranscriptTableFoldCell,
+          measure(row, with: cell)
+        {
           noted.insert(row)
         }
       }

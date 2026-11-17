@@ -157,7 +157,7 @@
       let expected: [String: TranscriptTableCellKind] = [
         "u1": .text(.userMessage), "a1": .text(.answer),
         "a-diagram": .text(.answer), "a-live": .hosted(.answer),
-        TranscriptTableRow.footerID: .hosted(.footer),
+        TranscriptTableRow.footerID: .native(.footer),
       ]
       for (id, kind) in expected {
         let index = try #require(controller.model.index(of: id))

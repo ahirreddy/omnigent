@@ -161,11 +161,13 @@
     var width: CGFloat
   }
 
-  /// The kinds of cell the pool reuses: rows hosted in SwiftUI, and settled messages drawn as
-  /// TextKit text in AppKit (``TranscriptTableTextCell``), each by row kind.
+  /// The kinds of cell the pool reuses: rows hosted in SwiftUI, settled messages drawn as
+  /// TextKit text in AppKit (``TranscriptTableTextCell``), and Worked folds and an empty header
+  /// or footer drawn in AppKit (``TranscriptTableFoldCell``), each by row kind.
   enum TranscriptTableCellKind: Hashable {
     case hosted(TranscriptTableRowKind)
     case text(TranscriptTableRowKind)
+    case native(TranscriptTableRowKind)
   }
 
   /// A table cell: it shows one row at a width and reports when its content's ideal size
