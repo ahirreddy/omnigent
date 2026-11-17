@@ -51,6 +51,7 @@
     func makeAccessoryView() -> TranscriptTableAccessoryView {
       let view = TranscriptTableAccessoryView.make(environment: style.environment)
       view.sizeChanged = { [weak self] in self?.blockSizeChanged() }
+      view.action = { [weak self] in self?.togglePrompt() }
       addSubview(view)
       return view
     }

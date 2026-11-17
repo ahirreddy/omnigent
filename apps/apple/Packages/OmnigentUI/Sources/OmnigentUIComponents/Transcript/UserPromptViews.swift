@@ -65,16 +65,40 @@ struct UserPromptBody: View {
           .fixedSize(horizontal: false, vertical: true)
       }
       if collapsed != nil {
-        Button(UserPrompt.expandTitle(prompt.text)) { isExpanded = true }
-          .buttonStyle(.borderless)
-          .font(.callout)
-          .accessibilityIdentifier("user-prompt-show-more")
+        UserPromptToggle(title: UserPrompt.expandTitle(prompt.text), collapses: false) {
+          isExpanded = true
+        }
       } else if UserPrompt.collapsed(prompt.text) != nil {
-        Button("Collapse prompt") { isExpanded = false }
-          .buttonStyle(.borderless)
-          .font(.callout)
+        UserPromptToggle(title: UserPrompt.collapseTitle, collapses: true) { isExpanded = false }
       }
     }
+  }
+}
+
+extension UserPrompt {
+  /// The button that folds an expanded long prompt again.
+  static let collapseTitle = "Collapse prompt"
+}
+
+/// A long prompt's "Show full prompt" button, or, once it shows whole, "Collapse prompt".
+struct UserPromptToggle: View {
+  let title: String
+  /// It folds the prompt again.
+  let collapses: Bool
+  let toggle: @MainActor () -> Void
+
+  var body: some View {
+    if collapses {
+      button
+    } else {
+      button.accessibilityIdentifier("user-prompt-show-more")
+    }
+  }
+
+  private var button: some View {
+    Button(title, action: toggle)
+      .buttonStyle(.borderless)
+      .font(.callout)
   }
 }
 

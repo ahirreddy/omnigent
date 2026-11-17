@@ -64,7 +64,7 @@
     let cellStyle = TranscriptTableCellStyle.launchValue
     /// How SwiftUI rows are sized.
     let hostingStyle = TranscriptTableHostingStyle.launchValue
-    /// The Worked folds the reader opened or closed.
+    /// The Worked folds and long prompts the reader opened or closed.
     let folds = TranscriptTableFolds()
     var awaitsEnvironment = false
 

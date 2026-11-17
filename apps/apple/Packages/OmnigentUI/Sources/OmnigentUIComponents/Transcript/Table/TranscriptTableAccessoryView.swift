@@ -9,6 +9,8 @@
     case attachments([Attachment])
     /// A prompt's @-mentioned workspace files and folders, as chips above its text.
     case mentions([UserPrompt.Mention])
+    /// A long prompt's "Show full prompt" button, or "Collapse prompt" once it shows whole.
+    case promptToggle(title: String, collapses: Bool)
   }
 
   /// One accessory at the width its stack offers it, sized as that stack sizes it: as wide as
@@ -18,6 +20,8 @@
     /// The message it belongs to; a view reused for another message starts its state afresh.
     var rowID: String
     var width: CGFloat
+    /// What a button in it does.
+    var action: (@MainActor () -> Void)?
     let environment: TranscriptTableEnvironment
 
     var body: some View {
@@ -26,6 +30,8 @@
         switch accessory {
         case .attachments(let attachments): AttachmentStrip(attachments: attachments)
         case .mentions(let mentions): AttachedPathChips(mentions: mentions)
+        case .promptToggle(let title, let collapses):
+          UserPromptToggle(title: title, collapses: collapses) { action?() }
         case nil: EmptyView()
         }
       }
@@ -67,6 +73,8 @@
     }
 
     var accessory: TranscriptTableAccessory? { rootView.accessory }
+    /// What a button in it does: set once by the cell, which knows the message it shows.
+    var action: (@MainActor () -> Void)?
 
     /// Shows message `rowID`'s `accessory` offered `width`, unless it shows it already.
     func show(_ accessory: TranscriptTableAccessory, rowID: String, width: CGFloat) {
@@ -76,7 +84,8 @@
       }
       present(
         TranscriptTableAccessoryRoot(
-          accessory: accessory, rowID: rowID, width: width, environment: root.environment))
+          accessory: accessory, rowID: rowID, width: width, action: action,
+          environment: root.environment))
       // What loads as it first shows (an image read from the cache) reports before the cell
       // takes reports; a size that changed by then is reported once it has shown.
       MainRunLoop.performAfterDisplay { [weak self] in

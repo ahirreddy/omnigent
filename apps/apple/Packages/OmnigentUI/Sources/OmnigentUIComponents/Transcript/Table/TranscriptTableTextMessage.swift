@@ -5,7 +5,8 @@
   /// A settled chat message a text cell draws in AppKit (``TranscriptTableTextCell``): an answer
   /// or a user's prompt as TextKit text runs, with the blocks only SwiftUI draws (math, a
   /// diagram, an image, a wide table) hosted between them, and the parts beside the text that
-  /// SwiftUI draws (attachments, mentions) hosted where the message row stacks them.
+  /// SwiftUI draws (attachments, mentions, a long prompt's toggle) hosted where the message row
+  /// stacks them.
   struct TranscriptTableTextMessage {
     enum Role {
       case user
@@ -33,8 +34,24 @@
       case empty
     }
 
+    /// Whether a prompt over ``UserPrompt/collapseThreshold`` characters shows whole.
+    enum PromptFold {
+      case collapsed
+      case expanded
+    }
+
+    /// A long prompt's fold; `nil` for any other message.
+    var promptFold: PromptFold?
+
     /// The message row `row` shows, when a text cell can draw all of it at `ramp`.
-    static func make(_ row: TranscriptTableRow, ramp: TypeRamp) -> Self? {
+    /// - Parameters:
+    ///   - row: The row.
+    ///   - ramp: The reading ramp the text splits at.
+    ///   - expandsPrompt: A long prompt shows whole; it starts collapsed.
+    /// - Returns: The message, or `nil` for a row that stays SwiftUI's.
+    static func make(_ row: TranscriptTableRow, ramp: TypeRamp, expandsPrompt: Bool = false)
+      -> Self?
+    {
       guard case .segment(let entry) = row.content,
         case .item(.message(let message)) =
           entry.segment
@@ -45,40 +62,56 @@
       let decoration = entry.decorations[message.id] ?? MessageDecoration()
       let attachments: [Entry] =
         message.attachments.isEmpty ? [] : [.accessory(.attachments(message.attachments))]
-      let role: Role
-      let markdown: String
-      var entries: [Entry] = []
+      let made: Self
       switch message.role {
       case .assistant:
         guard !message.text.isEmpty else { return nil }
-        role = .answer
-        markdown = message.text
-        let text = Self.pieces(of: markdown, ramp: ramp)
-        entries = (text.isEmpty ? [.empty] : text) + attachments
+        let text = Self.pieces(of: message.text, ramp: ramp)
+        made = Self(
+          role: .answer, row: message, decoration: decoration, markdown: message.text,
+          split: MessageTextSplits.shared.split(message.text, ramp: ramp),
+          entries: (text.isEmpty ? [.empty] : text) + attachments)
       case .user:
-        let prompt = UserPrompt.parse(message.text)
-        guard !decoration.showsAvatar, UserPrompt.collapsed(prompt.text) == nil else {
-          return nil
-        }
-        role = .user
-        markdown = prompt.text
-        // Attachments lead the bubble, then the body: its mentions' chips above its text. A
-        // prompt of attachments alone has no body.
-        let mentions: [Entry] =
-          prompt.mentions.isEmpty ? [] : [.accessory(.mentions(prompt.mentions))]
-        var body = mentions + Self.pieces(of: markdown, ramp: ramp)
-        if body.isEmpty, !message.text.isEmpty { body = [.empty] }
-        entries = attachments + body
+        guard !decoration.showsAvatar else { return nil }
+        made = prompt(
+          message, decoration: decoration, leading: attachments, ramp: ramp,
+          expands: expandsPrompt)
       case .tool:
         return nil
       }
       // A message that shows nothing at all stays SwiftUI's.
-      guard entries.contains(where: { if case .empty = $0 { false } else { true } }) else {
+      guard made.entries.contains(where: { if case .empty = $0 { false } else { true } }) else {
         return nil
       }
+      return made
+    }
+
+    /// A user's prompt: `leading` first in its bubble, then its body as ``UserPromptBody``
+    /// stacks it: its mentions' chips, its text and a long prompt's toggle. A prompt of
+    /// attachments alone has no body.
+    private static func prompt(
+      _ message: Row, decoration: MessageDecoration, leading: [Entry], ramp: TypeRamp,
+      expands: Bool
+    ) -> Self {
+      let prompt = UserPrompt.parse(message.text)
+      var markdown = prompt.text
+      var fold: PromptFold?
+      var toggle: [Entry] = []
+      // A long prompt shows its start and "Show full prompt" until the reader expands it.
+      if let collapsed = UserPrompt.collapsed(prompt.text) {
+        fold = expands ? .expanded : .collapsed
+        if !expands { markdown = collapsed + "\u{2026}" }
+        let title = expands ? UserPrompt.collapseTitle : UserPrompt.expandTitle(prompt.text)
+        toggle = [.accessory(.promptToggle(title: title, collapses: expands))]
+      }
+      let mentions: [Entry] =
+        prompt.mentions.isEmpty ? [] : [.accessory(.mentions(prompt.mentions))]
+      var body = mentions + pieces(of: markdown, ramp: ramp) + toggle
+      if body.isEmpty, !message.text.isEmpty { body = [.empty] }
       return Self(
-        role: role, row: message, decoration: decoration, markdown: markdown,
-        split: MessageTextSplits.shared.split(markdown, ramp: ramp), entries: entries)
+        role: .user, row: message, decoration: decoration, markdown: markdown,
+        split: MessageTextSplits.shared.split(markdown, ramp: ramp), entries: leading + body,
+        promptFold: fold)
     }
 
     /// The pieces `markdown` splits into at `ramp`.

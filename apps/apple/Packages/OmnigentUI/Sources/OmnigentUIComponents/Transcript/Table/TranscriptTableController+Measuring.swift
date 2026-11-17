@@ -7,13 +7,19 @@
     // MARK: Cells
 
     /// The text-cell message row `index` shows, or `nil` when the row stays hosted in SwiftUI;
-    /// worked out once per content version.
+    /// worked out once per content version and, for a long prompt, whether it shows whole.
     func textMessage(at index: Int) -> TranscriptTableTextMessage? {
       guard textStyle.isEnabled else { return nil }
       let row = model.rows[index]
       let version = model.version(at: index)
-      if let known = textMessages[row.id], known.version == version { return known.message }
-      let message = TranscriptTableTextMessage.make(row, ramp: textStyle.ramp)
+      let expands = folds.isExpanded(row.id, isLive: false)
+      if let known = textMessages[row.id], known.version == version,
+        known.message?.promptFold.map({ ($0 == .expanded) == expands }) ?? true
+      {
+        return known.message
+      }
+      let message = TranscriptTableTextMessage.make(
+        row, ramp: textStyle.ramp, expandsPrompt: expands)
       textMessages[row.id] = (version, message)
       return message
     }
@@ -40,7 +46,7 @@
       case .hosted where hostingStyle == .fitted:
         TranscriptTableFittedCell(environment: environment)
       case .hosted: TranscriptTableHostingCell.make(environment: environment)
-      case .text: TranscriptTableTextCell(style: textStyle)
+      case .text: TranscriptTableTextCell(style: textStyle, folds: folds)
       case .native(.worked): TranscriptTableFoldCell(style: textStyle, folds: folds)
       case .native: TranscriptTableSpacerCell()
       }

@@ -36,8 +36,8 @@
     }
   }
 
-  /// The Worked folds the reader opened or closed, by row id. A fold's cell shows other rows
-  /// once it scrolls away, so the choice lives with the table (``TranscriptTableFoldCell``).
+  /// The Worked folds and long prompts the reader opened or closed, by row id. A row's cell shows
+  /// other rows once it scrolls away, so the choice lives with the table.
   @MainActor
   final class TranscriptTableFolds {
     private var overrides: [String: Bool] = [:]

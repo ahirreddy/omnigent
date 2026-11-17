@@ -13,6 +13,8 @@
     var idealSizeChanged: ((any TranscriptTableCell) -> Void)?
 
     let style: TranscriptTableTextStyle
+    /// Which long prompts the reader showed whole.
+    let folds: TranscriptTableFolds
     private var styleSerial = -1
     private(set) var message: TranscriptTableTextMessage?
     /// One view per run of text blocks, top to bottom.
@@ -50,8 +52,9 @@
     /// Counts reads of the links' state; only the latest read's change shows the row again.
     var linkWatch = 0
 
-    init(style: TranscriptTableTextStyle) {
+    init(style: TranscriptTableTextStyle, folds: TranscriptTableFolds = TranscriptTableFolds()) {
       self.style = style
+      self.folds = folds
       super.init(frame: .zero)
       bubbleView.isHidden = true
       addSubview(bubbleView)
@@ -77,7 +80,9 @@
       if next == shown, styleSerial == style.serial, takeBitmapsBack() { return }
       // The same content in a new style may take another height, which the table then asks.
       let isRestyle = next == shown
-      guard let message = TranscriptTableTextMessage.make(row, ramp: style.ramp),
+      guard
+        let message = TranscriptTableTextMessage.make(
+          row, ramp: style.ramp, expandsPrompt: folds.isExpanded(row.id, isLive: false)),
         let textStyle = style.style
       else {
         releaseContent()
@@ -205,6 +210,16 @@
           self?.awaitsLayout = false
           self?.blockSizeChanged()
         }
+      }
+    }
+
+    /// The reader showed a long prompt whole, or collapsed it again: the choice outlasts the
+    /// cell, and the prompt shows again once the button's press is over.
+    func togglePrompt() {
+      guard let message, let fold = message.promptFold else { return }
+      folds.setExpanded(fold == .collapsed, for: message.row.id)
+      MainRunLoop.perform { [weak self] in
+        MainActor.assumeIsolated { self?.showAgain() }
       }
     }
 
