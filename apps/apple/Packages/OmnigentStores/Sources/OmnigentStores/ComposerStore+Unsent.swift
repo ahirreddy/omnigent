@@ -141,6 +141,7 @@ extension ComposerStore {
     do {
       try await post(core, sessionID)
     } catch {
+      await eventsBeforeAnswer()
       inFlight = nil
       let failure = coreError(error)
       lastError = failure

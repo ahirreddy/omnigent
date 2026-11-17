@@ -563,6 +563,14 @@ impl Engine {
                 }));
             }
             ClientEvent::HydrationRequested { session_id } => self.request_hydration(&session_id),
+            ClientEvent::TurnExpected {
+                session_id,
+                expectation,
+            } => self.expect_turn(&session_id, expectation),
+            ClientEvent::TurnExpectationEnded {
+                session_id,
+                expectation,
+            } => self.end_turn_expectation(&session_id, expectation),
             ClientEvent::ChangedFiles {
                 session_id,
                 environment_id,

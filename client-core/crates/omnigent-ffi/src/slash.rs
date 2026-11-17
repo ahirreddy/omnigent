@@ -398,8 +398,10 @@ impl ClientCore {
         let sent = self
             .sessions()
             .send_command(&session_id, &text, payload)
-            .await
-            .map_err(CoreError::from)?;
+            .await;
+        // A refused send's working state is gone by the time it answers.
+        self.events_published().await;
+        let sent = sent.map_err(CoreError::from)?;
         Ok(MessageSent {
             queued: sent.submission.queued,
             item_id: sent.submission.item_id,

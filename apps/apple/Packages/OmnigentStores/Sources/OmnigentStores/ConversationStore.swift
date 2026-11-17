@@ -117,7 +117,9 @@ public final class ConversationStore {
   public private(set) var agentInfo: AgentInfo?
 
   let core: ClientCore
-  private let listStatus: ListStatusExpectation
+  let listStatus: ListStatusExpectation
+  /// The running status each message being sent shows in the session list, by its row.
+  @ObservationIgnored var sendingListStatus: [String: ListStatusExpectation.Pending] = [:]
   @ObservationIgnored private var rowWatches = RowWatches()
 
   init(

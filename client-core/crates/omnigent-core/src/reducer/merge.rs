@@ -76,6 +76,7 @@ impl LiveReducer {
         anchor_renamed_commits(&previous_rows, &authoritative.rows, &mut anchors);
         let mut event_state = self.snap.event_state.clone();
         event_state.merge(&authoritative.event_state);
+        self.server_status = authoritative.header.status;
         self.snap = authoritative;
         self.snap.rows.retain(|row| !stale_text.contains(&row.id));
         self.snap.event_state = event_state;

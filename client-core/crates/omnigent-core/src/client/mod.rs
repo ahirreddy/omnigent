@@ -141,6 +141,22 @@ pub enum ClientEvent {
         /// The timer.
         timer: IntentTimer,
     },
+    /// A message to this session is being sent: if it is open and idle, show it working until
+    /// the server reports the turn, [`Self::TurnExpectationEnded`] names this expectation, or
+    /// [`crate::reconcile::TURN_EXPECTATION_MS`] passes.
+    TurnExpected {
+        /// The session.
+        session_id: String,
+        /// Identifies this send's expectation.
+        expectation: u64,
+    },
+    /// The send behind `expectation` was not accepted: stop showing the turn it expected.
+    TurnExpectationEnded {
+        /// The session.
+        session_id: String,
+        /// From [`Self::TurnExpected`].
+        expectation: u64,
+    },
 }
 
 /// Receives [`ClientEvent`]s. Called outside the core's lock, on the thread that ran the
@@ -199,6 +215,8 @@ struct State {
     link_returns: u64,
     drafts: AttachmentDraftStore,
     composer: BTreeMap<(String, String), String>,
+    /// The last [`ClientEvent::TurnExpected`] id handed out.
+    turn_expectations: u64,
     events: Vec<ClientEvent>,
     /// Where sessions run, for replica routing on host-sharded servers.
     routing: routing::ReplicaRouting,
@@ -232,6 +250,14 @@ impl State {
         self.first_message_titles.clear();
         self.routing = routing::ReplicaRouting::default();
         self.side_chats.clear();
+    }
+
+    /// The send behind `expectation` was not accepted: the conversation stops showing its turn.
+    fn end_turn_expectation(&mut self, session_id: &str, expectation: u64) {
+        self.events.push(ClientEvent::TurnExpectationEnded {
+            session_id: session_id.to_owned(),
+            expectation,
+        });
     }
 
     /// The queued events as the UI gets them. List changes carry what the list shows: side

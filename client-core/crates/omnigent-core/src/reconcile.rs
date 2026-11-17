@@ -41,6 +41,8 @@ use crate::sandbox_state::SandboxProfileName;
 pub const MAX_REMEMBERED_BROWSER_ACTIONS: usize = 512;
 /// Events buffered at most while a history read is in flight.
 pub const MAX_BUFFERED_EVENTS: usize = 1_024;
+/// How long a sent message shows its session working without the server reporting the turn.
+pub const TURN_EXPECTATION_MS: u64 = 30_000;
 /// Title of a session that has none.
 pub const UNTITLED_SESSION: &str = "Untitled session";
 /// Title of a conversation whose metadata has not loaded yet.
@@ -73,6 +75,12 @@ const METADATA_EVENTS: &[&str] = &[
     "response.cancelled",
     "session.interrupted",
 ];
+
+/// Whether `event` reports on the session's turn: a metadata event that is not a setting.
+fn reports_turn(event: &ServerStreamEvent) -> bool {
+    let kind = event.event_type();
+    METADATA_EVENTS.contains(&kind) && !SETTING_EVENTS.contains(&kind)
+}
 
 /// Accepts snapshots of one session in increasing revision order.
 #[derive(Debug, Clone, PartialEq)]
@@ -676,6 +684,9 @@ pub struct ConversationSync {
     browser_actions: std::collections::VecDeque<String>,
     /// History loaded above the newest page; survives rehydrations and reconnects.
     older: older::OlderHistory,
+    /// A message this client sent whose turn the server has not reported yet: the idle session
+    /// shows working meanwhile (see [`Self::expect_turn`]).
+    expected_turn: Option<u64>,
 }
 
 impl ConversationSync {
@@ -696,6 +707,7 @@ impl ConversationSync {
             revision: 0,
             browser_actions: std::collections::VecDeque::new(),
             older: older::OlderHistory::default(),
+            expected_turn: None,
         }
     }
 
@@ -747,7 +759,10 @@ impl ConversationSync {
             .collect()
     }
 
-    fn publish(&mut self, changes: ChangeSet) -> SyncUpdate {
+    fn publish(&mut self, mut changes: ChangeSet) -> SyncUpdate {
+        if let Some(header) = changes.header.as_mut() {
+            self.show_expected_turn(header);
+        }
         if !changes.is_empty() {
             self.revision += 1;
         }
@@ -756,6 +771,83 @@ impl ConversationSync {
             revision: self.revision,
             ..SyncUpdate::default()
         }
+    }
+
+    /// The header as shown: the published one, working while a sent message's turn is expected.
+    #[must_use]
+    pub fn shown_header(&self) -> Option<SessionHeader> {
+        let mut header = self.published()?.header.clone();
+        self.show_expected_turn(&mut header);
+        Some(header)
+    }
+
+    fn show_expected_turn(&self, header: &mut SessionHeader) {
+        if self.expected_turn.is_some() && header.status == TurnStatus::Idle {
+            header.status = TurnStatus::Running;
+        }
+    }
+
+    /// The live header's status as shown.
+    fn shown_status(&self) -> Option<TurnStatus> {
+        let mut header = self.reducer.as_ref()?.snapshot().header.clone();
+        self.show_expected_turn(&mut header);
+        Some(header.status)
+    }
+
+    /// A message was sent: the idle conversation shows working until the server reports the
+    /// turn, [`Self::end_turn_expectation`] takes it back or [`TURN_EXPECTATION_MS`] passes. A
+    /// conversation that is not idle, or not loaded, changes nothing.
+    pub fn expect_turn(&mut self, expectation: u64) -> SyncUpdate {
+        let idle = self
+            .reducer
+            .as_ref()
+            .is_some_and(|reducer| reducer.snapshot().header.status == TurnStatus::Idle);
+        if self.link == Link::Stopped || !idle {
+            return SyncUpdate::default();
+        }
+        self.expected_turn = Some(expectation);
+        self.publish_shown_status(Some(TurnStatus::Idle))
+    }
+
+    /// The send behind `expectation` was refused, or its time ran out: the conversation shows
+    /// what the server last reported. Another expectation stays.
+    pub fn end_turn_expectation(&mut self, expectation: u64) -> SyncUpdate {
+        if self.expected_turn != Some(expectation) {
+            return SyncUpdate::default();
+        }
+        let shown = self.shown_status();
+        self.expected_turn = None;
+        self.publish_shown_status(shown)
+    }
+
+    /// Whether `event` is the server's word on the turn a sent message expects: a status, or a
+    /// response that ended. A native harness's turn outlives the response that typed its prompt,
+    /// so that response's completion is not.
+    fn reports_turn_outcome(&self, event: &ServerStreamEvent) -> bool {
+        match event.event_type() {
+            "session.status"
+            | "session.interrupted"
+            | "response.failed"
+            | "response.incomplete"
+            | "response.cancelled" => true,
+            "response.completed" => !self
+                .reducer
+                .as_ref()
+                .is_some_and(LiveReducer::is_native_session),
+            _ => false,
+        }
+    }
+
+    /// Publishes the live header when its shown status is no longer `before`.
+    fn publish_shown_status(&mut self, before: Option<TurnStatus>) -> SyncUpdate {
+        let changes = match &self.reducer {
+            Some(reducer) if self.shown_status() != before => ChangeSet {
+                header: Some(reducer.snapshot().header.clone()),
+                ..ChangeSet::default()
+            },
+            _ => ChangeSet::default(),
+        };
+        self.publish(changes)
     }
 
     /// Installs a conversation loaded before the stream (for example a cached first page).
@@ -847,6 +939,7 @@ impl ConversationSync {
         self.generation += 1;
         self.reducer = None;
         self.displaced = None;
+        self.expected_turn = None;
         self.older.clear();
     }
 
@@ -914,6 +1007,7 @@ impl ConversationSync {
                 limit: MAX_BUFFERED_EVENTS,
             });
         }
+        let shown_before = self.shown_status();
         let (mut reducer, mut changes) = if let Some(reducer) = self.reducer.take() {
             (reducer, ChangeSet::default())
         } else {
@@ -937,6 +1031,12 @@ impl ConversationSync {
             }
         }
         changes.extend(outcome.changes);
+        if self.expected_turn.is_some() && self.reports_turn_outcome(&event) {
+            self.expected_turn = None;
+            if changes.header.is_none() && self.shown_status() != shown_before {
+                changes.header = self.published().map(|snapshot| snapshot.header.clone());
+            }
+        }
         if self.is_hydrating() {
             self.buffered.push(event);
         }
@@ -971,8 +1071,9 @@ impl ConversationSync {
     ///
     /// The read is merged into the live state: committed rows replace their previews, previews not
     /// in history yet keep their slot, buffered events are replayed onto the history (so a
-    /// consumed input is not repeated), and a newer header learned meanwhile is kept. A stale
-    /// request (superseded, or from a stopped stream) changes nothing.
+    /// consumed input is not repeated), a newer header learned meanwhile is kept, and so is the
+    /// turn status the stream reported meanwhile. A stale request (superseded, or from a stopped
+    /// stream) changes nothing.
     ///
     /// # Errors
     ///
@@ -988,9 +1089,14 @@ impl ConversationSync {
         if !self.is_current(request) || session.id != self.session_id {
             return Ok(SyncUpdate::default());
         }
+        let read = header_from_snapshot(session, self.ledger.header(&session.id))?;
         let header = match self.ledger.newer_than(&session.id, request.epoch) {
-            Some(newer) => newer.clone(),
-            None => header_from_snapshot(session, self.ledger.header(&session.id))?,
+            // Newer settings stand, but no earlier read knows the turn status better than this one.
+            Some(newer) => SessionHeader {
+                status: read.status,
+                ..newer.clone()
+            },
+            None => read,
         };
         // Composed on a copy so a read that cannot be shown leaves paging as it was.
         let mut older = self.older.clone();
@@ -1014,7 +1120,12 @@ impl ConversationSync {
         for event in &self.buffered {
             again |= current.apply(event)?.effects.reconcile;
         }
-        let header = self.ledger.record(authoritative.header);
+        // What the stream said about the turn during the read is newer than the read.
+        let mut header = authoritative.header;
+        if self.buffered.iter().any(reports_turn) {
+            header.status = current.snapshot().header.status;
+        }
+        let header = self.ledger.record(header);
         self.ledger.cache(header.clone());
         current.set_header(header);
         self.buffered.clear();
@@ -1029,6 +1140,14 @@ impl ConversationSync {
             }
             None => self.replace_reducer(current),
         };
+        // A read that shows the turn under way settles the expectation of a sent message.
+        if self
+            .reducer
+            .as_ref()
+            .is_some_and(|reducer| reducer.snapshot().header.status != TurnStatus::Idle)
+        {
+            self.expected_turn = None;
+        }
         let hydrate = if again {
             self.request_hydration()
         } else {

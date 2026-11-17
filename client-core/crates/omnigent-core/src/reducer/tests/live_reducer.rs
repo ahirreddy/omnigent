@@ -72,6 +72,61 @@ fn ordinary_response_deltas_remain_blocked_after_completion() {
     assert_eq!(*harness.snapshot(), before);
 }
 
+#[test]
+fn a_native_turn_keeps_working_after_the_response_that_typed_its_prompt() {
+    let status = |status: &str, response: Option<&str>| {
+        let mut event =
+            json!({"type": "session.status", "conversation_id": SESSION, "status": status});
+        if let Some(response) = response {
+            event["response_id"] = json!(response);
+        }
+        event
+    };
+    let wrapper = |kind: &str| json!({"type": kind, "response": {"id": "resp_wrapper"}});
+    // (harness, the server reported the turn running first, status once the wrapper ends)
+    let cases = [
+        ("codex-native", true, TurnStatus::Running),
+        ("codex-native", false, TurnStatus::Idle),
+        ("openai-agents", true, TurnStatus::Idle),
+    ];
+    for (harness_name, reported, expected) in cases {
+        let mut snapshot = conversation(SESSION, Vec::new());
+        snapshot.header.settings = Some(SessionSettings {
+            harness: Some(harness_name.to_owned()),
+            ..SessionSettings::default()
+        });
+        let mut harness = Harness::from_snapshot(snapshot);
+        if reported {
+            harness.send(status("running", None));
+        }
+        harness.send_all(&[
+            wrapper("response.in_progress"),
+            wrapper("response.completed"),
+        ]);
+        assert_eq!(
+            harness.snapshot().header.status,
+            expected,
+            "{harness_name}, running reported first: {reported}"
+        );
+    }
+    // The harness's own turn then reports, and its end is the turn's end.
+    let mut snapshot = conversation(SESSION, Vec::new());
+    snapshot.header.settings = Some(SessionSettings {
+        harness: Some("codex-native".to_owned()),
+        ..SessionSettings::default()
+    });
+    let mut harness = Harness::from_snapshot(snapshot);
+    harness.send_all(&[
+        status("running", None),
+        wrapper("response.in_progress"),
+        wrapper("response.completed"),
+        status("running", Some("codex_turn")),
+    ]);
+    assert_eq!(harness.snapshot().header.status, TurnStatus::Running);
+    harness.send(status("idle", Some("codex_turn")));
+    assert_eq!(harness.snapshot().header.status, TurnStatus::Idle);
+}
+
 fn demo_settings() -> SessionSettings {
     let option = |value| serde_json::from_value::<NativeModelOption>(value).expect("option");
     SessionSettings {

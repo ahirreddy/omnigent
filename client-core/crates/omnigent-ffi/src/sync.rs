@@ -245,6 +245,16 @@ impl ConversationSync {
         lock(&self.inner).close_stream();
     }
 
+    pub(crate) fn expect_turn_raw(&self, expectation: u64) -> Applied {
+        let update = lock(&self.inner).expect_turn(expectation);
+        Applied::new(update, &self.session_id)
+    }
+
+    pub(crate) fn end_turn_expectation_raw(&self, expectation: u64) -> Applied {
+        let update = lock(&self.inner).end_turn_expectation(expectation);
+        Applied::new(update, &self.session_id)
+    }
+
     pub(crate) fn stop_raw(&self) {
         lock(&self.inner).stop();
     }
@@ -502,11 +512,9 @@ impl ConversationSync {
             .unwrap_or_default()
     }
 
-    /// The published header.
+    /// The published header, working while a sent message's turn is expected.
     pub fn header(&self) -> Option<SessionHeader> {
-        lock(&self.inner)
-            .published()
-            .map(|snapshot| snapshot.header.clone().into())
+        lock(&self.inner).shown_header().map(Into::into)
     }
 
     /// The published decision cards.

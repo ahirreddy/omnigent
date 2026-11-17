@@ -12,7 +12,7 @@ use crate::host::{ConnectionFailure, SocketMessage};
 use crate::http::HttpHeader;
 use crate::sessions::SessionListChange;
 use crate::test_support::{Harness, connected, envelope_response, fixture, json};
-use crate::transcript::{Row, RowRole, apply_row_ops};
+use crate::transcript::{Row, RowRole, TurnStatus, apply_row_ops};
 
 const SESSION: &str = "facbcc05b00f4321b98b1929d217abc5";
 
@@ -900,6 +900,109 @@ fn live_session() -> Harness {
     sink.chunk(HEARTBEAT.to_vec());
     harness.pump();
     harness
+}
+
+/// The turn statuses the transcript's header changes in `events` show, in order.
+fn shown_statuses(events: &[CoreEvent]) -> Vec<TurnStatus> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            CoreEvent::TranscriptChanged { change, .. } => {
+                change.header.as_ref().map(|header| header.status)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn status_frame(status: &str) -> Vec<u8> {
+    format!(
+        "event: session.status\ndata: {}\n\n",
+        serde_json::json!({"type": "session.status", "conversation_id": SESSION, "status": status})
+    )
+    .into_bytes()
+}
+
+/// A live session whose message POST answers `answer` (held until the returned sender goes when
+/// `held`), and the send started on it.
+fn sending(
+    answer: crate::http::HttpResponse,
+    held: bool,
+) -> (
+    Harness,
+    Option<futures::channel::oneshot::Sender<()>>,
+    SendSlot,
+) {
+    let mut harness = live_session();
+    let events = format!("/v1/sessions/{SESSION}/events");
+    harness.http.route_method("POST", &events, answer);
+    let release = held.then(|| harness.http.hold(&events));
+    harness.events.take();
+    let core = Arc::clone(&harness.core);
+    let sent =
+        harness.start(async move { core.send_message(SESSION.into(), "hello".into()).await });
+    (harness, release, sent)
+}
+
+type SendSlot =
+    std::rc::Rc<std::cell::RefCell<Option<Result<crate::client::MessageSent, CoreError>>>>;
+
+fn accepted() -> crate::http::HttpResponse {
+    json(202, r#"{"queued":true,"item_id":"i1"}"#)
+}
+
+#[test]
+fn a_sent_message_shows_working_before_the_answer_and_until_its_time_runs_out() {
+    use omnigent_core::reconcile::TURN_EXPECTATION_MS;
+    let (mut harness, release, sent) = sending(accepted(), true);
+    assert!(sent.borrow().is_none(), "the answer is held");
+    assert_eq!(
+        shown_statuses(&harness.events.take()),
+        [TurnStatus::Running]
+    );
+    drop(release);
+    harness.pump();
+    assert!(matches!(&*sent.borrow(), Some(Ok(_))));
+    // Accepted, with no report from the server: working until the expectation runs out.
+    harness.advance(TURN_EXPECTATION_MS - 1);
+    assert!(!shown_statuses(&harness.events.take()).contains(&TurnStatus::Idle));
+    harness.advance(1);
+    assert_eq!(
+        shown_statuses(&harness.events.take()).last(),
+        Some(&TurnStatus::Idle)
+    );
+}
+
+#[test]
+fn a_turn_the_server_reported_outlives_the_sent_messages_time_limit() {
+    use omnigent_core::reconcile::TURN_EXPECTATION_MS;
+    let (mut harness, _, sent) = sending(accepted(), false);
+    assert!(matches!(&*sent.borrow(), Some(Ok(_))));
+    let (sink, _, _) = harness.streams.last();
+    sink.chunk(status_frame("running"));
+    harness.pump();
+    harness.events.take();
+    harness.advance(TURN_EXPECTATION_MS);
+    assert!(!shown_statuses(&harness.events.take()).contains(&TurnStatus::Idle));
+    sink.chunk(status_frame("idle"));
+    harness.pump();
+    assert_eq!(
+        shown_statuses(&harness.events.take()).last(),
+        Some(&TurnStatus::Idle)
+    );
+}
+
+#[test]
+fn a_refused_send_stops_showing_working_at_once() {
+    let (mut harness, release, sent) = sending(json(403, r#"{"detail":"read only"}"#), true);
+    assert_eq!(
+        shown_statuses(&harness.events.take()),
+        [TurnStatus::Running]
+    );
+    drop(release);
+    harness.pump();
+    assert!(matches!(&*sent.borrow(), Some(Err(_))));
+    assert_eq!(shown_statuses(&harness.events.take()), [TurnStatus::Idle]);
 }
 
 fn link_states(events: &[CoreEvent]) -> Vec<LinkState> {

@@ -153,8 +153,10 @@ impl ClientCore {
                 harness.as_deref(),
                 &paths,
             )
-            .await
-            .map_err(CoreError::from)?;
+            .await;
+        // A refused send's working state is gone by the time it answers.
+        self.events_published().await;
+        let sent = sent.map_err(CoreError::from)?;
         if self.is_demo() {
             self.post(Msg::DemoKick);
         }

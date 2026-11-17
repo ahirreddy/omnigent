@@ -503,6 +503,35 @@ impl Engine {
         }
     }
 
+    /// A message to `session_id` is being sent: an open, idle conversation shows working until
+    /// the server reports the turn, the send fails or the expectation's time runs out.
+    pub(crate) fn expect_turn(&mut self, session_id: &str, expectation: u64) {
+        let Some(driver) = self.drivers.get(session_id) else {
+            return;
+        };
+        let applied = driver.sync.expect_turn_raw(expectation);
+        self.publish(session_id, applied);
+        let tx = self.sender();
+        let ended = core::ClientEvent::TurnExpectationEnded {
+            session_id: session_id.to_owned(),
+            expectation,
+        };
+        // Never aborted: ids are never reused, so an expectation that already ended stays so.
+        let delay = core::reconcile::TURN_EXPECTATION_MS;
+        drop(self.host.after(delay, move || {
+            post(&tx, Msg::Client(ended));
+        }));
+    }
+
+    /// The send behind `expectation` was refused, or its time ran out.
+    pub(crate) fn end_turn_expectation(&mut self, session_id: &str, expectation: u64) {
+        let Some(driver) = self.drivers.get(session_id) else {
+            return;
+        };
+        let applied = driver.sync.end_turn_expectation_raw(expectation);
+        self.publish(session_id, applied);
+    }
+
     pub(crate) fn request_hydration(&self, session_id: &str) {
         let Some(driver) = self.drivers.get(session_id) else {
             return;

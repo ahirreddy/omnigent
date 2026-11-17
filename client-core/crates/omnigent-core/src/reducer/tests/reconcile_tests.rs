@@ -952,3 +952,210 @@ fn hydration_shows_the_launch_follows_its_events_and_readies_it_when_a_read_says
         .expect("hydration");
     assert_eq!(stage(&sync), Some(LaunchStage::Ready));
 }
+
+/// What a native Codex send streamed on a local stack: the runner's running edge, the wrapper
+/// response that typed the prompt, then the harness's running edge for its own turn.
+fn native_turn_start() -> Vec<Value> {
+    vec![
+        json!({"type": "session.status", "conversation_id": SESSION, "status": "running"}),
+        json!({"type": "response.in_progress", "response": {"id": "resp_wrapper"}}),
+        json!({"type": "response.completed", "response": {"id": "resp_wrapper"}}),
+        json!({
+            "type": "session.status", "conversation_id": SESSION, "status": "running",
+            "response_id": "codex_turn"
+        }),
+    ]
+}
+
+fn status(sync: &ConversationSync) -> Option<TurnStatus> {
+    reducer_header(sync).map(|header| header.status)
+}
+
+#[test]
+fn a_turn_that_starts_during_a_read_stays_working_whatever_the_read_says() {
+    for read_status in ["idle", "running"] {
+        let mut sync = ConversationSync::new(SESSION);
+        let first = sync.open_stream();
+        sync.finish_hydration(&first, &minimal_session(&json!({})), &[])
+            .expect("first read");
+        assert_eq!(status(&sync), Some(TurnStatus::Idle));
+        // A send asks for a read, and the turn starts while it is in flight.
+        let request = sync.request_hydration().expect("hydration starts");
+        send(&mut sync, &native_turn_start());
+        assert_eq!(status(&sync), Some(TurnStatus::Running));
+        let read = minimal_session(&json!({ "status": read_status }));
+        let update = sync
+            .finish_hydration(&request, &read, &[])
+            .expect("hydration");
+        assert_eq!(
+            status(&sync),
+            Some(TurnStatus::Running),
+            "a read that answered {read_status} ended a turn the stream started"
+        );
+        if let Some(again) = update.hydrate {
+            let running = minimal_session(&json!({"status": "running"}));
+            sync.finish_hydration(&again, &running, &[])
+                .expect("follow-up read");
+            assert_eq!(status(&sync), Some(TurnStatus::Running));
+        }
+    }
+}
+
+#[test]
+fn a_turn_that_ends_during_a_read_stays_ended_and_settings_still_come_from_the_read() {
+    let mut sync = ConversationSync::new(SESSION);
+    let first = sync.open_stream();
+    sync.finish_hydration(&first, &minimal_session(&json!({"status": "running"})), &[])
+        .expect("first read");
+    let request = sync.request_hydration().expect("hydration starts");
+    send(
+        &mut sync,
+        &[json!({"type": "session.status", "conversation_id": SESSION, "status": "idle"})],
+    );
+    let read = minimal_session(&json!({"status": "running", "harness": "codex-native"}));
+    let update = sync
+        .finish_hydration(&request, &read, &[])
+        .expect("hydration");
+    assert_eq!(status(&sync), Some(TurnStatus::Idle));
+    // A read crossed only by settings keeps its own status.
+    let request = update
+        .hydrate
+        .expect("the turn's end asks for another read");
+    send(
+        &mut sync,
+        &[json!({"type": "session.model", "conversation_id": SESSION, "model": "other"})],
+    );
+    sync.finish_hydration(
+        &request,
+        &minimal_session(&json!({"status": "running"})),
+        &[],
+    )
+    .expect("hydration");
+    assert_eq!(status(&sync), Some(TurnStatus::Running));
+}
+
+/// A watched, idle session running `harness`.
+fn idle_sync(harness: &str) -> ConversationSync {
+    let mut sync = ConversationSync::new(SESSION);
+    let first = sync.open_stream();
+    sync.finish_hydration(
+        &first,
+        &minimal_session(&json!({ "harness": harness })),
+        &[],
+    )
+    .expect("first read");
+    sync
+}
+
+fn shown(sync: &ConversationSync) -> Option<TurnStatus> {
+    sync.shown_header().map(|header| header.status)
+}
+
+/// The status an update publishes, when it publishes a header.
+fn published(update: &SyncUpdate) -> Option<TurnStatus> {
+    update.changes.header.as_ref().map(|header| header.status)
+}
+
+fn session_status(status: &str) -> Value {
+    json!({"type": "session.status", "conversation_id": SESSION, "status": status})
+}
+
+#[test]
+fn a_sent_message_shows_working_until_the_server_reports_its_turn() {
+    let mut sync = idle_sync("codex-native");
+    assert_eq!(published(&sync.expect_turn(1)), Some(TurnStatus::Running));
+    assert_eq!(
+        status(&sync),
+        Some(TurnStatus::Idle),
+        "the server has not said so"
+    );
+    // A read taken before the turn started, and the wrapper that typed the prompt, keep it.
+    let request = sync.request_hydration().expect("hydration starts");
+    sync.finish_hydration(
+        &request,
+        &minimal_session(&json!({"harness": "codex-native"})),
+        &[],
+    )
+    .expect("hydration");
+    assert_eq!(shown(&sync), Some(TurnStatus::Running));
+    send(
+        &mut sync,
+        &[
+            json!({"type": "response.in_progress", "response": {"id": "resp_wrapper"}}),
+            json!({"type": "response.completed", "response": {"id": "resp_wrapper"}}),
+        ],
+    );
+    assert_eq!(shown(&sync), Some(TurnStatus::Running));
+    // Once the server reports the turn, its word stands and the turn ends with it.
+    send(&mut sync, &[session_status("running")]);
+    let ended = sync
+        .handle_event(session_status("idle"))
+        .expect("idle applies");
+    assert_eq!(published(&ended), Some(TurnStatus::Idle));
+    assert_eq!(shown(&sync), Some(TurnStatus::Idle));
+    assert!(sync.end_turn_expectation(1).changes.is_empty());
+}
+
+#[test]
+fn the_shown_turn_ends_with_a_refusal_its_time_or_any_server_answer() {
+    // Refused, or out of time: the same call. A newer send's expectation outlives an older one.
+    let mut sync = idle_sync("codex-native");
+    sync.expect_turn(1);
+    sync.expect_turn(2);
+    assert!(sync.end_turn_expectation(1).changes.is_empty());
+    assert_eq!(
+        published(&sync.end_turn_expectation(2)),
+        Some(TurnStatus::Idle)
+    );
+    // The server saying the session is idle or failed ends it, published although its own
+    // status did not change.
+    for answer in ["idle", "failed"] {
+        let mut sync = idle_sync("codex-native");
+        sync.expect_turn(1);
+        let update = sync
+            .handle_event(session_status(answer))
+            .expect("status applies");
+        assert_eq!(published(&update), Some(TurnStatus::Idle), "{answer}");
+    }
+    // An ordinary harness's turn ends with its response.
+    let mut sync = idle_sync("openai-agents");
+    sync.expect_turn(1);
+    let update = sync
+        .handle_event(json!({"type": "response.completed", "response": {"id": "resp_1"}}))
+        .expect("completion applies");
+    assert_eq!(published(&update), Some(TurnStatus::Idle));
+    // A read that shows the turn under way hands it to the server.
+    let mut sync = idle_sync("openai-agents");
+    sync.expect_turn(1);
+    let request = sync.request_hydration().expect("hydration starts");
+    sync.finish_hydration(
+        &request,
+        &minimal_session(&json!({"status": "running"})),
+        &[],
+    )
+    .expect("hydration");
+    let update = sync
+        .handle_event(json!({"type": "response.completed", "response": {"id": "resp_1"}}))
+        .expect("completion applies");
+    assert_eq!(shown(&sync), Some(TurnStatus::Idle), "{update:?}");
+}
+
+#[test]
+fn only_an_idle_watched_session_shows_an_expected_turn() {
+    let mut sync = ConversationSync::new(SESSION);
+    assert_eq!(sync.expect_turn(1), SyncUpdate::default(), "nothing loaded");
+    let mut sync = idle_sync("codex-native");
+    send(&mut sync, &[session_status("running")]);
+    assert_eq!(
+        sync.expect_turn(1),
+        SyncUpdate::default(),
+        "already running"
+    );
+    let mut sync = idle_sync("codex-native");
+    sync.stop();
+    assert_eq!(
+        sync.expect_turn(1),
+        SyncUpdate::default(),
+        "no longer watched"
+    );
+}

@@ -107,6 +107,9 @@ public final class ComposerStore {
   @ObservationIgnored public var awaitSideChatFork: (@MainActor () -> (@MainActor () -> Void)?)?
   /// The approval mode the harness last reported on the stream.
   @ObservationIgnored var reportedApprovalMode: String?
+  /// Returns once the events the core sent before its answer are applied: a refused send's
+  /// working state is withdrawn by then.
+  @ObservationIgnored var eventsBeforeAnswer: @MainActor () async -> Void = {}
   /// The conversation that shows a message as soon as it is sent. It owns this composer.
   @ObservationIgnored weak var transcript: ConversationStore?
   /// Retries messages held for the host while it already reads online.
