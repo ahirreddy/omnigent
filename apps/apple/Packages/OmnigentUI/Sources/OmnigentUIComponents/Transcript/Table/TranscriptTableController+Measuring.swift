@@ -22,7 +22,7 @@
     func cellKind(at index: Int) -> TranscriptTableCellKind {
       let row = model.rows[index]
       if textMessage(at: index) != nil { return .text(row.kind) }
-      return cellStyle.drawsNatively(row) ? .native(row.kind) : .hosted(row.kind)
+      return cellStyle.drawsNatively(row, isCLI: isCLI) ? .native(row.kind) : .hosted(row.kind)
     }
 
     /// A cell for row `index` that the table keeps: from the pool, else a new one.

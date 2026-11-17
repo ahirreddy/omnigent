@@ -99,10 +99,13 @@
         if let empty = header.empty { banner(EmptyTranscriptView(state: empty)) }
       }
       .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-      .padding(.top, Theme.Spacing.extraLarge)
+      .padding(.top, Self.topPadding(isCLI: appearance.isCLI))
       .padding(.bottom, hasContent ? spacing : 0)
       .transcriptStackColumn()
     }
+
+    /// The space above the header's content: all of an empty header.
+    static func topPadding(isCLI: Bool) -> CGFloat { Theme.Spacing.extraLarge }
 
     private var spacing: CGFloat { appearance.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row }
 
@@ -143,9 +146,12 @@
         }
       }
       .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-      .padding(.bottom, Theme.Spacing.extraLarge)
+      .padding(.bottom, Self.bottomPadding(isCLI: footer.isCLI))
       .transcriptStackColumn()
     }
+
+    /// The space under the footer's content: all of an empty footer.
+    static func bottomPadding(isCLI: Bool) -> CGFloat { Theme.Spacing.extraLarge }
 
     private var spacing: CGFloat { footer.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row }
 

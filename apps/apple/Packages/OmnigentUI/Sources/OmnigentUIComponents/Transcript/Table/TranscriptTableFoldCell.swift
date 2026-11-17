@@ -19,14 +19,15 @@
     }
 
     /// Whether `row` draws in an AppKit cell of its own (a fold, an empty header or footer).
-    func drawsNatively(_ row: TranscriptTableRow) -> Bool {
+    func drawsNatively(_ row: TranscriptTableRow, isCLI: Bool) -> Bool {
       guard self == .native else { return false }
       switch row.content {
       case .segment(let entry):
         if case .worked = entry.segment { return true }
         return false
       case .header(let header):
-        return header == TranscriptTableHeader()
+        // The header doesn't say which style it is in; the chat's is drawn here.
+        return header == TranscriptTableHeader() && !isCLI
       case .footer(let footer):
         return footer == TranscriptTableFooter(isCLI: footer.isCLI)
       case .block:

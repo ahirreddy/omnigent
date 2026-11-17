@@ -209,13 +209,18 @@
     private(set) var kind: TranscriptTableCellKind?
     var idealSizeChanged: ((any TranscriptTableCell) -> Void)?
 
+    private(set) var idealHeight: CGFloat = 0
+
     func show(_ row: TranscriptTableRow, version: Int, width: CGFloat) {
       shown = TranscriptTableShown(id: row.id, version: version, width: width)
       kind = .native(row.kind)
+      switch row.content {
+      case .header: idealHeight = TranscriptTableHeaderView.topPadding(isCLI: false)
+      case .footer(let footer):
+        idealHeight = TranscriptTableFooterView.bottomPadding(isCLI: footer.isCLI)
+      case .segment, .block: idealHeight = 0
+      }
     }
-
-    /// The header's top padding, or the footer's bottom padding.
-    var idealHeight: CGFloat { Theme.Spacing.extraLarge }
 
     func settle() {}
 
