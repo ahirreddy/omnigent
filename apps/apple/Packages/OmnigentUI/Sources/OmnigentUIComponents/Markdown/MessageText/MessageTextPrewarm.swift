@@ -70,12 +70,12 @@
       }
     }
 
-    /// `omnigent:message-text-prewarm-workers`: how many answers lay out at once; by default
-    /// as many as the cores spare beyond the main thread and the window server's, up to four.
+    /// `omnigent:message-text-prewarm-workers`: how many answers asked for ahead lay out at
+    /// once; by default one per three cores, up to three: more crowd the main thread.
     static let workers: Int = {
       let asked = UserDefaults.standard.integer(forKey: "omnigent:message-text-prewarm-workers")
       if asked > 0 { return asked }
-      return min(4, max(1, ProcessInfo.processInfo.activeProcessorCount - 3))
+      return min(3, max(1, ProcessInfo.processInfo.activeProcessorCount / 3))
     }()
 
     private let store: Store

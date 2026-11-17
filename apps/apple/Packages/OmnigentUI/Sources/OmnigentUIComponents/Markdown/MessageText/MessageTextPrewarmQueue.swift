@@ -1,9 +1,9 @@
 import Foundation
 import Synchronization
 
-/// Lays message texts out off the main actor on a few workers at once, in the order they are
-/// wanted: those asked for ahead (``prioritize(_:at:)``) nearest the reader first, then those
-/// offered, newest first. What laying a text out means and the context it is laid out in (a
+/// Lays message texts out off the main actor, in the order they are wanted: those asked for
+/// ahead (``prioritize(_:at:)``) nearest the reader first, on a few workers at once, then those
+/// offered, newest first, on one, so work far from the reader doesn't crowd the main thread. What laying a text out means and the context it is laid out in (a
 /// style, a width, a scale) are the platform's: the Mac's ``MessageTextPrewarm`` builds TextKit
 /// documents and draws the texts asked for ahead.
 nonisolated final class MessageTextPrewarmQueue<Context: Sendable>: Sendable {
@@ -29,6 +29,8 @@ nonisolated final class MessageTextPrewarmQueue<Context: Sendable>: Sendable {
     var focus: Double = 0
     var direction = 0
     var workers = 0
+    /// Workers laying out an offered text: one at most.
+    var offeredWorkers = 0
     /// Raised with each new context, so a text laid out in an old one isn't counted done.
     var generation = 0
   }
@@ -146,10 +148,11 @@ nonisolated final class MessageTextPrewarmQueue<Context: Sendable>: Sendable {
     return direction == 0 ? abs(offset) : (offset >= 0 ? offset : -offset * 3)
   }
 
-  /// How many more workers this caller starts: one per waiting text, up to the limit.
+  /// How many more workers this caller starts: one per text asked for ahead, and one for the
+  /// offered texts, up to the limit.
   private func claimWorkers(_ state: inout State) -> Int {
-    let waiting = state.wanted.count + state.pending.count
-    let start = min(workerLimit - state.workers, waiting)
+    let offered = !state.pending.isEmpty && state.offeredWorkers == 0 ? 1 : 0
+    let start = min(workerLimit - state.workers, state.wanted.count + offered)
     guard start > 0 else { return 0 }
     state.workers += start
     return start
@@ -188,10 +191,11 @@ nonisolated final class MessageTextPrewarmQueue<Context: Sendable>: Sendable {
         state.running.insert(text)
         return Work(text: text, wanted: true, context: context, generation: state.generation)
       }
-      while !state.pending.isEmpty {
+      while state.offeredWorkers == 0, !state.pending.isEmpty {
         let text = state.pending.removeFirst()
         guard state.done[text] == nil, !state.running.contains(text) else { continue }
         state.running.insert(text)
+        state.offeredWorkers += 1
         return Work(text: text, wanted: false, context: context, generation: state.generation)
       }
       state.workers -= 1
@@ -203,6 +207,7 @@ nonisolated final class MessageTextPrewarmQueue<Context: Sendable>: Sendable {
   private func finish(_ text: String, wanted: Bool, generation: Int) {
     state.withLock { state in
       state.running.remove(text)
+      if !wanted { state.offeredWorkers -= 1 }
       guard generation == state.generation else { return }
       if state.done.count >= limit * 4 { state.done = [:] }
       state.done[text] = wanted || state.done[text] == true
