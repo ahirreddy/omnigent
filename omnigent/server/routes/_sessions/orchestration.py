@@ -488,6 +488,39 @@ def _harness_elicitation_request_fingerprint(params: ElicitationRequestParams) -
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _mcp_elicitation_params(
+    raw: Mapping[str, Any], *, default_message: str
+) -> ElicitationRequestParams:
+    """
+    The elicitation an external MCP server's request becomes, URL mode included.
+
+    A URL-mode request keeps its page, so the person completes it there
+    instead of approving a card that never showed it. One without a page
+    stays URL mode, which clients refuse rather than approve.
+
+    :param raw: The MCP request params, e.g. ``{"mode": "url", "message":
+        "Sign in", "url": "https://auth.example.com/start"}`` or
+        ``{"message": "Which environment?", "requestedSchema": {...}}``.
+    :param default_message: The message when the request has none.
+    :returns: Form-mode params with the request's schema, or URL-mode
+        params with its page.
+    """
+    message = raw.get("message")
+    if not isinstance(message, str):
+        message = default_message
+    if raw.get("mode") == "url":
+        url = raw.get("url")
+        return ElicitationRequestParams(
+            mode="url", message=message, url=url if isinstance(url, str) and url else None
+        )
+    schema = raw.get("requestedSchema")
+    return ElicitationRequestParams(
+        mode="form",
+        message=message,
+        requestedSchema=cast(dict[str, Any] | None, schema),
+    )
+
+
 async def _publish_and_wait_for_harness_elicitation(
     request: Request,
     *,
@@ -11146,6 +11179,51 @@ async def _register_policy_elicitation(
     return elicitation_id
 
 
+async def _retire_answered_policy_card(
+    session_id: str,
+    elicitation_id: object,
+    input_responses: Mapping[str, Any],
+    call_identity: tuple[str, str, object, str | None],
+    conversation_store: ConversationStore,
+) -> None:
+    """
+    Clear a proxy policy card whose retry already carries its answer.
+
+    The runner answers the card itself before it retries, so the card is
+    gone by then. A client that answered through another prompt instead
+    (the pi-native extension parks on ``/policies/evaluate``) retries
+    while the card is still pending; nothing waits on it any more, so it
+    is retired with the retry's verdict rather than left needing the user.
+    Only the call that raised the card can retire it.
+
+    :param session_id: Session that published the card, e.g. ``"conv_abc123"``.
+    :param elicitation_id: The card id from the retry's ``requestState``.
+    :param input_responses: The retry's ``inputResponses``, e.g.
+        ``{"elicit_abc": {"action": "accept"}}``.
+    :param call_identity: The retried call as ``_PendingPolicyAskWrites``
+        records it: ``(session_id, tool, run_as, credential_user)``.
+    :param conversation_store: Store used to clear the ancestor mirrors.
+    """
+    if not isinstance(elicitation_id, str) or not elicitation_id:
+        return
+    pending_call = _pending_policy_ask_writes.get(elicitation_id)
+    if pending_call is None or pending_call.mcp_call_identity not in (None, call_identity):
+        return
+    if pending_elicitations.lookup(elicitation_id, conversation_id=session_id) is None:
+        return
+    response = input_responses.get(elicitation_id)
+    raw_action = response.get("action") if isinstance(response, dict) else None
+    action = raw_action if isinstance(raw_action, str) else None
+    _publish_elicitation_resolved(session_id, elicitation_id, action=action)
+    await asyncio.to_thread(
+        _publish_elicitation_resolved_to_ancestors,
+        conversation_store,
+        session_id,
+        elicitation_id,
+        action,
+    )
+
+
 def _policy_evaluation_lock(session_id: str) -> asyncio.Lock:
     """Return the lock serializing policy state updates for one session."""
     lock = _policy_evaluation_locks.get(session_id)
@@ -13776,6 +13854,13 @@ async def _handle_mcp_tools_call(
         if state.get("session_id") != session_id:
             # Reject cross-session replay.
             return _mcp_error_response(rpc_id, -32000, "requestState session mismatch")
+        await _retire_answered_policy_card(
+            session_id,
+            state.get("elicitation_id"),
+            input_responses,
+            (session_id, namespaced_name, (actor or {}).get("run_as"), credential_user),
+            conversation_store,
+        )
 
         # Re-evaluate policy on every retry; approval cannot override a denial.
         retry_ctx = EvaluationContext(
@@ -14029,13 +14114,9 @@ async def _handle_mcp_tools_call(
         elicitation_responses: dict[str, Any] = {}
         for eid, req_entry in input_requests.items():
             req_params = req_entry.get("params", {}) if isinstance(req_entry, dict) else {}
-            elicit_params = ElicitationRequestParams(
-                mode=cast(Literal["form", "url"], req_params.get("mode", "form")),
-                message=req_params.get("message", "Approval required"),
-                requestedSchema=cast(
-                    Mapping[str, Any] | None,
-                    req_params.get("requestedSchema"),
-                ),
+            elicit_params = _mcp_elicitation_params(
+                req_params if isinstance(req_params, dict) else {},
+                default_message="Approval required",
             )
             elicit_result = await _publish_and_wait_for_harness_elicitation(
                 request,

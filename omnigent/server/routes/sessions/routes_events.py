@@ -277,6 +277,7 @@ from omnigent.server.routes._sessions.orchestration import (
     _mark_dispatch_in_flight,
     _maybe_relaunch_managed_sandbox,
     _maybe_wake_stale_resumable_managed_sandbox,
+    _mcp_elicitation_params,
     _native_pane_harness,
     _opens_codex_side_chat,
     _persist_external_antigravity_subagent_start,
@@ -302,7 +303,6 @@ from omnigent.server.schemas import (
     BackgroundTaskInfo,
     ConversationDeleted,
     ElicitationRequestEvent,
-    ElicitationRequestParams,
     ErrorDetail,
     McpServerStartup,
     SessionEventInput,
@@ -2284,11 +2284,7 @@ def register_events_routes(
             # → runner's ``pending_approvals`` resolves.
             elicit_data = body.data or {}
             elicit_id = f"elicit_{secrets.token_hex(16)}"
-            elicit_params = ElicitationRequestParams(
-                mode="form",
-                message=elicit_data.get("message", ""),
-                requestedSchema=elicit_data.get("requestedSchema"),
-            )
+            elicit_params = _mcp_elicitation_params(elicit_data, default_message="")
             event = ElicitationRequestEvent(
                 type="response.elicitation_request",
                 elicitation_id=elicit_id,
