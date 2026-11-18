@@ -25,6 +25,8 @@ enum SessionToolsAdapter {
     var showGoal: @MainActor () -> Void
     /// Shows a failure.
     var report: @MainActor (String) -> Void
+    /// Shows one linked pull request in the Pull Requests tab; `nil` shows the tab.
+    var showPullRequest: (@MainActor (String) -> Void)?
   }
 
   /// How the session takes a goal, or `nil` when it has no goal control.
@@ -80,8 +82,8 @@ enum SessionToolsAdapter {
       }
     }
     extras.indicators = ComposerIndicatorActions(
-      openPullRequests: routes.showPullRequests, openSubagent: routes.openSession,
-      openGoal: extras.setGoal)
+      openPullRequests: routes.showPullRequests, openPullRequest: routes.showPullRequest,
+      openSubagent: routes.openSession, openGoal: extras.setGoal)
   }
 
   /// Side chat, for a session the viewer can write to and may start one in, and that is not

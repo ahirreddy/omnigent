@@ -387,7 +387,7 @@ impl From<core::AgentRemoval> for AgentRemoval {
 }
 
 impl ClientCore {
-    fn multipart_boundary(&self) -> Result<String, CoreError> {
+    pub(crate) fn multipart_boundary(&self) -> Result<String, CoreError> {
         let bytes = omnigent_core::auth::EntropySource::random_bytes(self.inner.entropy()?, 16)
             .map_err(CoreError::from)?;
         Ok(format!(

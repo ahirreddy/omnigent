@@ -182,6 +182,35 @@ impl<T: HttpTransport> ClientCore<T> {
         result
     }
 
+    /// Unlinks `url` from `session_id` on the server, which answers while the host is offline
+    /// and passes the unlink on to the host when it is reachable. Check
+    /// [`PanelFeatures::pull_requests`] first: older servers have no such route.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request, and the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn unlink_session_pull_request(
+        &self,
+        session_id: &str,
+        url: &str,
+    ) -> Result<(), SessionError> {
+        let result = async {
+            validate_identifier(session_id)?;
+            let path = format!("/v1/sessions/{session_id}/pull-requests");
+            let query = [("url", url.to_owned())];
+            self.write(self.prepare("DELETE", &path, &query, None)?)
+                .await
+                .map(|_| ())
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"

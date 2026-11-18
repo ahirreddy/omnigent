@@ -4,7 +4,7 @@
 //! `…/resources/github/diff` the PR's patch. Every git provider answers under the `github` name.
 //!
 //! The host answers these, so they fail while it is offline: a `503` whose `error.code` is
-//! `runner_unavailable` reads as [`SessionError::Rejected`] with [`HOST_OFFLINE`]. A `404` from
+//! `runner_unavailable` reads as [`SessionError::HostOffline`] with [`HOST_OFFLINE`]. A `404` from
 //! the info route means the session has no workspace (or a host older than the route), which
 //! [`PullRequestInfo`] reports as [`PullRequestAvailability::Unavailable`] rather than an error.
 
@@ -16,6 +16,13 @@ use super::requests::{rejection_message, validate_identifier};
 use super::{ClientCore, SessionError, lock};
 use crate::auth::mode::error_text;
 use crate::http::{HttpTransport, TransportError};
+
+#[path = "pull_request_polling.rs"]
+pub mod polling;
+#[path = "pull_request_reviews.rs"]
+pub mod reviews;
+
+use polling::PullRequestPolling;
 
 /// What a read that needs the session's host says while the host is offline.
 pub const HOST_OFFLINE: &str =
@@ -135,6 +142,37 @@ pub struct PullRequestComment {
     pub url: Option<String>,
 }
 
+/// What a timeline event records.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TimelineEventKind {
+    /// A commit on the PR's branch.
+    Commit,
+    /// A force push, from the head before it.
+    ForcePush {
+        /// The head the push replaced.
+        previous_sha: Option<String>,
+    },
+}
+
+/// A commit or force push in the PR's activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequestTimelineEvent {
+    /// Stable id.
+    pub id: String,
+    /// Commit or force push.
+    pub kind: TimelineEventKind,
+    /// Who made it.
+    pub author: Option<String>,
+    /// ISO-8601: the commit time, or the push time.
+    pub created_at: Option<String>,
+    /// The commit or push on the provider.
+    pub url: Option<String>,
+    /// The commit.
+    pub sha: Option<String>,
+    /// The commit message.
+    pub message: Option<String>,
+}
+
 /// A user or a team.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ReviewerKind {
@@ -191,6 +229,10 @@ pub struct AutoMerge {
 }
 
 /// The selected PR as the host read it from its provider.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent facts the host reports about one PR"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PullRequestDetail {
     /// The number.
@@ -211,6 +253,8 @@ pub struct PullRequestDetail {
     pub head_ref: Option<String>,
     /// The head commit, which a merge must still match.
     pub head_sha: Option<String>,
+    /// The base commit the PR's diff is against.
+    pub base_sha: Option<String>,
     /// Markdown description.
     pub body: Option<String>,
     /// CI.
@@ -221,6 +265,10 @@ pub struct PullRequestDetail {
     pub comments: Vec<PullRequestComment>,
     /// Some comments could not be read.
     pub comments_partial: bool,
+    /// Commits and force pushes, oldest first; empty from hosts that do not report them.
+    pub timeline_events: Vec<PullRequestTimelineEvent>,
+    /// Some commit and push history could not be read.
+    pub timeline_partial: bool,
     /// Reviewers; `None` when the host does not report them.
     pub reviewers: Option<Vec<PullRequestReviewer>>,
     /// Labels; `None` when the host does not report them.
@@ -233,7 +281,8 @@ pub struct PullRequestDetail {
     pub auto_merge: Option<AutoMerge>,
 }
 
-/// What the panel can change on the selected PR.
+/// What the panel can do with the selected PR. A host that predates `capabilities` is GitHub
+/// with its account picker, base-remote choice, line counts and linked-PR diff, as on the web.
 #[allow(
     clippy::struct_excessive_bools,
     reason = "independent capability flags the host reports"
@@ -248,6 +297,73 @@ pub struct PullRequestCapabilities {
     pub comment_posting: bool,
     /// Reviews can be requested and withdrawn.
     pub reviewer_editing: bool,
+    /// The title and description can be edited.
+    pub details_editing: bool,
+    /// Images and videos can be uploaded into the description.
+    pub attachment_uploads: bool,
+    /// Inline review threads can be read.
+    pub review_threads: bool,
+    /// Review threads can be replied to.
+    pub review_thread_replies: bool,
+    /// Review threads can be started on the diff.
+    pub review_thread_creation: bool,
+    /// The PR's commits can be listed and read one at a time.
+    pub commit_history: bool,
+    /// The changed files carry line counts.
+    pub line_counts: bool,
+    /// A linked PR outside the workspace branch can be diffed.
+    pub linked_pr_diff: bool,
+    /// The provider account can be switched.
+    pub account_switching: bool,
+    /// The base remote can be chosen.
+    pub base_remote_selection: bool,
+    /// A merge can run as a chosen account.
+    pub merge_as_account: bool,
+}
+
+impl PullRequestCapabilities {
+    /// What a host that sends no `capabilities` offers.
+    const LEGACY_GITHUB: Self = Self {
+        label_editing: false,
+        merging: false,
+        comment_posting: false,
+        reviewer_editing: false,
+        details_editing: false,
+        attachment_uploads: false,
+        review_threads: false,
+        review_thread_replies: false,
+        review_thread_creation: false,
+        commit_history: false,
+        line_counts: true,
+        linked_pr_diff: true,
+        account_switching: true,
+        base_remote_selection: true,
+        merge_as_account: false,
+    };
+
+    fn decode(object: Option<&Map<String, Value>>) -> Result<Self, String> {
+        let Some(caps) = object else {
+            return Ok(Self::LEGACY_GITHUB);
+        };
+        let flag = |key: &str| opt_bool(caps, key).map(Option::unwrap_or_default);
+        Ok(Self {
+            label_editing: flag("label_editing")?,
+            merging: flag("merging")?,
+            comment_posting: flag("comment_posting")?,
+            reviewer_editing: flag("reviewer_editing")?,
+            details_editing: flag("details_editing")?,
+            attachment_uploads: flag("attachment_uploads")?,
+            review_threads: flag("review_threads")?,
+            review_thread_replies: flag("review_thread_replies")?,
+            review_thread_creation: flag("review_thread_creation")?,
+            commit_history: flag("commit_history")?,
+            line_counts: flag("line_counts")?,
+            linked_pr_diff: flag("linked_pr_diff")?,
+            account_switching: flag("account_switching")?,
+            base_remote_selection: flag("base_remote_selection")?,
+            merge_as_account: flag("merge_as_account")?,
+        })
+    }
 }
 
 /// Why there is no PR to show, or that there is one.
@@ -308,6 +424,8 @@ pub struct PullRequestInfo {
     pub capabilities: PullRequestCapabilities,
     /// The selected PR.
     pub pull_request: Option<PullRequestDetail>,
+    /// How often readers of this info re-read it.
+    pub polling: PullRequestPolling,
 }
 
 /// The selected PR's patch.
@@ -444,6 +562,31 @@ pub fn decode_comment(comment: &Map<String, Value>) -> Result<PullRequestComment
     })
 }
 
+/// Decodes the PR's commits and force pushes; an event of a kind this client does not know is
+/// left out.
+fn decode_timeline(object: &Map<String, Value>) -> Result<Vec<PullRequestTimelineEvent>, String> {
+    let mut events = Vec::new();
+    for event in each_object(object, "timeline_events")? {
+        let kind = match opt_str(event, "kind")?.as_deref() {
+            Some("commit") => TimelineEventKind::Commit,
+            Some("force_push") => TimelineEventKind::ForcePush {
+                previous_sha: opt_str(event, "previous_sha")?,
+            },
+            _ => continue,
+        };
+        events.push(PullRequestTimelineEvent {
+            id: req_str(event, "id")?,
+            kind,
+            author: opt_str(event, "author")?,
+            created_at: opt_str(event, "created_at")?,
+            url: opt_str(event, "url")?,
+            sha: opt_str(event, "sha")?,
+            message: opt_str(event, "message")?,
+        });
+    }
+    Ok(events)
+}
+
 /// The web's status rule: conflicts, then failing checks, then draft, running checks, and
 /// ready only when GitHub reports the PR cleanly mergeable with every check read.
 fn condition(detail: &PullRequestDetail) -> PullRequestCondition {
@@ -504,6 +647,7 @@ impl PullRequestDetail {
             base_ref: opt_str(object, "base_ref")?,
             head_ref: opt_str(object, "head_ref")?,
             head_sha: opt_str(object, "head_sha")?,
+            base_sha: opt_str(object, "base_sha")?,
             body: opt_str(object, "body")?.filter(|body| !body.trim().is_empty()),
             checks: decode_checks(opt_object(object, "checks")?)?,
             checks_supported: opt_bool(object, "checks_supported")?.unwrap_or(true),
@@ -512,6 +656,8 @@ impl PullRequestDetail {
                 .map(decode_comment)
                 .collect::<Result<_, _>>()?,
             comments_partial: opt_bool(object, "comments_partial")?.unwrap_or(false),
+            timeline_events: decode_timeline(object)?,
+            timeline_partial: opt_bool(object, "timeline_partial")?.unwrap_or(false),
             reviewers: object
                 .contains_key("reviewers")
                 .then(|| decode_reviewers(object, "reviewers"))
@@ -613,17 +759,14 @@ impl PullRequestInfo {
             .transpose()?;
         let warnings = strings(object, "warnings")?;
         let display = opt_object(object, "provider_display")?;
-        let capabilities = match opt_object(object, "capabilities")? {
-            Some(caps) => PullRequestCapabilities {
-                label_editing: opt_bool(caps, "label_editing")?.unwrap_or(false),
-                merging: opt_bool(caps, "merging")?.unwrap_or(false),
-                comment_posting: opt_bool(caps, "comment_posting")?.unwrap_or(false),
-                reviewer_editing: opt_bool(caps, "reviewer_editing")?.unwrap_or(false),
-            },
-            None => PullRequestCapabilities::default(),
-        };
+        let capabilities = PullRequestCapabilities::decode(opt_object(object, "capabilities")?)?;
         let mut all_warnings = warnings.clone();
         all_warnings.extend(strings(object, "discovery_warnings")?);
+        let linked = opt_array(object, "prs")?
+            .into_iter()
+            .flatten()
+            .map(SessionPullRequest::from_value)
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             availability: availability(object, pull_request.as_ref(), !warnings.is_empty())?,
             provider_name: display
@@ -644,11 +787,8 @@ impl PullRequestInfo {
             selected_url: opt_str(object, "selected_pr_url")?
                 .or_else(|| pull_request.as_ref().map(|pr| pr.url.clone())),
             tracking_available: opt_bool(object, "tracking_available")?.unwrap_or(false),
-            linked: opt_array(object, "prs")?
-                .into_iter()
-                .flatten()
-                .map(SessionPullRequest::from_value)
-                .collect::<Result<_, _>>()?,
+            polling: PullRequestPolling::of(object, pull_request.as_ref(), &linked)?,
+            linked,
             warnings: all_warnings,
             capabilities,
             pull_request,
@@ -679,8 +819,17 @@ impl PullRequestInfo {
             warnings: Vec::new(),
             capabilities: PullRequestCapabilities::default(),
             pull_request: None,
+            polling: PullRequestPolling::WITHOUT_INFO,
         }
     }
+}
+
+/// The path of one of the session's `…/resources/github/{resource}` routes.
+pub(super) fn github_resource(session_id: &str, resource: &str) -> Result<String, SessionError> {
+    validate_identifier(session_id)?;
+    Ok(format!(
+        "/v1/sessions/{session_id}/resources/github/{resource}"
+    ))
 }
 
 /// The `pr_url` query of a request about one PR.
@@ -736,8 +885,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 .and_then(Value::as_str)
                 == Some("runner_unavailable") =>
             {
-                Err(SessionError::Rejected {
-                    status: 503,
+                Err(SessionError::HostOffline {
                     message: HOST_OFFLINE.to_owned(),
                 })
             }
@@ -759,7 +907,7 @@ impl<T: HttpTransport> ClientCore<T> {
     /// # Errors
     ///
     /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::Rejected`] with
-    /// the host's reason (or [`HOST_OFFLINE`]); the read errors; and
+    /// the host's reason; [`SessionError::HostOffline`]; the read errors; and
     /// [`SessionError::MalformedResponse`].
     #[allow(
         clippy::future_not_send,
@@ -836,3 +984,15 @@ fn decode_patch(value: &Value) -> Result<PullRequestPatch, String> {
         unavailable,
     })
 }
+
+#[cfg(test)]
+#[path = "pull_request_polling_tests.rs"]
+mod polling_tests;
+
+#[cfg(test)]
+#[path = "pull_request_text_tests.rs"]
+mod text_tests;
+
+#[cfg(test)]
+#[path = "pull_request_reviews_tests.rs"]
+mod reviews_tests;

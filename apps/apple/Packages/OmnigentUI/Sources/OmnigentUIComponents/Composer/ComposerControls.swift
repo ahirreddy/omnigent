@@ -184,7 +184,8 @@ struct ComposerTrayView: View {
       if let pullRequest = tray.pullRequest {
         ComposerPullRequestChip(
           label: pullRequest, status: tray.pullRequestStatus, preview: tray.pullRequestPreview,
-          open: actions.indicators.openPullRequests)
+          open: actions.indicators.openPullRequests,
+          openOne: actions.indicators.openPullRequest)
       }
     }
   }

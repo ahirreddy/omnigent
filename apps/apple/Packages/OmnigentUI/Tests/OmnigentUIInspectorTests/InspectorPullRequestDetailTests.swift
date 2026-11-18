@@ -25,13 +25,14 @@
   @Suite("Inspector: an open pull request", .serialized)
   @MainActor
   struct InspectorPullRequestDetailTests {
-    /// Back, Refresh, Open and Unlink, then the Summary, Comments and Changes picker.
+    /// Back, Refresh, Link a PR, Open and Unlink, then the Summary, Comments and Changes picker.
     private enum Control {
       static let back = 0
       static let refresh = 1
-      static let provider = 2
-      static let unlink = 3
-      static let picker = 4
+      static let link = 2
+      static let provider = 3
+      static let unlink = 4
+      static let picker = 5
     }
 
     private func pick(_ segment: Int, _ screen: OffscreenWindow<AnyView>) throws {
@@ -49,12 +50,12 @@
       let screen = OffscreenWindow(
         AnyView(
           PullRequestsPanel(
-            state: .loaded([PullRequestFixture.summary()], synced: true), extras: extras,
+            state: .loaded(PullRequestFixture.two, synced: true), extras: extras,
             open: spy.open, refresh: nil)),
         width: 700, height: 500)
       defer { screen.close() }
-      #expect(try screen.shows("All pull requests (1)"))
-      #expect(try !screen.shows("1 pull request"))
+      #expect(try screen.shows("All pull requests (2)"))
+      #expect(try !screen.shows("2 pull requests"))
     }
 
     @Test("While loading, or when it can't load, it says so; failure can try again")
@@ -68,8 +69,8 @@
       defer { failed.close() }
       #expect(try failed.shows("Couldn't Load the Pull Request"))
       #expect(try failed.shows("boom"))
-      // Back, the toolbar's Refresh, then Try Again.
-      try failed.clickControl(at: 2)
+      // Back, the toolbar's Refresh, Link a PR, then Try Again.
+      try failed.clickControl(at: 3)
       #expect(spy.calls == ["refresh"])
 
       let gone = pullRequestDetail(
@@ -85,8 +86,8 @@
       let spy = PullRequestSpy()
       let screen = pullRequestDetail(.failed("boom"), spy: spy) { $0.actions.refresh = nil }
       defer { screen.close() }
-      // Only Back.
-      #expect(screen.controlFrames.count == 1)
+      // Only Back and Link a PR.
+      #expect(screen.controlFrames.count == 2)
     }
 
     @Test("The bar goes back, refreshes, opens the page and unlinks")
@@ -101,6 +102,16 @@
       try screen.clickControl(at: Control.unlink)
       #expect(spy.calls == ["show list", "refresh", "unlink \(PullRequestFixture.url)"])
       #expect(spy.opened == [URL(string: PullRequestFixture.url)])
+      try screen.clickControl(at: Control.link)
+      #expect(screen.firstTextField != nil, "Link a PR opens its field over the detail")
+    }
+
+    @Test("One pull request has no list to go back to")
+    func onlyOne() throws {
+      let spy = PullRequestSpy()
+      let screen = pullRequestDetail(.ready(PullRequestFixture.detail), spy: spy, listCount: 1)
+      defer { screen.close() }
+      #expect(try !screen.shows("All pull requests"))
     }
 
     @Test("The bar drops what the app can't do, and a bad address can't open")

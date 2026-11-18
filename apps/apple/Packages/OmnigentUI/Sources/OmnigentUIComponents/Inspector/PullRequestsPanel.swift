@@ -37,6 +37,16 @@ struct PullRequestsPanel: View {
       }
     }
     .task { refresh?() }
+    .whileVisible(actions.watch)
+    // One linked PR has no list to choose from, so it shows at once, as on the web.
+    .onChange(of: soleURL, initial: true) { _, url in
+      if let url, extras.detail == nil { actions.select?(url) }
+    }
+  }
+
+  private var soleURL: String? {
+    guard case .loaded(let pullRequests, _) = state, pullRequests.count == 1 else { return nil }
+    return pullRequests.first?.url
   }
 
   private var listCount: Int {

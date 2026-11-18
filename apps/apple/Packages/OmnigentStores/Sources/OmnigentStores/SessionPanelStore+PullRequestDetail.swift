@@ -34,6 +34,10 @@ nonisolated public enum PullRequestEdit: Equatable, Sendable {
   case autoMerge
   /// Posting a comment.
   case comment
+  /// Changing the title or description.
+  case details
+  /// Replying to or starting a review thread.
+  case reviewComment
 }
 
 extension SessionPanelStore {
@@ -48,6 +52,9 @@ extension SessionPanelStore {
       reviewCandidates = .idle
       mergeOptions = .idle
       editError = nil
+      filesHead = nil
+      clearReviewThreads()
+      restartPolling()
     }
     await reloadDetail()
   }
@@ -58,12 +65,28 @@ extension SessionPanelStore {
     openPullRequest = nil
     detail = .idle
     files = .idle
+    filesHead = nil
     editError = nil
+    clearReviewThreads()
+    restartPolling()
+  }
+
+  private func clearReviewThreads() {
+    reviewThreads = .idle
+    newReviewThread = nil
+    reviewReplies = [:]
   }
 
   /// Re-reads the open PR's detail and patch. The shown detail stays while it reloads, and a
   /// read started later wins.
-  public func reloadDetail() async {
+  /// - Parameter refreshingFiles: Re-read the patch too; a poll re-reads it only when the
+  ///   PR's head moved.
+  public func reloadDetail(refreshingFiles: Bool = true) async {
+    await readDetail(refreshingFiles: refreshingFiles)
+    resumePollingIfRested()
+  }
+
+  private func readDetail(refreshingFiles: Bool) async {
     guard let url = openPullRequest else { return }
     detailGeneration += 1
     let current = detailGeneration
@@ -77,11 +100,14 @@ extension SessionPanelStore {
     if detail != result { detail = result }
     if let pullRequest = result.value?.pullRequest {
       setLiveCondition(pullRequest.condition, for: url)
-      await reloadFiles(url: url, generation: current)
+      let moved = files == .idle || filesHead != pullRequest.headSha
+      if refreshingFiles || moved {
+        await reloadFiles(url: url, head: pullRequest.headSha, generation: current)
+      }
     }
   }
 
-  private func reloadFiles(url: String, generation current: Int) async {
+  private func reloadFiles(url: String, head: String?, generation current: Int) async {
     if files.value == nil { files = .loading }
     let result: CreationLoad<PullRequestFiles>
     do {
@@ -91,22 +117,36 @@ extension SessionPanelStore {
     } catch {
       result = .failed(coreError(error))
     }
-    guard current == detailGeneration, openPullRequest == url, files != result else { return }
-    files = result
+    guard current == detailGeneration, openPullRequest == url else { return }
+    filesHead = head
+    if files != result { files = result }
   }
 
   /// Reads each open linked PR's live condition (checks, conflicts) for the composer's chip.
-  /// Merged and closed PRs cannot change, so their stored state stands.
-  public func refreshLiveConditions() async {
-    guard let linked = pullRequests.value?.pullRequests else { return }
-    let open = linked.filter { $0.status != .merged && $0.status != .closed }.map(\.url)
-    for url in open {
-      // A PR the host cannot read keeps its stored state.
-      guard let info = try? await core.pullRequestInfo(sessionId: sessionID, prUrl: url),
-        let pullRequest = info.pullRequest, pullRequest.url == url
-      else { continue }
+  /// Merged and closed PRs cannot change, so their stored state stands, and a PR the host
+  /// cannot read keeps its stored state.
+  /// - Returns: Whether a read found the session's host offline.
+  @discardableResult
+  public func refreshLiveConditions() async -> Bool {
+    guard let linked = pullRequests.value?.pullRequests else { return false }
+    let open = linked.filter { pullRequest in
+      pullRequest.status != .merged && pullRequest.status != .closed
+        && liveConditions[pullRequest.url] != .merged
+        && liveConditions[pullRequest.url] != .closed
+    }
+    var offline = false
+    for url in open.map(\.url) {
+      let info: PullRequestInfo
+      do {
+        info = try await core.pullRequestInfo(sessionId: sessionID, prUrl: url)
+      } catch {
+        offline = offline || coreError(error).isHostOffline
+        continue
+      }
+      guard let pullRequest = info.pullRequest, pullRequest.url == url else { continue }
       setLiveCondition(pullRequest.condition, for: url)
     }
+    return offline
   }
 
   func setLiveCondition(_ condition: PullRequestCondition, for url: String) {

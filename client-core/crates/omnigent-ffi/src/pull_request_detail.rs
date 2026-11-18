@@ -5,11 +5,15 @@
 //! `omnigent_core::pull_request_edits`'.
 
 use omnigent_core::pull_request_detail as core;
+use omnigent_core::pull_request_detail::polling;
 use omnigent_core::pull_request_edits as edits;
 
 use crate::client::ClientCore;
 use crate::errors::CoreError;
 use crate::pull_requests::{PullRequestStatus, SessionPullRequest};
+
+#[path = "pull_request_reviews.rs"]
+pub mod reviews;
 
 /// Where a pull request stands, as the web's status chip names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -151,6 +155,56 @@ impl From<core::PullRequestComment> for PullRequestComment {
     }
 }
 
+/// What a timeline event records.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum TimelineEventKind {
+    /// A commit.
+    Commit,
+    /// A force push.
+    ForcePush {
+        /// The head it replaced.
+        previous_sha: Option<String>,
+    },
+}
+
+/// A commit or force push in the PR's activity.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct PullRequestTimelineEvent {
+    /// Stable id.
+    pub id: String,
+    /// Commit or force push.
+    pub kind: TimelineEventKind,
+    /// Who made it.
+    pub author: Option<String>,
+    /// ISO-8601 time.
+    pub created_at: Option<String>,
+    /// Its page.
+    pub url: Option<String>,
+    /// The commit.
+    pub sha: Option<String>,
+    /// The commit message.
+    pub message: Option<String>,
+}
+
+impl From<core::PullRequestTimelineEvent> for PullRequestTimelineEvent {
+    fn from(event: core::PullRequestTimelineEvent) -> Self {
+        Self {
+            id: event.id,
+            kind: match event.kind {
+                core::TimelineEventKind::Commit => TimelineEventKind::Commit,
+                core::TimelineEventKind::ForcePush { previous_sha } => {
+                    TimelineEventKind::ForcePush { previous_sha }
+                }
+            },
+            author: event.author,
+            created_at: event.created_at,
+            url: event.url,
+            sha: event.sha,
+            message: event.message,
+        }
+    }
+}
+
 /// User or team.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum ReviewerKind {
@@ -262,6 +316,8 @@ pub struct PullRequestDetail {
     pub head_ref: Option<String>,
     /// The head commit a merge must match.
     pub head_sha: Option<String>,
+    /// The base commit the diff is against.
+    pub base_sha: Option<String>,
     /// Markdown description.
     pub body: Option<String>,
     /// CI.
@@ -272,6 +328,10 @@ pub struct PullRequestDetail {
     pub comments: Vec<PullRequestComment>,
     /// Some comments could not be read.
     pub comments_partial: bool,
+    /// Commits and force pushes, oldest first.
+    pub timeline_events: Vec<PullRequestTimelineEvent>,
+    /// Some commit and push history could not be read.
+    pub timeline_partial: bool,
     /// Reviewers, when reported.
     pub reviewers: Option<Vec<PullRequestReviewer>>,
     /// Labels, when reported.
@@ -296,11 +356,14 @@ impl From<core::PullRequestDetail> for PullRequestDetail {
             base_ref: detail.base_ref,
             head_ref: detail.head_ref,
             head_sha: detail.head_sha,
+            base_sha: detail.base_sha,
             body: detail.body,
             checks: detail.checks.into(),
             checks_supported: detail.checks_supported,
             comments: detail.comments.into_iter().map(Into::into).collect(),
             comments_partial: detail.comments_partial,
+            timeline_events: detail.timeline_events.into_iter().map(Into::into).collect(),
+            timeline_partial: detail.timeline_partial,
             reviewers: detail
                 .reviewers
                 .map(|reviewers| reviewers.into_iter().map(Into::into).collect()),
@@ -331,6 +394,50 @@ pub struct PullRequestCapabilities {
     pub comment_posting: bool,
     /// Reviewers.
     pub reviewer_editing: bool,
+    /// The title and description.
+    pub details_editing: bool,
+    /// Description attachments.
+    pub attachment_uploads: bool,
+    /// Reading review threads.
+    pub review_threads: bool,
+    /// Replying to review threads.
+    pub review_thread_replies: bool,
+    /// Starting review threads.
+    pub review_thread_creation: bool,
+    /// Listing and reading commits.
+    pub commit_history: bool,
+    /// Line counts on changed files.
+    pub line_counts: bool,
+    /// Diffing a linked PR outside the workspace branch.
+    pub linked_pr_diff: bool,
+    /// Switching the provider account.
+    pub account_switching: bool,
+    /// Choosing the base remote.
+    pub base_remote_selection: bool,
+    /// Merging as a chosen account.
+    pub merge_as_account: bool,
+}
+
+impl From<core::PullRequestCapabilities> for PullRequestCapabilities {
+    fn from(caps: core::PullRequestCapabilities) -> Self {
+        Self {
+            label_editing: caps.label_editing,
+            merging: caps.merging,
+            comment_posting: caps.comment_posting,
+            reviewer_editing: caps.reviewer_editing,
+            details_editing: caps.details_editing,
+            attachment_uploads: caps.attachment_uploads,
+            review_threads: caps.review_threads,
+            review_thread_replies: caps.review_thread_replies,
+            review_thread_creation: caps.review_thread_creation,
+            commit_history: caps.commit_history,
+            line_counts: caps.line_counts,
+            linked_pr_diff: caps.linked_pr_diff,
+            account_switching: caps.account_switching,
+            base_remote_selection: caps.base_remote_selection,
+            merge_as_account: caps.merge_as_account,
+        }
+    }
 }
 
 /// Why there is no PR to show, or that there is one.
@@ -406,11 +513,56 @@ pub struct PullRequestInfo {
     pub capabilities: PullRequestCapabilities,
     /// The selected PR.
     pub pull_request: Option<PullRequestDetail>,
+    /// How often readers of this info re-read it.
+    pub polling: PullRequestPolling,
+}
+
+/// How often a reader re-reads a PR's info, in milliseconds; `None` rests until a turn ends,
+/// a refresh, or the reader shows again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct PullRequestPolling {
+    /// The open panel showing the PR's detail.
+    pub panel_ms: Option<u64>,
+    /// A list row watching the PR.
+    pub list_ms: Option<u64>,
+    /// The composer watching the session's linked PRs.
+    pub linked_ms: Option<u64>,
+}
+
+impl From<polling::PullRequestPolling> for PullRequestPolling {
+    fn from(value: polling::PullRequestPolling) -> Self {
+        Self {
+            panel_ms: value.panel_ms,
+            list_ms: value.list_ms,
+            linked_ms: value.linked_ms,
+        }
+    }
+}
+
+/// The intervals before any info was read, or after a read failed with nothing shown.
+#[uniffi::export]
+#[must_use]
+pub fn pull_request_polling_without_info() -> PullRequestPolling {
+    polling::PullRequestPolling::WITHOUT_INFO.into()
+}
+
+/// The composer's cadence over the linked PRs' statuses; `None` once all are settled.
+#[uniffi::export]
+#[must_use]
+pub fn pull_request_linked_poll_ms(statuses: Vec<PullRequestStatus>) -> Option<u64> {
+    polling::linked_poll_ms(statuses.into_iter().map(Into::into))
+}
+
+/// The wait before retry `attempt` (0-based) of a read that found the host offline; `None`
+/// once the retries are spent.
+#[uniffi::export]
+#[must_use]
+pub fn pull_request_host_offline_retry_ms(attempt: u32) -> Option<u64> {
+    polling::host_offline_retry_delay_ms(attempt)
 }
 
 impl From<core::PullRequestInfo> for PullRequestInfo {
     fn from(info: core::PullRequestInfo) -> Self {
-        let caps = info.capabilities;
         Self {
             availability: info.availability.into(),
             provider_name: info.provider_name,
@@ -422,13 +574,9 @@ impl From<core::PullRequestInfo> for PullRequestInfo {
             tracking_available: info.tracking_available,
             linked: info.linked.into_iter().map(Into::into).collect(),
             warnings: info.warnings,
-            capabilities: PullRequestCapabilities {
-                label_editing: caps.label_editing,
-                merging: caps.merging,
-                comment_posting: caps.comment_posting,
-                reviewer_editing: caps.reviewer_editing,
-            },
+            capabilities: info.capabilities.into(),
             pull_request: info.pull_request.map(Into::into),
+            polling: info.polling.into(),
         }
     }
 }
@@ -520,6 +668,39 @@ pub struct RepositoryLabels {
     pub has_more: bool,
 }
 
+/// The PR's title and description after an edit.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct PullRequestText {
+    /// The title.
+    pub title: String,
+    /// The description; `None` when empty.
+    pub body: Option<String>,
+}
+
+/// An uploaded description attachment.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct PullRequestAttachment {
+    /// The address to embed.
+    pub url: String,
+    /// The name the provider stored.
+    pub name: String,
+    /// Its media type.
+    pub content_type: String,
+    /// The Markdown that embeds it.
+    pub markdown: String,
+}
+
+/// Why a file of `content_type` and `size` bytes cannot be attached; `None` when it can.
+#[uniffi::export]
+#[must_use]
+pub fn pull_request_attachment_problem(
+    file_name: String,
+    content_type: String,
+    size: u64,
+) -> Option<String> {
+    edits::attachment_problem(&file_name, &content_type, size)
+}
+
 /// The users and teams a review can be requested from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct ReviewCandidates {
@@ -536,8 +717,8 @@ impl ClientCore {
     ///
     /// # Errors
     ///
-    /// [`CoreError::Session`]: `InvalidIdentifier`, `Rejected` with the host's reason (also
-    /// while the host is offline), the read errors and `MalformedResponse`.
+    /// [`CoreError::Session`]: `InvalidIdentifier`, `Rejected` with the host's reason,
+    /// `HostOffline` while the host is offline, the read errors and `MalformedResponse`.
     pub async fn pull_request_info(
         &self,
         session_id: String,
@@ -751,6 +932,65 @@ impl ClientCore {
             .disable_pull_request_auto_merge(&session_id, &pr_url)
             .await
             .map_err(CoreError::from)
+    }
+
+    /// Replaces `pr_url`'s title and/or description; `None` keeps one.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidInput` for a blank title or nothing to change, and as
+    /// `link_pull_request`.
+    pub async fn update_pull_request_details(
+        &self,
+        session_id: String,
+        pr_url: String,
+        title: Option<String>,
+        body: Option<String>,
+    ) -> Result<PullRequestText, CoreError> {
+        let text = self
+            .sessions()
+            .update_pull_request_details(&session_id, &pr_url, title.as_deref(), body.as_deref())
+            .await
+            .map_err(CoreError::from)?;
+        Ok(PullRequestText {
+            title: text.title,
+            body: text.body,
+        })
+    }
+
+    /// Uploads an image or video for `pr_url`'s description.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidInput` for a file of the wrong type or size, and as
+    /// `link_pull_request`.
+    pub async fn upload_pull_request_attachment(
+        &self,
+        session_id: String,
+        pr_url: String,
+        file_name: String,
+        content_type: String,
+        bytes: Vec<u8>,
+    ) -> Result<PullRequestAttachment, CoreError> {
+        let boundary = self.multipart_boundary()?;
+        let attachment = self
+            .sessions()
+            .upload_pull_request_attachment(
+                &session_id,
+                &pr_url,
+                &file_name,
+                &content_type,
+                &bytes,
+                &boundary,
+            )
+            .await
+            .map_err(CoreError::from)?;
+        Ok(PullRequestAttachment {
+            markdown: attachment.markdown(&file_name),
+            url: attachment.url,
+            name: attachment.name,
+            content_type: attachment.content_type,
+        })
     }
 
     /// Posts a conversation comment on `pr_url`.

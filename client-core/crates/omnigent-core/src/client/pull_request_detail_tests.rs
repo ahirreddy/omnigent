@@ -189,8 +189,7 @@ fn info_reads_the_selected_pr_and_maps_host_failures() {
     );
     assert_eq!(
         read(),
-        Err(SessionError::Rejected {
-            status: 503,
+        Err(SessionError::HostOffline {
             message: HOST_OFFLINE.to_owned()
         })
     );

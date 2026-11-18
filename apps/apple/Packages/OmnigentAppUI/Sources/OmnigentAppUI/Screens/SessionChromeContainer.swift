@@ -127,7 +127,11 @@ struct SessionSurface {
     SessionToolsAdapter.Routes(
       openSession: open, openNewSideChat: chat.tabRoutes?.openNewSideChat,
       awaitForkedSideChat: chat.tabRoutes?.awaitForkedSideChat,
-      showPullRequests: { [kept] in kept.show(.pullRequests) }, showGoal: {}, report: report)
+      showPullRequests: { [kept] in kept.show(.pullRequests) }, showGoal: {}, report: report,
+      showPullRequest: { [kept, panel = chat.panel] url in
+        kept.show(.pullRequests)
+        Task { await panel?.showPullRequest(url) }
+      })
   }
 
   /// What the right panel opens.

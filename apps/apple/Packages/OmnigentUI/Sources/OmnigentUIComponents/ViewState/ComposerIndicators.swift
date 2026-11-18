@@ -134,6 +134,8 @@ nonisolated public struct ComposerTaskIndicators: Hashable, Sendable {
 public struct ComposerIndicatorActions {
   /// Shows the session's pull requests.
   public var openPullRequests: (@MainActor () -> Void)?
+  /// Shows one linked pull request, by its page, in the Pull Requests tab.
+  public var openPullRequest: (@MainActor (String) -> Void)?
   /// Opens a sub-agent's chat by session id.
   public var openSubagent: (@MainActor (String) -> Void)?
   /// Opens the goal sheet.
@@ -142,13 +144,16 @@ public struct ComposerIndicatorActions {
   /// Creates actions.
   /// - Parameters:
   ///   - openPullRequests: Show the pull requests.
+  ///   - openPullRequest: Show one pull request.
   ///   - openSubagent: Open a sub-agent.
   ///   - openGoal: Open the goal.
   public init(
     openPullRequests: (@MainActor () -> Void)? = nil,
+    openPullRequest: (@MainActor (String) -> Void)? = nil,
     openSubagent: (@MainActor (String) -> Void)? = nil, openGoal: (@MainActor () -> Void)? = nil
   ) {
     self.openPullRequests = openPullRequests
+    self.openPullRequest = openPullRequest
     self.openSubagent = openSubagent
     self.openGoal = openGoal
   }

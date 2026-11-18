@@ -33,14 +33,32 @@ public final class SessionPanelStore {
   public internal(set) var editError: CoreError?
   /// Each linked pull request's condition as its host last read it, for the composer's chip.
   public internal(set) var liveConditions: [String: PullRequestCondition] = [:]
+  /// The open pull request's inline review threads, read while the Changes tab shows.
+  public internal(set) var reviewThreads: CreationLoad<ReviewThreadsPage> = .idle
+  /// The lines a new review thread is being written on, and its text.
+  public internal(set) var newReviewThread: ReviewThreadDraft?
+  /// Replies being written, by thread.
+  public internal(set) var reviewReplies: [String: String] = [:]
 
   let core: ClientCore
   private var generation = 0
   var detailGeneration = 0
+  /// The head the shown files were read at; a poll re-reads them only when it moves.
+  @ObservationIgnored var filesHead: String?
+  /// How many views of each kind watch the PRs (``watch(_:resumed:)``).
+  @ObservationIgnored var watchers: [PullRequestWatcher: Int] = [:]
+  @ObservationIgnored var pollTask: Task<Void, Never>?
+  /// The poll found nothing to watch and stopped; the next read from outside restarts it.
+  @ObservationIgnored var pollRests = false
+  let pollTimer: any PullRequestPollTimer
 
-  init(sessionID: String, core: ClientCore) {
+  init(
+    sessionID: String, core: ClientCore,
+    pollTimer: any PullRequestPollTimer = SystemPullRequestPollTimer()
+  ) {
     self.sessionID = sessionID
     self.core = core
+    self.pollTimer = pollTimer
   }
 
   /// Whether the server stores pull requests; `false` until the features are read.
@@ -63,8 +81,16 @@ public final class SessionPanelStore {
   /// Reads the linked pull requests when the server stores them. The previous list stays on
   /// screen while it reloads; a read started later wins over one still in flight.
   public func reloadPullRequests() async {
+    await readPullRequests()
+    resumePollingIfRested()
+  }
+
+  /// One read of the linked pull requests and their live conditions.
+  /// - Returns: Whether a live read found the session's host offline.
+  @discardableResult
+  func readPullRequests() async -> Bool {
     await loadFeatures()
-    guard offersPullRequests else { return }
+    guard offersPullRequests else { return false }
     generation += 1
     let current = generation
     if pullRequests.value == nil { pullRequests = .loading }
@@ -75,7 +101,7 @@ public final class SessionPanelStore {
       result = .failed(coreError(error))
     }
     if current == generation, pullRequests != result { pullRequests = result }
-    await refreshLiveConditions()
+    return await refreshLiveConditions()
   }
 
   /// Re-reads the pull requests when they were read before, and the open one, for example

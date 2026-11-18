@@ -221,11 +221,11 @@ impl<T: HttpTransport> ClientCore<T> {
 }
 
 /// One `multipart/form-data` part.
-struct Part<'a> {
-    name: &'static str,
-    filename: Option<String>,
-    content_type: &'static str,
-    bytes: &'a [u8],
+pub(super) struct Part<'a> {
+    pub(super) name: &'a str,
+    pub(super) filename: Option<String>,
+    pub(super) content_type: &'a str,
+    pub(super) bytes: &'a [u8],
 }
 
 impl<'a> Part<'a> {
@@ -241,7 +241,7 @@ impl<'a> Part<'a> {
 
 impl<T: HttpTransport> ClientCore<T> {
     /// A multipart `POST` of `parts` with `boundary`, which may not occur in any part.
-    fn prepare_multipart(
+    pub(super) fn prepare_multipart(
         &self,
         path: &str,
         parts: &[Part<'_>],

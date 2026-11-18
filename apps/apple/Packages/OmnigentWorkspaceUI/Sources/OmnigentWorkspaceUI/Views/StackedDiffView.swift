@@ -1,37 +1,84 @@
 public import SwiftUI
 
+#if os(macOS)
+  import AppKit
+#endif
+
 /// Every file of a change set in one scroll, as a pull request's Files view shows it: a header
-/// per file that collapses its diff, a menu that jumps to a file, and Collapse All.
+/// per file that collapses its diff, a menu that jumps to a file, and Collapse All. Views can sit
+/// under lines and file headers (review conversations), and line numbers can choose lines.
 public struct StackedDiffView: View {
   private let files: [FileDiff]
+  private let annotations: StackedDiffAnnotations
   @State private var collapsed: Set<String> = []
 
   /// A stacked diff.
-  /// - Parameter files: The diffs, in patch order.
-  public init(files: [FileDiff]) {
+  /// - Parameters:
+  ///   - files: The diffs, in patch order.
+  ///   - annotations: What shows beside the lines.
+  public init(files: [FileDiff], annotations: StackedDiffAnnotations = StackedDiffAnnotations()) {
     self.files = files
+    self.annotations = annotations
   }
 
   private enum Row {
     case file(FileDiff)
     case notice(path: String, text: String)
     case hunk(path: String, index: Int, header: String)
-    case line(DiffLine)
+    case line(path: String, hunk: Int, DiffLine)
+    case annotation(AnyView)
   }
 
   /// One flat list, so the lazy stack sizes and recycles rows reliably in both scroll axes.
   private var rows: [Row] {
     files.flatMap { file -> [Row] in
       guard !collapsed.contains(file.path) else { return [.file(file)] }
-      if file.binary { return [.file(file), .notice(path: file.path, text: "Binary file")] }
-      if file.tooLarge {
-        return [.file(file), .notice(path: file.path, text: "This change is too large to show.")]
+      let note = annotations.files[file.path].map { [Row.annotation($0)] } ?? []
+      if file.binary {
+        return [.file(file)] + note + [.notice(path: file.path, text: "Binary file")]
       }
-      return [.file(file)]
-        + file.hunks.enumerated().flatMap { index, hunk in
-          [Row.hunk(path: file.path, index: index, header: hunk.header)] + hunk.lines.map(Row.line)
-        }
+      if file.tooLarge {
+        return [.file(file)] + note
+          + [.notice(path: file.path, text: "This change is too large to show.")]
+      }
+      return [.file(file)] + note + lineRows(file)
     }
+  }
+
+  /// A file's hunks and lines, with each annotation under its line.
+  private func lineRows(_ file: FileDiff) -> [Row] {
+    let placements = Self.placements(file, among: Set(annotations.lines.keys))
+    var rows: [Row] = []
+    var position = 0
+    for (index, hunk) in file.hunks.enumerated() {
+      rows.append(.hunk(path: file.path, index: index, header: hunk.header))
+      for line in hunk.lines {
+        rows.append(.line(path: file.path, hunk: index, line))
+        for anchor in placements[position] ?? [] {
+          if let view = annotations.lines[anchor] { rows.append(.annotation(view)) }
+        }
+        position += 1
+      }
+    }
+    return rows
+  }
+
+  /// Which of `anchors` go under which of the file's lines, counted across its hunks: each
+  /// under the first line that carries it.
+  static func placements(_ file: FileDiff, among anchors: Set<DiffLineAnchor>)
+    -> [Int: [DiffLineAnchor]]
+  {
+    var placed: Set<DiffLineAnchor> = []
+    var result: [Int: [DiffLineAnchor]] = [:]
+    let lines = file.hunks.flatMap(\.lines)
+    for (position, line) in lines.enumerated() {
+      for anchor in DiffLineAnchor.all(line, path: file.path)
+      where anchors.contains(anchor) && !placed.contains(anchor) {
+        placed.insert(anchor)
+        result[position, default: []].append(anchor)
+      }
+    }
+    return result
   }
 
   /// The view.
@@ -73,10 +120,54 @@ public struct StackedDiffView: View {
         .padding(10)
     case .hunk(_, _, let header):
       HunkHeaderRow(header: header, isCurrent: false)
-    case .line(let line):
-      UnifiedLineRow(line: line, compactGutter: DiffGutter.isCompact(width))
+    case .line(let path, let hunk, let line):
+      lineRow(line, path: path, hunk: hunk, width: width)
+    case .annotation(let view):
+      view
+        .frame(width: max(width - 24, 0), alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
   }
+
+  @ViewBuilder
+  private func lineRow(_ line: DiffLine, path: String, hunk: Int, width: CGFloat) -> some View {
+    let compact = DiffGutter.isCompact(width)
+    let row = UnifiedLineRow(line: line, compactGutter: compact)
+    if let select = annotations.select, let anchor = DiffLineAnchor.of(line, path: path) {
+      let chosen = annotations.selection?.contains(anchor) == true
+      row
+        .overlay(alignment: .leading) {
+          Color.accentColor.opacity(chosen ? 0.18 : 0.001)
+            .frame(width: (compact ? DiffGutter.compactWidth : DiffGutter.width * 2) + 8)
+            .contentShape(Rectangle())
+            .onTapGesture { select(selection(anchor, hunk: hunk)) }
+            .help("Comment on this line\(Self.extendHint)")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel("Comment on line \(anchor.line)")
+        }
+    } else {
+      row
+    }
+  }
+
+  /// A click chooses the line; on the Mac, Shift-click extends the choice within its hunk.
+  private func selection(_ anchor: DiffLineAnchor, hunk: Int) -> DiffLineSelection {
+    let single = DiffLineSelection(
+      path: anchor.path, side: anchor.side, start: anchor.line, end: anchor.line, hunk: hunk)
+    #if os(macOS)
+      if NSEvent.modifierFlags.contains(.shift), let current = annotations.selection {
+        return current.extended(to: anchor, hunk: hunk)
+      }
+    #endif
+    return single
+  }
+
+  #if os(macOS)
+    private static let extendHint = "; Shift-click to choose a range"
+  #else
+    private static let extendHint = ""
+  #endif
 
   private func toolbar(proxy: ScrollViewProxy) -> some View {
     HStack(spacing: 8) {
