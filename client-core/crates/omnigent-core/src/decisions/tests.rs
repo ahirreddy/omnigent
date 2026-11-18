@@ -206,6 +206,16 @@ fn command_policy_and_metadata_remain_explicit() {
             .map(|command| command.command.as_str()),
         Some("swift test")
     );
+    // Without a request fingerprint (an older server), the answer carries the policy itself.
+    assert_eq!(card.permissions.approval_request_fingerprint, None);
+    let policy = vec!["swift".to_owned(), "test".to_owned()];
+    let answer = card
+        .result_for(&DecisionResponse::ApproveCommandPolicy(policy))
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(answer).unwrap(),
+        json!({"action": "accept", "content": {"execpolicy_amendment": ["swift", "test"]}})
+    );
 }
 
 #[test]
