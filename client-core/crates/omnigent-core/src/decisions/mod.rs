@@ -191,6 +191,10 @@ pub struct PermissionOptions {
     pub command: Option<CommandApproval>,
     /// `execpolicy_amendment`: the command policy the user may approve, exactly as offered.
     pub exec_policy_amendment: Option<Vec<String>>,
+    /// `approval_request_fingerprint`: the digest of the displayed command request. A server
+    /// that sends it derives the remembered policy itself and wants the digest echoed back;
+    /// older servers omit it and take the policy in the answer.
+    pub approval_request_fingerprint: Option<String>,
     /// Codex MCP tool-call persistence modes (`_meta.persist` with
     /// `_meta.codex_approval_kind == "mcp_tool_call"`).
     pub persist_modes: Vec<PersistMode>,
@@ -237,6 +241,7 @@ impl PermissionOptions {
                 reason: text("reason"),
             }),
             exec_policy_amendment: nonempty_strings(extra.get("execpolicy_amendment")),
+            approval_request_fingerprint: text("approval_request_fingerprint"),
             persist_modes: codex_persist_modes(extra.get("_meta")),
             antigravity: (phase == Some(AGY_PERMISSION_PHASE)).then(|| AntigravityPermission {
                 action_description: text("action_description"),
