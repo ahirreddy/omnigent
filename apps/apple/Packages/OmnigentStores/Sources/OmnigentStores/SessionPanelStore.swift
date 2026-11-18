@@ -33,6 +33,12 @@ public final class SessionPanelStore {
   public internal(set) var editError: CoreError?
   /// Each linked pull request's condition as its host last read it, for the composer's chip.
   public internal(set) var liveConditions: [String: PullRequestCondition] = [:]
+  /// The open pull request's inline review threads, read while the Changes tab shows.
+  public internal(set) var reviewThreads: CreationLoad<ReviewThreadsPage> = .idle
+  /// The lines a new review thread is being written on, and its text.
+  public internal(set) var newReviewThread: ReviewThreadDraft?
+  /// Replies being written, by thread.
+  public internal(set) var reviewReplies: [String: String] = [:]
 
   let core: ClientCore
   private var generation = 0

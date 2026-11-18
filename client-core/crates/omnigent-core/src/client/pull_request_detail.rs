@@ -19,6 +19,8 @@ use crate::http::{HttpTransport, TransportError};
 
 #[path = "pull_request_polling.rs"]
 pub mod polling;
+#[path = "pull_request_reviews.rs"]
+pub mod reviews;
 
 use polling::PullRequestPolling;
 
@@ -990,3 +992,7 @@ mod polling_tests;
 #[cfg(test)]
 #[path = "pull_request_text_tests.rs"]
 mod text_tests;
+
+#[cfg(test)]
+#[path = "pull_request_reviews_tests.rs"]
+mod reviews_tests;

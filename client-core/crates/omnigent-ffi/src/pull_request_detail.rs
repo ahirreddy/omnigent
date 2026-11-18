@@ -12,6 +12,9 @@ use crate::client::ClientCore;
 use crate::errors::CoreError;
 use crate::pull_requests::{PullRequestStatus, SessionPullRequest};
 
+#[path = "pull_request_reviews.rs"]
+pub mod reviews;
+
 /// Where a pull request stands, as the web's status chip names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum PullRequestCondition {

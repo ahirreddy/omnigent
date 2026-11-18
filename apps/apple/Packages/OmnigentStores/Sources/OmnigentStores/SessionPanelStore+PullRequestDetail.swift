@@ -36,6 +36,8 @@ nonisolated public enum PullRequestEdit: Equatable, Sendable {
   case comment
   /// Changing the title or description.
   case details
+  /// Replying to or starting a review thread.
+  case reviewComment
 }
 
 extension SessionPanelStore {
@@ -51,6 +53,7 @@ extension SessionPanelStore {
       mergeOptions = .idle
       editError = nil
       filesHead = nil
+      clearReviewThreads()
       restartPolling()
     }
     await reloadDetail()
@@ -64,7 +67,14 @@ extension SessionPanelStore {
     files = .idle
     filesHead = nil
     editError = nil
+    clearReviewThreads()
     restartPolling()
+  }
+
+  private func clearReviewThreads() {
+    reviewThreads = .idle
+    newReviewThread = nil
+    reviewReplies = [:]
   }
 
   /// Re-reads the open PR's detail and patch. The shown detail stays while it reloads, and a

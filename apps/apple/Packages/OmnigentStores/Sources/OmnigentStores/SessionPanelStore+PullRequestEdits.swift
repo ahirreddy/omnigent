@@ -196,7 +196,7 @@ extension SessionPanelStore {
 
   /// Runs one change, keeping its failure in ``editError``; `nil` when it failed or another
   /// change is in flight.
-  private func edit<Value>(
+  func edit<Value>(
     _ kind: PullRequestEdit,
     _ operation: (ClientCore, String) async throws -> Value
   ) async -> Value? {
