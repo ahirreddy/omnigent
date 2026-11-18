@@ -33,6 +33,7 @@ from omnigent.runtime import (
     get_caps,
     get_policy_store,
     pending_inputs,
+    session_stream,
 )
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.runtime.caps import RuntimeCaps
@@ -51,10 +52,19 @@ from omnigent.server._elicitation_registry import (
     _ParkedHarnessElicitation,
     _PreResolvedHarnessElicitation,
 )
+from omnigent.server.ask_user_question import answered_ask_user_question_input
 from omnigent.server.auth import (
     LEVEL_EDIT,
     LEVEL_READ,
     AuthProvider,
+)
+from omnigent.server.claude_elicitation import (
+    claude_mcp_elicitation_output,
+    claude_mcp_elicitation_params,
+)
+from omnigent.server.claude_permission_updates import (
+    CLAUDE_PLAN_APPROVAL_MODES,
+    claude_permission_suggestions,
 )
 from omnigent.server.permissions import check_session_access
 from omnigent.server.routes._auth_helpers import (
@@ -84,6 +94,7 @@ from omnigent.server.routes._sessions.helpers import (
     _allow_all_edits_eligible,
     _allow_auto_mode_eligible,
     _allow_remember_eligible,
+    _ancestor_session_ids,
     _build_actor,
     _build_evaluation_context,
     _claude_native_permission_directories,
@@ -449,6 +460,16 @@ def register_hooks_routes(
             if remember_host is not None:
                 remember_scope["host"] = remember_host
             extras["remember_scope"] = remember_scope
+        # Claude's own "don't ask again" offer: the rule, mode and directory
+        # updates its prompt applies. The card offers them as one choice; the
+        # verdict site applies this checked copy, never a client-supplied list.
+        suggestions = (
+            claude_permission_suggestions(payload.get("permission_suggestions"))
+            if is_claude
+            else None
+        )
+        if suggestions:
+            extras["permission_suggestions"] = suggestions
         # When Claude's built-in AskUserQuestion tool is the one
         # needing permission, the PermissionRequest payload
         # already carries the full questions + options structure
@@ -478,6 +499,9 @@ def register_hooks_routes(
             and tool_input
         ):
             extras["exit_plan_mode"] = tool_input
+            # Claude's plan prompt also approves into auto mode or accept-edits mode.
+            if _allow_all_edits_eligible(tool_name, permission_mode):
+                extras["plan_modes"] = list(CLAUDE_PLAN_APPROVAL_MODES)
         # The full input lets the UI show an edit as a diff; content_preview is truncated.
         if (
             is_claude
@@ -550,9 +574,9 @@ def register_hooks_routes(
         # the supplied selections as the tool result the LLM sees.
         #
         # ``result.content`` is MCP-shaped (a flat ``{[field]: value}``
-        # map) — exactly the shape ``tool_input.answers`` expects on
-        # AskUserQuestion. Single-select values are strings,
-        # multi-select are ``list[str]``; both ride through verbatim.
+        # map) keyed by question text, as ``tool_input.answers`` is. A
+        # multi-select answer is joined as Claude's picker joins it, and
+        # notes in ``_meta.notes`` become ``annotations``.
         if (
             behavior == "allow"
             and tool_name == "AskUserQuestion"
@@ -560,7 +584,9 @@ def register_hooks_routes(
             and isinstance(result.content, dict)
             and result.content
         ):
-            decision["updatedInput"] = {**tool_input, "answers": result.content}
+            decision["updatedInput"] = answered_ask_user_question_input(
+                tool_input, result.content, result.meta
+            )
         # ExitPlanMode is a requiresUserInteraction tool: Claude Code coerces a
         # bare PermissionRequest allow back to an interactive prompt unless the
         # decision also carries ``updatedInput``. The plan needs no change, so
@@ -573,7 +599,19 @@ def register_hooks_routes(
             and tool_input
         ):
             decision["updatedInput"] = tool_input
-        if permission_directories:
+        plan_modes = extras.get("plan_modes") or []
+        chosen_plan_mode = (
+            result.content.get("plan_mode") if isinstance(result.content, dict) else None
+        )
+        if (
+            behavior == "allow"
+            and suggestions
+            and isinstance(result.content, dict)
+            and result.content.get("apply_suggestions") is True
+        ):
+            # "Yes, and don't ask again": Claude's own updates, as published.
+            decision["updatedPermissions"] = suggestions
+        elif permission_directories:
             # Only the explicit directory action grants the scope offered by Claude.
             # Browser-supplied paths and generic permission-mode flags cannot widen it.
             if (
@@ -596,6 +634,11 @@ def register_hooks_routes(
         ):
             decision["updatedPermissions"] = [
                 {"type": "setMode", "mode": "auto", "destination": "session"}
+            ]
+        elif behavior == "allow" and chosen_plan_mode in plan_modes:
+            # A plan approved into one of the offered modes (``plan_modes``).
+            decision["updatedPermissions"] = [
+                {"type": "setMode", "mode": chosen_plan_mode, "destination": "session"}
             ]
         # "Accept & allow all edits" — the user approved this edit AND
         # asked to auto-accept future edits. Echo a ``setMode`` permission
@@ -1348,6 +1391,75 @@ def register_hooks_routes(
         body = codex_request.build_response(result)
         return Response(
             content=json.dumps(body),
+            media_type="application/json",
+        )
+
+    # ── POST /sessions/{session_id}/hooks/claude-elicitation ─
+
+    @router.post(
+        "/sessions/{session_id}/hooks/claude-elicitation",
+        # Internal harness callback webhook — hidden from the public API reference.
+        include_in_schema=False,
+        response_model=None,
+        dependencies=[Depends(require_json_content_type)],
+    )
+    async def claude_elicitation_hook(
+        request: Request,
+        session_id: str,
+    ) -> Response:
+        """
+        Claude Code ``Elicitation`` hook endpoint: an MCP server asks the user for input.
+
+        Claude shows its own dialog only after the hook returns without an
+        answer, so the card is published only while someone watches the
+        session (or an ancestor that mirrors it); otherwise the empty reply
+        hands the request straight to Claude's terminal dialog. The wait and
+        cleanup are the ``PermissionRequest`` hook's.
+
+        :param request: FastAPI request carrying Claude's ``Elicitation`` hook input.
+        :param session_id: Omnigent conversation id from the URL path.
+        :returns: The ``Elicitation`` hook output for the web verdict, or ``200``
+            with an empty body when nobody watches, on timeout or on disconnect.
+        :raises OmnigentError: 404 if the session does not exist, 400 if the
+            body is malformed.
+        """
+        user_id = _get_user_id(request, auth_provider)
+        await _require_access(
+            user_id, session_id, LEVEL_EDIT, permission_store, conversation_store
+        )
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError as exc:
+            raise OmnigentError(
+                f"Invalid JSON in Elicitation hook body: {exc}",
+                code=ErrorCode.INVALID_INPUT,
+            ) from exc
+        if not isinstance(payload, dict):
+            raise OmnigentError(
+                "Elicitation hook body must be a JSON object.",
+                code=ErrorCode.INVALID_INPUT,
+            )
+        params = claude_mcp_elicitation_params(payload)
+        elicitation_id = _client_supplied_hook_elicitation_id(payload, session_id)
+        ancestors = await asyncio.to_thread(_ancestor_session_ids, conversation_store, session_id)
+        if not any(
+            session_stream.has_subscribers(watched) for watched in (session_id, *ancestors)
+        ):
+            return Response(status_code=status.HTTP_200_OK)
+        from omnigent.server.routes import sessions as _sf
+
+        result = await _publish_and_wait_for_harness_elicitation(
+            request,
+            session_id=session_id,
+            params=params,
+            timeout_s=_sf._CLAUDE_NATIVE_PERMISSION_HOOK_TIMEOUT_S,
+            conversation_store=conversation_store,
+            elicitation_id=elicitation_id,
+        )
+        if result is None:
+            return Response(status_code=status.HTTP_200_OK)
+        return Response(
+            content=json.dumps(claude_mcp_elicitation_output(result)),
             media_type="application/json",
         )
 

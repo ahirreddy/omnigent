@@ -4264,21 +4264,8 @@ async def test_ask_user_question_roundtrip_real_executor_hook_through_adapter_br
     adapter._current_ctx = ctx  # type: ignore[assignment]
 
     # Register the real hook via a minimal fake SDK exposing HookMatcher.
-    class _HookMatcher:
-        def __init__(self, matcher=None, timeout=None, hooks=None) -> None:
-            self.matcher = matcher
-            self.timeout = timeout
-            self.hooks = hooks
-
-    class _FakeSdk:
-        HookMatcher = _HookMatcher
-
-    class _Opts:
-        def __init__(self) -> None:
-            self.hooks = None
-
-    opts = _Opts()
-    executor._install_ask_user_question_hook(_FakeSdk, opts)
+    opts = _HookOptions()
+    executor._install_ask_user_question_hook(_FakeHookSdk, opts)
     matcher = next(m for m in opts.hooks["PreToolUse"] if m.matcher == "AskUserQuestion")
     hook_cb = matcher.hooks[0]
 
@@ -4293,6 +4280,79 @@ async def test_ask_user_question_roundtrip_real_executor_hook_through_adapter_br
     payload = getattr(params, "ask_user_question", None)
     assert payload is not None
     assert payload["questions"][0]["question"] == "Env?"
+
+
+@pytest.mark.asyncio
+async def test_mcp_elicitation_roundtrip_real_executor_hook_through_adapter_bridge() -> None:
+    """A real ClaudeSDKExecutor's ``Elicitation`` hook shows an MCP server's form
+    through the adapter's form bridge, and the card's answer is the hook's output.
+
+    The Python SDK declines MCP elicitations itself, so without this seam the
+    request never reaches the user.
+    """
+    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.server.schemas import ElicitationResult
+
+    executor = ClaudeSDKExecutor()
+    adapter = ExecutorAdapter(executor_factory=lambda: executor)
+    assert hasattr(executor, "_form_elicitation_handler")
+    executor._form_elicitation_handler = adapter._stable_form_elicitation_handler  # type: ignore[attr-defined]
+    ctx = _ElicitingTurnContext(
+        ElicitationResult(action="accept", content={"environment": "staging"})
+    )
+    adapter._current_ctx = ctx  # type: ignore[assignment]
+    opts = _HookOptions()
+    executor._install_elicitation_hook(_FakeHookSdk, opts)
+    [matcher] = opts.hooks["Elicitation"]
+    hook_cb = matcher.hooks[0]
+    schema = {"type": "object", "properties": {"environment": {"type": "string"}}}
+
+    out = await hook_cb(
+        {
+            "hook_event_name": "Elicitation",
+            "mcp_server_name": "deploy",
+            "message": "Where should it deploy?",
+            "requested_schema": schema,
+        },
+        None,
+        {},
+    )
+
+    assert out == {
+        "hookSpecificOutput": {
+            "hookEventName": "Elicitation",
+            "action": "accept",
+            "content": {"environment": "staging"},
+        }
+    }
+    [(_, params)] = ctx.seen
+    assert (params.requestedSchema, params.policy_name) == (schema, "claude_sdk_mcp_elicitation")
+    # A request the card cannot show gets no answer, leaving the SDK's own decline.
+    assert await hook_cb({"message": "No server named"}, None, {}) == {}
+    assert len(ctx.seen) == 1
+
+
+class _FakeHookMatcher:
+    """The SDK's ``HookMatcher``, for installing an executor's real hooks."""
+
+    def __init__(self, matcher=None, timeout=None, hooks=None) -> None:
+        self.matcher = matcher
+        self.timeout = timeout
+        self.hooks = hooks
+
+
+class _FakeHookSdk:
+    """A ``claude_agent_sdk`` stand-in exposing only ``HookMatcher``."""
+
+    HookMatcher = _FakeHookMatcher
+
+
+class _HookOptions:
+    """``ClaudeAgentOptions`` reduced to the ``hooks`` an executor installs."""
+
+    def __init__(self) -> None:
+        self.hooks = None
 
 
 class _LiveMcpExecutor(Executor):

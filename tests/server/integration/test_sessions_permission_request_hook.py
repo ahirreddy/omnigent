@@ -29,6 +29,7 @@ import asyncio
 import contextlib
 import json
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
@@ -54,6 +55,14 @@ from tests.server.helpers import create_session_for_agent as _create_session
 from tests.server.helpers import create_test_agent, start_session_stream_collector
 
 pytestmark = pytest.mark.asyncio
+
+# Every kind of request Claude asks through its hooks, shared with the native app's
+# ``client-core/crates/omnigent-core/src/decisions/claude_tests.rs``.
+_CLAUDE_DECISION_FIXTURES = sorted(
+    (Path(__file__).resolve().parents[3] / "client-core" / "fixtures" / "decisions").glob(
+        "Claude--*.json"
+    )
+)
 
 
 async def _drain_until_elicitation(
@@ -1595,10 +1604,169 @@ async def test_permission_request_hook_substitutes_ask_user_question_answers(
     decision = body["hookSpecificOutput"]["decision"]
     assert decision["behavior"] == "allow"
     assert decision["updatedInput"]["questions"] == payload["tool_input"]["questions"]
+    # A multi-select answer is joined as Claude's own picker joins it.
     assert decision["updatedInput"]["answers"] == {
         "Which framework should we use?": "Vue",
-        "Pick snacks": ["Popcorn", "Pretzels"],
+        "Pick snacks": "Popcorn, Pretzels",
     }
+
+
+@pytest.mark.parametrize("path", _CLAUDE_DECISION_FIXTURES, ids=lambda path: path.stem)
+async def test_claude_fixture_round_trip(client: httpx.AsyncClient, path: Path) -> None:
+    """
+    Each shared Claude fixture: the hook input publishes its card, and the
+    app's answer becomes the hook output Claude receives.
+    """
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+    payload = fixture["claude"]
+    route = (
+        "claude-elicitation"
+        if payload["hook_event_name"] == "Elicitation"
+        else "permission-request"
+    )
+    agent = await create_test_agent(
+        client,
+        "test-claude-fixture",
+        executor={"type": "omnigent", "config": {"harness": "claude-native"}},
+    )
+    session_id = await _create_session(client, agent["id"])
+    drain_task = asyncio.create_task(_drain_until_elicitation(session_id))
+    await asyncio.sleep(0.05)
+    hook_task = asyncio.create_task(
+        client.post(f"/v1/sessions/{session_id}/hooks/{route}", json=payload)
+    )
+
+    event = await drain_task
+    assert event["elicitation_id"] == fixture["elicitation"]["elicitation_id"]
+    published = {key: value for key, value in event["params"].items() if value is not None}
+    assert published == fixture["elicitation"]["params"]
+    answer = fixture["answer"]
+    verdict = await _post_approval(
+        client,
+        session_id,
+        event["elicitation_id"],
+        answer["action"],
+        answer.get("content"),
+        answer.get("_meta"),
+    )
+    assert verdict.status_code == 202, verdict.text
+    resp = await hook_task
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == fixture["claude_result"]
+
+
+_NPM_TEST_RULE = {
+    "type": "addRules",
+    "rules": [{"toolName": "Bash", "ruleContent": "npm test:*"}],
+    "behavior": "allow",
+    "destination": "localSettings",
+}
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "suggestions", "content", "published", "updates"),
+    [
+        # Nothing suggested: the flag alone grants nothing.
+        ("Bash", None, {"apply_suggestions": True}, None, None),
+        # One malformed update withholds the whole list.
+        (
+            "Bash",
+            [_NPM_TEST_RULE, {"type": "setMode", "mode": "turbo", "destination": "session"}],
+            {"apply_suggestions": True},
+            None,
+            None,
+        ),
+        # Only an explicit ``true`` applies them.
+        ("Bash", [_NPM_TEST_RULE], {"apply_suggestions": "true"}, [_NPM_TEST_RULE], None),
+        # The client's own list is never applied; the published copy is, without unknown keys.
+        (
+            "Bash",
+            [{**_NPM_TEST_RULE, "note": "dropped"}],
+            {"apply_suggestions": True, "permission_suggestions": "anything"},
+            [_NPM_TEST_RULE],
+            [_NPM_TEST_RULE],
+        ),
+        # A plan mode that was not offered falls back to the plain approval.
+        (
+            "ExitPlanMode",
+            None,
+            {"plan_mode": "bypassPermissions"},
+            None,
+            [{"type": "setMode", "mode": "default", "destination": "session"}],
+        ),
+    ],
+)
+async def test_permission_request_hook_applies_only_offered_updates(
+    client: httpx.AsyncClient,
+    tool_name: str,
+    suggestions: list[Any] | None,
+    content: dict[str, Any],
+    published: list[Any] | None,
+    updates: list[Any] | None,
+) -> None:
+    agent = await create_test_agent(client, "test-permission-offered-updates")
+    session_id = await _create_session(client, agent["id"])
+    payload = await _claude_permission_payload(tool_name)
+    if suggestions is not None:
+        payload["permission_suggestions"] = suggestions
+    if tool_name == "ExitPlanMode":
+        payload.update(permission_mode="plan", tool_input={"plan": "Run the tests."})
+    drain_task = asyncio.create_task(_drain_until_elicitation(session_id))
+    await asyncio.sleep(0.05)
+    hook_task = asyncio.create_task(
+        client.post(f"/v1/sessions/{session_id}/hooks/permission-request", json=payload)
+    )
+
+    event = await drain_task
+    assert event["params"].get("permission_suggestions") == published
+    verdict = await _post_approval(client, session_id, event["elicitation_id"], "accept", content)
+    assert verdict.status_code == 202, verdict.text
+    resp = await hook_task
+    assert resp.status_code == 200, resp.text
+    decision = resp.json()["hookSpecificOutput"]["decision"]
+    assert decision.get("updatedPermissions") == updates
+
+
+async def test_claude_elicitation_hook_leaves_an_unwatched_session_to_the_terminal(
+    client: httpx.AsyncClient,
+) -> None:
+    """
+    Claude shows its own dialog only after the hook returns, so with nobody
+    watching the session the hook answers empty at once and publishes nothing.
+    """
+    agent = await create_test_agent(client, "test-claude-elicitation-unwatched")
+    session_id = await _create_session(client, agent["id"])
+    form = next(
+        path for path in _CLAUDE_DECISION_FIXTURES if path.stem == "Claude--Elicitation--Form"
+    )
+    payload = json.loads(form.read_text(encoding="utf-8"))["claude"]
+    # The round trip above parked this fixture's id in another session.
+    del payload["_omnigent_elicitation_id"]
+    async with asyncio.timeout(5):
+        resp = await client.post(
+            f"/v1/sessions/{session_id}/hooks/claude-elicitation", json=payload
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.content == b""
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"message": "No server"},
+        {"mcp_server_name": "deploy"},
+        {"mcp_server_name": "deploy", "message": "m", "mode": "voice"},
+        {"mcp_server_name": "deploy", "message": "m", "mode": "url"},
+        {"mcp_server_name": "deploy", "message": "m", "requested_schema": ["not", "an", "object"]},
+    ],
+)
+async def test_claude_elicitation_hook_rejects_a_malformed_request(
+    client: httpx.AsyncClient, payload: dict[str, Any]
+) -> None:
+    agent = await create_test_agent(client, "test-claude-elicitation-malformed")
+    session_id = await _create_session(client, agent["id"])
+    resp = await client.post(f"/v1/sessions/{session_id}/hooks/claude-elicitation", json=payload)
+    assert resp.status_code == 400, resp.text
 
 
 async def test_permission_request_hook_no_updated_input_without_answers(

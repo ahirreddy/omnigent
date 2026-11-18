@@ -15,7 +15,7 @@ import time
 import types
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn, TextIO
+from typing import TYPE_CHECKING, NamedTuple, NoReturn, TextIO
 
 from omnigent.harnesses.claude_native.bridge import (
     BRIDGE_ID_LABEL_KEY,
@@ -216,6 +216,8 @@ def main(argv: list[str] | None = None) -> int:
         return observe_main(raw_argv[1:])
     if raw_argv and raw_argv[0] == "permission-request":
         return _main_permission_request(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "elicitation":
+        return _main_elicitation(raw_argv[1:])
     if raw_argv and raw_argv[0] == "ask-user-question":
         # Retired PreToolUse forwarder: settings written before the upgrade
         # still name it until the terminal restarts. Exit 0 with no output so
@@ -1056,6 +1058,96 @@ def _post_hook_with_reattach(
             backoff_s = min(backoff_s * 2, _PERMISSION_RETRY_MAX_BACKOFF_S)
 
 
+class _HookTarget(NamedTuple):
+    """Where one forwarded hook payload goes: the active session's hook route."""
+
+    url: str
+    headers: dict[str, str]
+    payload: dict[str, object]
+    server_url: str
+    session_id: str
+    bridge_dir: Path
+
+
+def _read_hook_target(argv: list[str], hook_label: str, route: str) -> _HookTarget | None:
+    """
+    Read one hook payload from stdin and resolve the active session's ``route``.
+
+    :param argv: CLI argv after the subcommand, e.g. ``["--bridge-dir", "/tmp/x"]``.
+    :param hook_label: Diagnostic prefix, e.g. ``"claude permission"``.
+    :param route: The session hook route, e.g. ``"permission-request"``.
+    :returns: The target, or ``None`` (after a stderr diagnostic) when the
+        payload is not a JSON object or the session or server is unknown.
+    """
+    args = _parse_permission_args(argv)
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw or "{}")
+    except json.JSONDecodeError as exc:
+        print(f"omnigent {hook_label} hook: malformed JSON: {exc}", file=sys.stderr)
+        return None
+    if not isinstance(payload, dict):
+        print(f"omnigent {hook_label} hook: expected JSON object", file=sys.stderr)
+        return None
+    bridge_dir = Path(args.bridge_dir)
+    session_id = read_active_session_id(bridge_dir)
+    if not session_id:
+        print(f"omnigent {hook_label} hook: active session missing", file=sys.stderr)
+        return None
+    config = read_permission_hook_config(bridge_dir)
+    ap_server_url = args.omnigent_server_url or config.get("ap_server_url")
+    if not isinstance(ap_server_url, str) or not ap_server_url:
+        print(f"omnigent {hook_label} hook: Omnigent server URL missing", file=sys.stderr)
+        return None
+    headers = _parse_headers(args.omnigent_auth_headers_json)
+    if not headers:
+        raw_headers = config.get("ap_auth_headers")
+        if isinstance(raw_headers, dict):
+            headers = {str(key): str(value) for key, value in raw_headers.items()}
+    # A hook request raises a web elicitation that parks in the pod-local
+    # registry on the replica holding this session's runner tunnel; an unkeyed
+    # POST lands elsewhere and the answer is silently lost. Key from the
+    # runner-env host_id (reads OMNIGENT_RUNNER_SLICE_KEY; workspace mount only).
+    _merge_identity_headers(headers, ap_server_url)
+    url = f"{ap_server_url.rstrip('/')}/v1/sessions/{url_component(session_id)}/hooks/{route}"
+    return _HookTarget(
+        url=url,
+        headers=headers,
+        payload=payload,
+        server_url=ap_server_url,
+        session_id=session_id,
+        bridge_dir=bridge_dir,
+    )
+
+
+def _main_elicitation(argv: list[str]) -> int:
+    """
+    Forward one Claude ``Elicitation`` hook (an MCP server asking for input) to the session.
+
+    :param argv: CLI argv after the ``elicitation`` subcommand, e.g.
+        ``["--bridge-dir", "/tmp/x"]``.
+    :returns: ``0``. Prints the server's hook output when the user answered in
+        the app; without output (nobody watching, unreachable, timed out)
+        Claude shows its own dialog.
+    """
+    from omnigent.native.native_policy_hook import policy_hook_reauth
+
+    target = _read_hook_target(argv, "claude elicitation", "claude-elicitation")
+    if target is None:
+        return 0
+    resp = _post_hook_with_reattach(
+        target.url,
+        target.headers,
+        target.payload,
+        "claude elicitation",
+        reauth=policy_hook_reauth(target.server_url, target.headers),
+        wait_marker=approval_wait_marker_path(target.session_id, bridge_dir=target.bridge_dir),
+    )
+    if resp is not None and resp.content:
+        sys.stdout.write(resp.text)
+    return 0
+
+
 def _main_permission_request(argv: list[str]) -> int:
     """
     Forward one Claude ``PermissionRequest`` hook to the active Omnigent session.
@@ -1071,48 +1163,17 @@ def _main_permission_request(argv: list[str]) -> int:
     """
     from omnigent.native.native_policy_hook import policy_hook_reauth
 
-    args = _parse_permission_args(argv)
-    raw = sys.stdin.read()
-    try:
-        payload = json.loads(raw or "{}")
-    except json.JSONDecodeError as exc:
-        print(f"omnigent claude permission hook: malformed JSON: {exc}", file=sys.stderr)
+    target = _read_hook_target(argv, "claude permission", "permission-request")
+    if target is None:
         return 0
-    if not isinstance(payload, dict):
-        print("omnigent claude permission hook: expected JSON object", file=sys.stderr)
-        return 0
-    bridge_dir = Path(args.bridge_dir)
-    session_id = read_active_session_id(bridge_dir)
-    if not session_id:
-        print("omnigent claude permission hook: active session missing", file=sys.stderr)
-        return 0
-    config = read_permission_hook_config(bridge_dir)
-    ap_server_url = args.omnigent_server_url or config.get("ap_server_url")
-    if not isinstance(ap_server_url, str) or not ap_server_url:
-        print("omnigent claude permission hook: Omnigent server URL missing", file=sys.stderr)
-        return 0
-    headers = _parse_headers(args.omnigent_auth_headers_json)
-    if not headers:
-        raw_headers = config.get("ap_auth_headers")
-        if isinstance(raw_headers, dict):
-            headers = {str(key): str(value) for key, value in raw_headers.items()}
-    # A permission request raises a web elicitation that parks in the pod-local
-    # registry on the replica holding this session's runner tunnel; an unkeyed
-    # POST lands elsewhere and the approval is silently lost. Key from the
-    # runner-env host_id (reads OMNIGENT_RUNNER_SLICE_KEY; workspace mount only).
-    _merge_identity_headers(headers, ap_server_url)
-    url = (
-        f"{ap_server_url.rstrip('/')}/v1/sessions/"
-        f"{url_component(session_id)}/hooks/permission-request"
-    )
-    is_question = payload.get("tool_name") == "AskUserQuestion"
+    is_question = target.payload.get("tool_name") == "AskUserQuestion"
     resp = _post_hook_with_reattach(
-        url,
-        headers,
-        payload,
+        target.url,
+        target.headers,
+        target.payload,
         "claude permission",
-        reauth=policy_hook_reauth(ap_server_url, headers),
-        wait_marker=approval_wait_marker_path(session_id, bridge_dir=bridge_dir),
+        reauth=policy_hook_reauth(target.server_url, target.headers),
+        wait_marker=approval_wait_marker_path(target.session_id, bridge_dir=target.bridge_dir),
         answer_window_s=(
             PRE_RESOLVED_ELICITATION_TTL_S - _QUESTION_ANSWER_WINDOW_MARGIN_S
             if is_question

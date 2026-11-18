@@ -5080,6 +5080,7 @@ def test_augment_claude_args_omits_permission_hook_without_omnigent_server(
     )
     settings = _load_invocation_settings(args)
     assert "PermissionRequest" not in settings["hooks"]
+    assert "Elicitation" not in settings["hooks"]
 
 
 def test_augment_claude_args_registers_permission_command_hook(
@@ -5118,6 +5119,11 @@ def test_augment_claude_args_registers_permission_command_hook(
     assert "omnigent.harnesses.claude_native.hook permission-request" in hook["command"]
     assert "--bridge-dir" in hook["command"]
     assert "Bearer xyz" not in hook["command"]
+    # An MCP server's request for input goes the same way, with the same day-long wait.
+    [elicitation] = settings["hooks"]["Elicitation"][0]["hooks"]
+    assert elicitation["timeout"] == 86400
+    assert "omnigent.harnesses.claude_native.hook elicitation" in elicitation["command"]
+    assert "Bearer xyz" not in elicitation["command"]
     permission_config = json.loads((tmp_path / "permission_hook.json").read_text(encoding="utf-8"))
     assert permission_config["ap_server_url"] == "http://127.0.0.1:8787/"
     assert permission_config["ap_auth_headers"] == {"Authorization": "Bearer xyz"}

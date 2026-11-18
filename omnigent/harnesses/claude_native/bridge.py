@@ -2888,6 +2888,25 @@ def build_hook_settings(
             "timeout": 86400,
         }
         hooks["PermissionRequest"] = [{"hooks": [permission_hook]}]
+        # An MCP server's request for input. Claude shows its own dialog only
+        # after this hook returns without an answer; the server answers empty
+        # at once when nobody watches the session, so the terminal is not held.
+        elicitation_hook: _JsonObject = {
+            "type": "command",
+            "command": _python_hook_command(
+                [
+                    python,
+                    "-I",
+                    "-m",
+                    "omnigent.harnesses.claude_native.hook",
+                    "elicitation",
+                    "--bridge-dir",
+                    str(bridge_dir),
+                ]
+            ),
+            "timeout": 86400,
+        }
+        hooks["Elicitation"] = [{"hooks": [elicitation_hook]}]
 
         # Policy-gate native Claude Code tools, not just relay/MCP tools.
         # The hook is a bare curl against the relay's evaluate-policy

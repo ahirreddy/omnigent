@@ -59,7 +59,10 @@ from omnigent.policies.types import FAIL_CLOSED_PHASES
 from omnigent.runtime.harnesses._scaffold import HarnessApp, PolicyVerdictPayload, TurnContext
 from omnigent.runtime.prompt import dedupe_tool_output_images
 from omnigent.runtime.tool_output import cap_tool_output
-from omnigent.server.ask_user_question import structured_ask_user_question
+from omnigent.server.ask_user_question import (
+    answered_ask_user_question_input,
+    structured_ask_user_question,
+)
 from omnigent.server.schemas import (
     CreateResponseRequest,
     ElicitationRequestParams,
@@ -1131,7 +1134,7 @@ class ExecutorAdapter(HarnessApp):
         # ``result.content`` is MCP-shaped (question -> selection), the same
         # shape the claude-native permission hook feeds back as ``answers``.
         if result.action == "accept" and isinstance(result.content, dict) and result.content:
-            return {**tool_input, "answers": result.content}
+            return answered_ask_user_question_input(tool_input, result.content, result.meta)
         if result.action == "accept":
             # A client without the question form (e.g. the terminal REPL) can
             # only approve; the user agreed to answer but picked nothing.
