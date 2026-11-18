@@ -1,0 +1,23 @@
+{
+  "policy": {
+    "message": "__ask_on_scheduled_task_change: Agent wants to set a reminder for this session at 2026-11-19 09:00 UTC.\nWhen it fires, this message is sent into the session as a new turn, even if nobody is watching (each line quoted with '> '):\n> Check the deploy\nApprove?",
+    "phase": "tool_call",
+    "policy_names": ["__ask_on_scheduled_task_change"],
+    "content_preview": "{\"at\": \"2026-11-19T09:00:00Z\", \"message\": \"Check the deploy\"}"
+  },
+  "elicitation": {
+    "type": "response.elicitation_request",
+    "elicitation_id": "elicit_5b0e4f1a2c3d4e5f60718293a4b5c6d7",
+    "method": "elicitation/create",
+    "params": {
+      "mode": "url",
+      "message": "__ask_on_scheduled_task_change: Agent wants to set a reminder for this session at 2026-11-19 09:00 UTC.\nWhen it fires, this message is sent into the session as a new turn, even if nobody is watching (each line quoted with '> '):\n> Check the deploy\nApprove?",
+      "requestedSchema": {},
+      "phase": "tool_call",
+      "policy_name": "__ask_on_scheduled_task_change",
+      "content_preview": "{\"at\": \"2026-11-19T09:00:00Z\", \"message\": \"Check the deploy\"}",
+      "url": "/approve/conv_a/elicit_5b0e4f1a2c3d4e5f60718293a4b5c6d7"
+    }
+  },
+  "answer": { "action": "accept" }
+}

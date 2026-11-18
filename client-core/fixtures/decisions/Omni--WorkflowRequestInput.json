@@ -1,0 +1,64 @@
+{
+  "tool": {
+    "step": "migrate",
+    "questions": [
+      {
+        "question": "Which profiles should the migration cover?",
+        "header": "Profiles",
+        "options": [
+          { "label": "All profiles", "description": "Run against every profile." },
+          { "label": "Only prod" }
+        ],
+        "recommended": "Only prod"
+      },
+      {
+        "question": "When should it run?",
+        "header": "Timing",
+        "options": [{ "label": "Now" }, { "label": "Tonight" }]
+      }
+    ]
+  },
+  "elicitation": {
+    "sequence_number": null,
+    "type": "response.elicitation_request",
+    "elicitation_id": "elicit_journal_0f3c4d5e6f708192a3b4c5d6e7f80910",
+    "method": "elicitation/create",
+    "params": {
+      "mode": "form",
+      "message": "Waiting for you on Migrate profiles",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "workflow_request_input",
+      "policy_name": null,
+      "content_preview": null,
+      "target_session_id": null,
+      "journal_step": "migrate",
+      "ask_user_question": {
+        "questions": [
+          {
+            "question": "Which profiles should the migration cover?",
+            "header": "Profiles",
+            "multiSelect": false,
+            "options": [
+              { "label": "Only prod (recommended)" },
+              { "label": "All profiles", "description": "Run against every profile." }
+            ]
+          },
+          {
+            "question": "When should it run?",
+            "header": "Timing",
+            "multiSelect": false,
+            "options": [{ "label": "Now" }, { "label": "Tonight" }]
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "Which profiles should the migration cover?": "Only prod (recommended)",
+      "When should it run?": "After the freeze"
+    }
+  }
+}

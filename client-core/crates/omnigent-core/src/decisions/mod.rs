@@ -716,4 +716,6 @@ mod codex_tests;
 #[cfg(test)]
 mod harness_tests;
 #[cfg(test)]
+mod omni_tests;
+#[cfg(test)]
 mod tests;
