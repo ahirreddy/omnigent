@@ -2,6 +2,7 @@
 //! command does. The rules are `omnigent_core::slash`'s.
 
 use omnigent_core::events::SendPayload;
+use omnigent_core::rewind as core_rewind;
 use omnigent_core::slash as core;
 
 use crate::client::{ClientCore, MessageSent};
@@ -43,6 +44,15 @@ pub struct SlashOptions {
     /// A router can answer for a native Claude Code or Codex pane.
     #[uniffi(default = false)]
     pub routes_native_panes: bool,
+    /// A claude-sdk `/clear` continues in a new, empty session.
+    #[uniffi(default = false)]
+    pub claude_sdk_clears: bool,
+    /// Claude sessions can rewind to an earlier prompt.
+    #[uniffi(default = false)]
+    pub rewinds: bool,
+    /// The session has a Goal control; the composer sets it for its own session.
+    #[uniffi(default = false)]
+    pub goal: bool,
 }
 
 impl From<SlashOptions> for core::SlashOptions {
@@ -51,6 +61,9 @@ impl From<SlashOptions> for core::SlashOptions {
             server_clears: options.server_clears,
             smart_routing: options.smart_routing,
             routes_native_panes: options.routes_native_panes,
+            claude_sdk_clears: options.claude_sdk_clears,
+            rewinds: options.rewinds,
+            goal: options.goal,
         }
     }
 }
@@ -61,6 +74,9 @@ impl From<core::SlashOptions> for SlashOptions {
             server_clears: options.server_clears,
             smart_routing: options.smart_routing,
             routes_native_panes: options.routes_native_panes,
+            claude_sdk_clears: options.claude_sdk_clears,
+            rewinds: options.rewinds,
+            goal: options.goal,
         }
     }
 }
@@ -111,8 +127,17 @@ pub enum SlashAction {
     },
     /// Start a blank session in the same project.
     NewSession,
-    /// Run the harness's own `/clear` ([`ClientCore::clear_context`]).
+    /// Run `/clear` ([`ClientCore::clear_context`]).
     Clear,
+    /// Open the rewind picker ([`ClientCore::rewind_prompts`]).
+    Rewind,
+    /// Open the Goal sheet.
+    Goal,
+    /// Send `message`, the canonical `/goal <objective>`, as an ordinary message.
+    SendGoal {
+        /// The message to send in place of the draft.
+        message: String,
+    },
     /// Fork a side chat and open it with `question` as its draft.
     SideChat {
         /// Everything after `/side`; may be empty.
@@ -172,6 +197,9 @@ impl From<core::SlashAction> for SlashAction {
             core::SlashAction::SetEffort { effort } => Self::SetEffort { effort },
             core::SlashAction::NewSession => Self::NewSession,
             core::SlashAction::Clear => Self::Clear,
+            core::SlashAction::Rewind => Self::Rewind,
+            core::SlashAction::Goal => Self::Goal,
+            core::SlashAction::SendGoal { message } => Self::SendGoal { message },
             core::SlashAction::SideChat { question } => Self::SideChat { question },
             core::SlashAction::Context => Self::Context,
             core::SlashAction::Mcp => Self::Mcp,
@@ -179,6 +207,131 @@ impl From<core::SlashAction> for SlashAction {
             core::SlashAction::Show { text } => Self::Show { text },
         }
     }
+}
+
+/// One of a session's prompts, as the `/rewind` picker lists it.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct RewindPrompt {
+    /// The prompt's item id.
+    pub item_id: String,
+    /// Its text; empty for a prompt of attachments only.
+    pub text: String,
+    /// When the server recorded it, in epoch seconds.
+    pub created_at: Option<f64>,
+}
+
+/// A batch of `/rewind` prompts, newest first.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct RewindPrompts {
+    /// The prompts.
+    pub prompts: Vec<RewindPrompt>,
+    /// Pass back to read older prompts; `None` once none remain.
+    pub older_cursor: Option<String>,
+}
+
+/// A file the chosen prompt attached, as the rewound session holds it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RewindAttachment {
+    /// An image rather than a document.
+    pub is_image: bool,
+    /// The rewound session's copy of the file; `None` for one carried inline.
+    pub file_id: Option<String>,
+    /// An image carried inline, as a `data:image/...` URI.
+    pub image_url: Option<String>,
+    /// A document carried inline, as a base64 `data:` URI.
+    pub file_data: Option<String>,
+    /// The attachment's name.
+    pub filename: String,
+}
+
+/// What a rewind returned.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Rewound {
+    /// The new session that continues from just before the prompt.
+    pub session_id: String,
+    /// The prompt's text, for the new session's composer.
+    pub prompt: String,
+    /// The prompt's attachments, in prompt order.
+    pub attachments: Vec<RewindAttachment>,
+    /// Some attachments could not be restored.
+    pub attachments_incomplete: bool,
+}
+
+impl From<core_rewind::RewindPrompts> for RewindPrompts {
+    fn from(page: core_rewind::RewindPrompts) -> Self {
+        Self {
+            prompts: page
+                .prompts
+                .into_iter()
+                .map(|prompt| RewindPrompt {
+                    item_id: prompt.item_id,
+                    text: prompt.text,
+                    created_at: prompt.created_at,
+                })
+                .collect(),
+            older_cursor: page.older_cursor,
+        }
+    }
+}
+
+impl From<core_rewind::Rewound> for Rewound {
+    fn from(rewound: core_rewind::Rewound) -> Self {
+        Self {
+            session_id: rewound.session_id,
+            prompt: rewound.prompt,
+            attachments: rewound
+                .attachments
+                .into_iter()
+                .map(|attachment| RewindAttachment {
+                    is_image: attachment.is_image,
+                    file_id: attachment.file_id,
+                    image_url: attachment.image_url,
+                    file_data: attachment.file_data,
+                    filename: attachment.filename,
+                })
+                .collect(),
+            attachments_incomplete: rewound.attachments_incomplete,
+        }
+    }
+}
+
+impl From<Rewound> for core_rewind::Rewound {
+    fn from(rewound: Rewound) -> Self {
+        Self {
+            session_id: rewound.session_id,
+            prompt: rewound.prompt,
+            attachments: rewound
+                .attachments
+                .into_iter()
+                .map(|attachment| core_rewind::RewindAttachment {
+                    is_image: attachment.is_image,
+                    file_id: attachment.file_id,
+                    image_url: attachment.image_url,
+                    file_data: attachment.file_data,
+                    filename: attachment.filename,
+                })
+                .collect(),
+            attachments_incomplete: rewound.attachments_incomplete,
+        }
+    }
+}
+
+/// What putting a rewound prompt back in its new session's composer did.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RestoredPrompt {
+    /// The prompt's text went in; `false` when the composer already held a draft.
+    pub text_restored: bool,
+    /// Attachments that could not be restored, each with why.
+    pub unrestored: Vec<UnrestoredAttachment>,
+}
+
+/// An attachment of a rewound prompt that is not in the new composer.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct UnrestoredAttachment {
+    /// Its name.
+    pub filename: String,
+    /// Why it could not be restored.
+    pub reason: String,
 }
 
 fn core_skills(skills: Vec<Skill>) -> Vec<core::Skill> {
@@ -254,6 +407,27 @@ pub fn context_report(
 #[uniffi::export]
 pub fn mention_preamble(harness: Option<String>, paths: Vec<String>) -> String {
     omnigent_core::mentions::mention_preamble(harness.as_deref(), &paths)
+}
+
+/// A sent message as Edit and resend puts it back in the composer.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RecalledMessage {
+    /// The paths its leading marker lines tagged, to show as `@` chips again.
+    pub mentions: Vec<String>,
+    /// The text after them.
+    pub text: String,
+}
+
+/// `text`, a sent message, back as the composer takes it to edit: its leading `@` marker lines
+/// become paths again and the rest is the text.
+#[must_use]
+#[uniffi::export]
+pub fn recall_sent_message(text: String) -> RecalledMessage {
+    let recalled = omnigent_core::mentions::recall_sent_message(&text);
+    RecalledMessage {
+        mentions: recalled.mentions,
+        text: recalled.text,
+    }
 }
 
 /// The `/mcp` text for the agent's MCP servers; `None` while they are unknown.
@@ -340,16 +514,84 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
-    /// Runs the harness's own `/clear`; the view follows the session that supersedes this one.
+    /// Runs `/clear`. Returns the new session a claude-sdk clear continues in, for the view to
+    /// open; a native clear returns `None` and its terminal's successor arrives on the stream.
     ///
     /// # Errors
     ///
     /// [`CoreError::Session`]: `ReadOnly` and the read and write errors.
-    pub async fn clear_context(&self, session_id: String) -> Result<(), CoreError> {
+    pub async fn clear_context(&self, session_id: String) -> Result<Option<String>, CoreError> {
         self.sessions()
             .clear_context(&session_id)
             .await
             .map_err(CoreError::from)
+    }
+
+    /// `session_id`'s prompts for the `/rewind` picker, newest first, from `after` (an earlier
+    /// batch's `older_cursor`) or the newest.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`, `InvalidPagination`, `SessionNotFound`, the
+    /// read errors and `MalformedResponse`.
+    pub async fn rewind_prompts(
+        &self,
+        session_id: String,
+        after: Option<String>,
+    ) -> Result<RewindPrompts, CoreError> {
+        self.sessions()
+            .rewind_prompts(&session_id, after.as_deref())
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Continues `session_id` from just before its prompt `item_id` in a new session, which
+    /// the caller opens with the prompt in its composer.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`, `ReadOnly`, `SessionNotFound`, the write
+    /// errors (`Rejected` while a turn runs), and `DeliveryUncertain` for an unreadable answer.
+    pub async fn rewind_session(
+        &self,
+        session_id: String,
+        item_id: String,
+    ) -> Result<Rewound, CoreError> {
+        self.sessions()
+            .rewind_session(&session_id, &item_id)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Puts `rewound`'s prompt back in its new session's composer: the text, then each
+    /// attachment that can be read back, staged to upload on send. A draft already there wins.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`] when not connected; files that cannot be restored are listed in
+    /// the result instead.
+    pub async fn restore_rewound_prompt(
+        &self,
+        rewound: Rewound,
+    ) -> Result<RestoredPrompt, CoreError> {
+        let restored = self
+            .sessions()
+            .restore_rewound_prompt(&rewound.into())
+            .await
+            .map_err(CoreError::from)?;
+        Ok(RestoredPrompt {
+            text_restored: restored.text_restored,
+            unrestored: restored
+                .unrestored
+                .into_iter()
+                .map(|missing| UnrestoredAttachment {
+                    filename: missing.filename,
+                    reason: missing.reason,
+                })
+                .collect(),
+        })
     }
 
     /// Turns the server's automatic session titles on or off for this device's requests.

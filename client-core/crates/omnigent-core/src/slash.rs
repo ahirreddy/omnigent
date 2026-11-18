@@ -77,6 +77,13 @@ pub struct SlashOptions {
     /// A router can answer for a native Claude Code or Codex pane (`smart_routing_sources`
     /// reports the external or the built-in router; older servers imply both).
     pub routes_native_panes: bool,
+    /// `session_claude_sdk_clear`: a claude-sdk `/clear` continues in a new, empty session.
+    pub claude_sdk_clears: bool,
+    /// `session_rewind`: Claude sessions rewind to an earlier prompt (`POST .../rewind`).
+    pub rewinds: bool,
+    /// The session has a Goal control (`goal_control`). The composer sets it for its own
+    /// session; `/v1/info` never does.
+    pub goal: bool,
 }
 
 impl SlashOptions {
@@ -100,6 +107,9 @@ impl SlashOptions {
             server_clears,
             smart_routing,
             routes_native_panes,
+            claude_sdk_clears: opt_bool(object, "session_claude_sdk_clear")?.unwrap_or(false),
+            rewinds: opt_bool(object, "session_rewind")?.unwrap_or(false),
+            goal: false,
         })
     }
 }
@@ -168,6 +178,15 @@ pub enum SlashAction {
     NewSession,
     /// Run the harness's own `/clear`: the terminal moves to a fresh session the view follows.
     Clear,
+    /// Open the rewind picker: the session's prompts, to continue from just before one.
+    Rewind,
+    /// Open the Goal sheet.
+    Goal,
+    /// Send `message`, the canonical `/goal <objective>`, as an ordinary message.
+    SendGoal {
+        /// The message to send in place of the draft.
+        message: String,
+    },
     /// Fork a side chat and open it with `question` as its draft.
     SideChat {
         /// Everything after `/side`; may be empty.
@@ -188,6 +207,8 @@ pub enum SlashAction {
 
 const COMPACT: &str = "Compact conversation context to free up space";
 const CLEAR: &str = "Clear the context and continue in a new chat on the same machine";
+const REWIND: &str = "Rewind the conversation to an earlier prompt and edit it";
+const GOAL: &str = "View or set the goal for this session";
 const CONTEXT: &str = "Show context window usage for this session";
 const MCP: &str = "Show MCP servers enabled for this session";
 const PERMISSIONS: &str = "Change the approval mode for this session";
@@ -213,9 +234,19 @@ fn offers_compact(harness: &str) -> bool {
     is_native(harness) || harness == "claude-sdk"
 }
 
-/// The harnesses whose own `/clear` the server can run in the session terminal.
-fn offers_clear(harness: &str) -> bool {
-    matches!(harness, "claude-native" | "codex-native")
+/// Whether the server runs `/clear` for `harness`: in the session terminal for Claude Code and
+/// Codex, as a new session for claude-sdk (the web's `composerOffersClear`).
+fn offers_clear(harness: &str, options: &SlashOptions) -> bool {
+    match harness {
+        "claude-sdk" => options.claude_sdk_clears,
+        "claude-native" | "codex-native" => options.server_clears,
+        _ => false,
+    }
+}
+
+/// Whether `/rewind` opens the picker for `harness` (the web's `composerOffersRewind`).
+fn offers_rewind(harness: &str, options: &SlashOptions) -> bool {
+    matches!(harness, "claude-native" | "claude-sdk") && options.rewinds
 }
 
 /// Codex forks its side chat in-process from the typed `/side`; others fork on the server.
@@ -251,8 +282,11 @@ pub fn slash_commands(
     if offers_compact(&harness) {
         commands.push(builtin("compact", COMPACT));
     }
-    if options.server_clears && offers_clear(&harness) {
+    if offers_clear(&harness, options) {
         commands.push(builtin("clear", CLEAR));
+    }
+    if offers_rewind(&harness, options) {
+        commands.push(builtin("rewind", REWIND));
     }
     commands.push(builtin("context", CONTEXT));
     if configuration.supports_effort() {
@@ -265,6 +299,9 @@ pub fn slash_commands(
     if offers_permissions(&harness, configuration) {
         commands.push(builtin("permissions", PERMISSIONS));
     }
+    if options.goal {
+        commands.push(builtin("goal", GOAL));
+    }
     commands.push(builtin("new", NEW));
     if harness == "claude-native" {
         commands.push(builtin("btw", BTW));
@@ -273,7 +310,13 @@ pub fn slash_commands(
         commands.push(builtin("side", SIDE));
     }
     commands.push(builtin("help", HELP));
-    commands.extend(skill_commands(Some(&harness), skills));
+    let mut skill_rows = skill_commands(Some(&harness), skills);
+    if options.goal {
+        // `/goal` opens the Goal sheet, so a same-named `/` skill steps aside; Codex's `$goal`
+        // stays.
+        skill_rows.retain(|row| row.prefix != "/" || !row.name.eq_ignore_ascii_case("goal"));
+    }
+    commands.extend(skill_rows);
     commands
 }
 
@@ -307,7 +350,8 @@ fn skill_description(skill: &Skill) -> String {
 }
 
 /// The command `text` invokes, split from its arguments: the longest known name that prefixes
-/// the trimmed text at a word boundary. `None` for ordinary text and file paths.
+/// the trimmed text at a word boundary. Built-ins match in any case, skills exactly (as on the
+/// web). `None` for ordinary text and file paths.
 #[must_use]
 pub fn match_invocation<'a>(
     text: &str,
@@ -317,10 +361,18 @@ pub fn match_invocation<'a>(
     commands
         .iter()
         .filter_map(|command| {
-            let rest = trimmed
+            let after_prefix = trimmed
                 .strip_prefix(command.prefix.as_str())
-                .or_else(|| trimmed.strip_prefix('/'))?
-                .strip_prefix(command.name.as_str())?;
+                .or_else(|| trimmed.strip_prefix('/'))?;
+            let rest = if command.is_skill {
+                after_prefix.strip_prefix(command.name.as_str())?
+            } else {
+                let head = after_prefix.get(..command.name.len())?;
+                if !head.eq_ignore_ascii_case(&command.name) {
+                    return None;
+                }
+                &after_prefix[command.name.len()..]
+            };
             (rest.is_empty() || rest.starts_with(char::is_whitespace))
                 .then(|| (command, rest.trim().to_owned()))
         })
@@ -378,6 +430,12 @@ fn builtin_action(
         "compact" | "btw" => SlashAction::SendText,
         "new" => no_arguments("new", SlashAction::NewSession),
         "clear" => no_arguments("clear", SlashAction::Clear),
+        "rewind" => no_arguments("rewind", SlashAction::Rewind),
+        "goal" => match crate::client::session_tools::goal_command(&arguments) {
+            None => SlashAction::Goal,
+            // The objective goes out as a message in its canonical `/goal …` form.
+            Some(message) => SlashAction::SendGoal { message },
+        },
         "permissions" => no_arguments("permissions", SlashAction::Permissions),
         "context" => SlashAction::Context,
         "mcp" if arguments.is_empty() => SlashAction::Mcp,

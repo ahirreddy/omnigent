@@ -1,7 +1,7 @@
 //! Skill discovery for an existing session's composer (`GET /v1/skills?session_id=`), and the
 //! server side of its built-in commands: which the server supports (`GET /v1/info`) and `/clear`.
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::requests::{refused_write, validate_identifier};
 use super::{ClientCore, SessionError, lock};
@@ -67,7 +67,8 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 
     /// Which server-backed commands the composer may offer (`GET /v1/info`). Older servers
-    /// reject the `clear` control, so `/clear` stays plain text there.
+    /// reject the `clear` control, so `/clear` stays plain text there. The same read keeps the
+    /// server's filesystem attachment policy for staging files ([`Self::attachment_policy`]).
     ///
     /// # Errors
     ///
@@ -78,14 +79,21 @@ impl<T: HttpTransport> ClientCore<T> {
     )]
     pub async fn slash_options(&self) -> Result<SlashOptions, SessionError> {
         let value = self.get_json("/v1/info", &[]).await;
+        if let Ok(info) = &value {
+            self.record_attachment_policy(info);
+        }
         self.dispatch();
         SlashOptions::from_info(&value?).map_err(|detail| SessionError::MalformedResponse {
             detail: format!("/v1/info: {detail}"),
         })
     }
 
-    /// Runs the harness's own `/clear` in the session terminal (`clear` event). The terminal
-    /// moves to a fresh session, announced by `session.superseded`, which the view follows.
+    /// Runs `/clear` (`clear` event). A native terminal moves to a fresh session, announced by
+    /// `session.superseded`; a claude-sdk session continues in a new, empty session on the same
+    /// machine, which the acknowledgement names.
+    ///
+    /// Returns the session that continues the work when the server names one other than
+    /// `session_id`, for the view to follow.
     ///
     /// # Errors
     ///
@@ -96,7 +104,7 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    pub async fn clear_context(&self, session_id: &str) -> Result<(), SessionError> {
+    pub async fn clear_context(&self, session_id: &str) -> Result<Option<String>, SessionError> {
         let result = self.post_clear(session_id).await;
         self.dispatch();
         result
@@ -106,14 +114,27 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn post_clear(&self, session_id: &str) -> Result<(), SessionError> {
+    async fn post_clear(&self, session_id: &str) -> Result<Option<String>, SessionError> {
         self.cached_editable(session_id)?;
         let path = format!("/v1/sessions/{session_id}/events");
         let body = json!({"type": "clear", "data": {}});
-        self.write(self.prepare("POST", &path, &[], Some(&body))?)
+        let response = self
+            .write(self.prepare("POST", &path, &[], Some(&body))?)
             .await
             .map_err(refused_write(session_id))?;
         lock(&self.state).request_rehydration(session_id);
-        Ok(())
+        Ok(successor_session(&response.body, session_id))
     }
+}
+
+/// The session a `/clear` acknowledgement says continues the work. A native clear names none,
+/// and its acknowledgement may carry no JSON body at all; the `session.superseded` event then
+/// says where the terminal went.
+fn successor_session(body: &[u8], session_id: &str) -> Option<String> {
+    let acknowledgement: Value = serde_json::from_slice(body).ok()?;
+    acknowledgement
+        .get("session_id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty() && *id != session_id)
+        .map(str::to_owned)
 }

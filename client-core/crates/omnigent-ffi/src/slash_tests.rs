@@ -23,6 +23,9 @@ const NO_OPTIONS: SlashOptions = SlashOptions {
     server_clears: false,
     smart_routing: false,
     routes_native_panes: false,
+    claude_sdk_clears: false,
+    rewinds: false,
+    goal: false,
 };
 
 #[test]
@@ -38,6 +41,18 @@ fn options_and_skills_round_trip_each_field() {
         },
         SlashOptions {
             routes_native_panes: true,
+            ..NO_OPTIONS
+        },
+        SlashOptions {
+            claude_sdk_clears: true,
+            ..NO_OPTIONS
+        },
+        SlashOptions {
+            rewinds: true,
+            ..NO_OPTIONS
+        },
+        SlashOptions {
+            goal: true,
             ..NO_OPTIONS
         },
     ] {
@@ -97,6 +112,16 @@ fn every_core_action_maps_to_its_own_arm() {
         ),
         (core::SlashAction::NewSession, SlashAction::NewSession),
         (core::SlashAction::Clear, SlashAction::Clear),
+        (core::SlashAction::Rewind, SlashAction::Rewind),
+        (core::SlashAction::Goal, SlashAction::Goal),
+        (
+            core::SlashAction::SendGoal {
+                message: "/goal g".into(),
+            },
+            SlashAction::SendGoal {
+                message: "/goal g".into(),
+            },
+        ),
         (
             core::SlashAction::SideChat {
                 question: "q".into(),
@@ -296,12 +321,87 @@ fn server_options_and_commands_send_the_expected_events() {
         harness.last_request().1,
         json!({"type": "compact", "data": {}})
     );
-    harness
+    let successor = harness
         .call(|core| async move { core.clear_context("conv_a".into()).await })
         .unwrap();
+    assert_eq!(successor, None);
     assert_eq!(
         harness.last_request().1,
         json!({"type": "clear", "data": {}})
+    );
+}
+
+#[test]
+fn a_sent_message_is_recalled_with_its_mentions() {
+    let recalled = crate::slash::recall_sent_message(format!(
+        "{}Fix it",
+        mention_preamble(Some("claude-native".into()), vec!["src/a.rs".into()])
+    ));
+    assert_eq!(recalled.mentions, ["src/a.rs"]);
+    assert_eq!(recalled.text, "Fix it");
+}
+
+#[test]
+fn rewind_lists_prompts_rewinds_and_restores_the_prompt() {
+    let mut harness = connected();
+    harness.http.route(
+        "/v1/sessions/conv_a/items",
+        reply(
+            200,
+            r#"{"data":[{"id":"msg_1","type":"message","role":"user",
+                "content":[{"type":"input_text","text":"Fix it"}],"created_at":12.5}],
+                "has_more":false}"#,
+        ),
+    );
+    let page = harness
+        .call(|core| async move { core.rewind_prompts("conv_a".into(), None).await })
+        .unwrap();
+    assert_eq!(page.older_cursor, None);
+    assert_eq!(
+        page.prompts,
+        [crate::slash::RewindPrompt {
+            item_id: "msg_1".into(),
+            text: "Fix it".into(),
+            created_at: Some(12.5),
+        }]
+    );
+    assert_eq!(harness.last_query("type").as_deref(), Some("message"));
+
+    harness.http.route(
+        "/v1/sessions/conv_a/rewind",
+        reply(
+            200,
+            r#"{"session_id":"conv_b","prompt":"Fix it","attachments":[{"type":"input_file",
+                "file_id":null,"file_data":"data:text/plain;base64,aGk=","filename":"a.txt"}]}"#,
+        ),
+    );
+    let rewound = harness
+        .call(|core| async move { core.rewind_session("conv_a".into(), "msg_1".into()).await })
+        .unwrap();
+    assert_eq!(rewound.session_id, "conv_b");
+    assert_eq!(
+        harness.last_request(),
+        (
+            "POST /v1/sessions/conv_a/rewind".into(),
+            json!({"item_id": "msg_1"})
+        )
+    );
+    let restored = harness
+        .call(|core| async move { core.restore_rewound_prompt(rewound).await })
+        .unwrap();
+    assert!(restored.text_restored && restored.unrestored.is_empty());
+    assert_eq!(
+        harness.core.composer_text("conv_b".into()).unwrap(),
+        "Fix it"
+    );
+    assert_eq!(
+        harness
+            .core
+            .attachment_draft("conv_b".into())
+            .unwrap()
+            .items
+            .len(),
+        1
     );
 }
 

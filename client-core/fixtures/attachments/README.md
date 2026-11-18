@@ -29,7 +29,7 @@ Swift string interpolation was resolved to the concrete values each test uses, a
 
 ## Extracted from reducer-side NativeLab tests
 
-- `AttachmentDraft--SupportedTypesExactCapsAndFilenameValidation.json`: Supported types with exact per-type caps (limitMiB: the file at exactly the cap is accepted, cap+1 byte is rejected as tooLarge), unsupported extensions, invalid filenames (empty, traversal, CRLF, backslash), and a media type containing CRLF. Expect accept/reject as listed.
+- `AttachmentDraft--SupportedTypesExactCapsAndFilenameValidation.json`: Supported types with exact per-type caps (limitMiB: the file at exactly the cap is accepted, cap+1 byte is rejected as tooLarge), the archives, Office documents and databases the default filesystem policy delivers as files (filesystemLimitMiB, whatever type is declared), unsupported extensions, invalid filenames (empty, traversal, CRLF, backslash), and a media type containing CRLF. Expect accept/reject as listed.
 - `AttachmentDraft--TransportAndStoreKeepExactRefsAfterRejectedSendAndBlockUncertainRetry.json`: Canned transport responses: denied submit (HTTP 202, body queued false / denied true) and a network-connection-lost error for the uncertain retry, plus the retained file bytes and submitted text. Expect exactly one file upload POST, two event POSTs, draft retaining attachments, and beginSubmission blocked after uncertain.
 
 ## Extracted from client-side NativeLab tests

@@ -150,6 +150,10 @@ pub struct CreationCatalog {
     /// `nil` (a record built without it) reads as `.anyHost`, as a server that omits it means.
     #[uniffi(default)]
     pub sibling_session_destinations: Option<crate::sessions::SiblingSessionDestinations>,
+    /// `enabled_connections` has `mcp`: a session can start with server-configured MCP
+    /// services.
+    #[uniffi(default)]
+    pub mcp_registry: bool,
 }
 
 /// A new sandbox for a session.
@@ -203,6 +207,9 @@ pub struct CreationSelection {
     /// `creation_offers_smart_routing`); the model and effort are not sent with it.
     #[uniffi(default)]
     pub smart_routing: bool,
+    /// Server-configured MCP services the session starts with (from `launch_mcp_services`).
+    #[uniffi(default)]
+    pub mcp_registry_services: Vec<String>,
 }
 
 /// The `git` block of a new external-host session.
@@ -365,6 +372,7 @@ impl From<core::CreationCatalog> for CreationCatalog {
             smart_routing: catalog.capabilities.smart_routing,
             sibling_sessions: catalog.capabilities.sibling_sessions,
             sibling_session_destinations: Some(catalog.capabilities.sibling_destinations.into()),
+            mcp_registry: catalog.capabilities.mcp_registry,
         }
     }
 }
@@ -394,6 +402,7 @@ impl From<CreationCatalog> for core::CreationCatalog {
                     .sibling_session_destinations
                     .map(Into::into)
                     .unwrap_or_default(),
+                mcp_registry: catalog.mcp_registry,
             },
         }
     }
@@ -416,8 +425,29 @@ impl From<CreationSelection> for core::CreationSelection {
             plan_mode: selection.plan_mode,
             project_id: selection.project_id,
             smart_routing: selection.smart_routing,
+            mcp_registry_services: selection.mcp_registry_services,
         }
     }
+}
+
+/// The MCP services a launch sends: the `selected` ids the registry still `offered`, in
+/// selection order. A service no longer offered stays remembered but is not sent.
+#[must_use]
+#[uniffi::export]
+pub fn launch_mcp_services(selected: Vec<String>, offered: Vec<String>) -> Vec<String> {
+    core::launch_mcp_services(&selected, &offered)
+}
+
+/// Why a launch with MCP services `selected` waits for the registry (loading, or unreadable);
+/// `None` lets it go.
+#[must_use]
+#[uniffi::export]
+pub fn launch_mcp_problem(
+    selected: Vec<String>,
+    registry_loading: bool,
+    registry_failed: bool,
+) -> Option<String> {
+    core::launch_mcp_problem(&selected, registry_loading, registry_failed)
 }
 
 impl From<core::CreationReceipt> for CreationReceipt {
