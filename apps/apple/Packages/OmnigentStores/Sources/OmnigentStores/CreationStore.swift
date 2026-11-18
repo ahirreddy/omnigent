@@ -48,6 +48,9 @@ public final class CreationStore {
   public private(set) var models: CreationLoad<[ModelChoice]> = .idle
   /// Git worktrees of the selected folder's repository; empty when it is not one.
   public private(set) var worktrees: CreationLoad<[HostWorktree]> = .idle
+  /// The server-configured MCP services a session can start with, where the catalog says the
+  /// server has the registry (``loadMcpServices()``).
+  public internal(set) var mcpServices: CreationLoad<[McpServiceRecord]> = .idle
   /// The request state.
   public private(set) var phase: CreationPhase = .editing
   /// Files to send with the first message.
