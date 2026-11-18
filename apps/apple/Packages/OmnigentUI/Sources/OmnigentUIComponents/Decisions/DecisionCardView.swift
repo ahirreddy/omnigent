@@ -319,7 +319,7 @@ extension DecisionCardView {
           .accessibilityIdentifier("\(idPrefix)decision-form-validation-\(card.id)")
       }
       HStack(spacing: Theme.Spacing.small) {
-        Button("Submit") { act(.form(values: values)) }
+        Button("Submit") { act(draft.wrappedValue.response(for: fields)) }
           .buttonStyle(.borderedProminent)
           // Disabled reads neutral: a faded accent still looks like an action.
           .tint(canSubmit ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color.secondary))

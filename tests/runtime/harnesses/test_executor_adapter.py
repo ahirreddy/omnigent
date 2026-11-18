@@ -3916,7 +3916,12 @@ async def test_elicitation_choice_handler_declines_without_a_turn() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "bridge",
-    ["_elicitation_choice_handler", "_form_elicitation_handler", "_ask_question_handler"],
+    [
+        "_elicitation_choice_handler",
+        "_form_elicitation_handler",
+        "_ask_question_handler",
+        "_permission_suggestions_handler",
+    ],
 )
 @pytest.mark.parametrize("supported", [False, True])
 async def test_run_turn_installs_optional_bridges_only_where_supported(
@@ -4342,21 +4347,8 @@ async def test_ask_user_question_roundtrip_real_executor_hook_through_adapter_br
     adapter._current_ctx = ctx  # type: ignore[assignment]
 
     # Register the real hook via a minimal fake SDK exposing HookMatcher.
-    class _HookMatcher:
-        def __init__(self, matcher=None, timeout=None, hooks=None) -> None:
-            self.matcher = matcher
-            self.timeout = timeout
-            self.hooks = hooks
-
-    class _FakeSdk:
-        HookMatcher = _HookMatcher
-
-    class _Opts:
-        def __init__(self) -> None:
-            self.hooks = None
-
-    opts = _Opts()
-    executor._install_ask_user_question_hook(_FakeSdk, opts)
+    opts = _HookOptions()
+    executor._install_ask_user_question_hook(_FakeHookSdk, opts)
     matcher = next(m for m in opts.hooks["PreToolUse"] if m.matcher == "AskUserQuestion")
     hook_cb = matcher.hooks[0]
 
@@ -4371,6 +4363,144 @@ async def test_ask_user_question_roundtrip_real_executor_hook_through_adapter_br
     payload = getattr(params, "ask_user_question", None)
     assert payload is not None
     assert payload["questions"][0]["question"] == "Env?"
+
+
+@pytest.mark.asyncio
+async def test_mcp_elicitation_roundtrip_real_executor_hook_through_adapter_bridge() -> None:
+    """A real ClaudeSDKExecutor's ``Elicitation`` hook shows an MCP server's form
+    through the adapter's form bridge, and the card's answer is the hook's output.
+
+    The Python SDK declines MCP elicitations itself, so without this seam the
+    request never reaches the user.
+    """
+    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.server.schemas import ElicitationResult
+
+    executor = ClaudeSDKExecutor()
+    adapter = ExecutorAdapter(executor_factory=lambda: executor)
+    assert hasattr(executor, "_form_elicitation_handler")
+    executor._form_elicitation_handler = adapter._stable_form_elicitation_handler  # type: ignore[attr-defined]
+    ctx = _ElicitingTurnContext(
+        ElicitationResult(action="accept", content={"environment": "staging"})
+    )
+    adapter._current_ctx = ctx  # type: ignore[assignment]
+    opts = _HookOptions()
+    executor._install_elicitation_hook(_FakeHookSdk, opts)
+    [matcher] = opts.hooks["Elicitation"]
+    hook_cb = matcher.hooks[0]
+    schema = {"type": "object", "properties": {"environment": {"type": "string"}}}
+
+    out = await hook_cb(
+        {
+            "hook_event_name": "Elicitation",
+            "mcp_server_name": "deploy",
+            "message": "Where should it deploy?",
+            "requested_schema": schema,
+        },
+        None,
+        {},
+    )
+
+    assert out == {
+        "hookSpecificOutput": {
+            "hookEventName": "Elicitation",
+            "action": "accept",
+            "content": {"environment": "staging"},
+        }
+    }
+    [(_, params)] = ctx.seen
+    assert (params.requestedSchema, params.policy_name) == (schema, "claude_sdk_mcp_elicitation")
+    # A request the card cannot show gets no answer, leaving the SDK's own decline.
+    assert await hook_cb({"message": "No server named"}, None, {}) == {}
+    assert len(ctx.seen) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "content", "applied", "cancelled"),
+    [
+        ("accept", {"apply_suggestions": True}, True, False),
+        ("accept", None, False, False),
+        ("decline", None, None, True),
+    ],
+    ids=["always-allow", "once", "declined"],
+)
+async def test_permission_suggestions_roundtrip_real_executor_through_adapter_bridge(
+    action: str, content: dict[str, Any] | None, applied: bool | None, cancelled: bool
+) -> None:
+    """A real ClaudeSDKExecutor's ``can_use_tool`` offers Claude's suggested updates on
+    the adapter's card, and applies them only when the user chose them."""
+    from claude_agent_sdk.types import (
+        PermissionResultAllow,
+        PermissionResultDeny,
+        PermissionRuleValue,
+        PermissionUpdate,
+        ToolPermissionContext,
+    )
+
+    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.server.schemas import ElicitationResult
+
+    executor = ClaudeSDKExecutor()
+    adapter = ExecutorAdapter(executor_factory=lambda: executor)
+    executor._elicitation_handler = adapter._stable_elicitation_handler  # type: ignore[attr-defined]
+    assert hasattr(executor, "_permission_suggestions_handler")
+    executor._permission_suggestions_handler = adapter._stable_permission_suggestions_handler  # type: ignore[attr-defined]
+    ctx = _ElicitingTurnContext(ElicitationResult(action=action, content=content))
+    adapter._current_ctx = ctx  # type: ignore[assignment]
+    rule = PermissionUpdate(
+        type="addRules",
+        rules=[PermissionRuleValue(tool_name="mcp__omnigent__sys_os_shell")],
+        behavior="allow",
+        destination="localSettings",
+    )
+
+    result = await executor._can_use_tool_for_permission(
+        "mcp__omnigent__sys_os_shell",
+        {"command": "npm test"},
+        ToolPermissionContext(suggestions=[rule], tool_use_id="tool_1"),
+    )
+
+    # A whole-tool rule has no content, never ``null``: Claude refuses that.
+    suggested = {
+        "type": "addRules",
+        "rules": [{"toolName": "mcp__omnigent__sys_os_shell"}],
+        "behavior": "allow",
+        "destination": "localSettings",
+    }
+    [(_, params)] = ctx.seen
+    assert params.permission_suggestions == [suggested]
+    if applied is None:
+        assert isinstance(result, PermissionResultDeny)
+    else:
+        assert isinstance(result, PermissionResultAllow)
+        sent = [update.to_dict() for update in result.updated_permissions or []]
+        assert sent == ([suggested] if applied else [])
+    assert ctx.cancelled.was_set is cancelled
+
+
+class _FakeHookMatcher:
+    """The SDK's ``HookMatcher``, for installing an executor's real hooks."""
+
+    def __init__(self, matcher=None, timeout=None, hooks=None) -> None:
+        self.matcher = matcher
+        self.timeout = timeout
+        self.hooks = hooks
+
+
+class _FakeHookSdk:
+    """A ``claude_agent_sdk`` stand-in exposing only ``HookMatcher``."""
+
+    HookMatcher = _FakeHookMatcher
+
+
+class _HookOptions:
+    """``ClaudeAgentOptions`` reduced to the ``hooks`` an executor installs."""
+
+    def __init__(self) -> None:
+        self.hooks = None
 
 
 class _LiveMcpExecutor(Executor):

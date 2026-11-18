@@ -76,6 +76,23 @@ struct DecisionFormShapeLogicTests {
     #expect(FormFieldHint.placeholder(.date) == "YYYY-MM-DD")
   }
 
+  @Test("An editor sends its exact text, empty included, as Pi's editor takes it")
+  func editorExactText() {
+    let editor = FormField(
+      key: "0", title: "Edit the notes", kind: .text, exactText: true,
+      defaultValue: .text(value: "Fixes\n"))
+    let text = FormField(key: "name", title: "Name", kind: .text)
+    var draft = FormDraft()
+    #expect(draft.values(for: [editor]) == ["0": .text(value: "Fixes\n")])
+    draft.text["0"] = ""
+    draft.text["name"] = ""
+    #expect(draft.values(for: [editor, text]) == ["0": .text(value: "")])
+    #expect(draft.problem(for: editor) == nil)
+    #expect(draft.problem(for: text) == .missing("Enter Name."))
+    draft.text["0"] = "  kept\n"
+    #expect(draft.values(for: [editor]) == ["0": .text(value: "  kept\n")])
+  }
+
   @Test("Dates are written in the formats the core accepts and read back")
   func dates() {
     let instant = Date(timeIntervalSince1970: 1_763_400_000)
@@ -86,6 +103,55 @@ struct DecisionFormShapeLogicTests {
     #expect(FormDateText.date(from: stamp, format: .dateTime) == instant)
     #expect(FormDateText.date(from: day, format: .date) != nil)
     #expect(FormDateText.date(from: "tomorrow", format: .date) == nil)
+  }
+
+  private let layout = FormField(
+    key: "layout", title: "Layout", kind: .singleChoice,
+    options: [
+      FormOption(value: "Plain"), FormOption(value: "Sidebar", preview: "[nav] | [body]"),
+      FormOption(value: "Top bar", preview: "[nav]\n[body]"),
+    ], allowsCustom: true, acceptsNotes: true)
+
+  @Test("A note is sent with the answers only on a question that takes one, trimmed")
+  func notes() {
+    let platforms = FormField(
+      key: "platforms", title: "Platforms", kind: .multipleChoice,
+      options: [FormOption(value: "Mac"), FormOption(value: "iPhone")])
+    var draft = FormDraft()
+    draft.selected = ["layout": ["Top bar"], "platforms": ["Mac"]]
+    let values: [String: ElicitationValue] = [
+      "layout": .text(value: "Top bar"), "platforms": .textList(values: ["Mac"]),
+    ]
+    #expect(draft.response(for: [layout, platforms]) == .form(values: values))
+    draft.notes = ["layout": "  Keep it light. ", "platforms": "Not a question that takes one"]
+    #expect(
+      draft.response(for: [layout, platforms])
+        == .formWithNotes(values: values, notes: ["layout": "Keep it light."]))
+    draft.notes["layout"] = " "
+    #expect(draft.response(for: [layout, platforms]) == .form(values: values))
+  }
+
+  @Test("A choice previews its first option with one, then the chosen option's, never a typed one")
+  func previews() {
+    var draft = FormDraft()
+    #expect(draft.previewedOption(for: layout)?.value == "Sidebar")
+    draft.selected["layout"] = ["Top bar"]
+    #expect(draft.previewedOption(for: layout)?.value == "Top bar")
+    draft.selected["layout"] = ["Plain"]
+    #expect(draft.previewedOption(for: layout) == nil)
+    draft.selected["layout"] = []
+    draft.custom["layout"] = "Tabs"
+    #expect(draft.previewedOption(for: layout) == nil)
+    #expect(!FormField(key: "k", title: "K", kind: .singleChoice).hasPreviews)
+    #expect(layout.hasPreviews)
+  }
+
+  @Test("Approving a plan into a mode that still asks changes nothing standing")
+  func planModeRoutes() {
+    #expect(!DecisionResponse.approvePlanMode(mode: .default).changesStandingPermissions)
+    #expect(DecisionResponse.approvePlanMode(mode: .auto).changesStandingPermissions)
+    #expect(DecisionResponse.approveSuggestions.changesStandingPermissions)
+    #expect(DecisionResponse.formWithNotes(values: [:], notes: [:]).summary == "Answers submitted")
   }
 }
 
@@ -187,6 +253,39 @@ struct DecisionFormShapeLogicTests {
       #expect(try !screen.shows("hunter2"))
       try screen.tapButton(fromEnd: 1)
       #expect(log.responses == [.form(values: ["token": .text(value: "hunter2")])])
+    }
+
+    @Test("A question shows the chosen option's preview and sends a note with the answer")
+    func previewAndNote() throws {
+      let question = "Which layout should the settings screen use?"
+      let screen = open(
+        form([
+          FormField(
+            key: question, title: question, detail: "Layout", kind: .singleChoice,
+            options: [
+              FormOption(
+                value: "Sidebar", detail: "Sections on the left.", preview: "[nav] | [body]"),
+              FormOption(value: "Top bar", detail: "Sections as tabs.", preview: "[nav] / [body]"),
+            ], allowsCustom: true, acceptsNotes: true)
+        ]))
+      defer { screen.close() }
+      #expect(try screen.shows("Sections on the left."))
+      #expect(try screen.shows("Preview: Sidebar"))
+      #expect(try screen.shows("[nav] | [body]"))
+      try screen.tapButton(1)
+      screen.settle(0.05)
+      #expect(try screen.shows("Preview: Top bar"))
+      #expect(try screen.shows("[nav] / [body]"))
+      // The typed "Other" answer, then the note.
+      try screen.type("Keep the tabs short.", intoField: 1)
+      screen.settle(0.05)
+      try screen.tapButton(fromEnd: 1)
+      #expect(
+        log.responses == [
+          .formWithNotes(
+            values: [question: .text(value: "Top bar")],
+            notes: [question: "Keep the tabs short."])
+        ])
     }
 
     @Test("A page opens only when asked; Done accepts and Decline declines")

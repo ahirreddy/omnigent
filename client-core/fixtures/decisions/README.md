@@ -95,6 +95,76 @@ Expected cards:
 - `FileChangeRequestApproval`, `PermissionsRequestApproval`, `ExecCommandApproval` (legacy) and
   `ApplyPatchApproval` (legacy): binary approvals.
 
+## Claude request kinds
+
+`Claude--<RequestKind>[--<shape>].json`, one per kind of request Claude Code asks the user through
+the claude-native hooks (`PermissionRequest` and `Elicitation`). Each file holds four entries,
+shared by `claude_tests.rs` and `test_claude_fixture_round_trip` in
+`tests/server/integration/test_sessions_permission_request_hook.py`:
+
+- `claude`: the hook input Claude Code sends, with the hook client's `_omnigent_elicitation_id`.
+- `elicitation`: the elicitation the server publishes for it, with `null` fields left out.
+- `answer`: the `ElicitationResult` the app posts.
+- `claude_result`: the hook output Claude Code receives for that answer.
+
+Expected cards:
+
+- `AskUserQuestion--SingleSelect`: one question; the header labels it, each option shows its
+  description, and a typed ("Other") answer is allowed.
+- `AskUserQuestion--MultiSelectWithOther`: several choices plus a typed one; Claude receives them
+  joined by `", "`.
+- `AskUserQuestion--FourQuestions`: four questions in one card, in order.
+- `AskUserQuestion--PreviewWithNotes`: options with previews, shown apart from the descriptions;
+  the question takes a note (`acceptsNotes`), posted in `_meta.notes`, which Claude receives with
+  the chosen preview in `annotations`.
+- `PermissionRequest--Bash--AlwaysAllowSuggestion`: Claude's `permission_suggestions` offered as
+  one choice (`apply_suggestions`); the server applies its own copy.
+- `PermissionRequest--Bash--DenyWithFeedback`: a decline whose reply reaches Claude.
+- `PermissionRequest--Edit--AcceptEdits`: the accept-edits suggestion is the existing "accept all
+  edits" choice, not offered twice.
+- `PermissionRequest--Read--AddDirectories`: the directory suggestion is the directory choice.
+- `PermissionRequest--WebFetch--RememberDomain`: the session domain rule and Claude's project rule.
+- `ExitPlanMode--AutoMode`, `--AcceptEdits`: a plan approved into one of its `plan_modes`.
+- `ExitPlanMode--ManualApproval`: a plain approval keeps asking before edits (`default`).
+- `ExitPlanMode--KeepPlanning`: a decline whose reply says what to change.
+- `Elicitation--Form`: an MCP server's form, as a native form.
+- `Elicitation--Url`: an MCP server's URL-mode request, as a page card.
+
+## Omnigent's own agents, sub-agents and the other harnesses
+
+`<Source>--<RequestKind>[--<shape>].json`, one request each unless noted. Each holds the
+`elicitation` the server publishes, the `answer` the app posts, and usually the harness side: the
+request it came from (`pi`, `opencode`, `agy`, `devin`, `cursor`, `kiro`, `acp`, `mcp`, `policy`,
+`tool`) and what the harness receives back (`pi_response`, `opencode_answer`, `agy_response`,
+`agy_tui_keys`, `devin_answers`, `cursor_keys`). Rust: `omni_tests.rs` (Omni, sub-agents) and
+`harness_tests.rs`; server: the harness mapping's own tests (named in each test file).
+
+- `Omni--PolicyAsk--ToolCall`: a policy ASK on an Omnigent tool (`build_elicitation_request_event`,
+  URL mode on its `/approve/` page): an inline approval, never a page handoff.
+- `Omni--PolicyAsk--HeldGate`: the held `/policies/evaluate` gate (`requestedSchema: {}`), for a
+  harness tool and (`request_phase`) for a user message: approvals.
+- `Omni--McpElicitation--Form` / `--Url`: an MCP server's `elicitation/create`: a typed form, and a
+  page card (Done accepts).
+- `Omni--WorkflowRequestInput`: `sys_workflow_request_input` (on main): answers keyed by question
+  text, the recommendation first and labelled, typed answers allowed.
+- `Subagent--MirroredRequests`: `requests` from one child (`conv_child`), each mirrored into the
+  parent (`conv_parent`) with `target_session_id`: a Codex free-text question, a Pi editor, a
+  policy ASK, an MCP URL request, an Antigravity permission with persistence, and a Kiro
+  delivery to resend. Each is answered from the parent and posted to the child.
+- `Pi--Confirm`, `--Select`, `--Input`, `--Editor`: Pi's extension dialogs (SDK `pi` and
+  `pi-native`). An editor's exact text, empty included, is its answer.
+- `OpenCode--FormEveryField`: every `form.created` field type: options with a typed answer,
+  multi-select, Yes/No and Done (options only), number and text (typed), hidden (left out).
+- `Antigravity--AskQuestion` / `--Permission`: agy's question (a repeated option offered once; a
+  question without options is a write-in) and its command permission with an always-allow pattern.
+- `Devin--AskUserQuestion`, `Cursor--AskQuestion`: native question tools; answers keyed by text
+  (Devin) and by id (Cursor).
+- `Copilot--PermissionRequest--Shell`, `Acp--RequestPermission--Choice`: SDK permission cards: a
+  binary approval, and ACP's permission options as a choice.
+- `Kiro--NativePermission--Ready` / `--Unconfirmed`: a verdict Kiro's terminal confirms. Every
+  answer names `_meta.native_delivery_attempt`; while `sending` nothing can be sent, and an
+  `unconfirmed` verdict can only be sent again as it was.
+
 ## Hand-built from the server's request shapes
 
 - `FileChanges--ServerApprovalShapes.json`: elicitation requests keyed by label, each built with the

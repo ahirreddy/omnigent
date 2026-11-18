@@ -89,22 +89,25 @@ def _agy_questions_to_ask_user_question(spec: object) -> list[dict[str, Any]]:
         text = question.get("question")
         if not isinstance(text, str) or not text:
             continue
-        options: list[dict[str, Any]] = []
+        labels: list[str] = []
         raw_options = question.get("options")
         if isinstance(raw_options, list):
             for opt in raw_options:
                 if isinstance(opt, dict):
                     label = opt.get("text")
-                    if isinstance(label, str) and label:
-                        options.append({"label": label})
-        out.append(
-            {
-                "id": str(i),
-                "question": text,
-                "options": options,
-                "multiSelect": bool(question.get("is_multi_select")),
-            }
-        )
+                    # A repeated text maps back to the same option, so it is offered once.
+                    if isinstance(label, str) and label and label not in labels:
+                        labels.append(label)
+        converted: dict[str, Any] = {
+            "id": str(i),
+            "question": text,
+            "options": [{"label": label} for label in labels],
+            "multiSelect": bool(question.get("is_multi_select")) and bool(labels),
+        }
+        if not labels:
+            # Without options the question is answered by typing (agy's write-in).
+            converted["isOther"] = True
+        out.append(converted)
     return out
 
 

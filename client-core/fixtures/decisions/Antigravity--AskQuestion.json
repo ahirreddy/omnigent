@@ -1,0 +1,91 @@
+{
+  "agy": {
+    "kind": "ask_question",
+    "trajectory_id": "traj-abc",
+    "step_index": 3,
+    "spec": {
+      "questions": [
+        {
+          "question": "Which frameworks should the demo use?",
+          "is_multi_select": true,
+          "options": [
+            { "id": "1", "text": "React" },
+            { "id": "2", "text": "Vue" },
+            { "id": "3", "text": "Vue" }
+          ]
+        },
+        {
+          "question": "What should the project be called?",
+          "is_multi_select": false,
+          "options": []
+        }
+      ]
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_agy_6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d",
+    "params": {
+      "mode": "form",
+      "message": "Antigravity needs your input",
+      "phase": "agy_ask_question",
+      "policy_name": "agy_native_ask_question",
+      "ask_user_question": {
+        "questions": [
+          {
+            "id": "0",
+            "question": "Which frameworks should the demo use?",
+            "options": [{ "label": "React" }, { "label": "Vue" }],
+            "multiSelect": true
+          },
+          {
+            "id": "1",
+            "question": "What should the project be called?",
+            "options": [],
+            "multiSelect": false,
+            "isOther": true
+          }
+        ]
+      },
+      "ask_question": {
+        "questions": [
+          {
+            "question": "Which frameworks should the demo use?",
+            "is_multi_select": true,
+            "options": [
+              { "id": "1", "text": "React" },
+              { "id": "2", "text": "Vue" },
+              { "id": "3", "text": "Vue" }
+            ]
+          },
+          {
+            "question": "What should the project be called?",
+            "is_multi_select": false,
+            "options": []
+          }
+        ]
+      },
+      "trajectory_id": "traj-abc",
+      "step_index": 3
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": { "0": ["React", "Svelte"], "1": "demo-app" }
+  },
+  "agy_response": {
+    "askQuestion": {
+      "responses": [
+        {
+          "question": "Which frameworks should the demo use?",
+          "selectedOptionIds": ["1"],
+          "writeInResponse": "Svelte"
+        },
+        {
+          "question": "What should the project be called?",
+          "selectedOptionIds": [],
+          "writeInResponse": "demo-app"
+        }
+      ]
+    }
+  }
+}

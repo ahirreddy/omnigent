@@ -236,9 +236,9 @@ final class MacSessionFlowUITests: XCTestCase {
 
 extension MacLiveUITestSupport {
   /// Sends a request to the local server the flows run on and reads its JSON object; an empty
-  /// `body` sends none.
+  /// `body` (whose values may nest) sends none.
   func serverJSON(
-    _ method: String, _ path: String, body: [String: String] = [:]
+    _ method: String, _ path: String, body: [String: Any] = [:]
   ) async throws -> [String: Any] {
     let url = try XCTUnwrap(URL(string: server + path))
     var request = URLRequest(url: url)

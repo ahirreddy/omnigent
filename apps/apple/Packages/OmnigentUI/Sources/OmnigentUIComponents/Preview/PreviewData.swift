@@ -429,6 +429,53 @@ enum PreviewData {
         """),
     acceptsFeedback: true)
 
+  /// A plan review that approves into auto mode or accept-edits mode, as Claude's does.
+  static let planReviewModes = card(
+    "elic_plan_modes", title: "Review the plan", detail: "",
+    permissions: PermissionOptions(
+      allowAllEdits: true, plan: "## Plan\n\n1. Parse dates with Luxon.\n2. Test time zones.",
+      planModes: [.auto, .acceptEdits]),
+    phase: "pre_tool_use", policyName: "claude_native_permission", acceptsFeedback: true)
+
+  /// Claude's questions: a single choice with previews that takes a note, and a multi-select.
+  static let claudeQuestion = card(
+    "elic_claude_question", title: "Response requested",
+    detail: "Claude wants to call **AskUserQuestion**",
+    kind: .form(fields: [
+      FormField(
+        key: "Which layout should the settings screen use?",
+        title: "Which layout should the settings screen use?", detail: "Layout",
+        kind: .singleChoice,
+        options: [
+          FormOption(
+            value: "Sidebar", detail: "Sections listed on the left.",
+            preview:
+              "+--------+--------------+\n| Nav    | Content      |\n+--------+--------------+"),
+          FormOption(
+            value: "Top bar", detail: "Sections as tabs across the top.",
+            preview:
+              "+-----------------------+\n| Nav                   |\n+-----------------------+"),
+        ], allowsCustom: true, acceptsNotes: true),
+      FormField(
+        key: "Which platforms need the change?", title: "Which platforms need the change?",
+        detail: "Platforms", kind: .multipleChoice,
+        options: [
+          FormOption(value: "Mac", detail: "The desktop app."),
+          FormOption(value: "iPhone", detail: "The phone app."),
+        ], allowsCustom: true),
+    ]),
+    phase: "pre_tool_use", policyName: "claude_native_permission")
+
+  /// A command whose approval can also apply Claude's own "don't ask again" rule.
+  static let claudeSuggestion = card(
+    "elic_claude_suggestion", detail: "Claude wants to call **Bash**",
+    permissions: PermissionOptions(
+      allowAutoMode: true, rememberLabel: "Bash",
+      suggestions: [
+        PermissionSuggestion(label: "Allow Bash(npm test:*) in this project", persists: true)
+      ]),
+    phase: "pre_tool_use", policyName: "claude_native_permission", acceptsFeedback: true)
+
   static let choice = card(
     "elic_choice", title: "Response requested", detail: "Which branch should I push to?",
     kind: .choice(answerKey: "branch", options: ["main", "auth-refresh", "Create a new branch"]))

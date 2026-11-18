@@ -1,0 +1,123 @@
+{
+  "opencode": {
+    "id": "frm_0ddd8ee68001IkChBrrh6FtGPJ",
+    "sessionID": "ses_fixture",
+    "title": "Release questions",
+    "fields": [
+      {
+        "key": "channel",
+        "type": "string",
+        "title": "Channel",
+        "description": "Which channel ships first?",
+        "custom": true,
+        "options": [
+          { "value": "beta", "label": "Beta", "description": "Testers only" },
+          { "value": "stable", "label": "Stable" }
+        ]
+      },
+      {
+        "key": "platforms",
+        "type": "multiselect",
+        "title": "Platforms",
+        "description": "Which platforms are in this release?",
+        "options": [
+          { "value": "mac", "label": "Mac" },
+          { "value": "ios", "label": "iPhone and iPad" }
+        ]
+      },
+      { "key": "notify", "type": "boolean", "title": "Notify", "description": "Tell the testers?" },
+      { "key": "build", "type": "integer", "title": "Build", "description": "Which build number?" },
+      { "key": "notes", "type": "string", "title": "Notes", "description": "Anything else to add?" },
+      {
+        "key": "signin",
+        "type": "external",
+        "title": "Sign in",
+        "description": "Sign in to the store",
+        "url": "https://store.example.com/login"
+      },
+      { "key": "token", "type": "string", "hidden": true }
+    ]
+  },
+  "elicitation": {
+    "elicitation_id": "frm_0ddd8ee68001IkChBrrh6FtGPJ",
+    "params": {
+      "mode": "form",
+      "message": "Release questions",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "opencode_native_question",
+      "content_preview": "Which channel ships first?",
+      "target_session_id": null,
+      "ask_user_question": {
+        "questions": [
+          {
+            "question": "Which channel ships first?",
+            "options": [{ "label": "Beta", "description": "Testers only" }, { "label": "Stable" }],
+            "multiSelect": false,
+            "id": "channel",
+            "header": "Channel"
+          },
+          {
+            "question": "Which platforms are in this release?",
+            "options": [{ "label": "Mac" }, { "label": "iPhone and iPad" }],
+            "multiSelect": true,
+            "id": "platforms",
+            "header": "Platforms"
+          },
+          {
+            "question": "Tell the testers?",
+            "options": [{ "label": "Yes" }, { "label": "No" }],
+            "multiSelect": false,
+            "id": "notify",
+            "isOther": false,
+            "header": "Notify"
+          },
+          {
+            "question": "Which build number?",
+            "options": [],
+            "multiSelect": false,
+            "id": "build",
+            "isOther": true,
+            "header": "Build"
+          },
+          {
+            "question": "Anything else to add?",
+            "options": [],
+            "multiSelect": false,
+            "id": "notes",
+            "isOther": true,
+            "header": "Notes"
+          },
+          {
+            "question": "Sign in to the store\n\nOpen https://store.example.com/login and choose Done when finished.",
+            "options": [{ "label": "Done" }],
+            "multiSelect": false,
+            "id": "signin",
+            "isOther": false,
+            "header": "Sign in"
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "channel": "Beta",
+      "platforms": ["Mac", "iPhone and iPad"],
+      "notify": "Yes",
+      "build": "42",
+      "notes": "Ship after the review",
+      "signin": "Done"
+    }
+  },
+  "opencode_answer": {
+    "channel": "beta",
+    "platforms": ["mac", "ios"],
+    "notify": true,
+    "build": 42,
+    "notes": "Ship after the review",
+    "signin": true
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "parent": "conv_parent",
+  "child": "conv_child",
+  "requests": [
+    {
+      "label": "codex-request-user-input",
+      "elicitation": {
+        "type": "response.elicitation_request",
+        "elicitation_id": "elicit_codex_0123456789abcdef0123456789abcdef",
+        "method": "elicitation/create",
+        "params": {
+          "mode": "form",
+          "message": "Codex needs input",
+          "requestedSchema": null,
+          "url": null,
+          "phase": "codex_request_user_input",
+          "policy_name": "codex_native_request_user_input",
+          "content_preview": null,
+          "target_session_id": "conv_child",
+          "ask_user_question": {
+            "questions": [
+              {
+                "id": "release_name",
+                "question": "What should the release be called?",
+                "header": "Release",
+                "options": [],
+                "multiSelect": false,
+                "isOther": true
+              }
+            ]
+          }
+        }
+      },
+      "answer": { "action": "accept", "content": { "release_name": "Spring" } }
+    },
+    {
+      "label": "pi-editor",
+      "elicitation": {
+        "type": "response.elicitation_request",
+        "elicitation_id": "elicit_pi_6f1c2d4e8a7b4c1d9e2f0a1b2c3d4e5f",
+        "method": "elicitation/create",
+        "params": {
+          "mode": "form",
+          "message": "Edit the release notes",
+          "phase": "pi_extension_ui",
+          "policy_name": "pi_native_extension_ui",
+          "target_session_id": "conv_child",
+          "pi_extension_ui": { "method": "editor", "title": "Edit the release notes", "prefill": "" },
+          "ask_user_question": {
+            "questions": [
+              {
+                "id": "0",
+                "question": "Edit the release notes",
+                "options": [],
+                "multiSelect": false,
+                "isOther": true,
+                "header": "Editor",
+                "textInput": { "default": "" }
+              }
+            ]
+          }
+        }
+      },
+      "answer": { "action": "accept", "content": { "0": "" } }
+    },
+    {
+      "label": "omni-policy-ask",
+      "elicitation": {
+        "type": "response.elicitation_request",
+        "elicitation_id": "elicit_5b0e4f1a2c3d4e5f60718293a4b5c6d7",
+        "method": "elicitation/create",
+        "params": {
+          "mode": "url",
+          "message": "__ask_on_add_policy: Agent wants to add policy: guard (example.policies.guard). Approve?",
+          "requestedSchema": {},
+          "phase": "tool_call",
+          "policy_name": "__ask_on_add_policy",
+          "content_preview": "{\"name\": \"guard\"}",
+          "url": "/approve/conv_child/elicit_5b0e4f1a2c3d4e5f60718293a4b5c6d7",
+          "target_session_id": "conv_child"
+        }
+      },
+      "answer": { "action": "decline" }
+    },
+    {
+      "label": "mcp-url",
+      "elicitation": {
+        "type": "response.elicitation_request",
+        "elicitation_id": "elicit_0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+        "method": "elicitation/create",
+        "params": {
+          "mode": "url",
+          "message": "Sign in to the issue tracker to continue.",
+          "requestedSchema": null,
+          "url": "https://tracker.example.com/oauth/consent?request=42",
+          "phase": null,
+          "policy_name": null,
+          "content_preview": null,
+          "target_session_id": "conv_child"
+        }
+      },
+      "answer": { "action": "accept" }
+    },
+    {
+      "label": "agy-permission",
+      "elicitation": {
+        "type": "response.elicitation_request",
+        "elicitation_id": "elicit_agy_1a2b3c4d5e6f708192a3b4c5d6e7f809",
+        "method": "elicitation/create",
+        "params": {
+          "mode": "form",
+          "message": "Antigravity wants to run: pwd",
+          "phase": "agy_permission",
+          "policy_name": "agy_native_permission",
+          "command": "pwd",
+          "action_description": "Running pwd command",
+          "always_allow_pattern": "pwd",
+          "target_session_id": "conv_child"
+        }
+      },
+      "answer": { "action": "accept", "_meta": { "persist": "always" } }
+    },
+    {
+      "label": "kiro-unconfirmed",
+      "elicitation": {
+        "type": "response.elicitation_request",
+        "elicitation_id": "elicit_kiro_conv_child_3f1c2d4e5a6b7c8d",
+        "method": "elicitation/create",
+        "params": {
+          "mode": "form",
+          "message": "Kiro wants approval for Running: pwd",
+          "phase": "pre_tool_use",
+          "policy_name": "kiro_native_permission",
+          "content_preview": "Running: pwd",
+          "target_session_id": "conv_child",
+          "native_delivery": { "state": "unconfirmed", "attempt": "second", "action": "accept" }
+        }
+      },
+      "answer": { "action": "accept", "_meta": { "native_delivery_attempt": "second" } }
+    }
+  ]
+}

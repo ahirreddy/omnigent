@@ -1,0 +1,72 @@
+{
+  "claude": {
+    "session_id": "claude_session_fixture",
+    "transcript_path": "/workspace/.claude/projects/app/transcript.jsonl",
+    "cwd": "/workspace/app",
+    "permission_mode": "default",
+    "hook_event_name": "Elicitation",
+    "mcp_server_name": "deploy",
+    "message": "Choose where to deploy.",
+    "mode": "form",
+    "requested_schema": {
+      "type": "object",
+      "properties": {
+        "environment": {
+          "type": "string",
+          "title": "Environment",
+          "enum": ["staging", "production"]
+        },
+        "notify": {
+          "type": "boolean",
+          "title": "Notify the team",
+          "default": true
+        }
+      },
+      "required": ["environment"]
+    },
+    "_omnigent_elicitation_id": "elicit_claude_0000000000000000000000000000000e"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_claude_0000000000000000000000000000000e",
+    "params": {
+      "mode": "form",
+      "message": "Choose where to deploy.",
+      "requestedSchema": {
+        "type": "object",
+        "properties": {
+          "environment": {
+            "type": "string",
+            "title": "Environment",
+            "enum": ["staging", "production"]
+          },
+          "notify": {
+            "type": "boolean",
+            "title": "Notify the team",
+            "default": true
+          }
+        },
+        "required": ["environment"]
+      },
+      "phase": "claude_mcp_elicitation",
+      "policy_name": "claude_native_mcp_elicitation",
+      "server_name": "deploy"
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "environment": "staging",
+      "notify": true
+    }
+  },
+  "claude_result": {
+    "hookSpecificOutput": {
+      "hookEventName": "Elicitation",
+      "action": "accept",
+      "content": {
+        "environment": "staging",
+        "notify": true
+      }
+    }
+  }
+}

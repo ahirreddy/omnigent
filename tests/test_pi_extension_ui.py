@@ -1,5 +1,8 @@
 """Pi protocol conversion, shared by SDK and native transports."""
 
+import json
+from pathlib import Path
+
 import pytest
 
 from omnigent.pi_extension_ui import (
@@ -12,6 +15,14 @@ from omnigent.pi_extension_ui import (
     to_ui_response,
 )
 from omnigent.server.schemas import ElicitationResult
+
+# Shared with omnigent-core's `decisions/harness_tests.rs`: each file holds one Pi dialog, the
+# elicitation the server publishes for it, an answer the app posts, and Pi's response.
+_PI_DECISION_FIXTURES = sorted(
+    (Path(__file__).resolve().parents[1] / "client-core" / "fixtures" / "decisions").glob(
+        "Pi--*.json"
+    )
+)
 
 
 @pytest.mark.parametrize(
@@ -47,6 +58,12 @@ def test_timeout(dialog_request: dict, expected: float | None) -> None:
     [
         (
             {"method": "select", "options": ["Allow", "Block"]},
+            [{"label": "Allow"}, {"label": "Block"}],
+            None,
+            False,
+        ),
+        (
+            {"method": "select", "options": ["Allow", "Allow", "Block"]},
             [{"label": "Allow"}, {"label": "Block"}],
             None,
             False,
@@ -135,3 +152,25 @@ def test_text_answer(method: str, action: str, content: dict | None, expected: d
         "id": "dialog",
         **expected,
     }
+
+
+def test_every_dialog_method_has_a_shared_fixture() -> None:
+    methods = {
+        json.loads(path.read_text(encoding="utf-8"))["pi"]["method"]
+        for path in _PI_DECISION_FIXTURES
+    }
+    assert methods == {"confirm", "select", "input", "editor"}
+
+
+@pytest.mark.parametrize("path", _PI_DECISION_FIXTURES, ids=lambda path: path.stem)
+def test_shared_fixture_publishes_its_elicitation_and_answers_pi(path: Path) -> None:
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+
+    params = to_elicitation_params(fixture["pi"])
+
+    published = {
+        key: value for key, value in params.model_dump(mode="json").items() if value is not None
+    }
+    assert published == fixture["elicitation"]["params"]
+    answer = ElicitationResult.model_validate(fixture["answer"])
+    assert to_ui_response(fixture["pi"], answer) == fixture["pi_response"]

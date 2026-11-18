@@ -48,6 +48,49 @@ struct DecisionAnswerTests {
     #expect(live.server.requests(to: resolvePath, method: "POST").count == 1)
   }
 
+  @Test("A verdict the agent's terminal never confirmed reopens its card for a retry")
+  func unconfirmedDeliveryReopens() async throws {
+    let request = { (state: String, attempt: String) in
+      #"{"elicitation_id":"ask1","params":{"message":"Approve?","#
+        + #""policy_name":"kiro_native_permission","native_delivery":{"state":"\#(state)","#
+        + #""attempt":"\#(attempt)","action":"accept"}}}"#
+    }
+    let pending = { (state: String, attempt: String) in
+      #""pending_elicitations":[\#(request(state, attempt))]"#
+    }
+    let live = try await LiveComposer(fields: pending("ready", "first"))
+    let decisions = live.conversation.decisions
+    try await eventually("the card") { decisions.pending.count == 1 }
+    let card = try #require(decisions.pending.first)
+    live.server.route(resolvePath, method: "POST", .json("{}"))
+    let post = live.server.hold(resolvePath, method: "POST")
+    let answer = Task { await decisions.resolve(card, with: .approve) }
+    try await eventually("the answer to reach the server") { post.arrivals == 1 }
+    // The server now waits for the terminal's receipt.
+    live.server.route(
+      "/v1/sessions/conv_a", method: "GET", snapshot(pending("sending", "first")))
+    post.release()
+    await answer.value
+    try await live.settle()
+    #expect(decisions.pending.isEmpty, "the answer is with the terminal")
+
+    // The terminal never confirmed it: the server asks again under a new attempt.
+    live.server.route(
+      "/v1/sessions/conv_a", method: "GET", snapshot(pending("unconfirmed", "second")))
+    let event =
+      #"{"type":"response.elicitation_request",\#(request("unconfirmed", "second").dropFirst())"#
+    live.stream.chunk(bytes: Data("event: response.elicitation_request\ndata: \(event)\n\n".utf8))
+    try await eventually("the card to reopen") { decisions.pending.count == 1 }
+    #expect(decisions.answers.isEmpty)
+    let retry = try #require(decisions.pending.first)
+    await decisions.resolve(retry, with: .approve)
+    let sent = try live.server.requests(to: resolvePath, method: "POST").map {
+      try live.server.body(of: $0)["_meta"] as? [String: String]
+    }
+    #expect(
+      sent == [["native_delivery_attempt": "first"], ["native_delivery_attempt": "second"]])
+  }
+
   @Test("A refused answer puts the card back to pending with the error, and only the user retries")
   func refusedThenRetried() async throws {
     let live = try await LiveComposer(fields: waitingOnApproval)

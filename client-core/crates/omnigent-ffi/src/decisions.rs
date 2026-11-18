@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use omnigent_core::decisions as core;
+use omnigent_protocol::ElicitationAction;
 use omnigent_protocol::ElicitationValue as CoreValue;
 
 fn count(value: usize) -> u64 {
@@ -21,6 +22,10 @@ pub struct FormOption {
     pub label: String,
     /// Extra description.
     pub detail: String,
+    /// What choosing it would look like (a mockup, code or a diagram), shown as written; empty
+    /// when none.
+    #[uniffi(default)]
+    pub preview: String,
 }
 
 /// The native control a field needs.
@@ -72,6 +77,9 @@ pub struct FormField {
     pub allows_custom: bool,
     /// Render as a secure field.
     pub is_secret: bool,
+    /// An editor: the text exactly as typed, empty included, is the answer.
+    #[uniffi(default)]
+    pub exact_text: bool,
     /// Lowest number.
     pub minimum: Option<f64>,
     /// Highest number.
@@ -90,6 +98,9 @@ pub struct FormField {
     /// The answer to start with; always a valid answer.
     #[uniffi(default)]
     pub default_value: Option<ElicitationValue>,
+    /// The answer may carry a note, sent with `DecisionResponse::FormWithNotes`.
+    #[uniffi(default)]
+    pub accepts_notes: bool,
 }
 
 /// What a card asks for.
@@ -123,6 +134,32 @@ pub enum DecisionKind {
     },
 }
 
+/// A permission mode Claude can switch to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PermissionMode {
+    /// Asks before edits and commands.
+    Default,
+    /// Edits run without asking.
+    AcceptEdits,
+    /// Plans without changing anything.
+    Plan,
+    /// Nothing asks.
+    BypassPermissions,
+    /// Denies what would ask.
+    DontAsk,
+    /// A classifier decides.
+    Auto,
+}
+
+/// One update a request offers to apply with an approval (a rule, a mode switch, directories).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PermissionSuggestion {
+    /// What it does, in one sentence: "Allow Bash(npm test:*) in this project".
+    pub label: String,
+    /// It outlives this session (it is saved to settings).
+    pub persists: bool,
+}
+
 /// Codex and Antigravity persistence scopes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum PersistMode {
@@ -150,6 +187,40 @@ pub struct AntigravityPermission {
     pub action_description: Option<String>,
     /// The command prefix it offers to always allow.
     pub always_allow_pattern: Option<String>,
+}
+
+/// Where a verdict a native terminal must confirm stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum NativeDeliveryState {
+    /// Waiting for a verdict.
+    Ready,
+    /// A verdict is on its way to the terminal; nothing more can be sent.
+    Sending,
+    /// The terminal never confirmed the verdict; only that verdict may be sent again.
+    Unconfirmed,
+}
+
+/// The verdict a native terminal is still delivering (Kiro).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DeliveredVerdict {
+    /// Approved.
+    Accept,
+    /// Rejected.
+    Decline,
+    /// Dismissed.
+    Cancel,
+}
+
+/// A native terminal applies the verdict and confirms it, so the card stays pending until it
+/// does.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NativeDelivery {
+    /// Where delivery stands.
+    pub state: NativeDeliveryState,
+    /// The delivery attempt; a new one means the last answer was never confirmed.
+    pub attempt: String,
+    /// The verdict being delivered, when one was sent.
+    pub verdict: Option<DeliveredVerdict>,
 }
 
 /// What happens to a file an edit approval would change.
@@ -203,6 +274,17 @@ pub struct PermissionOptions {
     /// The files the gated edit would change, in request order; empty when the request is not an
     /// edit or does not say.
     pub file_changes: Vec<EditedFile>,
+    /// The updates the request suggests, offered together as one choice
+    /// (`DecisionResponse::ApproveSuggestions`); empty when none, or when another choice covers
+    /// them.
+    #[uniffi(default)]
+    pub suggestions: Vec<PermissionSuggestion>,
+    /// The modes approving the plan may switch to (`DecisionResponse::ApprovePlanMode`).
+    #[uniffi(default)]
+    pub plan_modes: Vec<PermissionMode>,
+    /// A native terminal confirms the verdict.
+    #[uniffi(default)]
+    pub native_delivery: Option<NativeDelivery>,
 }
 
 /// A decision card. A pending card is never hidden.
@@ -287,6 +369,13 @@ pub enum DecisionResponse {
         /// The answers.
         values: HashMap<String, ElicitationValue>,
     },
+    /// Values for a form plus notes on fields that `accepts_notes`, keyed by field key.
+    FormWithNotes {
+        /// The answers.
+        values: HashMap<String, ElicitationValue>,
+        /// The notes; blank ones are left out.
+        notes: HashMap<String, String>,
+    },
     /// Accept and allow all edits.
     ApproveAllEdits,
     /// Accept and switch to auto mode.
@@ -304,6 +393,13 @@ pub enum DecisionResponse {
     ApprovePersist {
         /// The mode.
         mode: PersistMode,
+    },
+    /// Accept and apply every suggested update.
+    ApproveSuggestions,
+    /// Approve the plan and switch to one of its `plan_modes`.
+    ApprovePlanMode {
+        /// The mode.
+        mode: PermissionMode,
     },
     /// Decline with feedback for the agent, on a card that `accepts_feedback`. Must not be blank.
     DeclineWithFeedback {
@@ -356,6 +452,7 @@ impl From<FormOption> for core::FormOption {
             value: option.value,
             label: option.label,
             detail: option.detail,
+            preview: option.preview,
         }
     }
 }
@@ -406,6 +503,7 @@ impl From<FormField> for core::FormField {
             options: field.options.into_iter().map(Into::into).collect(),
             allows_custom: field.allows_custom,
             is_secret: field.is_secret,
+            exact_text: field.exact_text,
             minimum: field.minimum,
             maximum: field.maximum,
             min_length: field.min_length.map(size),
@@ -414,6 +512,7 @@ impl From<FormField> for core::FormField {
             max_items: field.max_items.map(size),
             format: field.format.map(Into::into),
             default_value: field.default_value.map(Into::into),
+            accepts_notes: field.accepts_notes,
         }
     }
 }
@@ -424,6 +523,7 @@ impl From<core::FormOption> for FormOption {
             value: option.value,
             label: option.label,
             detail: option.detail,
+            preview: option.preview,
         }
     }
 }
@@ -452,6 +552,7 @@ impl From<core::FormField> for FormField {
             options: field.options.into_iter().map(Into::into).collect(),
             allows_custom: field.allows_custom,
             is_secret: field.is_secret,
+            exact_text: field.exact_text,
             minimum: field.minimum,
             maximum: field.maximum,
             min_length: field.min_length.map(count),
@@ -460,6 +561,7 @@ impl From<core::FormField> for FormField {
             max_items: field.max_items.map(count),
             format: field.format.map(Into::into),
             default_value: field.default_value.map(Into::into),
+            accepts_notes: field.accepts_notes,
         }
     }
 }
@@ -508,6 +610,32 @@ impl From<PersistMode> for core::PersistMode {
     }
 }
 
+impl From<core::PermissionMode> for PermissionMode {
+    fn from(mode: core::PermissionMode) -> Self {
+        match mode {
+            core::PermissionMode::Default => Self::Default,
+            core::PermissionMode::AcceptEdits => Self::AcceptEdits,
+            core::PermissionMode::Plan => Self::Plan,
+            core::PermissionMode::BypassPermissions => Self::BypassPermissions,
+            core::PermissionMode::DontAsk => Self::DontAsk,
+            core::PermissionMode::Auto => Self::Auto,
+        }
+    }
+}
+
+impl From<PermissionMode> for core::PermissionMode {
+    fn from(mode: PermissionMode) -> Self {
+        match mode {
+            PermissionMode::Default => Self::Default,
+            PermissionMode::AcceptEdits => Self::AcceptEdits,
+            PermissionMode::Plan => Self::Plan,
+            PermissionMode::BypassPermissions => Self::BypassPermissions,
+            PermissionMode::DontAsk => Self::DontAsk,
+            PermissionMode::Auto => Self::Auto,
+        }
+    }
+}
+
 impl From<core::FileChangeKind> for EditKind {
     fn from(kind: core::FileChangeKind) -> Self {
         match kind {
@@ -551,6 +679,35 @@ impl From<core::PermissionOptions> for PermissionOptions {
                     lines_removed: change.lines_removed,
                 })
                 .collect(),
+            suggestions: options
+                .suggestions
+                .iter()
+                .map(|update| PermissionSuggestion {
+                    label: update.label(),
+                    persists: update.destination.persists(),
+                })
+                .collect(),
+            plan_modes: options.plan_modes.into_iter().map(Into::into).collect(),
+            native_delivery: options.native_delivery.map(Into::into),
+        }
+    }
+}
+
+impl From<core::NativeDelivery> for NativeDelivery {
+    fn from(delivery: core::NativeDelivery) -> Self {
+        Self {
+            state: match delivery.state {
+                core::NativeDeliveryState::Ready => NativeDeliveryState::Ready,
+                core::NativeDeliveryState::Sending => NativeDeliveryState::Sending,
+                core::NativeDeliveryState::Unconfirmed => NativeDeliveryState::Unconfirmed,
+            },
+            attempt: delivery.attempt,
+            verdict: match delivery.action {
+                Some(ElicitationAction::Accept) => Some(DeliveredVerdict::Accept),
+                Some(ElicitationAction::Decline) => Some(DeliveredVerdict::Decline),
+                Some(ElicitationAction::Cancel) => Some(DeliveredVerdict::Cancel),
+                Some(ElicitationAction::Unknown { .. }) | None => None,
+            },
         }
     }
 }
@@ -614,6 +771,13 @@ impl From<CoreValue> for ElicitationValue {
     }
 }
 
+fn core_values(values: HashMap<String, ElicitationValue>) -> BTreeMap<String, CoreValue> {
+    values
+        .into_iter()
+        .map(|(key, value)| (key, value.into()))
+        .collect()
+}
+
 impl From<DecisionResponse> for core::DecisionResponse {
     fn from(response: DecisionResponse) -> Self {
         match response {
@@ -621,18 +785,19 @@ impl From<DecisionResponse> for core::DecisionResponse {
             DecisionResponse::Decline => Self::Decline,
             DecisionResponse::Cancel => Self::Cancel,
             DecisionResponse::Answer { value } => Self::Answer(value),
-            DecisionResponse::Form { values } => Self::Form(
-                values
-                    .into_iter()
-                    .map(|(key, value)| (key, value.into()))
-                    .collect::<BTreeMap<_, _>>(),
-            ),
+            DecisionResponse::Form { values } => Self::Form(core_values(values)),
+            DecisionResponse::FormWithNotes { values, notes } => Self::FormWithNotes {
+                values: core_values(values),
+                notes: notes.into_iter().collect(),
+            },
             DecisionResponse::ApproveAllEdits => Self::ApproveAllEdits,
             DecisionResponse::ApproveAutoMode => Self::ApproveAutoMode,
             DecisionResponse::ApproveDirectories => Self::ApproveDirectories,
             DecisionResponse::ApproveRemembering => Self::ApproveRemembering,
             DecisionResponse::ApproveCommandPolicy { policy } => Self::ApproveCommandPolicy(policy),
             DecisionResponse::ApprovePersist { mode } => Self::ApprovePersist(mode.into()),
+            DecisionResponse::ApproveSuggestions => Self::ApproveSuggestions,
+            DecisionResponse::ApprovePlanMode { mode } => Self::ApprovePlanMode(mode.into()),
             DecisionResponse::DeclineWithFeedback { feedback } => {
                 Self::DeclineWithFeedback(feedback)
             }

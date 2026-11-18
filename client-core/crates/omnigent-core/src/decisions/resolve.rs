@@ -11,7 +11,10 @@ use omnigent_protocol::{ElicitationAction, ElicitationResult, ElicitationValue};
 use serde_json::{Map, Value, json};
 
 use super::form::AnswerError;
-use super::{Decision, DecisionKind, PersistMode, UnsupportedReason};
+use super::{
+    Decision, DecisionForm, DecisionKind, NativeDeliveryState, PermissionMode, PersistMode,
+    UnsupportedReason,
+};
 use crate::attachments::policy::is_identifier;
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
@@ -32,6 +35,15 @@ pub enum DecisionResponse {
     Answer(String),
     /// Values for a [`DecisionKind::Form`], keyed by field key.
     Form(BTreeMap<String, ElicitationValue>),
+    /// Values for a form, plus notes on fields that
+    /// [accept them](super::FormField::accepts_notes), keyed by field key. Blank notes are left
+    /// out; the notes ride in `_meta.notes`.
+    FormWithNotes {
+        /// The answers, as for [`DecisionResponse::Form`].
+        values: BTreeMap<String, ElicitationValue>,
+        /// The notes.
+        notes: BTreeMap<String, String>,
+    },
     /// Accept and allow all edits (`allow_all_edits`).
     ApproveAllEdits,
     /// Accept and switch to auto mode (`allow_auto_mode`).
@@ -44,6 +56,12 @@ pub enum DecisionResponse {
     ApproveCommandPolicy(Vec<String>),
     /// Accept with Codex or Antigravity persistence.
     ApprovePersist(PersistMode),
+    /// Accept and apply every update the request suggests
+    /// ([`PermissionOptions::suggestions`](super::PermissionOptions::suggestions)).
+    ApproveSuggestions,
+    /// Approve the plan and switch to one of its
+    /// [`plan_modes`](super::PermissionOptions::plan_modes).
+    ApprovePlanMode(PermissionMode),
     /// Decline with feedback the agent receives, on a card that
     /// [accepts it](Decision::accepts_feedback). Must not be blank.
     DeclineWithFeedback(String),
@@ -166,6 +184,33 @@ impl Decision {
         &self,
         response: &DecisionResponse,
     ) -> Result<ElicitationResult, DecisionError> {
+        let mut result = self.verdict_for(response)?;
+        let Some(delivery) = &self.permissions.native_delivery else {
+            return Ok(result);
+        };
+        match delivery.state {
+            NativeDeliveryState::Ready => {}
+            // The terminal is applying a verdict already; the server ignores another.
+            NativeDeliveryState::Sending => return Err(DecisionError::NotOffered),
+            // Only the verdict the terminal never confirmed may be sent again.
+            NativeDeliveryState::Unconfirmed => require(
+                matches!(
+                    response,
+                    DecisionResponse::Approve
+                        | DecisionResponse::Decline
+                        | DecisionResponse::Cancel
+                ) && delivery.action.as_ref() == Some(&result.action),
+            )?,
+        }
+        result.meta.get_or_insert_with(Map::new).insert(
+            "native_delivery_attempt".to_owned(),
+            Value::String(delivery.attempt.clone()),
+        );
+        Ok(result)
+    }
+
+    /// The verdict for `response` before any native delivery attempt is added.
+    fn verdict_for(&self, response: &DecisionResponse) -> Result<ElicitationResult, DecisionError> {
         if let DecisionKind::Unsupported { reason, .. } = &self.kind {
             return Err(DecisionError::Unsupported(reason.clone()));
         }
@@ -196,14 +241,17 @@ impl Decision {
             },
             DecisionResponse::Form(values) => {
                 let form = self.form().ok_or(DecisionError::NotOffered)?;
-                form.validate(values)
-                    .map_err(DecisionError::InvalidAnswer)?;
-                let answered = values
-                    .iter()
-                    .filter(|(_, value)| **value != ElicitationValue::Null)
-                    .map(|(key, value)| (key.clone(), value.clone()))
-                    .collect();
-                Ok(accept(answered))
+                Ok(accept(form_content(form, values)?))
+            }
+            DecisionResponse::FormWithNotes { values, notes } => {
+                let form = self.form().ok_or(DecisionError::NotOffered)?;
+                let content = form_content(form, values)?;
+                let notes = form_notes(form, notes)?;
+                Ok(ElicitationResult {
+                    meta: (!notes.is_empty())
+                        .then(|| Map::from_iter([("notes".to_owned(), Value::Object(notes))])),
+                    ..accept(content)
+                })
             }
             permission => {
                 require(self.kind == DecisionKind::Approval)?;
@@ -264,11 +312,23 @@ impl Decision {
                     ..bare(ElicitationAction::Decline)
                 })
             }
+            DecisionResponse::ApproveSuggestions => {
+                require(!permissions.suggestions.is_empty())?;
+                Ok(flag("apply_suggestions"))
+            }
+            DecisionResponse::ApprovePlanMode(mode) => {
+                require(self.is_plan_review() && permissions.plan_modes.contains(mode))?;
+                Ok(accept(one(
+                    "plan_mode",
+                    ElicitationValue::Text(mode.as_str().to_owned()),
+                )))
+            }
             DecisionResponse::Approve
             | DecisionResponse::Decline
             | DecisionResponse::Cancel
             | DecisionResponse::Answer(_)
-            | DecisionResponse::Form(_) => Err(DecisionError::NotOffered),
+            | DecisionResponse::Form(_)
+            | DecisionResponse::FormWithNotes { .. } => Err(DecisionError::NotOffered),
         }
     }
 
@@ -298,6 +358,40 @@ impl Decision {
             result: self.result_for(response)?,
         })
     }
+}
+
+/// The `content` for valid form `values`: every answer that is not `null`.
+fn form_content(
+    form: &DecisionForm,
+    values: &BTreeMap<String, ElicitationValue>,
+) -> Result<BTreeMap<String, ElicitationValue>, DecisionError> {
+    form.validate(values)
+        .map_err(DecisionError::InvalidAnswer)?;
+    Ok(values
+        .iter()
+        .filter(|(_, value)| **value != ElicitationValue::Null)
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect())
+}
+
+/// The non-blank `notes`, trimmed, each on a field that accepts one.
+fn form_notes(
+    form: &DecisionForm,
+    notes: &BTreeMap<String, String>,
+) -> Result<Map<String, Value>, DecisionError> {
+    let mut kept = Map::new();
+    for (key, note) in notes {
+        require(
+            form.fields
+                .iter()
+                .any(|field| &field.key == key && field.accepts_notes),
+        )?;
+        let note = note.trim();
+        if !note.is_empty() {
+            kept.insert(key.clone(), Value::String(note.to_owned()));
+        }
+    }
+    Ok(kept)
 }
 
 fn encode_failed(error: &serde_json::Error) -> ResolveError {

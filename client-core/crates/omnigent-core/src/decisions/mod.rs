@@ -17,10 +17,11 @@ mod changes;
 pub mod form;
 pub mod ledger;
 mod partial_json;
+pub mod permission_updates;
 pub mod resolve;
 mod text_format;
 
-use omnigent_protocol::{ElicitationMode, ElicitationRequest};
+use omnigent_protocol::{ElicitationAction, ElicitationMode, ElicitationRequest};
 use serde_json::{Map, Value};
 use url::Url;
 
@@ -31,6 +32,9 @@ pub use form::{
 pub use ledger::{
     DecisionEntry, DecisionEventOutcome, DecisionState, MAX_RETIRED_IDS, RequestOutcome,
     ResolvedOutcome, SessionDecisions,
+};
+pub use permission_updates::{
+    PermissionMode, PermissionRule, PermissionUpdate, RuleBehavior, UpdateChange, UpdateDestination,
 };
 pub use resolve::{
     DecisionError, DecisionResponse, ResolveAcknowledgement, ResolveError, ResolveRequest,
@@ -173,6 +177,61 @@ pub struct AntigravityPermission {
     pub always_allow_pattern: Option<String>,
 }
 
+/// Where a verdict a native terminal must confirm stands (`native_delivery.state`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NativeDeliveryState {
+    /// `ready`: waiting for a verdict.
+    Ready,
+    /// `sending`: a verdict is on its way to the terminal; the card waits for its receipt.
+    Sending,
+    /// `unconfirmed`: the terminal never confirmed the verdict; only that verdict may be resent.
+    Unconfirmed,
+}
+
+/// `params.native_delivery`: a native terminal (Kiro) applies the verdict and confirms it, so the
+/// card stays pending until it does. Every answer carries `_meta.native_delivery_attempt`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeDelivery {
+    /// Where delivery stands.
+    pub state: NativeDeliveryState,
+    /// The attempt the answer must name.
+    pub attempt: String,
+    /// The verdict being delivered (sending or unconfirmed only).
+    pub action: Option<ElicitationAction>,
+}
+
+impl NativeDelivery {
+    /// Parses `native_delivery` as the web does: an unknown state, a blank attempt, or a sending
+    /// or unconfirmed state without a known action is not a delivery.
+    fn parse(value: Option<&Value>) -> Option<Self> {
+        let object = value?.as_object()?;
+        let attempt = object
+            .get("attempt")
+            .and_then(Value::as_str)
+            .filter(|attempt| !attempt.is_empty())?;
+        let state = match object.get("state").and_then(Value::as_str)? {
+            "ready" => NativeDeliveryState::Ready,
+            "sending" => NativeDeliveryState::Sending,
+            "unconfirmed" => NativeDeliveryState::Unconfirmed,
+            _ => return None,
+        };
+        let action = match object.get("action").and_then(Value::as_str) {
+            Some("accept") => Some(ElicitationAction::Accept),
+            Some("decline") => Some(ElicitationAction::Decline),
+            Some("cancel") => Some(ElicitationAction::Cancel),
+            _ => None,
+        };
+        if state != NativeDeliveryState::Ready && action.is_none() {
+            return None;
+        }
+        Some(Self {
+            state,
+            attempt: attempt.to_owned(),
+            action,
+        })
+    }
+}
+
 /// Permission choices a request advertises beyond approve and decline. Each response that uses
 /// one is rejected unless the request advertised it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -203,6 +262,14 @@ pub struct PermissionOptions {
     /// The files the gated edit would change (see [`FileChange`]); empty when the request is not
     /// an edit or does not say.
     pub file_changes: Vec<FileChange>,
+    /// `permission_suggestions`: the updates Claude offers to apply with an approval, offered as
+    /// one choice. Empty when none were sent, when any cannot be described, or when the choices
+    /// above already cover every one.
+    pub suggestions: Vec<PermissionUpdate>,
+    /// `plan_modes`: the modes approving the plan may switch to (plan reviews only).
+    pub plan_modes: Vec<PermissionMode>,
+    /// A native terminal confirms the verdict (Kiro).
+    pub native_delivery: Option<NativeDelivery>,
 }
 
 impl PermissionOptions {
@@ -227,7 +294,12 @@ impl PermissionOptions {
                 host: scope.get("host").and_then(Value::as_str).map(str::to_owned),
             })
         });
-        Self {
+        let plan_modes = if plan.is_some() {
+            permission_updates::plan_modes(extra.get("plan_modes"))
+        } else {
+            Vec::new()
+        };
+        let mut options = Self {
             allow_all_edits: extra.get("allow_all_edits") == Some(&Value::Bool(true))
                 || plan.is_some(),
             allow_auto_mode: extra.get("allow_auto_mode") == Some(&Value::Bool(true)),
@@ -248,6 +320,36 @@ impl PermissionOptions {
                 always_allow_pattern: text("always_allow_pattern"),
             }),
             file_changes: changes::file_changes(phase, preview, extra),
+            suggestions: permission_updates::permission_updates(
+                extra.get("permission_suggestions"),
+            ),
+            plan_modes,
+            native_delivery: NativeDelivery::parse(extra.get("native_delivery")),
+        };
+        if options
+            .suggestions
+            .iter()
+            .all(|update| options.covers(update))
+        {
+            options.suggestions.clear();
+        }
+        options
+    }
+
+    /// Whether another choice on the card applies `update` already: "accept all edits" for the
+    /// session, or the offered session directories.
+    fn covers(&self, update: &PermissionUpdate) -> bool {
+        if update.destination != UpdateDestination::Session {
+            return false;
+        }
+        match &update.change {
+            UpdateChange::SetMode {
+                mode: PermissionMode::AcceptEdits,
+            } => self.allow_all_edits && self.plan.is_none(),
+            UpdateChange::AddDirectories { directories } => directories
+                .iter()
+                .all(|directory| self.permission_directories.contains(directory)),
+            _ => false,
         }
     }
 
@@ -360,8 +462,16 @@ impl Decision {
             hides_preview,
             &permissions,
         );
+        let delivery = permissions
+            .native_delivery
+            .as_ref()
+            .map(|delivery| delivery.state);
         let title = if permissions.plan.is_some() {
             "Review the plan"
+        } else if delivery == Some(NativeDeliveryState::Sending) {
+            "Waiting for the agent to confirm"
+        } else if delivery == Some(NativeDeliveryState::Unconfirmed) {
+            "Approval delivery unconfirmed"
         } else if matches!(kind, DecisionKind::ExternalPage { .. }) {
             "Action required"
         } else if matches!(kind, DecisionKind::Choice { .. } | DecisionKind::Form(_)) {
@@ -444,6 +554,16 @@ impl Decision {
     #[must_use]
     pub fn targets_other_session(&self) -> bool {
         self.target_session_id != self.carrying_session_id
+    }
+
+    /// Whether the native terminal never confirmed the verdict sent for this card, so it may be
+    /// sent again (see [`NativeDelivery`]).
+    #[must_use]
+    pub fn awaits_redelivery(&self) -> bool {
+        self.permissions
+            .native_delivery
+            .as_ref()
+            .is_some_and(|delivery| delivery.state == NativeDeliveryState::Unconfirmed)
     }
 }
 
@@ -641,6 +761,12 @@ fn detail_text(
 #[cfg(test)]
 mod changes_tests;
 #[cfg(test)]
+mod claude_tests;
+#[cfg(test)]
 mod codex_tests;
+#[cfg(test)]
+mod harness_tests;
+#[cfg(test)]
+mod omni_tests;
 #[cfg(test)]
 mod tests;

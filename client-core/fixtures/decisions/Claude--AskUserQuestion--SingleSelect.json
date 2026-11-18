@@ -1,0 +1,98 @@
+{
+  "claude": {
+    "session_id": "claude_session_fixture",
+    "transcript_path": "/workspace/.claude/projects/app/transcript.jsonl",
+    "cwd": "/workspace/app",
+    "permission_mode": "default",
+    "hook_event_name": "PermissionRequest",
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Which date library should the parser use?",
+          "header": "Library",
+          "options": [
+            {
+              "label": "date-fns (Recommended)",
+              "description": "Small functions you import one by one."
+            },
+            {
+              "label": "Luxon",
+              "description": "Time zones and formatting built in."
+            }
+          ],
+          "multiSelect": false
+        }
+      ]
+    },
+    "_omnigent_elicitation_id": "elicit_claude_00000000000000000000000000000001"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_claude_00000000000000000000000000000001",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **AskUserQuestion**",
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "AskUserQuestion({\"questions\": [{\"question\": \"Which date library should the parser use?\", \"header\": \"Library\", \"options\": [{\"label\": \"date-fns (Recommended)\", \"description\": \"Small functions you import one by one.\"}, {\"label\": \"Luxon\", \"description\": \"Time zones and formatting built in.\"}], \"multiSelect\": false}]})",
+      "tool_name": "AskUserQuestion",
+      "cwd": "/workspace/app",
+      "permission_mode": "default",
+      "ask_user_question": {
+        "questions": [
+          {
+            "question": "Which date library should the parser use?",
+            "options": [
+              {
+                "label": "date-fns (Recommended)",
+                "description": "Small functions you import one by one."
+              },
+              {
+                "label": "Luxon",
+                "description": "Time zones and formatting built in."
+              }
+            ],
+            "multiSelect": false,
+            "header": "Library"
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "Which date library should the parser use?": "Luxon"
+    }
+  },
+  "claude_result": {
+    "hookSpecificOutput": {
+      "hookEventName": "PermissionRequest",
+      "decision": {
+        "behavior": "allow",
+        "updatedInput": {
+          "questions": [
+            {
+              "question": "Which date library should the parser use?",
+              "header": "Library",
+              "options": [
+                {
+                  "label": "date-fns (Recommended)",
+                  "description": "Small functions you import one by one."
+                },
+                {
+                  "label": "Luxon",
+                  "description": "Time zones and formatting built in."
+                }
+              ],
+              "multiSelect": false
+            }
+          ],
+          "answers": {
+            "Which date library should the parser use?": "Luxon"
+          }
+        }
+      }
+    }
+  }
+}

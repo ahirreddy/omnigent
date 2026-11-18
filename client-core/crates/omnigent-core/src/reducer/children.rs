@@ -213,7 +213,10 @@ mod tests {
         // No task reported, or only announced: idle, never starting.
         let settled = json!({"busy": false, "current_task_status": null});
         assert_eq!(activity(settled), AgentActivity::Idle);
-        assert_eq!(activity(json!({"agent_name": "Codex"})), AgentActivity::Idle);
+        assert_eq!(
+            activity(json!({"agent_name": "Codex"})),
+            AgentActivity::Idle
+        );
     }
 
     #[test]
