@@ -39,6 +39,30 @@ final class MacSettingsFlowUITests: XCTestCase {
     live.shot(app, "settings-advanced")
   }
 
+  /// On the live server, Settings › Servers offers Custom Agents (the server installs agents;
+  /// no retired flag gates it) and Sessions' title instructions, and each pane opens.
+  @MainActor
+  func testServerSettingsOfferCustomAgentsAndTitleInstructions() throws {
+    let live = MacLiveUITestSupport(self)
+    let session = try live.fixtureSession()
+    let app = live.launch()
+    defer { app.terminate() }
+    live.open(session, in: app)
+    app.typeKey(",", modifierFlags: .command)
+    live.click(category("Servers", live, app), "the Servers category")
+    let agents = live.text(containing: "Custom Agents", in: app)
+    live.click(agents, "the Custom Agents pane", timeout: 20)
+    XCTAssertTrue(
+      live.element("custom-agent-create", in: app).appears(within: 20),
+      "Custom Agents shows no Create")
+    let sessions = app.staticTexts.matching(NSPredicate(format: "label == %@", "Sessions"))
+    live.click(sessions.firstMatch, "the Sessions pane")
+    XCTAssertTrue(
+      live.element("settings.session-title-instructions", in: app).appears(within: 20),
+      "Sessions shows no title instructions")
+    live.shot(app, "settings-server-sessions")
+  }
+
   /// A setting changed in Settings is still changed after quitting and relaunching.
   @MainActor
   func testChangedSettingSurvivesRelaunch() {
