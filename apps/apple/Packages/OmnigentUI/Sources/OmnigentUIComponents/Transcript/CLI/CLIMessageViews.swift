@@ -50,14 +50,32 @@ struct CLIUserBand: View, Equatable {
   @Environment(\.conversationActions) private var actions
   @Environment(\.cliPalette) private var palette
   @FocusState private var actionsFocused: Bool
+  @RowDisclosure private var disclosure
 
   static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.row == rhs.row && lhs.decoration == rhs.decoration
   }
 
+  /// A message from another session starts collapsed to its sender and first line, as in chat.
+  private var isCollapsedOrigin: Bool {
+    row.originSessionId != nil
+      && !(disclosure.choice(SessionOrigin.disclosureKey(row.id)) ?? false)
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      if !row.text.isEmpty {
+      if let origin = row.originSessionId {
+        if isCollapsedOrigin {
+          CollapsedSessionMessage(sessionID: origin, preview: SessionOrigin.preview(row.text)) {
+            disclosure.choose(true, for: SessionOrigin.disclosureKey(row.id))
+          }
+        } else {
+          SessionOriginHeader(sessionID: origin) {
+            disclosure.choose(false, for: SessionOrigin.disclosureKey(row.id))
+          }
+        }
+      }
+      if !row.text.isEmpty, !isCollapsedOrigin {
         CLIUserText(text: row.text)
       }
       AttachmentStrip(attachments: row.attachments)
@@ -82,8 +100,14 @@ struct CLIUserBand: View, Equatable {
       focus: $actionsFocused
     )
     .accessibilityElement(children: .contain)
-    .accessibilityLabel(decoration.showsAvatar ? "\(row.author ?? "Someone") said" : "You said")
+    .accessibilityLabel(speaker)
     .accessibilityIdentifier("message-\(row.id)")
+  }
+
+  /// Who VoiceOver says sent the message.
+  private var speaker: String {
+    if row.originSessionId != nil { return "Another session said" }
+    return decoration.showsAvatar ? "\(row.author ?? "Someone") said" : "You said"
   }
 }
 

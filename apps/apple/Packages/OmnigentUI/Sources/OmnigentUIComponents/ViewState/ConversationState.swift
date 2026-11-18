@@ -332,6 +332,9 @@ public struct ConversationActions {
   /// Fetch the sign-in the session's terminal waits on and open it; `nil` hides the error
   /// card's Open Sign-In Link.
   public var openSignIn: (@MainActor () async -> SignInOutcome)?
+  /// A session's title, for the "From @title" line on a message another session sent; `nil`
+  /// while unknown, when the line reads "From another session".
+  public var sessionTitle: (@MainActor (String) -> String?)?
 
   /// Creates actions.
   /// - Parameters:

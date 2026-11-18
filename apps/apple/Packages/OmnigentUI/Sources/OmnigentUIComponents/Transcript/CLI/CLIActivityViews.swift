@@ -56,11 +56,42 @@ struct CLIActivityLine: View, Equatable {
     }
   }
 
-  private func line(_ activity: Activity) -> CLILineText {
+  /// The line a thought, a notice or a marker shows, which CLI text cells draw too; `nil` for
+  /// any other activity. A settled thought previews its first line, as in chat.
+  nonisolated static func markerLine(
+    _ activity: Activity, isStreaming: Bool, palette: CLIPalette
+  ) -> CLILineText? {
     var line = CLILineText()
     switch activity.kind {
     case .reasoning:
-      line.append(row.isStreaming ? "Thinking\u{2026}" : "Thought", palette.dim)
+      if let preview = ReasoningText.preview(activity, isStreaming: isStreaming) {
+        line.append("Thinking:", palette.dim, bold: true)
+        line.append(" \(preview)", palette.dim)
+      } else {
+        line.append(isStreaming ? "Thinking\u{2026}" : "Thought", palette.dim)
+      }
+    case .systemNotice:
+      line.append("System:", palette.dim, bold: true)
+      line.append(" \(activity.title)", palette.dim)
+    case .subagentMarker, .taskMarker:
+      let waits = TranscriptMarker.waitsForReader(activity)
+      line.append(activity.title, waits ? palette.needsYou : palette.dim)
+      if !activity.summary.isEmpty {
+        line.append(" ")
+        line.append(activity.summary, palette.strong)
+      }
+    default:
+      return nil
+    }
+    return line
+  }
+
+  private func line(_ activity: Activity) -> CLILineText {
+    if let line = Self.markerLine(activity, isStreaming: row.isStreaming, palette: palette) {
+      return line
+    }
+    var line = CLILineText()
+    switch activity.kind {
     case .terminal:
       line.append("You ran", bold: true)
       line.append(" ")
@@ -112,8 +143,8 @@ struct CLIActivityLine: View, Equatable {
   @ViewBuilder private func details(_ activity: Activity) -> some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       switch activity.kind {
-      case .reasoning:
-        CLIDetailText(text: activity.detail("summary") ?? activity.summary)
+      case .reasoning, .systemNotice:
+        CLIDetailText(text: CLIWork.detailText(of: activity) ?? "")
       default:
         if appearance.outputRendering == .rich {
           DetailSectionsView(sections: activity.details, rowID: row.id)
@@ -130,9 +161,9 @@ struct CLIActivityLine: View, Equatable {
   private var hasDetails: Bool {
     guard let activity = row.activity else { return false }
     switch activity.kind {
-    case .reasoning: return !(activity.detail("summary") ?? activity.summary).isEmpty
-    // A shell command's output always shows under it.
-    case .terminal: return false
+    case .reasoning, .systemNotice: return CLIWork.detailText(of: activity) != nil
+    // A shell command's output always shows under it; a marker has nothing to open.
+    case .terminal, .subagentMarker, .taskMarker: return false
     default: return !activity.details.isEmpty
     }
   }
@@ -144,6 +175,9 @@ struct CLIActivityLine: View, Equatable {
     case .error: "error-\(row.id)"
     case .retry: "retry-\(row.id)"
     case .compaction: "compaction-\(row.id)"
+    case .systemNotice: "system-notice-\(row.id)"
+    case .subagentMarker: "subagent-marker-\(row.id)"
+    case .taskMarker: "task-marker-\(row.id)"
     default: "activity-\(row.id)"
     }
   }
@@ -152,6 +186,7 @@ struct CLIActivityLine: View, Equatable {
     switch activity.kind {
     case .reasoning: "reasoning-toggle-\(row.id)"
     case .compaction: "compaction-toggle-\(row.id)"
+    case .systemNotice: "system-notice-toggle-\(row.id)"
     default: "activity-toggle-\(row.id)"
     }
   }
@@ -165,6 +200,15 @@ struct CLIActivityLine: View, Equatable {
           title: isExpanded ? "Hide details" : "Show details",
           systemImage: isExpanded ? "chevron.up" : "chevron.down",
           identifier: toggleIdentifier(activity), perform: { isExpanded.toggle() }))
+    }
+    let routes = conversationActions
+    if let session = TranscriptMarker.childSession(activity),
+      let open = routes.openChild ?? routes.openSession
+    {
+      actions.append(
+        CLIAction(
+          title: "Open \(activity.summary)", systemImage: "arrow.up.forward.square",
+          identifier: "subagent-marker-open-\(row.id)", perform: { open(session) }))
     }
     let copyText =
       activity.kind == .terminal

@@ -14,6 +14,18 @@
     case interrupted
     /// A content part this app can't show: one quiet line that opens to any safe text.
     case unsupported(Activity)
+    /// "From @sender" over an open message another session sent, with its collapse button.
+    case origin(sessionID: String)
+    /// A collapsed message from another session: its sender and first line.
+    case collapsedOrigin(sessionID: String, preview: String)
+
+    /// Whether its button opens or closes a message from another session, not a long prompt.
+    var togglesOrigin: Bool {
+      switch self {
+      case .origin, .collapsedOrigin: true
+      default: false
+      }
+    }
   }
 #endif
 
@@ -42,6 +54,10 @@
           UserPromptToggle(title: title, collapses: collapses) { action?() }
         case .interrupted: InterruptedLabel(rowID: rowID)
         case .unsupported(let activity): UnsupportedContentView(activity: activity, rowID: rowID)
+        case .origin(let sessionID):
+          SessionOriginHeader(sessionID: sessionID) { action?() }
+        case .collapsedOrigin(let sessionID, let preview):
+          CollapsedSessionMessage(sessionID: sessionID, preview: preview) { action?() }
         case nil: EmptyView()
         }
       }

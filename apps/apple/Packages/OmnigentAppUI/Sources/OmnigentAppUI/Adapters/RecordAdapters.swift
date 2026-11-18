@@ -14,7 +14,8 @@ nonisolated extension OmnigentUIComponents.Row {
       attachments: row.attachments.map(OmnigentUIComponents.Attachment.init), callId: row.callId,
       responseId: row.responseId, interrupted: row.interrupted, author: row.author,
       agent: row.agent, isEphemeral: row.isEphemeral, isActivityOnly: row.isActivityOnly,
-      createdAt: row.createdAt.map { Date(timeIntervalSince1970: TimeInterval($0)) })
+      createdAt: row.createdAt.map { Date(timeIntervalSince1970: TimeInterval($0)) },
+      originSessionId: row.originSessionId)
   }
 }
 
@@ -61,6 +62,9 @@ nonisolated extension OmnigentUIComponents.ActivityKind {
     case .clientTask: self = .clientTask
     case .browser: self = .browser
     case .sidechat: self = .sidechat
+    case .systemNotice: self = .systemNotice
+    case .subagentMarker: self = .subagentMarker
+    case .taskMarker: self = .taskMarker
     }
   }
 }

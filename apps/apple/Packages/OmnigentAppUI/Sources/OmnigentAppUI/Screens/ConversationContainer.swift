@@ -30,6 +30,8 @@ struct ConversationContainer: View {
   var server: OmnigentCoreFFI.ConnectedServer?
   /// Where a session on a host runs, for the titlebar's sandbox status.
   var hostEnvironment: @MainActor (String) -> SessionEnvironment? = { _ in nil }
+  /// A session's title, for the line over a message another session sent.
+  var sessionTitle: @MainActor (String) -> String? = { _ in nil }
   /// Opens the session's terminals and side chats as tabs.
   var tabRoutes: ConversationTabRoutes?
   /// The terminals the agent declares, for New Terminal.
@@ -271,6 +273,7 @@ extension ConversationContainer {
       resume: { Task { await conversation.recoverTurn(.resume) } })
     actions.loadOlder = { conversation.loadOlderHistory() }
     actions.openSignIn = openSignIn
+    actions.sessionTitle = sessionTitle
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     actions.messageURL = { row in Self.messageURL(row, in: link) }
     actions.retryFailedTurn = { row in

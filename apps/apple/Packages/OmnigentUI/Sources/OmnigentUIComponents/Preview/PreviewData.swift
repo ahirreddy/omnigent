@@ -276,6 +276,17 @@ enum PreviewData {
           text: "No. Use `take()` on failure so the **next** caller starts a fresh refresh."),
       ]),
     activity(
+      "item_subagent", .subagentMarker, title: "Started", summary: "Explore the refresh callers",
+      status: "delegated",
+      details: [DetailSection(id: "session", title: "Session", text: "sess_child", isCode: true)]),
+    activity(
+      "item_todo", .taskMarker, title: "Completed", summary: "Write the concurrency test",
+      status: "done"),
+    activity(
+      "item_notice", .systemNotice, title: "Timer check-ci fired",
+      summary: "note: 'check the build'", status: "timer_fired",
+      details: [DetailSection(id: "body", title: "Details", text: "note: 'check the build'")]),
+    activity(
       "item_unknown", .unknown, title: "canvas_update",
       summary: "An item this app does not support yet.",
       details: [

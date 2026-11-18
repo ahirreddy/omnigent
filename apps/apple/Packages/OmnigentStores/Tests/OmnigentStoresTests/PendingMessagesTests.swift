@@ -64,6 +64,23 @@ struct PendingMessagesTests {
     #expect(pending.rows.isEmpty)
   }
 
+  @Test("a message that reads as a runtime notice is echoed as the notice")
+  func matchesANotice() throws {
+    var pending = PendingMessages()
+    let added = pending.add(text: "[System: timer t1 fired]", attachments: [], transcript: [])
+    let rowID = try #require(added)
+    pending.acknowledge(rowID, itemID: "item_1")
+    let notice = Row(
+      id: "item_1", role: .tool, text: "System: Timer t1 fired", isStreaming: false,
+      activity: Activity(
+        kind: .systemNotice, title: "Timer t1 fired", summary: "", status: "timer_fired",
+        details: [], isFailure: false, recovery: nil),
+      attachments: [], callId: nil, responseId: nil, interrupted: false, author: nil,
+      agent: nil, createdAt: 1, isEphemeral: false, isActivityOnly: false)
+    pending.retireEchoes(in: [notice])
+    #expect(pending.rows.isEmpty)
+  }
+
   @Test("a stream echo beating the acknowledgement matches by text, past any preamble")
   func matchesByText() {
     for (sent, echoed) in [

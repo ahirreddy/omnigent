@@ -41,28 +41,37 @@ nonisolated struct CLIWork: Sendable {
     return work.spec.cells.isEmpty ? nil : work
   }
 
-  /// A reasoning line, its summary under it once opened.
+  /// A reasoning line, a notice or a marker, as ``CLIActivityLine`` draws it; what opens under
+  /// it (a thought's text, a notice's body) once opened.
   @MainActor private mutating func addActivity(
     _ row: Row, palette: CLIPalette, expansions: CLIWorkExpansions
   ) -> Bool {
-    guard let activity = row.activity, activity.kind == .reasoning, !row.isStreaming,
-      row.attachments.isEmpty
+    guard let activity = row.activity, !row.isStreaming, row.attachments.isEmpty,
+      let line = CLIActivityLine.markerLine(activity, isStreaming: false, palette: palette)
     else { return false }
-    var line = CLILineText()
-    line.append("Thought", palette.dim)
     var cell = CLIWorkCell(
       id: row.id, line: line, marker: activity.isFailure ? palette.failure : nil, gap: .small)
-    if expansions.isOpen(row.id) {
+    if expansions.isOpen(row.id), let text = Self.detailText(of: activity) {
       let action = row.id + "/details"
       cell.details.append(
         .tree(
           CLIWorkTree(
-            text: activity.detail("summary") ?? activity.summary, color: palette.dim,
-            limit: 40, showsAll: expansions.isOpen(action), action: action, indent: 2)))
+            text: text, color: palette.dim, limit: 40, showsAll: expansions.isOpen(action),
+            action: action, indent: 2)))
     }
     spec.cells.append(cell)
     targets[row.id] = .activity(row)
     return true
+  }
+
+  /// What an activity line opens to: a thought's text or a notice's body; `nil` when it has
+  /// nothing to open.
+  static func detailText(of activity: Activity) -> String? {
+    switch activity.kind {
+    case .reasoning: ReasoningText.text(activity)
+    case .systemNotice: TranscriptMarker.noticeBody(activity)
+    default: nil
+    }
   }
 
   /// A run of tool calls' cells, as ``CLIToolLines`` draws them.
