@@ -518,6 +518,12 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   - Report the loop to Apple with the reduced case: a `LazyVStack` in a `ScrollView`, tall
     rows, a short last row and a 1 pt view after it, accessibility on, scrolled 140-600 pt
     above the end, then a layout.
+- [ ] **MCP services at launch:** the new-session MCPs menu can't sign in to an OAuth, GitHub
+  or Databricks service, where the web opens the provider's sign-in in a popup. Such a service
+  shows "Needs sign-in" and can't be turned on until the user connects it on the web.
+- [ ] **`/rewind` attachments:** a rewound prompt's files come back through the preview reader,
+  so only the types it previews (images, PDF, text, JSON, CSV) return to the composer; the
+  others are named in the warning to attach again.
 
 ## Product decisions
 

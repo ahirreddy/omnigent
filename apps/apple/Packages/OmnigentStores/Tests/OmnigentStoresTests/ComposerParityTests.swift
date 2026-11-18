@@ -130,6 +130,33 @@ struct ComposerParityTests {
     #expect(live.postedTexts == ["/rewind"])
   }
 
+  @Test("Archives attach as files under the server's policy; a default type it leaves out is not")
+  func filesystemAttachments() async throws {
+    let live = try await LiveComposer()
+    let composer = live.composer
+    // Before /v1/info is read, the default extensions apply, as on the web.
+    composer.addAttachment(
+      filename: "logs.zip", mediaType: "application/zip", data: Data("PK".utf8))
+    #expect(composer.lastError == nil)
+    #expect(composer.attachments.items.map(\.mediaType) == ["application/octet-stream"])
+
+    live.server.route(
+      "/v1/info",
+      .json(
+        #"{"single_user":true,"accounts_enabled":false,"#
+          + #""filesystem_attachments":{"extensions":[".gz"],"all_types":false}}"#))
+    await composer.loadSkills()
+    composer.addAttachment(filename: "report.docx", mediaType: nil, data: Data("x".utf8))
+    #expect(
+      composer.lastError?.message
+        == "\"report.docx\" can't be attached: only images, PDF, text/code, and .gz files are "
+        + "supported.")
+    composer.addAttachment(
+      filename: "trace.gz", mediaType: "application/gzip", data: Data("x".utf8))
+    #expect(composer.lastError == nil)
+    #expect(composer.attachments.items.map(\.filename) == ["logs.zip", "trace.gz"])
+  }
+
   @Test("Edit and resend loads the message and its @ paths, asking before replacing a draft")
   func editSentMessage() async throws {
     let live = try await LiveComposer()
