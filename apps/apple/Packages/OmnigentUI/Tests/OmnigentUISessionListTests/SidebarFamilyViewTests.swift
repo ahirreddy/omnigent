@@ -25,17 +25,10 @@
         ? element.value(forKey: name) as? String : nil
     }
 
-    /// A session row's content frame, from its accessibility element.
+    /// A session row's frame, from its accessibility element.
     private func rowFrame(_ id: String, _ screen: OffscreenWindow<SidebarHarness>) throws -> CGRect
     {
       try screen.withAccessibilityTree { try screen.listElementFrame("session-row-\(id)") }
-    }
-
-    /// A session's whole list row.
-    private func listRow(_ id: String, _ screen: OffscreenWindow<SidebarHarness>) throws -> CGRect {
-      let list = try #require(screen.list)
-      let row = list.row(at: list.convert(center(try rowFrame(id, screen)), from: screen.host))
-      return list.convert(list.rect(ofRow: row), to: screen.host)
     }
 
     private func center(_ frame: CGRect) -> CGPoint { CGPoint(x: frame.midX, y: frame.midY) }
@@ -84,34 +77,6 @@
         #expect(attribute("accessibilityLabel", of: chevron) == "Expand session family")
         #expect(attribute("accessibilityValue", of: chevron) == "Collapsed")
       }
-    }
-
-    @Test("Members sit indented with an elbow beside them; their head's chevron leads it")
-    func membersAreIndentedWithAnElbow() throws {
-      let (_, screen) = sidebar()
-      defer { screen.close() }
-      let leading = try rowFrame("solo", screen).minX
-      let chevron = SessionFamilyMetrics.chevronWidth + SessionFamilyMetrics.chevronSpacing
-      #expect(abs(try rowFrame("coord", screen).minX - leading - chevron) < 1)
-      let picture = try Snapshot(screen)
-      // Above a row's content, where only an elbow draws.
-      let line = leading + SessionFamilyMetrics.chevronWidth
-      let hasElbow = { (id: String) throws -> Bool in
-        let top = try listRow(id, screen).minY + 3
-        return picture.inks(CGPoint(x: line, y: top), against: CGPoint(x: line + 4, y: top))
-      }
-      #expect(try hasElbow("impl") && hasElbow("review"))
-      #expect(try !hasElbow("coord") && !hasElbow("solo"))
-      // Below the elbow's turn the first ink is the row's own icon.
-      let contentStart = { (id: String) throws -> CGFloat? in
-        let row = try listRow(id, screen)
-        let blank = CGPoint(x: leading - 8, y: row.midY + 4)
-        return picture.firstInk(
-          from: leading - 4, to: row.maxX, along: row.midY + 4, against: blank)
-      }
-      let lone = try #require(try contentStart("solo"))
-      let member = try #require(try contentStart("impl"))
-      #expect(abs(member - lone - SessionFamilyMetrics.nestedIndent) <= 1)
     }
 
     @Test("A member's row menu has no Pin or Add to project; its representative's has both")
@@ -206,9 +171,7 @@
       UserDefaults.standard.set("work", forKey: SidebarNavigationOrder.expandedProjectsKey)
       let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 320, height: 700)
       defer { screen.close() }
-      let leading = try rowFrame("solo", screen).minX
-      let chevron = SessionFamilyMetrics.chevronWidth + SessionFamilyMetrics.chevronSpacing
-      #expect(abs(try rowFrame("coord", screen).minX - leading - chevron) < 1)
+      // Where its rows sit is SidebarNestingLayoutTests'.
       try screen.clickListElement("session-family-toggle-coord")
       #expect(
         MainLoop.settle(until: {
@@ -245,88 +208,11 @@
       }
     }
 
-    @Test("A row's title anchor keeps the first title it meets")
-    func titleAnchor() {
+    @Test("A row's mark anchor keeps the first mark it meets")
+    func markAnchor() {
       var value: Anchor<CGRect>?
-      SessionTitleAnchor.reduce(value: &value) { nil }
+      SessionMarkAnchor.reduce(value: &value) { nil }
       #expect(value == nil)
-    }
-  }
-
-  /// The window as drawn, read a point at a time.
-  @MainActor
-  private struct Snapshot {
-    let bitmap: NSBitmapImageRep
-    let scale: CGFloat
-
-    init(_ screen: OffscreenWindow<SidebarHarness>) throws {
-      let host = screen.host
-      bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-      host.cacheDisplay(in: host.bounds, to: bitmap)
-      scale = CGFloat(bitmap.pixelsWide) / host.bounds.width
-    }
-
-    /// Whether `point` draws in another color than `background`.
-    func inks(_ point: CGPoint, against background: CGPoint) -> Bool {
-      guard let ink = color(point), let blank = color(background) else { return false }
-      let difference = max(
-        abs(ink.redComponent - blank.redComponent), abs(ink.greenComponent - blank.greenComponent),
-        abs(ink.blueComponent - blank.blueComponent))
-      return difference > 0.06
-    }
-
-    /// The first point along the height `line` from `start` that draws in another color than
-    /// `background`.
-    func firstInk(
-      from start: CGFloat, to end: CGFloat, along line: CGFloat, against background: CGPoint
-    ) -> CGFloat? {
-      stride(from: start, to: end, by: 0.5).first {
-        inks(CGPoint(x: $0, y: line), against: background)
-      }
-    }
-
-    private func color(_ point: CGPoint) -> NSColor? {
-      bitmap.colorAt(x: Int(point.x * scale), y: Int(point.y * scale))?.usingColorSpace(.deviceRGB)
-    }
-  }
-
-  /// A list's rows each host their content in a hosting view of their own, which the window's
-  /// accessibility tree doesn't reach; these search from every hosting view.
-  extension OffscreenWindow {
-    func listElement(_ identifier: String) throws -> NSObject {
-      var pending: [Any] = allViews.filter {
-        String(describing: Swift.type(of: $0)).contains("HostingView")
-      }
-      var seen = Set<ObjectIdentifier>()
-      while let next = pending.popLast() {
-        guard let element = next as? NSObject, seen.insert(ObjectIdentifier(element)).inserted
-        else { continue }
-        if Self.listAttribute("accessibilityIdentifier", of: element) as? String == identifier {
-          return element
-        }
-        pending.append(
-          contentsOf: Self.listAttribute("accessibilityChildren", of: element) as? [Any] ?? [])
-      }
-      throw OffscreenWindowError.notFound(identifier)
-    }
-
-    /// Where the element is, from the top left of the window's root view.
-    func listElementFrame(_ identifier: String) throws -> CGRect {
-      let frame = Self.listAttribute("accessibilityFrame", of: try listElement(identifier))
-      guard let onScreen = (frame as? NSValue)?.rectValue else {
-        throw OffscreenWindowError.notFound("the frame of \(identifier)")
-      }
-      return host.convert(window.convertFromScreen(onScreen), from: nil)
-    }
-
-    /// Clicks the middle of the element.
-    func clickListElement(_ identifier: String) throws {
-      let frame = try withAccessibilityTree { try listElementFrame(identifier) }
-      try click(CGPoint(x: frame.midX, y: frame.midY))
-    }
-
-    private static func listAttribute(_ name: String, of element: NSObject) -> Any? {
-      element.responds(to: NSSelectorFromString(name)) ? element.value(forKey: name) : nil
     }
   }
 #endif

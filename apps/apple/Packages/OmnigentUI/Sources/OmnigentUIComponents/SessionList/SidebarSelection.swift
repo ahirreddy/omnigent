@@ -12,10 +12,11 @@ extension View {
   /// actions and the Delete command work as before.
   /// - Parameters:
   ///   - isSelected: Whether this row is the list's selection.
-  ///   - isNested: A row nested in its session family, whose fill starts at its indent.
+  ///   - indent: How far the row sits in (in a folder, or nested in its family); its fill
+  ///     starts there.
   /// - Returns: The row.
-  func sidebarSelection(_ isSelected: Bool, isNested: Bool = false) -> some View {
-    modifier(SidebarSelectionModifier(isSelected: isSelected, isNested: isNested))
+  func sidebarSelection(_ isSelected: Bool, indent: CGFloat = 0) -> some View {
+    modifier(SidebarSelectionModifier(isSelected: isSelected, indent: indent))
   }
 
   /// A sidebar row's icon in the text color. The iOS sidebar style tints icons with the system
@@ -33,7 +34,7 @@ extension View {
 
 private struct SidebarSelectionModifier: ViewModifier {
   let isSelected: Bool
-  let isNested: Bool
+  let indent: CGFloat
   @State private var isHovered = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -51,7 +52,7 @@ private struct SidebarSelectionModifier: ViewModifier {
       #endif
       .listRowBackground(
         SidebarSelectionBackground(isSelected: isSelected, isHovered: isHovered)
-          .padding(.leading, isNested ? SessionFamilyMetrics.nestedIndent : 0)
+          .padding(.leading, indent)
           .animation(reduceMotion ? nil : Theme.Motion.feedback, value: isHovered))
   }
 }
@@ -127,7 +128,7 @@ struct SidebarSelectionBackground: View {
         while let view = ancestor, !(view is NSTableView) { ancestor = unsafe view.superview }
         guard let table = ancestor as? NSTableView else { return }
         if table.selectionHighlightStyle != .none { table.selectionHighlightStyle = .none }
-        // A project's sessions line up with the rest; the folder's chevron marks the nesting.
+        // The rows draw their own indent, one step per level (`SessionFamilyMetrics`).
         if let outline = table as? NSOutlineView, outline.indentationPerLevel != 0 {
           outline.indentationPerLevel = 0
         }
