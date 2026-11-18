@@ -20,6 +20,8 @@
 //   wait <ms>                       pauses
 //   views <x> <y>                   writes "# views <unix ms> <count> <class>=<count>..." to the
 //                                   frame log: the AppKit views in that scroll view's document
+//   offset <x> <y>                  writes "# offset <unix ms> <y> <document height> <viewport
+//                                   height>" for that scroll view: where the reader is
 // Events go to the app's own queue or views, so no Accessibility permission is needed. After a
 // scroll or swipe, "# scrolled <unix ms> <from y> <to y> <document height>" goes to the frame log.
 #import <AppKit/AppKit.h>
@@ -168,6 +170,14 @@ static void report_views(NSScrollView *scroll_view) {
   fflush(frame_log);
 }
 
+static void report_offset(NSScrollView *scroll_view) {
+  if (frame_log == NULL || scroll_view == nil) return;
+  fprintf(frame_log, "# offset %.0f %.1f %.1f %.1f\n", wall_ms(),
+          scroll_view.contentView.bounds.origin.y, NSHeight(scroll_view.documentView.frame),
+          NSHeight(scroll_view.contentView.bounds));
+  fflush(frame_log);
+}
+
 static void run_steps(NSArray<NSString *> *lines) {
   double at = 0;
   const double frame = 1000.0 / 60.0;
@@ -232,6 +242,10 @@ static void run_steps(NSArray<NSString *> *lines) {
     } else if ([verb isEqualToString:@"views"] && parts.count >= 3) {
       double x = parts[1].doubleValue, y = parts[2].doubleValue;
       after(at, ^{ report_views(scroll_view_at(drive_window(), x, y)); });
+      at += 50;
+    } else if ([verb isEqualToString:@"offset"] && parts.count >= 3) {
+      double x = parts[1].doubleValue, y = parts[2].doubleValue;
+      after(at, ^{ report_offset(scroll_view_at(drive_window(), x, y)); });
       at += 50;
     } else if (verb.length > 0) {
       NSLog(@"driver: unknown step %@", line);

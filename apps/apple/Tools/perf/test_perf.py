@@ -85,6 +85,18 @@ class FrameTests(unittest.TestCase):
         self.assertEqual(perf.scrolled(text, 1000, 2000), [(6196.0, 880.0, 11277.0)])
         self.assertEqual(perf.scrolled(text, 1600, 2000), [])
 
+    def test_reads_where_the_reader_is_inside_the_window(self):
+        text = (
+            "# start 900\n# offset 1200 5000.0 9000.0 800.0\n# offset 2400 4990.5 9010.0 800.0\n"
+        )
+        self.assertEqual(perf.offsets(text, 1000, 2000), [(5000.0, 9000.0, 800.0)])
+        self.assertEqual(len(perf.offsets(text, 1000, 3000)), 2)
+
+    def test_the_mid_transcript_toggles_scroll_up_first(self):
+        self.assertEqual(perf.SCENARIOS["sidebar-toggles-mid"], perf.SCENARIOS["sidebar-toggles"])
+        self.assertIn("sidebar-toggles-mid", perf.PREPARE)
+        self.assertNotIn("sidebar-toggles", perf.PREPARE)
+
 
 BUSY = """# start 900
 1000.0 2.00
