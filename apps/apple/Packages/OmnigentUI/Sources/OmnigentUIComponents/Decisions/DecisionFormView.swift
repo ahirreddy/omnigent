@@ -9,6 +9,8 @@ struct FormDraft: Hashable {
   var selected: [String: [String]] = [:]
   var custom: [String: String] = [:]
   var booleans: [String: Bool] = [:]
+  /// Notes on answers, for fields that take one.
+  var notes: [String: String] = [:]
   /// The reply for "Tell the agent instead".
   var feedback = ""
   /// The reply field is open.
@@ -83,6 +85,34 @@ struct FormDraft: Hashable {
   nonisolated static func field(for message: String, in fields: [FormField]) -> FormField? {
     fields.filter { !$0.title.isEmpty && message.localizedCaseInsensitiveContains($0.title) }
       .max { $0.title.count < $1.title.count }
+  }
+
+  /// The notes to send: trimmed and non-blank, on fields that take one.
+  func notes(for fields: [FormField]) -> [String: String] {
+    var kept: [String: String] = [:]
+    for field in fields where field.acceptsNotes {
+      let note = notes[field.key, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+      if !note.isEmpty { kept[field.key] = note }
+    }
+    return kept
+  }
+
+  /// What Submit sends: the answers, with the notes when there are any.
+  func response(for fields: [FormField]) -> DecisionResponse {
+    let values = values(for: fields)
+    let notes = notes(for: fields)
+    return notes.isEmpty ? .form(values: values) : .formWithNotes(values: values, notes: notes)
+  }
+
+  /// The option whose preview a choice shows: the first option with one until something is
+  /// chosen, then the chosen option's; `nil` for a choice without a preview or a typed answer.
+  func previewedOption(for field: FormField) -> FormOption? {
+    let typed = custom[field.key, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+    if field.allowsCustom, !typed.isEmpty { return nil }
+    let chosen = selection(for: field)
+    let withPreview = field.options.filter { !$0.preview.isEmpty }
+    if chosen.isEmpty { return withPreview.first }
+    return withPreview.first { chosen.contains($0.value) }
   }
 
   /// The typed answers. Fields left empty are omitted.
@@ -215,8 +245,28 @@ struct DecisionFormFields: View {
           .accessibilityLabel("Other answer for \(field.title)")
         }
         if let hint = FormFieldHint.choices(field) { FormFieldHint.text(hint) }
+        if let option = draft.previewedOption(for: field) {
+          OptionPreview(option: option)
+            .padding(.top, Theme.Spacing.extraSmall)
+            .accessibilityIdentifier("\(idPrefix)request-field-preview-\(cardID)-\(field.key)")
+        }
+        if field.acceptsNotes { notesControl(field) }
       }
     }
+  }
+
+  private func notesControl(_ field: FormField) -> some View {
+    TextField(
+      "Notes (optional)",
+      text: Binding(
+        get: { draft.notes[field.key, default: ""] }, set: { draft.notes[field.key] = $0 }),
+      axis: .vertical
+    )
+    .lineLimit(1...4)
+    .textFieldStyle(.roundedBorder)
+    .padding(.top, Theme.Spacing.extraSmall)
+    .accessibilityLabel("Notes for \(field.title)")
+    .accessibilityIdentifier("\(idPrefix)request-field-notes-\(cardID)-\(field.key)")
   }
 
   @ViewBuilder

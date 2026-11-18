@@ -39,13 +39,15 @@ nonisolated extension OmnigentUIComponents.FormField {
       key: field.key, title: field.title, detail: field.detail,
       kind: OmnigentUIComponents.FieldKind(field.kind), required: field.required,
       options: field.options.map {
-        OmnigentUIComponents.FormOption(value: $0.value, label: $0.label, detail: $0.detail)
+        OmnigentUIComponents.FormOption(
+          value: $0.value, label: $0.label, detail: $0.detail, preview: $0.preview)
       },
       allowsCustom: field.allowsCustom, isSecret: field.isSecret, minimum: field.minimum,
       maximum: field.maximum, minLength: field.minLength, maxLength: field.maxLength,
       minItems: field.minItems, maxItems: field.maxItems,
       format: field.format.map(OmnigentUIComponents.TextFormat.init),
-      defaultValue: field.defaultValue.map(OmnigentUIComponents.ElicitationValue.init))
+      defaultValue: field.defaultValue.map(OmnigentUIComponents.ElicitationValue.init),
+      acceptsNotes: field.acceptsNotes)
   }
 }
 
@@ -88,7 +90,37 @@ nonisolated extension OmnigentUIComponents.PermissionOptions {
         OmnigentUIComponents.AntigravityPermission(
           actionDescription: $0.actionDescription, alwaysAllowPattern: $0.alwaysAllowPattern)
       },
-      files: options.fileChanges.map(DecisionFileChange.init))
+      files: options.fileChanges.map(DecisionFileChange.init),
+      suggestions: options.suggestions.map {
+        OmnigentUIComponents.PermissionSuggestion(label: $0.label, persists: $0.persists)
+      },
+      planModes: options.planModes.map(OmnigentUIComponents.PermissionMode.init))
+  }
+}
+
+nonisolated extension OmnigentUIComponents.PermissionMode {
+  init(_ mode: OmnigentCoreFFI.PermissionMode) {
+    switch mode {
+    case .default: self = .default
+    case .acceptEdits: self = .acceptEdits
+    case .plan: self = .plan
+    case .bypassPermissions: self = .bypassPermissions
+    case .dontAsk: self = .dontAsk
+    case .auto: self = .auto
+    }
+  }
+}
+
+nonisolated extension OmnigentCoreFFI.PermissionMode {
+  init(_ mode: OmnigentUIComponents.PermissionMode) {
+    switch mode {
+    case .default: self = .default
+    case .acceptEdits: self = .acceptEdits
+    case .plan: self = .plan
+    case .bypassPermissions: self = .bypassPermissions
+    case .dontAsk: self = .dontAsk
+    case .auto: self = .auto
+    }
   }
 }
 
@@ -142,12 +174,18 @@ nonisolated extension OmnigentCoreFFI.DecisionResponse {
     case .answer(let value): self = .answer(value: value)
     case .form(let values):
       self = .form(values: values.mapValues(OmnigentCoreFFI.ElicitationValue.init))
+    case .formWithNotes(let values, let notes):
+      self = .formWithNotes(
+        values: values.mapValues(OmnigentCoreFFI.ElicitationValue.init), notes: notes)
     case .approveAllEdits: self = .approveAllEdits
     case .approveAutoMode: self = .approveAutoMode
     case .approveDirectories: self = .approveDirectories
     case .approveRemembering: self = .approveRemembering
     case .approveCommandPolicy(let policy): self = .approveCommandPolicy(policy: policy)
     case .approvePersist(let mode): self = .approvePersist(mode: OmnigentCoreFFI.PersistMode(mode))
+    case .approveSuggestions: self = .approveSuggestions
+    case .approvePlanMode(let mode):
+      self = .approvePlanMode(mode: OmnigentCoreFFI.PermissionMode(mode))
     case .declineWithFeedback(let feedback): self = .declineWithFeedback(feedback: feedback)
     }
   }
@@ -193,6 +231,9 @@ nonisolated extension OmnigentUIComponents.DecisionResponse {
     case .answer(let value): self = .answer(value: value)
     case .form(let values):
       self = .form(values: values.mapValues(OmnigentUIComponents.ElicitationValue.init))
+    case .formWithNotes(let values, let notes):
+      self = .formWithNotes(
+        values: values.mapValues(OmnigentUIComponents.ElicitationValue.init), notes: notes)
     case .approveAllEdits: self = .approveAllEdits
     case .approveAutoMode: self = .approveAutoMode
     case .approveDirectories: self = .approveDirectories
@@ -200,6 +241,9 @@ nonisolated extension OmnigentUIComponents.DecisionResponse {
     case .approveCommandPolicy(let policy): self = .approveCommandPolicy(policy: policy)
     case .approvePersist(let mode):
       self = .approvePersist(mode: OmnigentUIComponents.PersistMode(mode))
+    case .approveSuggestions: self = .approveSuggestions
+    case .approvePlanMode(let mode):
+      self = .approvePlanMode(mode: OmnigentUIComponents.PermissionMode(mode))
     case .declineWithFeedback(let feedback): self = .declineWithFeedback(feedback: feedback)
     }
   }
