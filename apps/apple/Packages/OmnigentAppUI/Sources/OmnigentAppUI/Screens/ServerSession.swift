@@ -101,7 +101,13 @@ public final class ServerSession {
       if let pending = pendingFiles.removeValue(forKey: sessionID) {
         openFile(pending.path, at: pending.offset, in: sessionID)
       }
-      if panels[sessionID] == nil { panels[sessionID] = connection.makePanelStore(sessionID) }
+      if panels[sessionID] == nil, let panel = connection.makePanelStore(sessionID) {
+        // A local review comment written in the Changes tab goes to this session's composer.
+        let composer = connection.conversation(sessionID)?.composer
+        panel.attachReviewComment = { [weak composer] in composer?.attachReviewComment($0) }
+        panel.detachReviewComment = { [weak composer] in composer?.detachReviewComment($0) }
+        panels[sessionID] = panel
+      }
     }
     Task { await loadDeclaredTerminalNames([sessionID]) }
   }

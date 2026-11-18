@@ -132,6 +132,11 @@ struct PullRequestDetailView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .onChange(of: state.url) { descriptionDraft = nil }
+    .onChange(of: extras.opensChanges, initial: true) { _, opens in
+      guard opens else { return }
+      tab = .changes
+      actions.changesOpened?()
+    }
   }
 }
 

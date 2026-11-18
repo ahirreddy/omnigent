@@ -44,6 +44,12 @@ enum ComposerAdapter {
     state.slashCommandsNote = composer.skillsProblem
     state.mentionsNote = composer.mentionProblem
     state.mentions = composer.mentions
+    state.reviewComments = composer.reviewComments.map { comment in
+      ComposerReviewComment.make(
+        id: comment.id, path: comment.path, old: comment.anchor.side == .left,
+        lines: (comment.anchor.startLine ?? comment.anchor.line)...comment.anchor.line,
+        body: comment.body)
+    }
     state.quotes = composer.quotes.map { ComposerQuote(before: $0.before, text: $0.text) }
     state.approvalPickerRequest = composer.approvalPickerRequests
     state.connection = connection(store)

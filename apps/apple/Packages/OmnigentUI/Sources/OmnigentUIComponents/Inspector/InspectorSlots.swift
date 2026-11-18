@@ -247,6 +247,8 @@ public struct PullRequestPanelExtras {
   public var detail: PullRequestDetailContent?
   /// The Changes tab: the PR's files as a stacked diff.
   public var changes: AnyView?
+  /// Switch the detail to its Changes tab (a composer chip opened a local comment).
+  public var opensChanges = false
   /// Labels the repository offers.
   public var labelChoices: PullRequestChoices = .idle
   /// Who a review can be requested from.
