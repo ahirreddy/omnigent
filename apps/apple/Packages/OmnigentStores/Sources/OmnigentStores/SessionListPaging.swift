@@ -45,10 +45,11 @@ public final class SessionListPaging {
   }
 
   /// Loads a folder's first page, or its next one once that was read. The core reads nothing
-  /// while a page is loading or once every member is loaded.
+  /// while a page is loading, for a first page it read already, or once every member is loaded.
   /// - Parameter project: The folder's project.
   public func loadProject(_ project: ProjectSummary) {
-    core?.loadProjectFolder(project: project)
+    let isLoaded = projects[projectFolderId(project: project)]?.isLoaded == true
+    core?.loadProjectFolder(project: project, next: isLoaded)
   }
 
   /// Tells the core which folders the sidebar shows open, so it reads their first pages as soon

@@ -17,8 +17,11 @@ use crate::errors::CoreError;
 use crate::events::CoreEvent;
 use crate::list_driver::ListMsg;
 use crate::runtime::post;
-use crate::sessions::{PROJECT_PAGE_LIMIT, ProjectSummary};
+use crate::sessions::ProjectSummary;
 use crate::sidebar::ProjectSortMode;
+
+/// How many sessions one folder page reads, as the web's folder.
+const PROJECT_PAGE_LIMIT: u32 = 20;
 
 /// The id of `project`'s sidebar folder: its first-class id, else its name for a label-only
 /// project.
@@ -185,16 +188,18 @@ impl Engine {
         self.report_folders();
     }
 
-    /// Reads `project`'s first page, or its next once that is loaded; nothing while one loads or
-    /// once every member is loaded.
-    pub(crate) fn load_folder(&mut self, project: CoreProject) {
+    /// Reads `project`'s first page, or with `next` the page after the loaded ones (its first
+    /// while none is loaded); nothing while one loads, once that page is loaded, or once every
+    /// member is. A first page the core read already answers a view that asks for it.
+    pub(crate) fn load_folder(&mut self, project: CoreProject, next: bool) {
         let folder = folder_id(&project);
         let pages = self.list.folders.pages.entry(folder.clone()).or_default();
         pages.project = Some(project);
         let read = match (pages.loaded, pages.reading, &pages.next_cursor) {
             (_, Some((_, true)), _) | (true, _, None) => return,
             (false, _, _) => FolderRead::First,
-            (true, _, Some(_)) => FolderRead::Next,
+            (true, _, Some(_)) if next => FolderRead::Next,
+            (true, _, Some(_)) => return,
         };
         self.read_folder(&folder, read);
         self.report_folders();

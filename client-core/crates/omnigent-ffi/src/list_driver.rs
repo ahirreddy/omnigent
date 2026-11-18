@@ -52,8 +52,8 @@ pub(crate) enum ListMsg {
     },
     /// The sidebar shows these folders open.
     OpenFolders(BTreeSet<String>),
-    /// Read a folder's first page, or its next.
-    LoadFolder(CoreProject),
+    /// Read a folder's first page, or (`true`) its next.
+    LoadFolder(CoreProject, bool),
     /// A folder read finished.
     FolderLoaded {
         folder: String,
@@ -118,7 +118,7 @@ impl Engine {
             ListMsg::PinsLoaded { generation, result } => self.pins_loaded(generation, result),
             ListMsg::ProjectsLoaded { read, result } => self.projects_loaded(read, result),
             ListMsg::OpenFolders(open) => self.set_open_folders(open),
-            ListMsg::LoadFolder(project) => self.load_folder(project),
+            ListMsg::LoadFolder(project, next) => self.load_folder(project, next),
             ListMsg::FolderLoaded {
                 folder,
                 token,

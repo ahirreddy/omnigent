@@ -1261,12 +1261,14 @@ impl ClientCore {
         )));
     }
 
-    /// Reads `project`'s folder's first page, or its next once that is loaded (a folder's Show
-    /// more). Nothing is read while a page loads or once every member is loaded.
-    pub fn load_project_folder(&self, project: crate::sessions::ProjectSummary) {
+    /// Reads `project`'s folder's first page, or with `next` the page after its loaded ones (a
+    /// folder's Show more). Nothing is read while a page loads, for a first page already loaded
+    /// or read, or once every member is loaded.
+    pub fn load_project_folder(&self, project: crate::sessions::ProjectSummary, next: bool) {
         self.inner
             .post(Msg::List(crate::list_driver::ListMsg::LoadFolder(
                 project.into(),
+                next,
             )));
     }
 

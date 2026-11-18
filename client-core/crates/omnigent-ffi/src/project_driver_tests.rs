@@ -235,13 +235,20 @@ fn show_more_reads_the_next_page_after_the_first() {
     connect(&mut harness);
     harness.pump();
     harness.events.take();
-    harness.core.load_project_folder(alpha());
+    harness.core.load_project_folder(alpha(), false);
     harness.pump();
     assert_eq!(
         folders(&harness.events.take()),
         Some(vec![loaded("p1", true)])
     );
+    // A view that asks for the first page again, as a folder opening does, reads nothing more.
+    let reads = sent(&harness).len();
+    harness.core.load_project_folder(alpha(), false);
+    harness.pump();
+    assert_eq!(sent(&harness).len(), reads);
     assert_eq!(harness.last_query("after"), None);
+    assert_eq!(harness.last_query("limit").as_deref(), Some("20"));
+    assert_eq!(harness.last_query("visibility").as_deref(), Some("mine"));
 
     harness.http.route_query(
         "/v1/sessions",
@@ -249,7 +256,7 @@ fn show_more_reads_the_next_page_after_the_first() {
         "Alpha",
         respond(200, &list_of(&[row("f2")], false)),
     );
-    harness.core.load_project_folder(alpha());
+    harness.core.load_project_folder(alpha(), true);
     harness.pump();
     assert_eq!(harness.last_query("after").as_deref(), Some("f1"));
     assert_eq!(
@@ -258,7 +265,7 @@ fn show_more_reads_the_next_page_after_the_first() {
     );
     // Every member is loaded: nothing more is read.
     let reads = sent(&harness).len();
-    harness.core.load_project_folder(alpha());
+    harness.core.load_project_folder(alpha(), true);
     harness.pump();
     assert_eq!(sent(&harness).len(), reads);
 }
@@ -275,7 +282,7 @@ fn a_folder_that_cannot_be_read_says_so_for_that_folder() {
     connect(&mut harness);
     harness.pump();
     harness.events.take();
-    harness.core.load_project_folder(alpha());
+    harness.core.load_project_folder(alpha(), false);
     harness.pump();
     let events = harness.events.take();
     assert!(
