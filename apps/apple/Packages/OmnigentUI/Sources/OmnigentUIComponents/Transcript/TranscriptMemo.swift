@@ -322,7 +322,7 @@ extension ConversationActions: FocusedActions {
       messageURL != nil, resume != nil, share != nil, openSideChat != nil, openChild != nil,
       retryFailedTurn != nil, replyWithSelection != nil, askInSideChat != nil,
       forkUnavailableReason != nil, forkToRecover != nil, openSignIn != nil,
-      sessionTitle != nil,
+      sessionTitle != nil, editSentMessage != nil,
     ]
   }
 
@@ -369,5 +369,7 @@ extension ConversationActions: FocusedActions {
       copy.replyWithSelection = { latest()?.replyWithSelection?($0) }
     }
     if askInSideChat != nil { copy.askInSideChat = { latest()?.askInSideChat?($0) } }
+    if editSentMessage != nil { copy.editSentMessage = { latest()?.editSentMessage?($0) } }
+    copy.viewerID = viewerID
   }
 }

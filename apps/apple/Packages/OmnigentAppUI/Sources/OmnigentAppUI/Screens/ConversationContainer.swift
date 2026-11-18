@@ -134,6 +134,10 @@ struct ConversationContainer: View {
         conversation: conversation, summary: summary, isPresented: $showsGoal,
         report: { failures.append($0) })
     )
+    .modifier(
+      SessionRewindPresenter(
+        composer: composer, open: toolRoutes.openSession, report: { failures.append($0) })
+    )
     .onChange(of: conversation.isRunning) { _, running in
       Task { await composer.drainQueue(isRunning: running) }
       if !running, !windowLoadsPanel { Task { await panel?.refreshPullRequestsIfShown() } }
@@ -287,6 +291,12 @@ extension ConversationContainer {
     actions.loadOlder = { conversation.loadOlderHistory() }
     actions.openSignIn = openSignIn
     actions.sessionTitle = sessionTitle
+    // Edit and resend, wherever the viewer could type the message.
+    if !ComposerAdapter.isReadOnly(conversation) {
+      let composer = conversation.composer
+      actions.editSentMessage = { row in composer.editSentMessage(row.text) }
+      actions.viewerID = server?.userId
+    }
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     actions.messageURL = { row in Self.messageURL(row, in: link) }
     actions.retryFailedTurn = { row in

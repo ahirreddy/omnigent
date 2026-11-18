@@ -54,6 +54,18 @@ public final class ComposerStore {
   }
   /// Bumped by `/permissions`: the composer opens its approval-mode picker.
   public internal(set) var approvalPickerRequests = 0
+  /// The session has a Goal control, so `/goal` opens the Goal sheet. The screen sets it from
+  /// the session's harness and agent (the core's `goalControl`).
+  public var offersGoal = false {
+    didSet { if offersGoal != oldValue { refreshRules() } }
+  }
+  /// The `/rewind` picker, while it is open.
+  public internal(set) var rewindPicker: RewindPicker?
+  /// A sent message waiting to replace the draft (Edit and resend), until the user confirms or
+  /// keeps the draft.
+  public internal(set) var pendingEdit: String?
+  /// Bumped each time a sent message is loaded to edit, so the composer takes focus.
+  public internal(set) var editLoads = 0
   /// The core's verdicts on the configuration, computed when it changes rather than on every
   /// read, so views that redraw while a reply streams make no core calls.
   var rules = ConfigurationRules()
@@ -257,4 +269,10 @@ public enum ComposerSendOutcome: Sendable, Equatable {
   case newSession
   /// `/side`: fork a side chat and open it with `question` as its draft.
   case sideChat(question: String)
+  /// `/goal`: open the Goal sheet.
+  case goal
+  /// `/rewind`: show ``ComposerStore/rewindPicker``.
+  case rewind
+  /// The work continues in another session, which the view opens (a claude-sdk `/clear`).
+  case openSession(String)
 }

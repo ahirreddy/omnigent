@@ -46,6 +46,8 @@ enum ComposerAdapter {
     state.mentions = composer.mentions
     state.quotes = composer.quotes.map { ComposerQuote(before: $0.before, text: $0.text) }
     state.approvalPickerRequest = composer.approvalPickerRequests
+    state.asksToReplaceDraft = composer.pendingEdit != nil
+    state.editLoads = composer.editLoads
     state.connection = connection(store)
     state.statusPlaceholder = statusPlaceholder(store, connection: state.connection)
     state.liveness = LivenessAdapter.notice(store, serverURL: server?.baseUrl)
@@ -190,6 +192,8 @@ enum ComposerAdapter {
       remove: { composer.removeQuote(at: $0) },
       editLead: { composer.editQuoteLead(at: $0, text: $1) })
     extras.setSmartRouting = { enabled in Task { await composer.setSmartRouting(enabled) } }
+    extras.replaceDraftWithEdit = { composer.replaceDraftWithEdit() }
+    extras.keepDraftOverEdit = { composer.keepDraftOverEdit() }
     extras.liveness.checkAgain = reconnect
     return extras
   }
