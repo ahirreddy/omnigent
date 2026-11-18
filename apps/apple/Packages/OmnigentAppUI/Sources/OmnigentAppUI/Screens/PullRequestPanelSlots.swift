@@ -47,6 +47,7 @@ enum PullRequestPanelSlots {
       }
     }
     actions.dismissError = { panel.dismissEditError() }
+    actions.watch = { resumed in await panel.watch(.panel, resumed: resumed) }
     guard canEdit else { return actions }
     actions.link = { url, done in
       Task { done(await panel.linkPullRequest(url)) }

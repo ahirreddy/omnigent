@@ -125,6 +125,8 @@ struct ConversationContainer: View {
     }
     // Reads the features too; the composer tray links the session's pull requests.
     .task { if !windowLoadsPanel { await panel?.reloadPullRequests() } }
+    // The composer's chip keeps its PRs' checks and merge state current.
+    .whileVisible(composerWatch)
     .modifier(
       SessionGoalPresenter(
         conversation: conversation, summary: summary, isPresented: $showsGoal,
@@ -146,6 +148,12 @@ struct ConversationContainer: View {
           openBrowser: tabRoutes?.openBrowser, openSideChat: tabRoutes?.openNewSideChat))
     #endif
     .modifier(ChangedFilesFollower(revision: changedFilesRevision, workspace: ownPanelWorkspace))
+  }
+
+  /// Keeps the composer chip's PRs current while the chat shows.
+  private var composerWatch: (@MainActor (Bool) async -> Void)? {
+    guard let panel else { return nil }
+    return { resumed in await panel.watch(.composer, resumed: resumed) }
   }
 
   /// The workspace this chat's own right panel shows; none where the window shows the

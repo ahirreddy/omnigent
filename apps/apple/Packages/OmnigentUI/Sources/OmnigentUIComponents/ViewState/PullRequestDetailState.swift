@@ -232,6 +232,9 @@ public struct PullRequestPanelActions {
   public var unlink: (@MainActor (String) -> Void)?
   /// Re-reads the list and the open PR.
   public var refresh: (@MainActor () -> Void)?
+  /// Keeps the PRs fresh while the tab shows, until its task is cancelled; the argument says
+  /// the tab shows again after being hidden.
+  public var watch: (@MainActor (_ resumed: Bool) async -> Void)?
   /// Reads the repository's labels.
   public var loadLabels: (@MainActor () -> Void)?
   /// Adds (`true`) or removes a label by name.

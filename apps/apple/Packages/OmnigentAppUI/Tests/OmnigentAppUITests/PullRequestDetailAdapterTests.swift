@@ -41,7 +41,8 @@ private func info(
   PullRequestInfo(
     availability: availability, providerName: "GitHub", numberPrefix: "#", branch: "fix",
     repository: "o/r", baseRef: "main", selectedUrl: url, trackingAvailable: true, linked: [],
-    warnings: [], capabilities: capabilities, pullRequest: pullRequest)
+    warnings: [], capabilities: capabilities, pullRequest: pullRequest,
+    polling: pullRequestPollingWithoutInfo())
 }
 
 @MainActor

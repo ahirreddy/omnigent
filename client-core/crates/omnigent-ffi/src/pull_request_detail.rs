@@ -5,6 +5,7 @@
 //! `omnigent_core::pull_request_edits`'.
 
 use omnigent_core::pull_request_detail as core;
+use omnigent_core::pull_request_detail::polling;
 use omnigent_core::pull_request_edits as edits;
 
 use crate::client::ClientCore;
@@ -406,6 +407,52 @@ pub struct PullRequestInfo {
     pub capabilities: PullRequestCapabilities,
     /// The selected PR.
     pub pull_request: Option<PullRequestDetail>,
+    /// How often readers of this info re-read it.
+    pub polling: PullRequestPolling,
+}
+
+/// How often a reader re-reads a PR's info, in milliseconds; `None` rests until a turn ends,
+/// a refresh, or the reader shows again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct PullRequestPolling {
+    /// The open panel showing the PR's detail.
+    pub panel_ms: Option<u64>,
+    /// A list row watching the PR.
+    pub list_ms: Option<u64>,
+    /// The composer watching the session's linked PRs.
+    pub linked_ms: Option<u64>,
+}
+
+impl From<polling::PullRequestPolling> for PullRequestPolling {
+    fn from(value: polling::PullRequestPolling) -> Self {
+        Self {
+            panel_ms: value.panel_ms,
+            list_ms: value.list_ms,
+            linked_ms: value.linked_ms,
+        }
+    }
+}
+
+/// The intervals before any info was read, or after a read failed with nothing shown.
+#[uniffi::export]
+#[must_use]
+pub fn pull_request_polling_without_info() -> PullRequestPolling {
+    polling::PullRequestPolling::WITHOUT_INFO.into()
+}
+
+/// The composer's cadence over the linked PRs' statuses; `None` once all are settled.
+#[uniffi::export]
+#[must_use]
+pub fn pull_request_linked_poll_ms(statuses: Vec<PullRequestStatus>) -> Option<u64> {
+    polling::linked_poll_ms(statuses.into_iter().map(Into::into))
+}
+
+/// The wait before retry `attempt` (0-based) of a read that found the host offline; `None`
+/// once the retries are spent.
+#[uniffi::export]
+#[must_use]
+pub fn pull_request_host_offline_retry_ms(attempt: u32) -> Option<u64> {
+    polling::host_offline_retry_delay_ms(attempt)
 }
 
 impl From<core::PullRequestInfo> for PullRequestInfo {
@@ -429,6 +476,7 @@ impl From<core::PullRequestInfo> for PullRequestInfo {
                 reviewer_editing: caps.reviewer_editing,
             },
             pull_request: info.pull_request.map(Into::into),
+            polling: info.polling.into(),
         }
     }
 }
@@ -536,8 +584,8 @@ impl ClientCore {
     ///
     /// # Errors
     ///
-    /// [`CoreError::Session`]: `InvalidIdentifier`, `Rejected` with the host's reason (also
-    /// while the host is offline), the read errors and `MalformedResponse`.
+    /// [`CoreError::Session`]: `InvalidIdentifier`, `Rejected` with the host's reason,
+    /// `HostOffline` while the host is offline, the read errors and `MalformedResponse`.
     pub async fn pull_request_info(
         &self,
         session_id: String,

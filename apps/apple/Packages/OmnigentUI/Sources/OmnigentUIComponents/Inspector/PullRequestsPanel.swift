@@ -37,6 +37,7 @@ struct PullRequestsPanel: View {
       }
     }
     .task { refresh?() }
+    .whileVisible(actions.watch)
   }
 
   private var listCount: Int {

@@ -4,7 +4,7 @@
 //! `…/resources/github/diff` the PR's patch. Every git provider answers under the `github` name.
 //!
 //! The host answers these, so they fail while it is offline: a `503` whose `error.code` is
-//! `runner_unavailable` reads as [`SessionError::Rejected`] with [`HOST_OFFLINE`]. A `404` from
+//! `runner_unavailable` reads as [`SessionError::HostOffline`] with [`HOST_OFFLINE`]. A `404` from
 //! the info route means the session has no workspace (or a host older than the route), which
 //! [`PullRequestInfo`] reports as [`PullRequestAvailability::Unavailable`] rather than an error.
 
@@ -16,6 +16,11 @@ use super::requests::{rejection_message, validate_identifier};
 use super::{ClientCore, SessionError, lock};
 use crate::auth::mode::error_text;
 use crate::http::{HttpTransport, TransportError};
+
+#[path = "pull_request_polling.rs"]
+pub mod polling;
+
+use polling::PullRequestPolling;
 
 /// What a read that needs the session's host says while the host is offline.
 pub const HOST_OFFLINE: &str =
@@ -308,6 +313,8 @@ pub struct PullRequestInfo {
     pub capabilities: PullRequestCapabilities,
     /// The selected PR.
     pub pull_request: Option<PullRequestDetail>,
+    /// How often readers of this info re-read it.
+    pub polling: PullRequestPolling,
 }
 
 /// The selected PR's patch.
@@ -624,6 +631,11 @@ impl PullRequestInfo {
         };
         let mut all_warnings = warnings.clone();
         all_warnings.extend(strings(object, "discovery_warnings")?);
+        let linked = opt_array(object, "prs")?
+            .into_iter()
+            .flatten()
+            .map(SessionPullRequest::from_value)
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             availability: availability(object, pull_request.as_ref(), !warnings.is_empty())?,
             provider_name: display
@@ -644,11 +656,8 @@ impl PullRequestInfo {
             selected_url: opt_str(object, "selected_pr_url")?
                 .or_else(|| pull_request.as_ref().map(|pr| pr.url.clone())),
             tracking_available: opt_bool(object, "tracking_available")?.unwrap_or(false),
-            linked: opt_array(object, "prs")?
-                .into_iter()
-                .flatten()
-                .map(SessionPullRequest::from_value)
-                .collect::<Result<_, _>>()?,
+            polling: PullRequestPolling::of(object, pull_request.as_ref(), &linked)?,
+            linked,
             warnings: all_warnings,
             capabilities,
             pull_request,
@@ -679,6 +688,7 @@ impl PullRequestInfo {
             warnings: Vec::new(),
             capabilities: PullRequestCapabilities::default(),
             pull_request: None,
+            polling: PullRequestPolling::WITHOUT_INFO,
         }
     }
 }
@@ -736,8 +746,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 .and_then(Value::as_str)
                 == Some("runner_unavailable") =>
             {
-                Err(SessionError::Rejected {
-                    status: 503,
+                Err(SessionError::HostOffline {
                     message: HOST_OFFLINE.to_owned(),
                 })
             }
@@ -759,7 +768,7 @@ impl<T: HttpTransport> ClientCore<T> {
     /// # Errors
     ///
     /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::Rejected`] with
-    /// the host's reason (or [`HOST_OFFLINE`]); the read errors; and
+    /// the host's reason; [`SessionError::HostOffline`]; the read errors; and
     /// [`SessionError::MalformedResponse`].
     #[allow(
         clippy::future_not_send,
@@ -836,3 +845,7 @@ fn decode_patch(value: &Value) -> Result<PullRequestPatch, String> {
         unavailable,
     })
 }
+
+#[cfg(test)]
+#[path = "pull_request_polling_tests.rs"]
+mod polling_tests;
