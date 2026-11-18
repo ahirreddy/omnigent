@@ -131,9 +131,11 @@ class HttpParser:
                 self.message.chunk_state = "data"
             return True
         taken = min(len(self.buffer), self.message.remaining)
+        # The chunk's last two bytes are its CRLF, not data.
+        data = max(0, min(taken, self.message.remaining - 2))
         del self.buffer[:taken]
         self.message.remaining -= taken
-        self.message.body_bytes += max(0, taken - (2 if self.message.remaining == 0 else 0))
+        self.message.body_bytes += data
         if self.message.remaining == 0:
             self.message.chunk_state = "size"
         return True

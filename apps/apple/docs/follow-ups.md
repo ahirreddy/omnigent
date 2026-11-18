@@ -133,6 +133,23 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   (`omnigent_core::notifications::push`) and add a Notification Service Extension for titles.
 - [ ] **Device-link pairing tokens:** short-lived, single-use tokens in the pairing code for
   accounts and OIDC servers (phone-supervision.md, "Pairing tokens (v2)").
+- [ ] **Session updates snapshot:** every `watch` message answers with a snapshot of every
+  watched row (up to 500), so each page, folder or pin read that grows the watch set sends the
+  rows already sent again (`session_updates` in `omnigent/server/routes/sessions/routes_core.py`).
+  Snapshot only the ids the new watch adds; the web gains as much.
+- [ ] **One sidebar read:** the sidebar's first paint takes a sessions page, the pinned sessions,
+  the projects and their order, then each open folder's page, the folders a round trip after the
+  projects because `?project=` takes a name. A read that answers them together (or folder pages
+  by project id) would save a remote client that round trip; the web lacks it too.
+
+## Native apps: loading
+
+- [ ] **`/v1/info` once per connection:** the connect, the offered pages, skills, creation,
+  pull requests and server settings each read it. One read per connection in the core would
+  save those round trips on a remote server.
+- [ ] **Saved list at launch:** the saved session list shows only when the server cannot be
+  reached; showing it while a reachable remote server answers would paint the sidebar before
+  the first round trip.
 
 ## Apps
 
