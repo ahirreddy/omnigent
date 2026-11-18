@@ -42,14 +42,14 @@
 
     @Test("A gap says how many lines it hides, and expanding shows them")
     func gaps() throws {
-      var log: [String] = []
       var actions = StackedDiffActions()
-      actions.expand = { path, gap, expansion in log.append("\(path) \(gap.index) \(expansion)") }
+      actions.expand = { _, _, _ in }
       let file = StackedDiffFile(diff: twoHunks)
       let shown = screen(StackedDiffContent(files: [file]), actions: actions)
       defer { shown.close() }
       #expect(try shown.shows("15 unchanged lines"))
       #expect(try shown.shows("1 unchanged line"))
+      #expect(try shown.shows("Unchanged lines below"), "the last gap waits for the file's text")
 
       var expanded = StackedDiffContent(files: [file])
       let lines = (1...25).map { "line \($0)" }
@@ -59,6 +59,8 @@
       defer { more.close() }
       #expect(try more.shows("line 5"))
       #expect(try more.shows("5 unchanged lines"))
+      #expect(try !more.shows("15 unchanged lines"))
+      #expect(try more.shows("3 unchanged lines"), "the last gap's length is known")
       #expect(try !more.shows("line 16"))
     }
 
