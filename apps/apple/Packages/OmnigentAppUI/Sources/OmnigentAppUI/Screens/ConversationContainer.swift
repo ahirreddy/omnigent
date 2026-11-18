@@ -194,23 +194,28 @@ struct ConversationContainer: View {
 
   /// What the Add menu and the tray's indicators open.
   var toolRoutes: SessionToolsAdapter.Routes {
-    SessionToolsAdapter.Routes(
+    let showPullRequests: @MainActor () -> Void = {
+      if let panel = tabRoutes?.windowPanel {
+        panel.show(.pullRequests)
+      } else {
+        inspectorTab = .pullRequests
+        panelRoute.choice = .open
+      }
+    }
+    return SessionToolsAdapter.Routes(
       openSession: tabRoutes?.openSession ?? openSession,
       openNewSideChat: tabRoutes?.openNewSideChat,
       awaitForkedSideChat: tabRoutes?.awaitForkedSideChat,
-      showPullRequests: {
-        if let panel = tabRoutes?.windowPanel {
-          panel.show(.pullRequests)
-        } else {
-          inspectorTab = .pullRequests
-          panelRoute.choice = .open
-        }
-      },
+      showPullRequests: showPullRequests,
       showGoal: {
         showsGoal = true
         Task { await conversation.tools.loadGoal() }
       },
-      report: { failures.append($0) })
+      report: { failures.append($0) },
+      showPullRequest: { [panel] url in
+        showPullRequests()
+        Task { await panel?.showPullRequest(url) }
+      })
   }
 
   /// Attaches the harness TUI once ready (the store keeps it), applying the default view.

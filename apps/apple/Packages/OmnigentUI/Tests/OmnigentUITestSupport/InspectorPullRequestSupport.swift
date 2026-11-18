@@ -51,6 +51,12 @@
 
   enum PullRequestFixture {
     static let url = "https://example.test/acme/app/pull/7"
+    static let otherURL = "https://example.test/acme/app/pull/8"
+
+    /// Two linked PRs, so the list shows rather than the one PR's detail.
+    static var two: [PullRequestSummary] {
+      [summary(), summary(id: "8", number: 8, url: otherURL)]
+    }
 
     static func summary(
       id: String = "7", number: Int = 7, status: PullRequestSummary.Status = .open,

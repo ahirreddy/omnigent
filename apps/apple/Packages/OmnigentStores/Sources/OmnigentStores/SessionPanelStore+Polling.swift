@@ -1,4 +1,4 @@
-import OmnigentCoreFFI
+public import OmnigentCoreFFI
 
 /// Who keeps the session's pull requests fresh while it is on screen.
 nonisolated public enum PullRequestWatcher: Hashable, Sendable {
@@ -155,7 +155,7 @@ extension SessionPanelStore {
 
 extension CreationLoad {
   /// The failure, when the load failed.
-  var error: CoreError? {
+  public var error: CoreError? {
     if case .failed(let error) = self { return error }
     return nil
   }

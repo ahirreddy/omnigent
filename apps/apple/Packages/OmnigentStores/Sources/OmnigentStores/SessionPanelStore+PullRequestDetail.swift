@@ -34,6 +34,8 @@ nonisolated public enum PullRequestEdit: Equatable, Sendable {
   case autoMerge
   /// Posting a comment.
   case comment
+  /// Changing the title or description.
+  case details
 }
 
 extension SessionPanelStore {

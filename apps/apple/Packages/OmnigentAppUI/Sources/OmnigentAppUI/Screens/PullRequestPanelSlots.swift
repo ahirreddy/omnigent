@@ -69,6 +69,12 @@ enum PullRequestPanelSlots {
     actions.comment = { body, done in
       Task { done(await panel.postComment(body)) }
     }
+    actions.editDetails = { title, body, done in
+      Task { done(await panel.updateDetails(title: title, body: body)) }
+    }
+    actions.attach = { file, done in
+      Task { done(await PullRequestAttachments.upload(file, to: panel)) }
+    }
     return actions
   }
 

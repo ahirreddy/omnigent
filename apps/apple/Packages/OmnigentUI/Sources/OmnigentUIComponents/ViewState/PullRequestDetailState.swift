@@ -8,8 +8,19 @@ nonisolated public enum PullRequestDetailContent: Hashable, Sendable {
   case failed(String)
   /// There is nothing to show, and why.
   case unavailable(title: String, message: String, systemImage: String)
+  /// The host is offline: the PR as the server stored it.
+  case stored(PullRequestStoredViewState)
   /// The PR.
   case ready(PullRequestDetailViewState)
+
+  /// The PR page and the provider's name, for Open on GitHub; `nil` before the PR is known.
+  public var link: (url: String, providerName: String)? {
+    switch self {
+    case .ready(let state): (state.url, state.providerName)
+    case .stored(let state): (state.url, state.providerName)
+    case .loading, .failed, .unavailable: nil
+    }
+  }
 }
 
 /// The CI checks in one bucket.
@@ -185,6 +196,14 @@ nonisolated public struct PullRequestDetailViewState: Hashable, Sendable {
   public var comments: [PullRequestCommentRow]
   /// Some comments could not be read.
   public var commentsPartial: Bool
+  /// Commits and force pushes, oldest first.
+  public var timeline: [PullRequestTimelineRow] = []
+  /// Some commit and push history could not be read.
+  public var timelinePartial = false
+  /// The title and description can be edited.
+  public var canEditDetails = false
+  /// Images and videos can be uploaded into the description.
+  public var canAttach = false
   /// Labels can be changed.
   public var canEditLabels: Bool
   /// Reviews can be requested and withdrawn.
@@ -220,6 +239,30 @@ nonisolated public struct PullRequestDetailViewState: Hashable, Sendable {
   }
 }
 
+extension PullRequestDetailViewState {
+  /// Comments and commit activity in one feed, by time; without activity, the comments' own
+  /// order stands. Entries with no time go last.
+  public var feed: [PullRequestFeedEntry] {
+    let entries =
+      comments.map(PullRequestFeedEntry.comment) + timeline.map(PullRequestFeedEntry.event)
+    guard !timeline.isEmpty else { return entries }
+    return entries.enumerated().sorted { left, right in
+      let leftDate = left.element.date ?? .distantFuture
+      let rightDate = right.element.date ?? .distantFuture
+      return leftDate == rightDate ? left.offset < right.offset : leftDate < rightDate
+    }
+    .map(\.element)
+  }
+}
+
+/// How an attachment upload ended.
+nonisolated public enum PullRequestAttachmentOutcome: Hashable, Sendable {
+  /// Uploaded: the Markdown that embeds it.
+  case attached(markdown: String)
+  /// Not uploaded, and why.
+  case failed(String)
+}
+
 /// The Pull Requests tab's actions. `nil` hides the control.
 public struct PullRequestPanelActions {
   /// Shows a linked PR in detail.
@@ -251,6 +294,20 @@ public struct PullRequestPanelActions {
   public var disableAutoMerge: (@MainActor () -> Void)?
   /// Posts a comment; the callback says whether it was posted.
   public var comment: (@MainActor (String, @escaping @MainActor (Bool) -> Void) -> Void)?
+  /// Replaces the title and/or the description (`nil` keeps one); the callback says whether it
+  /// was saved.
+  public var editDetails:
+    (
+      @MainActor (_ title: String?, _ body: String?, _ done: @escaping @MainActor (Bool) -> Void)
+        -> Void
+    )?
+  /// Uploads an image or video for the description; the callback gets the Markdown that embeds
+  /// it, or why it failed.
+  public var attach:
+    (
+      @MainActor (_ file: URL, _ done: @escaping @MainActor (PullRequestAttachmentOutcome) -> Void)
+        -> Void
+    )?
   /// Clears the last failure.
   public var dismissError: (@MainActor () -> Void)?
 

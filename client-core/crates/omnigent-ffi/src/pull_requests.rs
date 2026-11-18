@@ -149,4 +149,21 @@ impl ClientCore {
             synced: list.synced,
         })
     }
+
+    /// Unlinks `url` from `session_id` on the server, which answers while the host is offline.
+    /// Check `PanelFeatures::pull_requests` first.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` and the write errors.
+    pub async fn unlink_session_pull_request(
+        &self,
+        session_id: String,
+        url: String,
+    ) -> Result<(), CoreError> {
+        self.sessions()
+            .unlink_session_pull_request(&session_id, &url)
+            .await
+            .map_err(CoreError::from)
+    }
 }

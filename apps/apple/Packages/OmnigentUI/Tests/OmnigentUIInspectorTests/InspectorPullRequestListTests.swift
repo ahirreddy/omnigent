@@ -100,12 +100,27 @@
     @Test("Choosing a row opens it in the panel when the app can read it")
     func selectsRow() throws {
       let spy = PullRequestSpy()
-      let screen = panel(.loaded([PullRequestFixture.summary()], synced: true), spy: spy)
+      let screen = panel(.loaded(PullRequestFixture.two, synced: true), spy: spy)
       defer { screen.close() }
       spy.calls = []
       try screen.clickControl(at: screen.controlFrames.count - 1)
-      #expect(spy.calls == ["select \(PullRequestFixture.url)"])
+      #expect(spy.calls == ["select \(PullRequestFixture.otherURL)"])
       #expect(spy.opened.isEmpty)
+    }
+
+    @Test("One linked pull request opens at once, as there's nothing to choose")
+    func opensTheOnlyOne() async throws {
+      let spy = PullRequestSpy()
+      let screen = panel(.loaded([PullRequestFixture.summary()], synced: true), spy: spy)
+      defer { screen.close() }
+      try await Task.sleep(for: .milliseconds(30))
+      screen.settle(0.05)
+      #expect(spy.calls.contains("select \(PullRequestFixture.url)"))
+      let two = PullRequestSpy()
+      let list = panel(.loaded(PullRequestFixture.two, synced: true), spy: two)
+      defer { list.close() }
+      list.settle(0.05)
+      #expect(!two.calls.contains { $0.hasPrefix("select") })
     }
 
     @Test("Otherwise choosing a row opens its page; a broken address does nothing")
@@ -194,7 +209,7 @@
       OffscreenWindow(
         AnyView(
           PullRequestsPanel(
-            state: .loaded([PullRequestFixture.summary()], synced: true),
+            state: .loaded(PullRequestFixture.two, synced: true),
             extras: extras ?? spy.extras, open: spy.open, refresh: nil)),
         width: 500, height: 400)
     }

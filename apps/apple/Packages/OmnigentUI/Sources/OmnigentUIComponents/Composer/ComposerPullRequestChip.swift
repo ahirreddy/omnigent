@@ -2,12 +2,13 @@ import SwiftUI
 
 /// The tray's pull request link, as the web's composer shows it: "#123" or "N PRs" in the color
 /// of the PR that most needs the user, opening the Pull Requests tab. Hovering shows each linked
-/// PR with its status.
+/// PR with its status; choosing one opens it there.
 struct ComposerPullRequestChip: View {
   let label: String
   let status: PullRequestSummary.Status?
   let preview: [PullRequestSummary]
   let open: (@MainActor () -> Void)?
+  var openOne: (@MainActor (String) -> Void)?
 
   @State private var hovering = false
   @State private var showsPreview = false
@@ -43,14 +44,18 @@ struct ComposerPullRequestChip: View {
       }
     }
     .popover(isPresented: $showsPreview, arrowEdge: .top) {
-      ComposerPullRequestPreview(pullRequests: preview)
+      ComposerPullRequestPreview(pullRequests: preview) { url in
+        showsPreview = false
+        if let openOne { openOne(url) } else { open?() }
+      }
     }
   }
 }
 
-/// The hover preview: each linked PR's repository, number, status and title.
+/// The hover preview: each linked PR's repository, number, status and title, each opening its PR.
 struct ComposerPullRequestPreview: View {
   let pullRequests: [PullRequestSummary]
+  var open: (@MainActor (String) -> Void)?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -63,23 +68,15 @@ struct ComposerPullRequestPreview: View {
       ScrollView {
         VStack(alignment: .leading, spacing: Theme.Spacing.small) {
           ForEach(pullRequests) { request in
-            HStack(alignment: .top, spacing: Theme.Spacing.small) {
-              PullRequestStatusIcon(status: request.status)
-              VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-                HStack(alignment: .firstTextBaseline) {
-                  Text("\(request.repo) #\(request.number)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                  Spacer(minLength: Theme.Spacing.small)
-                  Text(request.status.title)
-                    .font(.caption)
-                    .foregroundStyle(PullRequestStatusIcon.color(request.status))
-                }
-                Text(request.title).font(.callout.weight(.medium)).lineLimit(1)
-              }
+            Button {
+              open?(request.url)
+            } label: {
+              row(request)
             }
-            .accessibilityElement(children: .combine)
+            .buttonStyle(.plain)
+            .disabled(open == nil)
+            .accessibilityHint("Shows this pull request in the Pull Requests tab")
+            .accessibilityIdentifier("composer-pr-\(request.id)")
           }
         }
         .padding(Theme.Spacing.medium)
@@ -87,5 +84,26 @@ struct ComposerPullRequestPreview: View {
       .frame(maxHeight: 320)
     }
     .frame(width: 360)
+  }
+
+  private func row(_ request: PullRequestSummary) -> some View {
+    HStack(alignment: .top, spacing: Theme.Spacing.small) {
+      PullRequestStatusIcon(status: request.status)
+      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+        HStack(alignment: .firstTextBaseline) {
+          Text("\(request.repo) #\(request.number)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+          Spacer(minLength: Theme.Spacing.small)
+          Text(request.status.title)
+            .font(.caption)
+            .foregroundStyle(PullRequestStatusIcon.color(request.status))
+        }
+        Text(request.title).font(.callout.weight(.medium)).lineLimit(1)
+      }
+    }
+    .contentShape(Rectangle())
+    .accessibilityElement(children: .combine)
   }
 }

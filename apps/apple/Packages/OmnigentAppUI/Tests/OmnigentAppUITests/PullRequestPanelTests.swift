@@ -73,7 +73,10 @@ struct PullRequestPanelTests {
   @Test("Unlink, Turn Off Auto-Merge and dismissing a failed edit reach the panel")
   func smallerEdits() async throws {
     let server = server()
-    server.route("\(githubPath)/prs", method: "POST", .json(#"{"detail":"refused"}"#, status: 500))
+    // The server unlinks a PR it stores, host or not.
+    server.route(
+      "/v1/sessions/conv_a/pull-requests", method: "DELETE",
+      .json(#"{"detail":"refused"}"#, status: 422))
     server.route("\(githubPath)/disable-auto-merge", method: "POST", .json("{}"))
     let panel = try await panel(server)
     let actions = PullRequestPanelSlots.extras(panel, canEdit: true).actions

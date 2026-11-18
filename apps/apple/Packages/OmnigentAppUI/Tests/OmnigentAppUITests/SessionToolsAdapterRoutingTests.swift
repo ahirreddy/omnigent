@@ -13,6 +13,7 @@ private final class RouteLog {
   var reports: [String] = []
   var goalsShown = 0
   var newSessions = 0
+  var pullRequestsShown: [String] = []
 
   func routes(sideChats: Bool = true) -> SessionToolsAdapter.Routes {
     var open: (@MainActor (String, Bool) -> Void)?
@@ -21,7 +22,8 @@ private final class RouteLog {
     }
     return SessionToolsAdapter.Routes(
       openSession: { _ in }, openNewSideChat: open, showPullRequests: {},
-      showGoal: { self.goalsShown += 1 }, report: { self.reports.append($0) })
+      showGoal: { self.goalsShown += 1 }, report: { self.reports.append($0) },
+      showPullRequest: { self.pullRequestsShown.append($0) })
   }
 }
 
@@ -152,6 +154,16 @@ struct SessionToolsAdapterRoutingTests {
       to: &noGoal, store: try await Fixtures.store(), summary: nil, routes: log.routes())
     #expect(noGoal.setGoal == nil)
     #expect(noGoal.indicators.openGoal == nil)
+  }
+
+  @Test("The tray's pull request chip opens the one PR the person chose")
+  func pullRequestChipOpensOne() async throws {
+    let log = RouteLog()
+    var extras = ComposerExtraActions()
+    SessionToolsAdapter.add(
+      to: &extras, store: try await Fixtures.store(), summary: nil, routes: log.routes())
+    extras.indicators.openPullRequest?("https://github.com/o/r/pull/7")
+    #expect(log.pullRequestsShown == ["https://github.com/o/r/pull/7"])
   }
 
   @Test("A child session or an unknown harness has no goal control")

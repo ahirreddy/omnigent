@@ -13,6 +13,7 @@ enum PullRequestDetailAdapter {
   /// - Returns: The content.
   static func content(_ panel: SessionPanelStore, canEdit: Bool) -> PullRequestDetailContent? {
     guard panel.openPullRequest != nil else { return nil }
+    if let stored = stored(panel) { return stored }
     return content(detail: panel.detail, files: panel.files.value, canEdit: canEdit)
   }
 
@@ -76,7 +77,11 @@ enum PullRequestDetailAdapter {
         body: comment.body, url: comment.url.flatMap(URL.init(string:)))
     }
     state.commentsPartial = pullRequest.commentsPartial
+    state.timeline = timeline(pullRequest)
+    state.timelinePartial = pullRequest.timelinePartial
     let caps = info.capabilities
+    state.canEditDetails = canEdit && caps.detailsEditing
+    state.canAttach = caps.attachmentUploads
     let open = pullRequest.status == .open || pullRequest.status == .draft
     if canEdit, caps.merging, open, pullRequest.reportsMergeState {
       state.merge = merge(pullRequest)

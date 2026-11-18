@@ -14,7 +14,7 @@ private func detail(
 ) -> PullRequestDetail {
   PullRequestDetail(
     number: 7, title: "Fix login", url: url, status: .open, condition: condition, author: "ann",
-    baseRef: "main", headRef: "fix", headSha: "abc", body: "Body",
+    baseRef: "main", headRef: "fix", headSha: "abc", baseSha: "base", body: "Body",
     checks: checks
       ?? PullRequestChecks(
         passing: 0, failing: 0, pending: 0, cancelled: 0, skipped: 0, total: 0, partial: false,
@@ -24,7 +24,7 @@ private func detail(
       PullRequestComment(
         author: "bob", body: "LGTM", createdAt: "2026-01-02T03:04:05Z", url: "https://c")
     ],
-    commentsPartial: false,
+    commentsPartial: false, timelineEvents: [], timelinePartial: false,
     reviewers: [
       PullRequestReviewer(login: "Core", kind: .team, state: .pending),
       PullRequestReviewer(login: "bob", kind: .user, state: .approved),
@@ -33,10 +33,22 @@ private func detail(
     mergeStateStatus: mergeState, reportsMergeState: true, autoMergeMethod: autoMerge)
 }
 
+/// What the panel can do: labels, merging and comments unless a test says otherwise.
+private func prCapabilities(
+  labels: Bool = true, merging: Bool = true, comments: Bool = true, reviewers: Bool = false,
+  details: Bool = false, attachments: Bool = false
+) -> PullRequestCapabilities {
+  PullRequestCapabilities(
+    labelEditing: labels, merging: merging, commentPosting: comments, reviewerEditing: reviewers,
+    detailsEditing: details, attachmentUploads: attachments, reviewThreads: false,
+    reviewThreadReplies: false, reviewThreadCreation: false, commitHistory: false,
+    lineCounts: true, linkedPrDiff: true, accountSwitching: false, baseRemoteSelection: false,
+    mergeAsAccount: false)
+}
+
 private func info(
   _ pullRequest: PullRequestDetail?, availability: PullRequestAvailability = .ready,
-  capabilities: PullRequestCapabilities = PullRequestCapabilities(
-    labelEditing: true, merging: true, commentPosting: true, reviewerEditing: false)
+  capabilities: PullRequestCapabilities = prCapabilities()
 ) -> PullRequestInfo {
   PullRequestInfo(
     availability: availability, providerName: "GitHub", numberPrefix: "#", branch: "fix",
@@ -120,6 +132,56 @@ struct PullRequestDetailAdapterTests {
       MergeOptions(methods: [.merge, .squash], defaultMethod: .squash))
     #expect(chips.map(\.id) == ["squash", "merge"])
     #expect(PullRequestPanelSlots.mergeMethod("rebase") == .rebase)
+  }
+
+  @Test func commitsAndForcePushesJoinTheFeedAndEditorsCanEditTheText() throws {
+    var pullRequest = detail()
+    pullRequest.timelineEvents = [
+      PullRequestTimelineEvent(
+        id: "e1", kind: .forcePush(previousSha: "1111111aaa"), author: nil,
+        createdAt: "2026-01-01T00:00:00Z", url: nil, sha: "2222222bbb", message: nil),
+      PullRequestTimelineEvent(
+        id: "e2", kind: .commit, author: "ann", createdAt: "2026-01-03T00:00:00Z",
+        url: "https://c/2", sha: "3333333", message: "Fix it"),
+    ]
+    pullRequest.timelinePartial = true
+    let content = PullRequestDetailAdapter.content(
+      detail: .loaded(
+        info(pullRequest, capabilities: prCapabilities(details: true, attachments: true))),
+      files: nil, canEdit: true)
+    guard case .ready(let state) = content else {
+      Issue.record("expected the detail, got \(content)")
+      return
+    }
+    #expect(state.timeline.map(\.author) == ["unknown", "ann"])
+    #expect(state.timeline.first?.kind == .forcePush(previousSHA: "1111111aaa"))
+    #expect(state.timelinePartial)
+    // The comment, from 2026-01-02, sits between the push and the commit.
+    #expect(state.feed.map(\.id) == ["event-e1", "comment-https://c", "event-e2"])
+    #expect(state.canEditDetails && state.canAttach)
+
+    let viewer = PullRequestDetailAdapter.content(
+      detail: .loaded(info(pullRequest, capabilities: prCapabilities(details: true))), files: nil,
+      canEdit: false)
+    guard case .ready(let read) = viewer else { return }
+    #expect(!read.canEditDetails && !read.canAttach)
+  }
+
+  @Test func theStoredPullRequestSaysWhenItWasReadAndWhatLoadsTheRest() {
+    var pullRequest = SessionPullRequest(
+      url: url, host: "github.com", repository: "o/r", number: 7, title: "  ",
+      relationship: "created", providerName: "GitHub", status: .draft,
+      stateCheckedAt: 1_700_000_000)
+    var stored = PullRequestDetailAdapter.stored(pullRequest)
+    #expect(stored.title == "o/r #7", "a blank title reads as the repository and number")
+    #expect(stored.status == .draft)
+    #expect(stored.hint.hasPrefix("Last sync time: "))
+    #expect(stored.hint.hasSuffix("please reconnect the session\u{2019}s host."))
+    pullRequest.stateCheckedAt = nil
+    pullRequest.title = "Fix login"
+    stored = PullRequestDetailAdapter.stored(pullRequest)
+    #expect(stored.title == "Fix login")
+    #expect(stored.hint == "To load the PR details, please reconnect the session\u{2019}s host.")
   }
 
   @Test func aLiveConditionColorsAnOpenRowButNotAMergedOne() {
