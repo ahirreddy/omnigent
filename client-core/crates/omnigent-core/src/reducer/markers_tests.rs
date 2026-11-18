@@ -146,8 +146,7 @@ fn task_markers_lead_with_their_status() {
 #[test]
 fn plan_lines_read_as_the_web_writes_them() {
     let plan = |resource: Value| {
-        line(&receipt("session.journal.plan", "journal", "e1", resource))
-            .map(|(title, _, _)| title)
+        line(&receipt("session.journal.plan", "journal", "e1", resource)).map(|(title, _, _)| title)
     };
     let cases = [
         (

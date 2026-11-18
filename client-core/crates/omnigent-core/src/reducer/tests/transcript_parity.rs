@@ -44,7 +44,11 @@ fn shown(rows: &[Row]) -> Vec<String> {
                     )
                 },
             );
-            format!("{} {} {kind}: {title} | {summary}", row.id, row.role.as_str())
+            format!(
+                "{} {} {kind}: {title} | {summary}",
+                row.id,
+                row.role.as_str()
+            )
         })
         .collect()
 }
@@ -114,7 +118,11 @@ fn live_notices_markers_and_background_tasks() {
             .as_deref(),
         Some("gh run watch")
     );
-    assert_eq!(harness.snapshot().rows, Vec::<Row>::new(), "no Session event row");
+    assert_eq!(
+        harness.snapshot().rows,
+        Vec::<Row>::new(),
+        "no Session event row"
+    );
     let journal = harness.send(lines[2].clone());
     assert!(
         journal.changes.is_empty(),
