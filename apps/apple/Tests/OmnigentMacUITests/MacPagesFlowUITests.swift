@@ -59,6 +59,28 @@ final class MacPagesFlowUITests: XCTestCase {
     XCTAssertTrue(listed.disappears(within: 15), "the automation stayed")
   }
 
+  /// The pages are read again with each connection: after two Reconnects back to back, as a
+  /// wake and an unlock send, Automations is in the sidebar and no read failure shows.
+  @MainActor
+  func testAutomationsStayAfterReconnecting() {
+    let live = MacLiveUITestSupport(self)
+    let app = live.launch()
+    defer { app.terminate() }
+    let automations = live.element("sidebar-automations", in: app)
+    let failure = live.element("sidebar-pages-failure", in: app)
+    XCTAssertTrue(automations.appears(within: 30), "no Automations row\n\(app.debugDescription)")
+
+    app.typeKey("r", modifierFlags: [.command, .option, .shift])
+    app.typeKey("r", modifierFlags: [.command, .option, .shift])
+    XCTAssertTrue(
+      live.waitUntil(timeout: 30) { automations.exists && !failure.exists },
+      "Automations did not come back\n\(app.debugDescription)")
+    // Still there once the reconnects have settled.
+    RunLoop.current.run(until: Date().addingTimeInterval(2))
+    XCTAssertTrue(automations.exists, "Automations went after the reconnect")
+    XCTAssertFalse(failure.exists, "the pages could not be read after the reconnect")
+  }
+
   /// Approving a request from the Inbox clears it from the Inbox and from the session's row. A
   /// request to edit files is too large to approve on its row: Review shows the whole card.
   @MainActor
