@@ -99,7 +99,7 @@ enum ServerSettingsAdapter {
     // Any sign-in with a session to end (password or SSO) shows who you are and Sign out.
     if info.accountsEnabled || info.hasLoginSession { panes.append(.account) }
     panes.append(.harnesses)
-    // As on the web, Custom Agents shows only where the server enables its settings page.
+    // As on the web, Custom Agents shows wherever the server installs agents (`agent_install`).
     if info.customAgents { panes.append(.customAgents) }
     if info.mcpRegistry { panes.append(.mcp) }
     if !info.connections.isEmpty { panes.append(.integrations) }

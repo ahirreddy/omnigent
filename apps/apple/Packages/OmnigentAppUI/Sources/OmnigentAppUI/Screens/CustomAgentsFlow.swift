@@ -102,6 +102,7 @@ enum CustomAgentsBundle {
 /// editor with Delete. Self-contained: give it the server's connection.
 public struct CustomAgentsSettingsView: View {
   private let connection: ConnectionStore
+  private let isSupported: Bool
   private let canEdit: Bool
   @State private var store: CustomAgentsStore?
   @State private var editingID: String?
@@ -110,16 +111,25 @@ public struct CustomAgentsSettingsView: View {
   /// Creates the section.
   /// - Parameters:
   ///   - connection: The server whose agents show.
-  ///   - canEdit: The server reads and changes an agent's configuration (`agent_detail`).
-  public init(connection: ConnectionStore, canEdit: Bool = true) {
+  ///   - isSupported: The server lists and reads agents (`agent_detail`).
+  ///   - canEdit: The server also changes an agent's configuration (`agent_config_edit`).
+  public init(connection: ConnectionStore, isSupported: Bool = true, canEdit: Bool = true) {
     self.connection = connection
+    self.isSupported = isSupported
     self.canEdit = canEdit
   }
 
   /// The section, as a grouped form.
   public var body: some View {
     Form {
-      if let store {
+      if !isSupported {
+        Text(
+          "Custom agents settings is unavailable on this server. Update the server and reload "
+            + "to enable it."
+        )
+        .foregroundStyle(.secondary)
+        .accessibilityIdentifier("custom-agents-unsupported")
+      } else if let store {
         CustomAgentsSettingsSection(state: state(store), actions: actions(store))
       } else {
         Text("Connect to this server to manage its custom agents.").foregroundStyle(.secondary)
@@ -127,7 +137,7 @@ public struct CustomAgentsSettingsView: View {
     }
     .formStyle(.grouped)
     .task(id: ObjectIdentifier(connection)) {
-      guard let store = connection.customAgents() else { return }
+      guard isSupported, let store = connection.customAgents() else { return }
       self.store = store
       editingID = nil
       await store.load()

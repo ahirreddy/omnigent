@@ -467,8 +467,6 @@ pub struct CreationCapabilities {
     pub github_connection: bool,
     /// `session_fork_workspaces`: a sandbox fork can change several repositories.
     pub fork_workspaces: bool,
-    /// `features.custom_agents_settings_ui`: Settings lists and edits custom agents.
-    pub custom_agents_settings: bool,
     /// `agent_detail`: an agent's configuration can be read.
     pub agent_detail: bool,
     /// `smart_routing_enabled`, with a router that answers for native Claude Code and Codex
@@ -512,10 +510,11 @@ impl CreationCapabilities {
         self.sandbox_profiles && self.managed_sandboxes
     }
 
-    /// Whether Settings lists and edits custom agents (the web's `customAgentsSettingsEnabled`).
+    /// Whether Settings lists and edits custom agents (the web's `customAgentsSettingsEnabled`:
+    /// `agent_install` alone).
     #[must_use]
     pub const fn custom_agents_settings_enabled(&self) -> bool {
-        self.custom_agents_settings && self.agent_install
+        self.agent_install
     }
 
     /// Decodes the creation fields of a `/v1/info` body.
@@ -572,7 +571,6 @@ impl CreationCapabilities {
                 .unwrap_or(false),
             github_connection,
             fork_workspaces: opt_bool(object, "session_fork_workspaces")?.unwrap_or(false),
-            custom_agents_settings: feature("custom_agents_settings_ui"),
             agent_detail: opt_bool(object, "agent_detail")?.unwrap_or(false),
             smart_routing: {
                 let options = crate::slash::SlashOptions::from_info(value)?;

@@ -23,7 +23,7 @@ struct ServerSettingsAdapterTests {
     #expect(
       ServerSettingsAdapter.panes(info(admin: false))
         == [.harnesses, .git, .importSessions, .archived],
-      "Custom Agents needs the server's custom_agents_settings_ui and agent_install")
+      "Custom Agents needs the server's agent_install")
     #expect(
       ServerSettingsAdapter.panes(info(admin: true, singleUser: true))
         == [.harnesses, .git, .importSessions, .policies, .archived],

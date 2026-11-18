@@ -26,8 +26,7 @@ fn settings_info_maps_each_capability_to_its_own_field() {
             200,
             r#"{"single_user":false,"accounts_enabled":true,"archive_worktree_cleanup":true,
                 "login_url":"/login","enabled_connections":["mcp","github"],
-                "agent_install":true,"agent_detail":false,
-                "features":{"custom_agents_settings_ui":true}}"#,
+                "agent_install":true,"agent_detail":false,"agent_config_edit":true}"#,
         ),
     );
     harness
@@ -49,7 +48,10 @@ fn settings_info_maps_each_capability_to_its_own_field() {
             has_login_session: true,
             custom_agents: true,
             agent_detail: false,
+            agent_config_edit: true,
         }
+
+
     );
     harness.http.route(
         "/v1/info",
@@ -60,7 +62,7 @@ fn settings_info_maps_each_capability_to_its_own_field() {
         .unwrap();
     assert!(info.single_user && info.agent_detail);
     assert!(!info.accounts_enabled && !info.mcp_registry && !info.has_login_session);
-    assert!(!info.archive_worktree_cleanup && !info.custom_agents);
+    assert!(!info.archive_worktree_cleanup && !info.custom_agents && !info.agent_config_edit);
 }
 
 #[test]

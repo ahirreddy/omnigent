@@ -133,8 +133,7 @@ pub struct CreationCatalog {
     /// `session_fork_workspaces`.
     #[uniffi(default)]
     pub fork_workspaces: bool,
-    /// Settings lists and edits custom agents (`custom_agents_settings_ui` and
-    /// `agent_install`).
+    /// Settings lists and edits custom agents (`agent_install`).
     #[uniffi(default)]
     pub custom_agents_settings: bool,
     /// `agent_detail`: an agent's configuration can be read.
@@ -385,8 +384,6 @@ impl From<CreationCatalog> for core::CreationCatalog {
                 mints_sandbox_host_id: catalog.mints_sandbox_host_id,
                 github_connection: catalog.github_connection,
                 fork_workspaces: catalog.fork_workspaces,
-                // Already combined with `agent_install` on the way out.
-                custom_agents_settings: catalog.custom_agents_settings,
                 agent_detail: catalog.agent_detail,
                 smart_routing: catalog.smart_routing,
                 sibling_sessions: catalog.sibling_sessions,
