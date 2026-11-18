@@ -48,15 +48,71 @@ nonisolated public struct DiffHunk: Hashable, Sendable {
   public var header: String
   /// The lines.
   public var lines: [DiffLine]
+  /// First old line (the line before the hunk when ``oldCount`` is 0).
+  public var oldStart: UInt64
+  /// Old lines covered.
+  public var oldCount: UInt64
+  /// First new line (the line before the hunk when ``newCount`` is 0).
+  public var newStart: UInt64
+  /// New lines covered.
+  public var newCount: UInt64
 
-  /// A hunk.
+  /// A hunk. Ranges left out are read from `header`, else from the lines.
   /// - Parameters:
   ///   - header: The rendered header.
   ///   - lines: The lines.
-  public init(header: String, lines: [DiffLine]) {
+  ///   - oldStart: First old line.
+  ///   - oldCount: Old lines covered.
+  ///   - newStart: First new line.
+  ///   - newCount: New lines covered.
+  public init(
+    header: String, lines: [DiffLine], oldStart: UInt64? = nil, oldCount: UInt64? = nil,
+    newStart: UInt64? = nil, newCount: UInt64? = nil
+  ) {
     self.header = header
     self.lines = lines
+    let parsed = Self.ranges(header)
+    let oldLines = UInt64(lines.count { $0.kind != .added })
+    let newLines = UInt64(lines.count { $0.kind != .removed })
+    self.oldStart =
+      oldStart ?? parsed?.oldStart ?? lines.lazy.compactMap(\.oldNumber).first ?? 0
+    self.oldCount = oldCount ?? parsed?.oldCount ?? oldLines
+    self.newStart =
+      newStart ?? parsed?.newStart ?? lines.lazy.compactMap(\.newNumber).first ?? 0
+    self.newCount = newCount ?? parsed?.newCount ?? newLines
   }
+
+  /// The four numbers of a hunk header.
+  struct Ranges: Hashable {
+    let oldStart: UInt64
+    let oldCount: UInt64
+    let newStart: UInt64
+    let newCount: UInt64
+  }
+
+  /// The ranges of an `@@ -a[,b] +c[,d] @@` header; `nil` when it has none.
+  static func ranges(_ header: String) -> Ranges? {
+    let parts = header.split(separator: " ")
+    guard parts.count >= 3, parts[0] == "@@", parts[1].hasPrefix("-"), parts[2].hasPrefix("+")
+    else { return nil }
+    func range(_ part: Substring) -> (UInt64, UInt64)? {
+      let numbers = part.dropFirst().split(separator: ",", omittingEmptySubsequences: false)
+      guard let start = numbers.first.flatMap({ UInt64($0) }) else { return nil }
+      guard numbers.count > 1 else { return (start, 1) }
+      return UInt64(numbers[1]).map { (start, $0) }
+    }
+    guard let old = range(parts[1]), let new = range(parts[2]) else { return nil }
+    return Ranges(oldStart: old.0, oldCount: old.1, newStart: new.0, newCount: new.1)
+  }
+
+  /// The first old line after the hunk.
+  var oldEnd: UInt64 { oldCount == 0 ? oldStart + 1 : oldStart + oldCount }
+  /// The first new line after the hunk.
+  var newEnd: UInt64 { newCount == 0 ? newStart + 1 : newStart + newCount }
+  /// The hunk's first old line, or the one after where it inserts.
+  var oldFirst: UInt64 { oldCount == 0 ? oldStart + 1 : oldStart }
+  /// The hunk's first new line, or the one after where it deletes.
+  var newFirst: UInt64 { newCount == 0 ? newStart + 1 : newStart }
 }
 
 /// One side of a side-by-side row (`workspace::SplitCell`).

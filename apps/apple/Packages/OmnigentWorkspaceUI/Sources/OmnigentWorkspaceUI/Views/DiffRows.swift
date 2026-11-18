@@ -84,6 +84,8 @@ struct UnifiedDiffBody: View {
 struct UnifiedLineRow: View {
   let line: DiffLine
   let compactGutter: Bool
+  /// The active find match, in UTF-16 offsets of the drawn text.
+  var highlight: Range<Int>?
 
   @Environment(\.colorScheme) private var scheme
 
@@ -97,7 +99,7 @@ struct UnifiedLineRow: View {
         .foregroundStyle(markerColor)
         .frame(width: 16)
         .accessibilityHidden(true)
-      Text(DiffText.display(line.text))
+      Text(DiffText.marked(line.text, highlight: highlight, scheme: scheme))
         .font(WorkspaceTheme.code)
         .fixedSize(horizontal: true, vertical: false)
       if line.missingNewline {
@@ -177,8 +179,10 @@ struct SplitDiffBody: View {
   }
 }
 
-private struct SplitCellView: View {
+struct SplitCellView: View {
   let cell: SplitCell?
+  /// The active find match, in UTF-16 offsets of the drawn text.
+  var highlight: Range<Int>?
 
   @Environment(\.colorScheme) private var scheme
 
@@ -205,6 +209,9 @@ private struct SplitCellView: View {
 
   private func text(for cell: SplitCell) -> AttributedString {
     let display = DiffText.display(cell.text)
+    if highlight != nil {
+      return DiffText.marked(cell.text, highlight: highlight, scheme: scheme)
+    }
     guard let changed = cell.changed, cell.kind != .context else {
       return AttributedString(display)
     }
@@ -226,8 +233,22 @@ private struct SplitCellView: View {
 }
 
 /// Display text for a diff line: a trailing carriage return is not drawn.
-enum DiffText {
+nonisolated enum DiffText {
   static func display(_ text: String) -> String {
     text.hasSuffix("\r") ? String(text.dropLast()) : text
+  }
+
+  /// The drawn text with `highlight` (UTF-16 offsets) marked as the active find match.
+  @MainActor
+  static func marked(_ text: String, highlight: Range<Int>?, scheme: ColorScheme)
+    -> AttributedString
+  {
+    let display = display(text)
+    let range = highlight.flatMap {
+      TextRange(start: $0.lowerBound, end: $0.upperBound).utf16Range(in: display)
+    }
+    guard let range else { return AttributedString(display) }
+    return Highlighting.marked(
+      display, range: range, background: WorkspaceTheme.matchBackground(scheme))
   }
 }
