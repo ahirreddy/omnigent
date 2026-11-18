@@ -1,0 +1,34 @@
+{
+  "acp": {
+    "toolCall": { "toolCallId": "call_1", "title": "shell", "kind": "execute", "rawInput": { "command": "ls" } },
+    "options": [
+      { "optionId": "allow", "name": "Allow", "kind": "allow_once" },
+      { "optionId": "allow_session", "name": "Yes, allow `ls` commands (this session)", "kind": "allow_always" },
+      { "optionId": "reject", "name": "Reject", "kind": "reject_once" }
+    ]
+  },
+  "elicitation": {
+    "type": "response.elicitation_request",
+    "elicitation_id": "elicit_44aa55bb66cc77dd88ee99ff00112233",
+    "method": "elicitation/create",
+    "sequence_number": 17,
+    "params": {
+      "mode": "form",
+      "message": "Grok Build wants to use **shell**",
+      "requestedSchema": {
+        "type": "object",
+        "properties": {
+          "answer": {
+            "type": "string",
+            "enum": ["Allow", "Yes, allow `ls` commands (this session)", "Reject"]
+          }
+        },
+        "required": ["answer"]
+      },
+      "phase": "tool_call",
+      "policy_name": "grok build_sdk_permission",
+      "content_preview": "shell({\"command\": \"ls\"})"
+    }
+  },
+  "answer": { "action": "accept", "content": { "answer": "Yes, allow `ls` commands (this session)" } }
+}

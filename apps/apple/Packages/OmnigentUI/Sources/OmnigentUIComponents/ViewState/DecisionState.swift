@@ -68,6 +68,47 @@ nonisolated public struct AntigravityPermission: Hashable, Sendable {
   }
 }
 
+/// A verdict a native terminal (Kiro) applies and confirms; the card stays pending until it does.
+nonisolated public struct NativeDelivery: Hashable, Sendable {
+  /// Where delivery stands.
+  public enum State: Hashable, Sendable {
+    /// Waiting for a verdict.
+    case ready
+    /// A verdict is on its way; nothing more can be sent.
+    case sending
+    /// The terminal never confirmed the verdict; only that verdict may be sent again.
+    case unconfirmed
+  }
+
+  /// The verdict being delivered.
+  public enum Verdict: Hashable, Sendable {
+    /// Approved.
+    case accept
+    /// Rejected.
+    case decline
+    /// Dismissed.
+    case cancel
+  }
+
+  /// Where delivery stands.
+  public var state: State
+  /// The attempt; a new one means the last answer was never confirmed.
+  public var attempt: String
+  /// The verdict being delivered, when one was sent.
+  public var verdict: Verdict?
+
+  /// Creates a delivery.
+  /// - Parameters:
+  ///   - state: Where delivery stands.
+  ///   - attempt: The attempt.
+  ///   - verdict: The verdict being delivered.
+  public init(state: State, attempt: String, verdict: Verdict? = nil) {
+    self.state = state
+    self.attempt = attempt
+    self.verdict = verdict
+  }
+}
+
 /// Permission choices the request advertises beyond approve and decline.
 nonisolated public struct PermissionOptions: Hashable, Sendable {
   /// Offer "approve and allow all edits".
@@ -90,6 +131,8 @@ nonisolated public struct PermissionOptions: Hashable, Sendable {
   public var antigravity: AntigravityPermission?
   /// The files an edit would change, when the core provides them.
   public var files: [DecisionFileChange]
+  /// A native terminal confirms the verdict.
+  public var nativeDelivery: NativeDelivery?
 
   /// Creates permission options.
   /// - Parameters:
@@ -103,12 +146,13 @@ nonisolated public struct PermissionOptions: Hashable, Sendable {
   ///   - persistModes: Offered persistence modes.
   ///   - antigravity: Antigravity details.
   ///   - files: Files an edit would change.
+  ///   - nativeDelivery: A native terminal confirms the verdict.
   public init(
     allowAllEdits: Bool = false, allowAutoMode: Bool = false,
     permissionDirectories: [String] = [], rememberLabel: String? = nil, plan: String? = nil,
     command: CommandApproval? = nil, execPolicyAmendment: [String]? = nil,
     persistModes: [PersistMode] = [], antigravity: AntigravityPermission? = nil,
-    files: [DecisionFileChange] = []
+    files: [DecisionFileChange] = [], nativeDelivery: NativeDelivery? = nil
   ) {
     self.allowAllEdits = allowAllEdits
     self.allowAutoMode = allowAutoMode
@@ -120,6 +164,7 @@ nonisolated public struct PermissionOptions: Hashable, Sendable {
     self.persistModes = persistModes
     self.antigravity = antigravity
     self.files = files
+    self.nativeDelivery = nativeDelivery
   }
 
   /// Whether accepting with `mode` persistence was offered (Codex modes, or Antigravity's

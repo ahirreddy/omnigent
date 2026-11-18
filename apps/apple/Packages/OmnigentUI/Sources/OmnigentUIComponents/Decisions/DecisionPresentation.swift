@@ -116,6 +116,10 @@ struct DecisionAvailability: Hashable {
   var approveTitle: String?
   /// Reject (decline) is offered.
   var canReject = false
+  /// The reject button's title.
+  var rejectTitle = "Reject"
+  /// Where a verdict the agent's terminal must confirm stands, when it is on its way.
+  var deliveryStatus: String?
   /// "Tell the agent instead" is offered: the reply rides on a decline.
   var canTellAgent = false
   /// "More approval options…", each confirmed first.
@@ -132,6 +136,10 @@ struct DecisionAvailability: Hashable {
   init(_ card: DecisionCard) {
     switch card.kind {
     case .approval:
+      if let delivery = card.permissions.nativeDelivery, delivery.state != .ready {
+        offerRedelivery(delivery)
+        return
+      }
       approveTitle = card.permissions.plan == nil ? "Approve" : "Approve plan"
       canReject = true
       canTellAgent = card.acceptsFeedback
@@ -146,6 +154,26 @@ struct DecisionAvailability: Hashable {
       externalURL = url
     case .unsupported(_, let externalURL):
       self.externalURL = externalURL
+    }
+  }
+
+  /// A verdict with the agent's terminal: while it is sent nothing more can be, and one the
+  /// terminal never confirmed may only be sent again as it was (the core refuses any other).
+  private mutating func offerRedelivery(_ delivery: NativeDelivery) {
+    guard delivery.state == .unconfirmed else {
+      deliveryStatus = "This request stays pending until the agent confirms your decision."
+      return
+    }
+    deliveryStatus =
+      "The agent hasn\u{2019}t confirmed your decision. The previous attempt may still be pending."
+    switch delivery.verdict {
+    case .accept:
+      approveTitle = "Retry sending approval"
+    case .decline:
+      canReject = true
+      rejectTitle = "Retry sending rejection"
+    case .cancel, nil:
+      break
     }
   }
 
@@ -194,6 +222,10 @@ struct DecisionSummary: Hashable {
     switch card.kind {
     case .approval:
       self = Self.approval(card, paragraphs: paragraphs, lede: lede)
+      // A verdict with the agent's terminal is answered, if at all, on the full card.
+      if let delivery = card.permissions.nativeDelivery, delivery.state != .ready {
+        answersInline = false
+      }
     case .choice(_, let options):
       // A question with one short line of context ("Choose one focus.") shows it as the second
       // line, so the row still holds the whole request.

@@ -89,7 +89,27 @@ nonisolated extension OmnigentUIComponents.PermissionOptions {
         OmnigentUIComponents.AntigravityPermission(
           actionDescription: $0.actionDescription, alwaysAllowPattern: $0.alwaysAllowPattern)
       },
-      files: options.fileChanges.map(DecisionFileChange.init))
+      files: options.fileChanges.map(DecisionFileChange.init),
+      nativeDelivery: options.nativeDelivery.map(OmnigentUIComponents.NativeDelivery.init))
+  }
+}
+
+nonisolated extension OmnigentUIComponents.NativeDelivery {
+  init(_ delivery: OmnigentCoreFFI.NativeDelivery) {
+    let state: State =
+      switch delivery.state {
+      case .ready: .ready
+      case .sending: .sending
+      case .unconfirmed: .unconfirmed
+      }
+    let verdict: Verdict? =
+      switch delivery.verdict {
+      case .accept: .accept
+      case .decline: .decline
+      case .cancel: .cancel
+      case nil: nil
+      }
+    self.init(state: state, attempt: delivery.attempt, verdict: verdict)
   }
 }
 

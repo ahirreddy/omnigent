@@ -90,6 +90,10 @@ pub enum FieldKind {
 
 /// One field of a [`DecisionForm`].
 #[derive(Debug, Clone, PartialEq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent answer rules a schema or question sets one by one"
+)]
 pub struct FormField {
     /// The `content` key the answer is posted under.
     pub key: String,
@@ -813,10 +817,9 @@ fn array_options(key: &str, property: &Map<String, Value>) -> Result<Vec<FormOpt
         (None, Some(options)) => Some(("oneOf", options)),
         (None, None) => None,
     };
-    let string_items = items.get("type").map_or_else(
-        || titled.is_some(),
-        |kind| kind.as_str() == Some("string"),
-    );
+    let string_items = items
+        .get("type")
+        .map_or_else(|| titled.is_some(), |kind| kind.as_str() == Some("string"));
     if !string_items {
         return Err(FormError::UnsupportedType {
             field: key.to_owned(),

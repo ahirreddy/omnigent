@@ -1,0 +1,32 @@
+{
+  "kiro": {
+    "id": "req-1",
+    "method": "session/request_permission",
+    "params": {
+      "toolCall": { "toolCallId": "tool-1", "title": "Running: pwd", "rawInput": { "command": "pwd" } },
+      "options": [
+        { "optionId": "allow_once", "name": "Yes", "kind": "allow_once" },
+        { "optionId": "allow_always", "name": "Always", "kind": "allow_always" },
+        { "optionId": "reject_once", "name": "No", "kind": "reject_once" }
+      ]
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_kiro_conv_a_3f1c2d4e5a6b7c8d",
+    "params": {
+      "mode": "form",
+      "message": "Kiro wants approval for Running: pwd",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "kiro_native_permission",
+      "content_preview": "Running: pwd",
+      "target_session_id": null,
+      "native_delivery": { "state": "ready", "attempt": "0f9e8d7c6b5a49382716051423324150" }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "_meta": { "native_delivery_attempt": "0f9e8d7c6b5a49382716051423324150" }
+  }
+}
