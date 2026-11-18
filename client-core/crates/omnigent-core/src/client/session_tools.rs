@@ -169,9 +169,10 @@ pub fn is_side_chat<'a>(label: impl Fn(&str) -> Option<&'a str>) -> bool {
         || label(SIDE_CHAT_LABEL) == Some("1")
 }
 
-/// Whether a session's labels, read through `label`, say it takes no more messages (web
-/// `readOnlyReasonForSessionLabels`). A closed Codex `/side` chat the server can resume still
-/// takes them: the next message resumes it.
+/// Whether a session's labels, read through `label`, say it takes no more messages.
+///
+/// As web `readOnlyReasonForSessionLabels`: a closed Codex `/side` chat the server can resume
+/// still takes them, since the next message resumes it.
 #[must_use]
 pub fn is_closed<'a>(label: impl Fn(&str) -> Option<&'a str>) -> bool {
     let resumable = label(WRAPPER_LABEL) == Some(CODEX_SUBAGENT_WRAPPER)

@@ -670,11 +670,14 @@ fn a_side_chat_that_ended_is_closed_by_its_labels() {
 #[test]
 fn a_closed_codex_side_chat_the_server_can_resume_takes_messages() {
     let closed = |labels: serde_json::Value| {
-        header_from_snapshot(&minimal_session(&serde_json::json!({"labels": labels})), None)
-            .unwrap()
-            .settings
-            .unwrap()
-            .closed
+        header_from_snapshot(
+            &minimal_session(&serde_json::json!({"labels": labels})),
+            None,
+        )
+        .unwrap()
+        .settings
+        .unwrap()
+        .closed
     };
     let side_chat = |resume: Option<&str>| {
         let mut labels = serde_json::json!({
