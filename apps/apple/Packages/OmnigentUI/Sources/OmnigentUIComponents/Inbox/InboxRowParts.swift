@@ -23,13 +23,16 @@ struct InboxKindTile: View {
     case .approval, .question: "hand.raised"
     case .comment: "text.bubble"
     case .unread: item.isError ? "exclamationmark.circle" : "checkmark.circle"
+    case .suggestion: "lightbulb"
+    case .automationFailure: "exclamationmark.triangle"
     }
   }
 
   private var tone: ThemeColor {
     switch item.kind {
     case .approval, .question: Theme.warning
-    case .comment, .unread: item.isError ? Theme.failure : Theme.secondary
+    case .automationFailure: Theme.failure
+    case .comment, .unread, .suggestion: item.isError ? Theme.failure : Theme.secondary
     }
   }
 }

@@ -122,7 +122,7 @@ public struct SidebarView: View {
     .modifier(
       ProjectDialogs(
         prompt: $projectPrompt, name: $projectName, confirmingDelete: $confirmingProjectDelete,
-        actions: actions)
+        actions: actions, runChoices: state.projectRunChoices)
     )
   }
 

@@ -32,8 +32,21 @@ enum ShareAdapter {
     }
     let loadError: String? =
       if case .failed(let error) = store.grants { error.message } else { nil }
-    return ShareViewState(
-      generalAccessOptions: [restricted, anyoneWithLink],
+    let policy = store.policy
+    var blockedReason: String?
+    if policy?.sharingRestricted == true, let workspace = store.workspace,
+      workspaceSharingBlocked(workspace: workspace)
+    {
+      blockedReason =
+        "This session's working directory (a home or root directory) cannot be shared on this "
+        + "Omnigent server."
+    }
+    // As the web: a public link is offered where the server allows one, and an existing one
+    // can still be turned off.
+    let offersPublic = (policy?.publicSharing ?? true) && blockedReason == nil
+    var state = ShareViewState(
+      generalAccessOptions: offersPublic || store.isPublic
+        ? [restricted, anyoneWithLink] : [restricted],
       generalAccess: store.isPublic ? anyoneWithLink : restricted,
       grants: grants.map { grant in
         ShareGrant(
@@ -41,6 +54,12 @@ enum ShareAdapter {
       },
       link: link, isSaving: store.isSaving || store.grants == .loading,
       errorMessage: store.error?.message ?? loadError)
+    if policy?.sharingReadOnly == true {
+      state.roles = [.read]
+      state.isReadOnlySharing = true
+    }
+    state.blockedReason = blockedReason
+    return state
   }
 
   /// The wire level for a role.

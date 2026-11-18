@@ -78,6 +78,7 @@
         previousSession: log.log("previous"), nextSession: log.log("next"),
         toggleViewMode: log.log("view mode"), openChanges: log.log("changes"))
       actions.rename = log.log("rename")
+      actions.toggleUnread = log.log("toggle unread")
       actions.addNestedAgent = log.log("nested agent")
       actions.chooseModel = log.log("choose model")
       actions.cycleModel = log.log("next model")
@@ -94,6 +95,7 @@
         .init("Send Message", AppShortcuts.send, "send"),
         .init("Stop Agent", AppShortcuts.stopAgent, "stop"),
         .init("Rename Session\u{2026}", AppShortcuts.renameSession, "rename"),
+        .init("Mark Unread or Read", AppShortcuts.toggleUnread, "toggle unread"),
         .init("Add Nested Agent", AppShortcuts.addNestedAgent, "nested agent"),
         .init("Focus Composer", AppShortcuts.focusComposer, "composer"),
         .init("Jump to Latest", AppShortcuts.jumpToLatest, "latest"),
@@ -118,7 +120,7 @@
         defer { screen.close() }
         let enabled = try screen.items.items.filter { !$0.isSeparatorItem && $0.isEnabled }
         #expect(enabled.isEmpty)
-        #expect(try screen.items.titles.count == 13)
+        #expect(try screen.items.titles.count == 14)
       }
     }
 

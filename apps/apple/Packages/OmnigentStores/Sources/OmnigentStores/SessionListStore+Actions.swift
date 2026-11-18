@@ -341,7 +341,7 @@ extension SessionListStore {
 
   /// Runs `operation`, returning once the list shows what the core changed before answering:
   /// the new rows on success, and on a refusal the rows put back before the failure is reported.
-  private func perform(_ operation: (ClientCore) async throws -> Void) async -> Bool {
+  func perform(_ operation: (ClientCore) async throws -> Void) async -> Bool {
     guard let core else {
       setEditError(.InvalidState(message: "Connect to a server before editing sessions."))
       return false

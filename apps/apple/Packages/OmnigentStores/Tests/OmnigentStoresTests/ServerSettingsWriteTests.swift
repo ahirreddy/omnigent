@@ -1,3 +1,4 @@
+import Foundation
 import OmnigentCoreFFI
 import OmnigentTestSupport
 import Testing
@@ -42,6 +43,30 @@ struct ServerSettingsWriteTests {
     server.route("/v1/policy-registry", .json(#"{"object":"list","data":[]}"#))
     await settings.loadPolicyRegistry()
     #expect(settings.policyRegistry.value?.isEmpty == true)
+  }
+
+  @Test("Title instructions read, save trimmed, and keep the saved value when a save fails")
+  func titleInstructions() async throws {
+    let server = RouteServer()
+    let path = "/v1/settings/session-title-instructions"
+    server.route(
+      path, method: "GET", .json(#"{"instructions":"Use French.","max_chars":4000}"#))
+    let settings = try await settings(server)
+    await settings.loadTitleInstructions()
+    #expect(settings.titleInstructions.value?.instructions == "Use French.")
+    #expect(settings.titleInstructions.value?.maxChars == 4000)
+
+    server.fail(path, method: "PUT", status: 400, detail: "too long")
+    #expect(await !settings.saveTitleInstructions("x"))
+    #expect(settings.error != nil)
+    #expect(settings.titleInstructions.value?.instructions == "Use French.")
+
+    server.route(path, method: "PUT", .json(#"{"instructions":null,"max_chars":4000}"#))
+    #expect(await settings.saveTitleInstructions("  "))
+    #expect(settings.error == nil)
+    #expect(settings.titleInstructions.value?.instructions == nil)
+    let sent = try #require(server.requests(to: path, method: "PUT").last)
+    #expect(try server.body(of: sent)["instructions"] is NSNull)
   }
 
   @Test("The policy registry is read once")

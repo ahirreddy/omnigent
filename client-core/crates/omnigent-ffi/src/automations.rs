@@ -47,6 +47,24 @@ pub struct ServerPages {
     /// it; `nil` (a record built without it) reads as `.anyHost`.
     #[uniffi(default)]
     pub sibling_session_destinations: Option<crate::sessions::SiblingSessionDestinations>,
+    /// Agents post items to the caller's Inbox (`inbox_items_available`).
+    #[uniffi(default)]
+    pub inbox_items: bool,
+    /// The Inbox lists automation failures that made no session (`scheduled_task_inbox`).
+    #[uniffi(default)]
+    pub automation_inbox: bool,
+    /// A session can be opened to anyone with the link (`public_sharing_enabled`).
+    #[uniffi(default = true)]
+    pub public_sharing: bool,
+    /// Grants are Read only (`sharing_mode` `read_only` or `restricted_read_only`).
+    #[uniffi(default)]
+    pub sharing_read_only: bool,
+    /// Home and root folders are not shared (`sharing_mode` `restricted_read_only`).
+    #[uniffi(default)]
+    pub sharing_restricted: bool,
+    /// New project can start from a repository (`project_repository_creation`).
+    #[uniffi(default)]
+    pub project_repository_creation: bool,
     /// Hosts and continued sessions run schedules under an hour (`scheduled_task_subhour`).
     #[uniffi(default)]
     pub automation_subhour: bool,
@@ -840,6 +858,12 @@ impl ClientCore {
             automation_triggers: pages.automation_triggers,
             sibling_sessions: pages.sibling_sessions,
             sibling_session_destinations: Some(pages.sibling_destinations.into()),
+            inbox_items: pages.inbox_items,
+            automation_inbox: pages.automation_inbox,
+            public_sharing: pages.public_sharing,
+            sharing_read_only: pages.sharing_read_only,
+            sharing_restricted: pages.sharing_restricted,
+            project_repository_creation: pages.project_repository_creation,
             automation_subhour: pages.automation_subhour,
             automation_trigger_headers: pages.automation_trigger_headers,
             automation_trigger_poll_minutes: pages.automation_trigger_poll_minutes,

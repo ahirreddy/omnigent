@@ -64,7 +64,11 @@ extension ConnectionStore {
   /// - Parameter sessionID: The session.
   /// - Returns: The store, or `nil` without a core.
   public func share(sessionID: String) -> ShareStore? {
-    core.map { ShareStore(core: $0, sessionID: sessionID) }
+    guard let core else { return nil }
+    let store = ShareStore(core: core, sessionID: sessionID)
+    store.policy = pages?.offered
+    store.workspace = sessionList.session(sessionID)?.workspace
+    return store
   }
 
   /// A store for this server's settings in the Settings window.

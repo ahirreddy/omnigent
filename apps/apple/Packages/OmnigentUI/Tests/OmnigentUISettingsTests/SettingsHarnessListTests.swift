@@ -179,6 +179,54 @@
       #expect(screen.buttonFrames.count == 1, "only Back")
     }
 
+    @Test("the tabs list MCP servers first, then Settings shows the credential")
+    func catalogTabs() throws {
+      var state = HarnessDetailState(
+        harness: "claude-native", name: "Claude Code", hostName: "Mac", isReady: true,
+        credentialLabel: "Key", credentialDescription: "Stored")
+      var catalog = HarnessCatalogState()
+      catalog.servers = [.init(id: "s", title: "GitHub", detail: "api.example.com", isOff: true)]
+      catalog.skills = [.init(name: "review", title: "review", description: "Review a diff")]
+      catalog.pluginsNotice = "No plugins found on Mac."
+      state.catalog = catalog
+      let screen = detail(state)
+      defer { screen.close() }
+      for text in ["MCP servers \u{00B7} 1", "Skills \u{00B7} 1", "Plugins \u{00B7} 0", "GitHub"] {
+        #expect(try screen.shows(text), "\(text)")
+      }
+      #expect(try screen.shows("api.example.com \u{00B7} Off"))
+      #expect(try !screen.shows("Stored"), "the credential waits under Settings")
+
+      catalog.firstTab = .settings
+      state.catalog = catalog
+      let unready = detail(state)
+      defer { unready.close() }
+      #expect(try unready.shows("Stored"))
+      #expect(try !unready.shows("GitHub"))
+    }
+
+    @Test("a skill page shows its contents with Back to where it came from")
+    func skillPage() throws {
+      var state = HarnessDetailState(
+        harness: "claude-native", name: "Claude Code", hostName: "Mac", isReady: true,
+        credentialLabel: "Key", credentialDescription: "Stored")
+      state.catalog = HarnessCatalogState()
+      state.skillPage = HarnessSkillPageState(
+        name: "toolkit:lint", backTitle: "toolkit", description: "Lint the code",
+        content: "Run the linter.", truncated: true)
+      var actions = detailActions
+      let log = log
+      actions.closeSkill = { log.record("close skill") }
+      let screen = settingsForm(store: store) { HarnessDetailView(state: state, actions: actions) }
+      defer { screen.close() }
+      for text in ["toolkit:lint", "Lint the code", "Contents truncated (256 KiB limit)."] {
+        #expect(try screen.shows(text), "\(text)")
+      }
+      let back = try #require(screen.buttonFrames.first)
+      try screen.click(CGPoint(x: back.midX, y: back.midY))
+      #expect(log.entries == ["close skill"])
+    }
+
     private func startup(_ startup: HarnessDetailState.Startup) -> OffscreenWindow<some View> {
       detail(
         HarnessDetailState(

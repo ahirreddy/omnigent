@@ -125,6 +125,34 @@ struct ConversationWiringTests {
     #expect((try? await route.actions.loadHosts().get()) == nil)
   }
 
+  @Test("An online session's Switch Host stops it there first; a refused stop moves nothing")
+  func switchingAnOnlineHost() async throws {
+    let server = threeSessionServer()
+    server.route(
+      "/v1/hosts/mac/runners", method: "POST", .json(#"{"runner_id":"r2"}"#, status: 201))
+    server.route("/v1/sessions/conv_a/events", method: "POST", .json("{}", status: 202))
+    let wired = try await wired(
+      server, settings: settings(hostID: "box", hostOnline: true, runnerBound: true))
+    let extras = wired.container.extras(sharing: nil)
+    let route = try #require(extras.switchHost, "the session menu offers Switch Host")
+    let outcome = await route.actions.submit(HostMoveChoice(hostID: "mac", workspace: "/work"))
+    #expect(outcome == .moved)
+    let stop = try #require(try server.posted("/v1/sessions/conv_a/events").last)
+    #expect("\(stop)".contains("stop_session"))
+    #expect(!server.requests("POST", "/v1/hosts/mac/runners").isEmpty)
+
+    server.route(
+      "/v1/sessions/conv_a/events", method: "POST", .json(#"{"detail":"busy"}"#, status: 500))
+    let refused = await route.actions.submit(HostMoveChoice(hostID: "mac", workspace: "/work"))
+    if case .failed(let message) = refused {
+      #expect(
+        message.hasSuffix("Check the current host and stop the session there, then try again."))
+    } else {
+      Issue.record("got \(refused)")
+    }
+    #expect(server.requests("POST", "/v1/hosts/mac/runners").count == 1, "nothing else moved")
+  }
+
   @Test("A send into a session on no machine opens Resume, and the draft goes once it starts")
   func resumingSendsTheDraft() async throws {
     let server = threeSessionServer()

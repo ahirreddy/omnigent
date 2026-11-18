@@ -44,6 +44,8 @@ nonisolated public struct ServerSettingsViewState: Hashable, Sendable {
   public var archivedInfo: [String: ArchivedSessionInfo] = [:]
   /// Projects with loaded archived sessions, for the Archived pane's filter.
   public var archivedProjects: [SettingChoice] = []
+  /// The caller's title instructions, for the Sessions pane.
+  public var titleInstructions: TitleInstructionsState = .loading
 
   /// Creates settings state.
   /// - Parameters:
@@ -141,6 +143,8 @@ public struct ServerSettingsActions {
   public var delete: (@MainActor ([String]) -> Void)?
   /// Load more archived sessions.
   public var loadMoreArchived: (@MainActor () -> Void)?
+  /// Save the caller's title instructions (`nil` clears them); returns whether they saved.
+  public var saveTitleInstructions: (@MainActor (String?) async -> Bool)?
 
   /// Creates actions; every one is optional.
   public init() {}

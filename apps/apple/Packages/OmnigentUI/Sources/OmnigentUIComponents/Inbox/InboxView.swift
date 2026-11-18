@@ -53,6 +53,7 @@ public struct InboxView: View {
           if state.hasMoreSessions, let loadMore = actions.loadMoreSessions {
             loadMoreRow(loadMore)
           }
+          InboxFeedPaging(state: state, actions: actions, filter: filter)
         }
         .accessibilityIdentifier("inbox")
         .listStyle(.plain)
@@ -135,7 +136,9 @@ public struct InboxView: View {
       Text("Inbox").font(.title2)
         .accessibilityAddTraits(.isHeader)
       if !state.items.isEmpty {
-        let summary = InboxTriage.summary(state.items)
+        let summary = InboxTriage.summary(
+          state.items, unreadSuggestions: state.unreadSuggestionCount,
+          unreadSuggestionsCapped: state.unreadSuggestionsCapped)
         Text("\(state.items.count)")
           .font(.callout.weight(.medium)).monospacedDigit()
           .foregroundStyle(.background)
@@ -186,6 +189,7 @@ public struct InboxView: View {
         .font(.callout)
         .accessibilityIdentifier("inbox-load-error")
       }
+      InboxFeedBanners(state: state, actions: actions, filter: filter)
     }
     .padding(Theme.Spacing.medium)
   }
@@ -204,6 +208,9 @@ public struct InboxView: View {
   private var emptyTitle: String {
     // Older sessions may still hold items, as the web words it.
     if state.hasMoreSessions { return "Nothing waiting in these sessions" }
+    if state.hasMoreSuggestions || state.hasMoreAutomations {
+      return "Nothing waiting in the loaded items"
+    }
     return switch filter {
     case .all: "Nothing waiting on you"
     case .unread: "You’re all caught up"

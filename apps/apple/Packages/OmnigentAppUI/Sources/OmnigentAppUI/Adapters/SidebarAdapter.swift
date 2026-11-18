@@ -62,8 +62,35 @@ enum SidebarAdapter {
   /// The Inbox badge and the quick filters' counts; only those two filters show one.
   static func counts(_ totals: AttentionTotals) -> SidebarCounts {
     SidebarCounts(
-      inbox: Int(totals.sessionsNeedingYou),
+      inbox: approvals(totals) + Int(totals.unread),
       filters: [.running: Int(totals.working), .needsResponse: Int(totals.sessionsNeedingYou)])
+  }
+
+  /// The Inbox badge's approvals, as the web counts them: pending requests, and at least one for
+  /// each session that needs the user, a session parked in its terminal included.
+  static func approvals(_ totals: AttentionTotals) -> Int {
+    max(Int(totals.requests), Int(totals.sessionsNeedingYou))
+  }
+
+  /// The Inbox badge as the web's: approvals, unread sessions without one, unseen file comments,
+  /// automation failures that made no session and unread agent-posted items. It reads the
+  /// totals, not each session, so one session's change draws only its own row.
+  static func counts(_ totals: AttentionTotals, list: SessionListStore, pages: PagesStore?)
+    -> SidebarCounts
+  {
+    var counts = counts(totals)
+    guard let pages else { return counts }
+    // Archived sessions' comments are dropped as they are read.
+    counts.inbox += pages.unseenComments(viewerID: list.viewerID).count
+    if pages.offered?.automationInbox == true {
+      counts.inbox += pages.feeds.unreadFailures.count
+      counts.inboxIsAtLeast = pages.feeds.hasMoreFailures
+    }
+    if pages.offered?.inboxItems == true {
+      counts.inbox += Int(clamping: pages.feeds.unreadCount)
+      counts.inboxIsAtLeast = counts.inboxIsAtLeast || pages.feeds.unreadCountCapped
+    }
+    return counts
   }
 
   /// The decisions a row's Needs you capsule counts; `nil` for a session that needs none.
@@ -73,10 +100,10 @@ enum SidebarAdapter {
 
   /// The sidebar's readers of `list` as it is now. Each reads one session, or the totals, so
   /// the view that calls one is drawn again for that session or those totals alone.
-  static func live(_ list: SessionListStore) -> SidebarLive {
+  static func live(_ list: SessionListStore, pages: PagesStore? = nil) -> SidebarLive {
     SidebarLive(
       row: { id, showsDraft in row(id, list: list, showsDraft: showsDraft) },
-      counts: { counts(list.attentionTotals) })
+      counts: { counts(list.attentionTotals, list: list, pages: pages) })
   }
 
   /// One session's row from the list; `nil` for a session it does not have.

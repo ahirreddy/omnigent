@@ -87,6 +87,10 @@ public final class PagesStore {
   public private(set) var inboxReads = 0
   /// The Inbox is still reading comments or latest replies.
   public var isReadingInbox: Bool { inboxReads > 0 }
+  /// Agent-posted Inbox items and automation failures that made no session.
+  public let feeds: InboxFeedsStore
+  /// The automation the Automations page should open, as the Inbox's Open automation asks.
+  public var requestedAutomationID: String?
 
   let core: ClientCore
   private let defaults: UserDefaults
@@ -103,6 +107,7 @@ public final class PagesStore {
   init(core: ClientCore, defaults: UserDefaults = .standard) {
     self.core = core
     self.defaults = defaults
+    feeds = InboxFeedsStore(core: core, defaults: defaults)
   }
 
   /// Reads which pages the server offers. A failure keeps the pages last read; with none, they
@@ -143,6 +148,14 @@ public final class PagesStore {
     offeredReads += 1
     offered = nil
     offeredError = nil
+    feeds.reset()
+  }
+
+  /// Reads the Inbox feeds this server offers: agent-posted items and automation failures.
+  public func refreshInboxFeeds() async {
+    guard let offered else { return }
+    if offered.inboxItems { await feeds.refreshItems() }
+    if offered.automationInbox { await feeds.refreshFailures() }
   }
 
   // MARK: Automations

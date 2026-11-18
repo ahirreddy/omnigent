@@ -22,7 +22,8 @@ nonisolated enum InboxTriage {
       let text = [
         item.preview, item.sessionTitle, item.agentName, item.executionContext,
         item.decision?.title ?? "", item.comment?.author ?? "", item.comment?.path ?? "",
-        item.comment?.body ?? "",
+        item.comment?.body ?? "", item.suggestion?.title ?? "", item.suggestion?.body ?? "",
+        item.automationFailure?.name ?? "", item.automationFailure?.reason ?? "",
       ]
       .joined(separator: " ")
       return matchesFilter && (query.isEmpty || text.localizedStandardContains(query))
@@ -30,15 +31,32 @@ nonisolated enum InboxTriage {
     return groups(visible, now: now, calendar: calendar).flatMap(\.items)
   }
 
-  /// The count pill's description, as the web: "2 approvals · 1 comment · 3 unread".
-  static func summary(_ items: [InboxItem]) -> String {
+  /// The count pill's description, as the web: "2 approvals · 1 comment · 3 unread · 1 failed
+  /// automation · 2 suggestions (1 unread)".
+  static func summary(
+    _ items: [InboxItem], unreadSuggestions: Int = 0, unreadSuggestionsCapped: Bool = false
+  ) -> String {
     let requests = items.filter { $0.kind == .approval || $0.kind == .question }.count
     let comments = items.filter { $0.kind == .comment }.count
     let unread = items.filter { $0.kind == .unread }.count
+    let failures = items.filter { $0.kind == .automationFailure }.count
+    let suggestions = items.filter { $0.kind == .suggestion }.count
+    var suggestionText: String?
+    if suggestions > 0 {
+      suggestionText = suggestions == 1 ? "1 suggestion" : "\(suggestions) suggestions"
+      if unreadSuggestionsCapped {
+        suggestionText? += " (\(unreadSuggestions)+ unread)"
+      } else if unreadSuggestions > 0 {
+        suggestionText? += " (\(unreadSuggestions) unread)"
+      }
+    }
     return [
       requests > 0 ? (requests == 1 ? "1 approval" : "\(requests) approvals") : nil,
       comments > 0 ? (comments == 1 ? "1 comment" : "\(comments) comments") : nil,
       unread > 0 ? "\(unread) unread" : nil,
+      failures > 0
+        ? (failures == 1 ? "1 failed automation" : "\(failures) failed automations") : nil,
+      suggestionText,
     ]
     .compactMap { $0 }.joined(separator: " \u{00B7} ")
   }

@@ -351,6 +351,12 @@ fn server_pages_map_each_flag_to_its_own_field() {
         automation_triggers: false,
         sibling_sessions: false,
         sibling_session_destinations: Some(SiblingSessionDestinations::AnyHost),
+        inbox_items: false,
+        automation_inbox: false,
+        public_sharing: true,
+        sharing_read_only: false,
+        sharing_restricted: false,
+        project_repository_creation: false,
         automation_subhour: false,
         automation_trigger_headers: false,
         automation_trigger_poll_minutes: 10,
@@ -419,6 +425,23 @@ fn server_pages_map_each_flag_to_its_own_field() {
             r#"{"single_user":true,"features":{"automations_v2":true}}"#,
             ServerPages {
                 automations_v2: true,
+                ..none
+            },
+        ),
+        (
+            r#"{"single_user":true,"public_sharing_enabled":false,"sharing_mode":"restricted_read_only"}"#,
+            ServerPages {
+                public_sharing: false,
+                sharing_read_only: true,
+                sharing_restricted: true,
+                ..none
+            },
+        ),
+        (
+            r#"{"single_user":true,"inbox_items_available":true,"scheduled_task_inbox":true}"#,
+            ServerPages {
+                inbox_items: true,
+                automation_inbox: true,
                 ..none
             },
         ),

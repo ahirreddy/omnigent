@@ -8,6 +8,12 @@ import SwiftUI
 struct InboxTriageAdapter: View {
   let connection: ConnectionStore
   let open: (String) -> Void
+  /// Opens New session with a draft: an agent-posted item's action.
+  var startSession: ((String) -> Void)?
+  /// Opens an automation's page.
+  var openAutomation: ((String) -> Void)?
+  /// Opens a web page.
+  var openURL: ((URL) -> Void)?
   /// Shows a comment's file in its session's right panel: path, character offset, session.
   var openFile: ((String, UInt64?, String) -> Void)?
   /// Where this device's read marks live.
@@ -20,8 +26,12 @@ struct InboxTriageAdapter: View {
     "omnigent.inbox.read.\(connection.connectedServer?.baseUrl ?? "").\(connection.connectedServer?.userId ?? "")"
   }
 
-  var seenCommentsKey: String {
-    "omnigent.inbox.seenComments.\(connection.connectedServer?.baseUrl ?? "").\(connection.connectedServer?.userId ?? "")"
+  var seenCommentsKey: String { InboxFeedsPolling.seenCommentsKey(connection) }
+
+  /// The feeds the server offers: a change reads them again.
+  private var feedsSignature: [Bool] {
+    let offered = connection.pages?.offered
+    return [offered?.inboxItems == true, offered?.automationInbox == true]
   }
 
   /// Sessions with comments and their counts: a change reads their comments again.
@@ -58,7 +68,10 @@ struct InboxTriageAdapter: View {
     .onAppear {
       readRevisions = defaults.dictionary(forKey: readKey) as? [String: Double] ?? [:]
       connection.pages?.bindSeenComments(key: seenCommentsKey)
+      connection.pages?.feeds.bindReadFailures(key: InboxFeedsPolling.readFailuresKey(connection))
     }
+    // As the web, opening the Inbox reads its feeds again.
+    .task(id: feedsSignature) { await connection.pages?.refreshInboxFeeds() }
     .task(id: commentSignature) {
       await connection.pages?.refreshComments(Array(connection.sessionList.sessionsByID.values))
     }
@@ -118,7 +131,44 @@ struct InboxTriageAdapter: View {
     }
     let paging = connection.sessionList.paging
     actions.loadMoreSessions = { paging.loadMore() }
+    feedActions(&actions)
     return actions
+  }
+
+  /// Agent-posted items and automation failures.
+  private func feedActions(_ actions: inout InboxActions) {
+    guard let feeds = connection.pages?.feeds else { return }
+    actions.takeSuggestionAction = { item, index in
+      guard let id = InboxFeedsMapping.suggestionID(item),
+        let record = feeds.items.first(where: { $0.id == id }), index < record.actions.count
+      else { return }
+      // As the web, the draft opens at once; the server records the action alongside.
+      Task { await feeds.takeAction(id, index: UInt32(index)) }
+      startSession?(record.actions[index].prompt)
+    }
+    actions.dismissSuggestion = { item, choice in
+      guard let id = InboxFeedsMapping.suggestionID(item),
+        let reason = InboxFeedsMapping.reason(choice)
+      else { return }
+      Task { await feeds.dismiss(id, reason: reason) }
+    }
+    actions.openLink = { link in
+      if let sessionID = link.sessionID {
+        open(sessionID)
+      } else if let url = link.url {
+        openURL?(url)
+      }
+    }
+    actions.openSource = { item in open(item.sessionId) }
+    if let openAutomation {
+      actions.openAutomation = { item in
+        if let id = item.automationFailure?.automationID { openAutomation(id) }
+      }
+    }
+    actions.retrySuggestions = { Task { await feeds.refreshItems() } }
+    actions.loadMoreSuggestions = { Task { await feeds.loadMoreItems() } }
+    actions.retryAutomations = { Task { await feeds.refreshFailures() } }
+    actions.loadMoreAutomations = { Task { await feeds.loadMoreFailures() } }
   }
 
   /// Comments clear on this device; unread sessions are marked seen on the server, as opening
@@ -126,6 +176,10 @@ struct InboxTriageAdapter: View {
   private func markRead(_ item: InboxItem) {
     if let comment = InboxTriageMapping.commentID(item) {
       connection.pages?.markCommentSeen(comment)
+    } else if let id = InboxFeedsMapping.suggestionID(item) {
+      Task { await connection.pages?.feeds.markRead(id) }
+    } else if let run = InboxFeedsMapping.runID(item) {
+      connection.pages?.feeds.markFailureRead(run)
     } else if item.kind == .unread {
       connection.pages?.clearReply(item.sessionId)
       Task { await connection.markSeen(item.sessionId) }

@@ -238,6 +238,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var groupSorts = SessionGroupSorts()
   /// The families collapsed under their head, one opaque key per section or folder and family.
   public var collapsedFamilies: Set<String> = []
+  /// New project can start from a repository on these, the first the default; empty without.
+  public var projectRunChoices: [ProjectRunChoice] = []
   /// The provisional rows of open Add nested agent composers, by row id: each one's source.
   public var nestedDrafts: [String: String] = [:]
   /// The server cannot be reached and the list is what this device saved: the line under it.
@@ -323,6 +325,8 @@ public struct SidebarActions {
   public var renameProject: (@MainActor (SessionProject, String, String?) -> Void)?
   /// Delete a project (its sessions are archived, never deleted).
   public var deleteProject: (@MainActor (SessionProject) -> Void)?
+  /// New project from a repository.
+  public var repositoryProjects = ProjectCreationActions()
   /// Archive or restore several sessions at once, with one Undo (bulk selection).
   public var setArchivedMany: (@MainActor ([SessionSummary], Bool) -> Void)?
   /// File several sessions into a project, or out of theirs (`nil`), as one change (bulk

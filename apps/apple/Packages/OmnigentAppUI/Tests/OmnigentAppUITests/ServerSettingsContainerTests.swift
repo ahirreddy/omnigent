@@ -177,7 +177,8 @@ struct ServerSettingsContainerTests {
     let page = try await page(
       server,
       info:
-        #"{"single_user":true,"agent_install":true,"agent_detail":true,"features":{"custom_agents_settings_ui":true}}"#
+        #"{"single_user":true,"agent_install":true,"agent_detail":true,"agent_config_edit":true}"#
+
     )
     defer { page.screen.close() }
     try await show(.harnesses, on: page)
@@ -189,5 +190,17 @@ struct ServerSettingsContainerTests {
       !server.requests("GET", "/v1/agents").isEmpty
     }
     #expect(page.navigator.serverRequest == nil)
+  }
+
+  @Test("Custom Agents without agent_detail says the server needs an update and lists nothing")
+  func customAgentsOnAnOlderServer() async throws {
+    let server = settingsServer()
+    server.route("/v1/agents", .json(#"{"data":[],"has_more":false}"#))
+    let page = try await page(server, info: #"{"single_user":true,"agent_install":true}"#)
+    defer { page.screen.close() }
+    try await show(.customAgents, on: page)
+    try await settle(
+      page.screen, untilShowing: "Custom agents settings is unavailable", contains: true)
+    #expect(server.requests("GET", "/v1/agents").isEmpty)
   }
 }

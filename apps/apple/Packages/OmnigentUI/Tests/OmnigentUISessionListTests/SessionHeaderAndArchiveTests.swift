@@ -3,6 +3,24 @@ import Testing
 @testable import OmnigentUIComponents
 
 struct SessionHeaderAndArchiveTests {
+  @Test("Archiving working agents is worded as the web words it, for one and for several")
+  func archiveRunningWording() {
+    let one = ArchiveRunningRequest(sessionIDs: ["a"], runningCount: 1)
+    #expect(one.title == "Archive running session?")
+    #expect(
+      one.message
+        == "This session's agent is still working. Archiving stops it. You can unarchive the "
+        + "session later.")
+    let some = ArchiveRunningRequest(sessionIDs: ["a", "b", "c"], runningCount: 1)
+    #expect(some.title == "Archive a running session?")
+    #expect(some.message.hasPrefix("1 of the 3 sessions you're archiving has an agent"))
+    let many = ArchiveRunningRequest(sessionIDs: ["a", "b", "c"], runningCount: 2)
+    #expect(many.title == "Archive 2 running sessions?")
+    #expect(
+      many.message
+        == "2 of the 3 sessions you're archiving have agents still working. Archiving stops "
+        + "them. You can unarchive sessions later.")
+  }
   @Test("Archive asks about worktrees only when it applies and nothing is remembered")
   func archiveWorktreeDecision() {
     let worktrees: Set<String> = ["a", "b"]
