@@ -1456,6 +1456,9 @@ def test_form_string_with_options_is_single_select() -> None:
     assert fwd_mod.form_answer(questions, fields, {"q0": "Tabs"}) == {"q0": "tab"}
     # A custom typed answer passes through unchanged.
     assert fwd_mod.form_answer(questions, fields, {"q0": "two spaces"}) == {"q0": "two spaces"}
+    # A field that refuses custom answers offers its options only.
+    closed = fwd_mod.form_questions([{**fields[0], "custom": False}])
+    assert closed is not None and closed[0].question["isOther"] is False
 
 
 def test_form_multiselect_maps_labels_to_values() -> None:
@@ -1483,6 +1486,8 @@ def test_form_boolean_number_and_integer_fields() -> None:
     assert questions is not None
     assert questions[0].question["options"] == [{"label": "Yes"}, {"label": "No"}]
     assert questions[1].question["options"] == []
+    # Yes/No takes only its options; a field without options is answered by typing.
+    assert [question.question["isOther"] for question in questions] == [False, True, True]
     content = {"ok": "No", "ratio": "0.5", "count": "3"}
     assert fwd_mod.form_answer(questions, fields, content) == {
         "ok": False,
@@ -1506,7 +1511,31 @@ def test_form_external_field_is_acknowledged() -> None:
     assert questions is not None
     assert "https://example.test/auth" in questions[0].question["question"]
     assert questions[0].question["options"] == [{"label": "Done"}]
+    assert questions[0].question["isOther"] is False
     assert fwd_mod.form_answer(questions, fields, {"login": "Done"}) == {"login": True}
+
+
+def test_shared_fixture_form_becomes_its_card_and_its_answer() -> None:
+    # Shared with omnigent-core's `decisions/harness_tests.rs`, which checks the native card.
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "client-core"
+        / "fixtures"
+        / "decisions"
+        / "OpenCode--FormEveryField.json"
+    )
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+    fields = fixture["opencode"]["fields"]
+    params = fixture["elicitation"]["params"]
+
+    questions = fwd_mod.form_questions(fields)
+
+    assert questions is not None
+    published = params["ask_user_question"]["questions"]
+    assert [question.question for question in questions] == published
+    assert params["content_preview"] == questions[0].question["question"]
+    answer = fwd_mod.form_answer(questions, fields, fixture["answer"]["content"])
+    assert answer == fixture["opencode_answer"]
 
 
 def test_form_hidden_fields_are_skipped_and_unknown_types_reject() -> None:

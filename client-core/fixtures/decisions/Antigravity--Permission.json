@@ -1,0 +1,36 @@
+{
+  "agy": {
+    "kind": "permission",
+    "trajectory_id": "efb134b2-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+    "step_index": 6,
+    "spec": {
+      "resource": { "action": "command", "target": "pwd" },
+      "persistSuggestionType": "PERSIST_SUGGESTION_TYPE_SUGGESTED",
+      "suggestedPersistPattern": "pwd",
+      "actionDescription": "Running pwd command"
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_agy_1a2b3c4d5e6f708192a3b4c5d6e7f809",
+    "params": {
+      "mode": "form",
+      "message": "Antigravity wants to run: pwd",
+      "phase": "agy_permission",
+      "policy_name": "agy_native_permission",
+      "permission_spec": {
+        "resource": { "action": "command", "target": "pwd" },
+        "persistSuggestionType": "PERSIST_SUGGESTION_TYPE_SUGGESTED",
+        "suggestedPersistPattern": "pwd",
+        "actionDescription": "Running pwd command"
+      },
+      "command": "pwd",
+      "action_description": "Running pwd command",
+      "always_allow_pattern": "pwd",
+      "trajectory_id": "efb134b2-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+      "step_index": 6
+    }
+  },
+  "answer": { "action": "accept", "_meta": { "persist": "session" } },
+  "agy_response": { "permission": { "allow": true } },
+  "agy_tui_keys": ["2", "Enter"]
+}
