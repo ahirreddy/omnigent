@@ -143,6 +143,14 @@
 
     /// Rows measured during a live resize, at a snapped text width.
     var measuredWhileResizing: Set<String> = []
+    /// What lays text out at snapped widths now (``WidthHold``).
+    var widthHolds: Set<WidthHold> = []
+    /// Whether a width taken during the holds laid text out other than the exact width would.
+    var heldTextDiffered = false
+    /// The split view columns around the transcript, watched for a collapse.
+    var columnWatches: [NSKeyValueObservation] = []
+    /// Counts width steps of a column's slide; only the latest step's wait ends it.
+    var columnMotionGeneration = 0
 
     /// Counts for tests and the performance log.
     var measurements = 0

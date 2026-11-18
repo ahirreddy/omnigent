@@ -94,9 +94,14 @@
       return true
     }
 
+    /// While a column slides beside the transcript, the widest the text lays out at: its width
+    /// as the slide began, so a widening slide lays no text out again until it ends.
+    var contentCeiling: CGFloat?
+
     /// The column in a cell `width` wide, as ``TranscriptColumn`` lays a CLI row out. During a
-    /// live resize a column narrower than its limit snaps down, as the chat's does.
-    func column(width: CGFloat) -> TranscriptTableCLIColumn {
+    /// live resize or a slide (unless `exact`) a column narrower than its limit snaps down, as
+    /// the chat's does, and stays within ``contentCeiling``.
+    func column(width: CGFloat, exact: Bool = false) -> TranscriptTableCLIColumn {
       let points = text?.points ?? CGFloat(TranscriptAppearance.defaultFontSize)
       let markers = points * CLIFontSize.characterRatio * CGFloat(CLIMetrics.markerColumns)
       let minimum = layoutWidth == .compact ? CLIMetrics.compactGutter : CLIMetrics.gutter
@@ -105,10 +110,17 @@
       let limit = layoutWidth == .compact ? CGFloat.infinity : maxWidth
       var content = max(0, min(limit, width - 2 * gutter - rail))
       let snap = TranscriptTableTextStyle.liveResizeSnap
-      if textStyle.isLiveResizing, content < limit {
-        content = (content / snap).rounded(.down) * snap
+      // Where the column sits: the text under a ceiling starts there and leaves room at its end.
+      var placed = content
+      if textStyle.isLiveResizing, !exact {
+        if let contentCeiling, content >= contentCeiling {
+          content = contentCeiling
+        } else if content < limit {
+          content = (content / snap).rounded(.down) * snap
+          placed = content
+        }
       }
-      let padded = content + 2 * gutter + rail
+      let padded = placed + 2 * gutter + rail
       let leading = max(0, (width - padded) / 2) + gutter + rail
       let scale = max(1, textStyle.scale)
       return TranscriptTableCLIColumn(leading: (leading * scale).rounded() / scale, width: content)

@@ -43,6 +43,14 @@
     var frameTime: TimeInterval { self == .twoWidthsATurn ? 0 : 0.016 }
   }
 
+  /// What lays a width change's text out at snapped widths until it ends, if anything.
+  enum WidthChangeHold: Sendable {
+    /// The window's live resize, which ends when the drag does.
+    case liveResize
+    /// A split view column sliding beside the transcript, which ends once its widths stop.
+    case columnSlide
+  }
+
   /// The rows take a new width at the scroll view's top, within one layout pass. These read
   /// every frame committed through a width change: none may show the top, or rows at an old
   /// width, to a reader who was elsewhere.
@@ -106,17 +114,31 @@
       arguments: ResizedReader.allCases)
     func tableLiveDragKeepsTheReader(reader: ResizedReader) async throws {
       try await overTranscriptList(.table) {
-        try await recordWidthChange(reader: reader, drive: .drag, list: .table, isLive: true)
+        try await recordWidthChange(reader: reader, drive: .drag, list: .table, hold: .liveResize)
       }
     }
 
-    /// Lays out each of `drive`'s turns' widths and lets the turn's frame commit, inside a live
-    /// resize of `liveResizing` when there is one.
+    @Test(
+      "Every frame of a sidebar's slide over the table shows the reader's place, at snapped widths",
+      arguments: ResizedReader.allCases)
+    func tableColumnSlideKeepsTheReader(reader: ResizedReader) async throws {
+      try await overTranscriptList(.table) {
+        try await recordWidthChange(reader: reader, drive: .drag, list: .table, hold: .columnSlide)
+      }
+    }
+
+    /// Lays out each of `drive`'s turns' widths and lets the turn's frame commit, inside `hold`
+    /// when there is one: a live resize of `scrollView`, or a column's slide, which ends by
+    /// itself once the widths stop.
     private func run(
       _ drive: WidthDrive, _ width: PaneWidth, in window: OffscreenWindow<AnyView>,
-      liveResizing scrollView: NSScrollView?
+      hold: WidthChangeHold?, of scrollView: NSScrollView
     ) {
-      scrollView?.viewWillStartLiveResize()
+      switch hold {
+      case .liveResize: scrollView.viewWillStartLiveResize()
+      case .columnSlide: TranscriptScrollDriver(screen: window).tableController?.columnMotionBegan()
+      case nil: break
+      }
       for turn in drive.turns {
         for early in turn.dropLast() {
           width.value = early
@@ -125,15 +147,15 @@
         width.value = turn.last ?? width.value
         commitFrames(for: drive.frameTime)
       }
-      scrollView?.viewDidEndLiveResize()
+      if hold == .liveResize { scrollView.viewDidEndLiveResize() }
       commitFrames(for: 0.5)
     }
 
     /// Drives the pane's width as `drive` says under `reader` and reads every frame committed.
-    /// `isLive` drives it as a window's live resize, whose text lays out at snapped widths
-    /// until it ends.
+    /// With `hold`, text lays out at snapped widths until it ends.
     private func recordWidthChange(
-      reader: ResizedReader, drive: WidthDrive, list: TranscriptListKind, isLive: Bool = false
+      reader: ResizedReader, drive: WidthDrive, list: TranscriptListKind,
+      hold: WidthChangeHold? = nil
     ) async throws {
       let width = PaneWidth(WidthDrive.narrow)
       let window = try await pane(width, reader: reader, list: list)
@@ -149,25 +171,28 @@
       let scrollView = try #require(TranscriptScrollDriver(screen: window).scrollView)
       let before = HangTrace.tallies()
       let frames = recorder.recording {
-        run(drive, width, in: window, liveResizing: isLive ? scrollView : nil)
+        run(drive, width, in: window, hold: hold, of: scrollView)
       }
       let probed = HangTrace.tallies()
 
-      // Each turn's last width was committed, in order, and nothing else between; a live
-      // resize's end lays the text out again at the last.
+      // Each turn's last width was committed, in order, and nothing else between; a hold's end
+      // lays the text out again at the last.
+      let isHeld = hold != nil
       var widths = frames.map(\.viewport.width)
-      if isLive, widths.count > 1, widths.last == widths.dropLast().last { widths.removeLast() }
+      if isHeld, widths.count > 1, widths.last == widths.dropLast().last { widths.removeLast() }
       #expect(widths == drive.turns.compactMap(\.last))
       for (index, frame) in frames.enumerated() {
         // More than a screen below the top.
         #expect(frame.offset > Self.height)
-        // The rows are at this frame's column, not the one before; during a live resize at
-        // one snapped down to its step, at no more than a step's cost.
+        // The rows are at this frame's column, not the one before; during a hold at one
+        // snapped down to its step, at no more than a step's cost. A slide lays text out no
+        // wider than it was as the slide began.
         let span = try #require(frame.textSpan)
         let column = column(in: frame.viewport.width)
-        if isLive, index < frames.count - 1 {
+        if isHeld, index < frames.count - 1 {
+          let held = hold == .columnSlide ? min(column, self.column(in: WidthDrive.narrow)) : column
           #expect(span + padding <= column + 0.5)
-          #expect(span + padding > column - TranscriptTableTextStyle.liveResizeSnap)
+          #expect(span + padding > held - TranscriptTableTextStyle.liveResizeSnap)
         } else {
           #expect(abs(span + padding - column) < 0.5)
         }

@@ -225,12 +225,19 @@
 
     /// The column in a cell `width` wide. A column narrower than its limit snaps down to a
     /// multiple of `snap` (0 for none), so a width dragged a point at a time lays text out only
-    /// now and then.
-    init(width: CGFloat, layoutWidth: LayoutWidth, maxWidth: CGFloat, snap: CGFloat = 0) {
+    /// now and then; one with room for `ceiling` takes exactly that.
+    init(
+      width: CGFloat, layoutWidth: LayoutWidth, maxWidth: CGFloat, snap: CGFloat = 0,
+      ceiling: CGFloat = .infinity
+    ) {
       let gutter = layoutWidth == .compact ? Theme.Spacing.compactGutter : Theme.Spacing.gutter
       let limit = layoutWidth == .compact ? CGFloat.infinity : maxWidth
       var columnWidth = max(0, min(limit, width - 2 * gutter))
-      if snap > 0, columnWidth < limit { columnWidth = (columnWidth / snap).rounded(.down) * snap }
+      if columnWidth >= ceiling {
+        columnWidth = ceiling
+      } else if snap > 0, columnWidth < limit {
+        columnWidth = (columnWidth / snap).rounded(.down) * snap
+      }
       self.columnWidth = columnWidth
       columnX = ((width - columnWidth - 2 * gutter) / 2).rounded(.down) + gutter
     }
