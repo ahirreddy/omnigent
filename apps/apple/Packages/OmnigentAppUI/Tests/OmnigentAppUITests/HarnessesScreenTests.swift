@@ -166,7 +166,8 @@ struct HarnessesScreenTests {
     defer { screen.close() }
     try screen.clickControl(at: Self.claudeDetails)
     try await settle(screen, untilShowing: "Not signed in")
-    try screen.clickControl(at: 1)
+    // Back, the tabs (open on Settings while it needs a sign-in), then the credential's button.
+    try screen.clickControl(at: 2)
     try await settle(screen, untilShowing: "Sign In to Claude Code on Mac")
     let controls = screen.controlFrames.count
     // Check Again is the last control but Close, and the sheet says what happened.
@@ -250,7 +251,10 @@ struct HarnessesScreenTests {
     defer { screen.close() }
     try screen.clickControl(at: 5)
     try await settle(screen, untilShowing: "Machine")
-    try screen.clickControl(at: 1)
+    // A ready harness opens on its MCP servers, as the web's; the credential is under Settings.
+    try screen.clickLastTab()
+    try await settle(screen, untilShowing: "Switch Account")
+    try screen.clickControl(at: screen.controlFrames.count - 1)
     try await settle(screen, untilShowing: "Switch Codex Account?")
     #expect(try screen.shownText().contains { $0.contains("a@b.co") })
     try screen.clickControl(at: screen.controlFrames.count - 1)
@@ -299,4 +303,14 @@ struct HarnessesScreenTests {
 
 extension CGRect {
   fileprivate var center: CGPoint { CGPoint(x: midX, y: midY) }
+}
+
+extension OffscreenWindow {
+  /// Clicks the last segment of the first tab picker.
+  fileprivate func clickLastTab() throws {
+    let tabs = try #require(allViews.lazy.compactMap { $0 as? NSSegmentedControl }.first)
+    let frame = tabs.convert(tabs.bounds, to: activeWindow.contentView)
+    let segment = frame.width / CGFloat(tabs.segmentCount)
+    try click(CGPoint(x: frame.maxX - segment / 2, y: frame.midY))
+  }
 }

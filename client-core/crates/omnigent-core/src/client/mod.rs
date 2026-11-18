@@ -41,6 +41,7 @@ pub mod events;
 mod export;
 mod families;
 pub mod fork;
+pub mod harness_inventory;
 mod harness_setup;
 pub mod host_switch;
 mod hydration;
