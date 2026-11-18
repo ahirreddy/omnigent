@@ -391,10 +391,9 @@
       try screen.clickButton(at: 0)
       #expect(draft.value.schedule == ScheduleChoice())
       #expect(screen.popUps.allSatisfy { $0.title != "Every day" }, "no pop-up for them")
-      let list = try screen.withAccessibilityTree {
-        try screen.accessibilityFrame("automation-schedule-preset")
+      for frequency in ["Interval", "Every hour", "Every weekday", "Custom schedule"] {
+        #expect(try screen.shows(frequency), "the frequencies are a list, as the web's menu")
       }
-      #expect(list.height > 80, "the frequencies are a list, as the web's menu")
     }
   }
 #endif
