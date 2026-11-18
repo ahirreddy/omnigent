@@ -49,17 +49,21 @@ pub mod errors;
 pub mod events;
 pub mod fork;
 pub mod harness_accounts;
+pub mod harness_inventory;
 pub mod harness_setup;
 pub mod host;
 pub mod host_switch;
 pub mod http;
 pub mod inbox;
+pub mod inbox_items;
 pub mod nested_creation;
 pub mod policy_registry;
+pub mod project_repository;
 pub mod pull_request_detail;
 pub mod pull_requests;
 pub mod queue;
 pub mod remote_browser;
+pub mod review_comments;
 pub mod sandbox;
 pub mod sandbox_state;
 pub mod server_admin;
@@ -100,9 +104,13 @@ mod driver_tests;
 #[cfg(test)]
 mod harness_setup_tests;
 #[cfg(test)]
+mod inbox_items_tests;
+#[cfg(test)]
 mod inbox_tests;
 #[cfg(test)]
 mod nested_creation_tests;
+#[cfg(test)]
+mod pull_request_changes_tests;
 #[cfg(test)]
 mod pull_request_detail_tests;
 #[cfg(test)]

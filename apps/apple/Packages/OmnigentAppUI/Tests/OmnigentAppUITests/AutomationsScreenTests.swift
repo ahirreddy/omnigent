@@ -56,11 +56,26 @@ struct AutomationsScreenTests {
     return (screen, opened)
   }
 
-  // Where things sit in a 900 by 1100 window with one automation and no sheet.
-  private static let newMenu = CGPoint(x: 740, y: 34)
-  private static let rowMenu = CGPoint(x: 835, y: 203)
-  private static let row = CGPoint(x: 300, y: 200)
+  // The page's controls in reading order with one automation and no sheet: New, the tabs,
+  // search, the filter, then the row's menu.
+  private static let newButton = 0
+  private static let rowMenuControl = 4
   private static let sheetSave = CGPoint(x: 410, y: 690)
+
+  /// The row's menu button, wherever the header puts the list.
+  private func rowMenu<Content: View>(_ screen: OffscreenWindow<Content>) throws -> CGPoint {
+    let frames = screen.controlFrames
+    guard frames.indices.contains(Self.rowMenuControl) else {
+      throw OffscreenWindowError.notFound("the row's menu among \(frames.count) controls")
+    }
+    let frame = frames[Self.rowMenuControl]
+    return CGPoint(x: frame.midX, y: frame.midY)
+  }
+
+  /// A point on the row's card, left of its menu.
+  private func row<Content: View>(_ screen: OffscreenWindow<Content>) throws -> CGPoint {
+    CGPoint(x: 300, y: try rowMenu(screen).y)
+  }
 
   private func typeAFullDraft<Content: View>(_ screen: OffscreenWindow<Content>) throws {
     let name = try #require(
@@ -84,8 +99,7 @@ struct AutomationsScreenTests {
     server.route("/v1/scheduled-tasks", method: "POST", .json(task, status: 201))
     let (screen, _) = try await page(server)
     defer { screen.close() }
-    let menu = try menu(screen, at: Self.newMenu, offering: "Create manually")
-    try screen.choose("Create manually", in: menu)
+    try screen.clickControl(at: Self.newButton)
     try await settle(screen, untilShowing: "Create automation")
     try typeAFullDraft(screen)
     try screen.click(Self.sheetSave)
@@ -110,8 +124,7 @@ struct AutomationsScreenTests {
       "/v1/scheduled-tasks", method: "POST", .json(#"{"detail":"bad schedule"}"#, status: 400))
     let (screen, _) = try await page(server)
     defer { screen.close() }
-    let menu = try menu(screen, at: Self.newMenu, offering: "Create manually")
-    try screen.choose("Create manually", in: menu)
+    try screen.clickControl(at: Self.newButton)
     try await settle(screen, untilShowing: "Create automation")
     try typeAFullDraft(screen)
     try screen.click(Self.sheetSave)
@@ -119,11 +132,11 @@ struct AutomationsScreenTests {
     #expect(try screen.shows("Create automation"))
   }
 
-  @Test("A suggestion opens the editor filled in; Cancel leaves")
-  func suggestionAndCancel() async throws {
+  @Test("New opens the editor; Cancel leaves")
+  func newAndCancel() async throws {
     let (screen, _) = try await page()
     defer { screen.close() }
-    try screen.clickControl(at: 4)
+    try screen.clickControl(at: Self.newButton)
     try await settle(screen, untilShowing: "Create automation")
     try pressShortcut(screen, keyCode: 53, characters: "\u{1b}", modifiers: [])
     try await settle(screen, until: "the sheet to close") {
@@ -147,11 +160,11 @@ struct AutomationsScreenTests {
       ("Pause", "PATCH", "/v1/scheduled-tasks/t1"),
       ("Run now", "POST", "/v1/scheduled-tasks/t1/run"),
     ] {
-      try screen.choose(title, in: menu(screen, at: Self.rowMenu, offering: title))
+      try screen.choose(title, in: menu(screen, at: try rowMenu(screen), offering: title))
       try await settle(screen, until: title) { !server.requests(method, path).isEmpty }
       try await pause(screen, .milliseconds(100))
     }
-    try screen.choose("Delete", in: menu(screen, at: Self.rowMenu, offering: "Delete"))
+    try screen.choose("Delete", in: menu(screen, at: try rowMenu(screen), offering: "Delete"))
     try await settle(screen, until: "the delete") {
       !server.requests("DELETE", "/v1/scheduled-tasks/t1").isEmpty
     }
@@ -163,7 +176,7 @@ struct AutomationsScreenTests {
     server.route("/v1/scheduled-tasks/t1", method: "PATCH", .json(task))
     let (screen, _) = try await page(server)
     defer { screen.close() }
-    try screen.choose("Edit", in: menu(screen, at: Self.rowMenu, offering: "Edit"))
+    try screen.choose("Edit", in: menu(screen, at: try rowMenu(screen), offering: "Edit"))
     try await settle(screen, untilShowing: "Save changes")
     try screen.clickControl(at: screen.controlFrames.count - 1)
     try await settle(screen, until: "the save") {
@@ -182,15 +195,16 @@ struct AutomationsScreenTests {
       ))
     let (screen, opened) = try await page(server)
     defer { screen.close() }
-    try screen.click(Self.row)
+    try screen.click(try row(screen))
     try await settle(screen, untilShowing: "1m 42s")
     #expect(try screen.shows("Host \u{00B7} None of your hosts was online."))
-    // Its controls: Back, Edit, Delete, Run, Pause, then the run's row.
-    try screen.clickControl(at: 5)
+    // Its controls: Back, Edit, Delete, Run, Pause, Configuration, then the run's row.
+    #expect(try screen.shows("Cost limit per run".uppercased()))
+    try screen.clickControl(at: 6)
     try await settle(screen, until: "the run's session") { !opened.sessions.isEmpty }
     #expect(opened.sessions == ["c2"], "the run opens its session")
     try screen.clickControl(at: 0)
-    try await settle(screen, untilShowing: "Suggestions")
+    try await settle(screen, untilShowing: "Your automations")
   }
 
   @Test("The page's own buttons run, edit, pause and delete it, then go back")
@@ -204,8 +218,8 @@ struct AutomationsScreenTests {
     server.route("/v1/scheduled-tasks/t1", method: "DELETE", .json(#"{"deleted":true,"id":"t1"}"#))
     let (screen, _) = try await page(server)
     defer { screen.close() }
-    try screen.click(Self.row)
-    try await settle(screen, untilShowing: "Run history")
+    try screen.click(try row(screen))
+    try await settle(screen, untilShowing: "Runs")
     let reads = server.requests("GET", "/v1/scheduled-tasks/t1/runs").count
     // Edit, Delete and Run are the three controls at the top right.
     try screen.clickControl(at: 3)
@@ -230,7 +244,7 @@ struct AutomationsScreenTests {
     try await settle(screen, until: "the delete") {
       !server.requests("DELETE", "/v1/scheduled-tasks/t1").isEmpty
     }
-    try await settle(screen, untilShowing: "Suggestions")
+    try await settle(screen, untilShowing: "Your automations")
   }
 
 }
@@ -242,8 +256,7 @@ extension AutomationsScreenTests {
     server.route("/v1/scheduled-tasks", method: "POST", .json(task, status: 201))
     let (screen, _) = try await page(server)
     defer { screen.close() }
-    let menu = try menu(screen, at: Self.newMenu, offering: "Create manually")
-    try screen.choose("Create manually", in: menu)
+    try screen.clickControl(at: Self.newButton)
     try await settle(screen, untilShowing: "Create automation")
     let name = try #require(
       screen.allViews.compactMap { $0 as? NSTextField }.first {
@@ -273,11 +286,15 @@ extension AutomationsScreenTests {
         #"{"single_user":true,"automations_enabled":true,"scheduled_task_session_modes":true,"features":{"automations_v2":true,"session_orchestration":true}}"#
     )
     defer { screen.close() }
-    try screen.choose(
-      "GitHub issues", in: menu(screen, at: Self.newMenu, offering: "GitHub issues"))
+    // Under the list: Jira, Slack, then GitHub among the suggested templates.
+    #expect(try screen.shows("Suggested"))
+    #expect(try screen.shows("Requires the GitHub CLI or a GitHub MCP server."))
+    try screen.clickControl(at: Self.rowMenuControl + 3)
     try await settle(screen, untilShowing: "Create automation")
     let shown = try screen.shownText()
     #expect(shown.contains { $0.localizedCaseInsensitiveContains("GitHub") }, "\(shown.prefix(20))")
+    // A trigger polls, so its schedule stays out of the form.
+    #expect(!shown.contains("Repeats"))
   }
 
   @Test("The editor offers what the server does: sandbox, projects and an agent change's note")
@@ -322,7 +339,9 @@ extension AutomationsScreenTests {
       pages: pages,
       inputs: AutomationEditorMapping.Inputs(draft: draft, saved: saved, sessionLink: ""))
     #expect(context.isEditing)
-    #expect(context.overrides == nil, "only Claude Code takes these")
+    // Codex takes a model; its modes need a server that stores them per harness.
+    #expect(context.overrides?.takesModel == true)
+    #expect(context.overrides?.permissionModes.isEmpty == true)
     #expect(context.agentNote == "Future runs use Codex; past runs keep the agent they ran with")
   }
 
@@ -372,7 +391,8 @@ extension AutomationsScreenTests {
     defer { screen.close() }
     try await settle(screen, untilShowing: "Couldn\u{2019}t load automations.")
     let reads = server.requests("GET", "/v1/scheduled-tasks").count
-    try screen.clickControl(at: 2)
+    // New, the tabs, search, then Retry.
+    try screen.clickControl(at: 3)
     try await settle(screen, until: "another read") {
       server.requests("GET", "/v1/scheduled-tasks").count > reads
     }

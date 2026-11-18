@@ -5,30 +5,40 @@ public import SwiftUI
 public struct PullRequestReviewThreadsView: View {
   private let threads: [PullRequestReviewThreadState]
   private let newThread: PullRequestNewThreadState?
+  private let localComments: [PullRequestLocalCommentState]
   private let actions: PullRequestReviewActions
+  private let localActions: PullRequestLocalCommentActions
 
   /// Creates the view.
   /// - Parameters:
   ///   - threads: The conversations.
   ///   - newThread: The one being written here.
+  ///   - localComments: Local comments for the agent here.
   ///   - actions: What they can do.
+  ///   - localActions: What the local comments can do.
   public init(
     threads: [PullRequestReviewThreadState], newThread: PullRequestNewThreadState? = nil,
-    actions: PullRequestReviewActions
+    localComments: [PullRequestLocalCommentState] = [], actions: PullRequestReviewActions,
+    localActions: PullRequestLocalCommentActions = PullRequestLocalCommentActions()
   ) {
     self.threads = threads
     self.newThread = newThread
+    self.localComments = localComments
     self.actions = actions
+    self.localActions = localActions
   }
 
   /// The view.
   public var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      ForEach(threads) { thread in
-        PullRequestReviewThreadCard(thread: thread, actions: actions)
-      }
       if let newThread {
         PullRequestNewThreadCard(state: newThread, actions: actions)
+      }
+      if !localComments.isEmpty {
+        PullRequestLocalCommentsView(comments: localComments, actions: localActions)
+      }
+      ForEach(threads) { thread in
+        PullRequestReviewThreadCard(thread: thread, actions: actions)
       }
     }
   }
@@ -170,16 +180,47 @@ struct PullRequestNewThreadCard: View {
   let state: PullRequestNewThreadState
   let actions: PullRequestReviewActions
 
+  /// Posting is possible where the comment goes now.
+  private var canPost: Bool {
+    !state.isStale && (state.toAgent ? state.offersAgent : state.offersProvider)
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      Label("Comment on \(state.lineLabel.lowercased())", systemImage: "plus.bubble")
-        .font(.callout)
-        .padding(Theme.Spacing.small)
+      HStack(spacing: Theme.Spacing.small) {
+        Label("Comment on \(state.lineLabel.lowercased())", systemImage: "plus.bubble")
+          .font(.callout)
+        Spacer(minLength: 0)
+        if let setToAgent = actions.setNewToAgent, state.offersAgent {
+          Picker(
+            "Comment destination",
+            selection: Binding(get: { state.toAgent }, set: { setToAgent($0) })
+          ) {
+            Text("GitHub").tag(false)
+              .help("Post a review comment on the GitHub pull request.")
+            Text("Agent").tag(true)
+              .help("Leave a comment for your agent in this session.")
+          }
+          .pickerStyle(.segmented)
+          .labelsHidden()
+          .fixedSize()
+          .disabled(actions.isBusy || !state.offersProvider)
+          .accessibilityIdentifier("pr-comment-destination")
+        }
+      }
+      .padding(Theme.Spacing.small)
+      if state.isStale {
+        note(
+          "The pull request changed. Your draft is saved; select its lines again before posting.")
+      } else if !canPost {
+        note("Your draft is saved. Commenting is currently unavailable.")
+      }
       Divider()
       PullRequestReviewField(
-        prompt: "Leave a comment", text: state.body, isBusy: actions.isBusy,
+        prompt: state.toAgent ? "Leave a comment for your agent" : "Leave a comment",
+        text: state.body, isBusy: actions.isBusy,
         problem: state.problem, setText: { actions.setNewBody?($0) },
-        post: actions.postNew, postTitle: "Comment", cancel: actions.cancelNew)
+        post: canPost ? actions.postNew : nil, postTitle: "Comment", cancel: actions.cancelNew)
     }
     .background(
       ThemeColor.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
@@ -189,6 +230,14 @@ struct PullRequestNewThreadCard: View {
         .strokeBorder(Color.accentColor.opacity(0.6))
     }
     .accessibilityIdentifier("pr-new-review-thread")
+  }
+
+  private func note(_ text: String) -> some View {
+    Text(text)
+      .font(.callout)
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, Theme.Spacing.small)
+      .padding(.bottom, Theme.Spacing.small)
   }
 }
 

@@ -24,6 +24,8 @@ public struct SessionCommandActions {
   public var openChanges: (@MainActor () -> Void)?
   /// Rename the session (Option-Command-R).
   public var rename: (@MainActor () -> Void)?
+  /// Mark the session unread, or read again (Option-Command-U).
+  public var toggleUnread: (@MainActor () -> Void)?
   /// Open the Add nested agent composer beside the session (Option-Command-A).
   public var addNestedAgent: (@MainActor () -> Void)?
   /// Open the model picker (Control-Shift-M).
@@ -127,6 +129,9 @@ struct ConversationMenuItems: View {
     Button("Rename Session\u{2026}") { actions?.rename?() }
       .keyboardShortcut(AppShortcuts.renameSession)
       .disabled(actions?.rename == nil)
+    Button("Mark Unread or Read") { actions?.toggleUnread?() }
+      .keyboardShortcut(AppShortcuts.toggleUnread)
+      .disabled(actions?.toggleUnread == nil)
     Button("Add Nested Agent") { actions?.addNestedAgent?() }
       .keyboardShortcut(AppShortcuts.addNestedAgent)
       .disabled(actions?.addNestedAgent == nil)

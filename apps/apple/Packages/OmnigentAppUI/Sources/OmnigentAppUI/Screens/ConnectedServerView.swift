@@ -127,6 +127,7 @@ public struct ConnectedServerView: View {
     .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
     .modifier(NestedDraftRetirement(connection: connection))
+    .modifier(InboxFeedsPolling(connection: connection))
     .modifier(
       WindowTabOverview(
         tabs: tabs, isPresented: $showsTabOverview, renameSession: renameSessionOfTab)
@@ -147,6 +148,7 @@ public struct ConnectedServerView: View {
     }
     .sheet(isPresented: sidebarSharePresented) { sidebarShareSheet }
     .sheet(item: $sidebar.projectSettings) { flow in projectSettingsSheet(flow) }
+    .modifier(RunningWorkPrompts(view: self))
     .archiveWorktreePrompt($sidebar.archiveRequest) { request, delete, remember in
       archiveAnswered(request, delete: delete, remember: remember)
     }
@@ -168,6 +170,7 @@ public struct ConnectedServerView: View {
     state.showsUsage = connection.pages?.offered?.usage == true
     state.showsCanvas = connection.pages?.offered?.canvas == true
     state.showsSharedScope = connection.pages?.offered?.sharing ?? true
+    state.projectRunChoices = newProjectRunChoices
     state.pagesFailure = SidebarAdapter.pagesFailure(connection)
     state.projectSort = connection.sessionList.projectSortMode.map {
       $0 == .manual ? .manual : .alphabetical
@@ -214,6 +217,8 @@ public struct ConnectedServerView: View {
     case .inbox:
       InboxTriageAdapter(
         connection: connection, open: { selection = .session($0) },
+        startSession: { startSession(drafting: $0) }, openAutomation: { openAutomation($0) },
+        openURL: { url in Task { _ = await opener.open(url) } },
         openFile: { session.openFile($0, at: $1, in: $2) })
     case .canvas:
       CanvasAdapter(

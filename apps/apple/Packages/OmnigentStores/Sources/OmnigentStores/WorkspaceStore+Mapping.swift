@@ -181,7 +181,8 @@ nonisolated public enum WorkspaceMapping {
             OmnigentWorkspaceUI.DiffLine(
               kind: lineKind(line.kind), oldNumber: line.oldNumber, newNumber: line.newNumber,
               text: line.text, missingNewline: line.missingNewline)
-          })
+          }, oldStart: hunk.oldStart, oldCount: hunk.oldCount, newStart: hunk.newStart,
+          newCount: hunk.newCount)
       },
       splitRows: diff.splitRows.map { row in
         switch row {

@@ -183,6 +183,8 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var modelPickerRequest = 0
   /// Workspace paths tagged with `@`, shown as chips; they go with the next message.
   public var mentions: [String] = []
+  /// Local review comments attached to the draft, shown as chips; they go with the next message.
+  public var reviewComments: [ComposerReviewComment] = []
   /// Transcript text the draft quotes (Reply), shown as removable blocks.
   public var quotes: [ComposerQuote] = []
   /// The stream is not live: shown under the composer with Reconnect.
@@ -192,6 +194,10 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var statusPlaceholder: String?
   /// The agent is asleep, waking, or unreachable: shown under the composer.
   public var liveness: SessionLivenessNotice?
+  /// Edit and resend is waiting for the user to replace the draft ("Replace your draft?").
+  public var asksToReplaceDraft = false
+  /// Bumped each time a sent message loads to edit, so the editor takes focus.
+  public var editLoads = 0
 
   /// Creates composer state.
   /// - Parameters:

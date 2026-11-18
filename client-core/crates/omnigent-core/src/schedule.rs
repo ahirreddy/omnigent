@@ -90,6 +90,8 @@ pub enum SchedulePreset {
 /// A custom schedule's unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScheduleFrequency {
+    /// Minutes: the web's Interval schedules and trigger polling.
+    Minutely,
     /// Hours.
     Hourly,
     /// Days.
@@ -105,6 +107,7 @@ pub enum ScheduleFrequency {
 impl ScheduleFrequency {
     fn from_code(code: &str) -> Option<Self> {
         match code {
+            "MINUTELY" => Some(Self::Minutely),
             "HOURLY" => Some(Self::Hourly),
             "DAILY" => Some(Self::Daily),
             "WEEKLY" => Some(Self::Weekly),
@@ -228,6 +231,58 @@ const MIN_COUNT: u32 = 2;
 /// The most runs an end condition can name: the server's 32-bit limit.
 const MAX_COUNT: u32 = 2_147_483_647;
 
+/// The longest minute interval: 366 days.
+pub const MAX_MINUTE_INTERVAL: u16 = 366 * 60;
+
+/// The shortest minute interval where the server runs schedules under an hour.
+pub const MIN_SUBHOUR_MINUTE_INTERVAL: u16 = 10;
+
+/// The shortest minute interval elsewhere: an hour.
+pub const MIN_HOURLY_MINUTE_INTERVAL: u16 = 60;
+
+/// What decides how short a minute schedule may be (the web's `minimumScheduleInterval`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct ScheduleLimits {
+    /// The server runs schedules under an hour (`scheduled_task_subhour`).
+    pub subhour_supported: bool,
+    /// Every run continues one session.
+    pub continues_session: bool,
+    /// Runs go to a connected host rather than a new sandbox.
+    pub on_connected_host: bool,
+}
+
+impl ScheduleLimits {
+    /// Limits that allow every interval a server could run, for reading saved rules.
+    pub const SAVED: Self = Self {
+        subhour_supported: true,
+        continues_session: true,
+        on_connected_host: true,
+    };
+}
+
+/// The smallest interval `frequency` allows under `limits`: 1, or 10 or 60 minutes.
+#[must_use]
+pub const fn minimum_schedule_interval(frequency: ScheduleFrequency, limits: ScheduleLimits) -> u16 {
+    if !matches!(frequency, ScheduleFrequency::Minutely) {
+        return 1;
+    }
+    if limits.subhour_supported && (limits.continues_session || limits.on_connected_host) {
+        MIN_SUBHOUR_MINUTE_INTERVAL
+    } else {
+        MIN_HOURLY_MINUTE_INTERVAL
+    }
+}
+
+/// The largest interval `frequency` allows.
+#[must_use]
+pub const fn maximum_schedule_interval(frequency: ScheduleFrequency) -> u16 {
+    if matches!(frequency, ScheduleFrequency::Minutely) {
+        MAX_MINUTE_INTERVAL
+    } else {
+        366
+    }
+}
+
 /// `UNTIL`'s form of Unix second `seconds`: `20261231T235959Z`.
 #[must_use]
 pub fn format_until(seconds: i64) -> String {
@@ -262,13 +317,25 @@ pub fn parse_until(value: &str) -> Option<i64> {
 }
 
 /// Why the editor cannot save `model`, in the web's words, or `None`. `now` is Unix seconds; an
-/// unchanged schedule may keep an end in the past (`allow_past_end`).
+/// unchanged schedule may keep an end in the past (`allow_past_end`); `limits` bound minute
+/// intervals.
 #[must_use]
-pub fn validate_schedule(model: &ScheduleModel, now: i64, allow_past_end: bool) -> Option<String> {
+pub fn validate_schedule(
+    model: &ScheduleModel,
+    now: i64,
+    allow_past_end: bool,
+    limits: ScheduleLimits,
+) -> Option<String> {
     let custom = |frequency| model.preset == SchedulePreset::Custom && model.frequency == frequency;
-    if (model.preset == SchedulePreset::Weekly || custom(ScheduleFrequency::Weekly))
-        && model.weekdays.is_empty()
+    if model.preset == SchedulePreset::Weekly && model.weekdays.is_empty() {
+        return Some("Pick at least one day of the week.".to_owned());
+    }
+    if model.preset == SchedulePreset::Custom
+        && let Some(problem) = interval_problem(model.frequency, model.interval, limits)
     {
+        return Some(problem);
+    }
+    if custom(ScheduleFrequency::Weekly) && model.weekdays.is_empty() {
         return Some("Pick at least one day of the week.".to_owned());
     }
     if (custom(ScheduleFrequency::Monthly) || custom(ScheduleFrequency::Yearly))
@@ -285,6 +352,33 @@ pub fn validate_schedule(model: &ScheduleModel, now: i64, allow_past_end: bool) 
         }
         ScheduleEnd::Never | ScheduleEnd::Count(_) | ScheduleEnd::Until(_) => None,
     }
+}
+
+/// Why a custom `interval` of `frequency` is out of range under `limits`, in the web's words.
+fn interval_problem(
+    frequency: ScheduleFrequency,
+    interval: u16,
+    limits: ScheduleLimits,
+) -> Option<String> {
+    let minimum = minimum_schedule_interval(frequency, limits);
+    let maximum = maximum_schedule_interval(frequency);
+    if (minimum..=maximum).contains(&interval) {
+        return None;
+    }
+    if frequency == ScheduleFrequency::Minutely && interval < MIN_HOURLY_MINUTE_INTERVAL {
+        if !limits.subhour_supported {
+            return Some("This server requires schedules of at least 60 minutes.".to_owned());
+        }
+        if !limits.continues_session && !limits.on_connected_host {
+            return Some(
+                "New sandbox sessions require schedules of at least 60 minutes. Continue in the same session or use a connected host for shorter intervals."
+                    .to_owned(),
+            );
+        }
+    }
+    Some(format!(
+        "Interval must be a whole number of at least {minimum} and at most {maximum}."
+    ))
 }
 
 /// Whether `model` needs a server with anchored scheduling (`automations_v2`): custom schedules
@@ -305,8 +399,11 @@ fn build_recurrence(model: &ScheduleModel) -> String {
             format!("FREQ=WEEKLY;BYDAY={};{time}", join_codes(&model.weekdays))
         }
         SchedulePreset::Custom => {
-            let interval = model.interval.clamp(1, 366);
+            let interval = model
+                .interval
+                .clamp(1, maximum_schedule_interval(model.frequency));
             match model.frequency {
+                ScheduleFrequency::Minutely => format!("FREQ=MINUTELY;INTERVAL={interval}"),
                 ScheduleFrequency::Hourly => {
                     format!("FREQ=HOURLY;INTERVAL={interval};BYMINUTE={minute}")
                 }
@@ -381,9 +478,12 @@ fn month_days_part(value: &str) -> Option<Vec<u8>> {
 pub fn parse_rrule(rrule: &str) -> Option<ScheduleModel> {
     let parts = rule_parts(rrule)?;
     let frequency = ScheduleFrequency::from_code(parts.get("FREQ")?)?;
-    let mut allowed = vec!["FREQ", "INTERVAL", "BYMINUTE", "COUNT", "UNTIL"];
+    let mut allowed = vec!["FREQ", "INTERVAL", "COUNT", "UNTIL"];
+    if frequency != ScheduleFrequency::Minutely {
+        allowed.push("BYMINUTE");
+    }
     match frequency {
-        ScheduleFrequency::Hourly => {}
+        ScheduleFrequency::Minutely | ScheduleFrequency::Hourly => {}
         ScheduleFrequency::Daily => allowed.push("BYHOUR"),
         ScheduleFrequency::Weekly => allowed.extend(["BYHOUR", "BYDAY"]),
         ScheduleFrequency::Monthly => allowed.extend(["BYHOUR", "BYMONTHDAY"]),
@@ -395,10 +495,21 @@ pub fn parse_rrule(rrule: &str) -> Option<ScheduleModel> {
     let defaults = ScheduleModel::default();
     let interval = number(
         parts.get("INTERVAL").map_or("1", String::as_str),
-        &(1_u16..=366),
+        &(1_u16..=maximum_schedule_interval(frequency)),
     )?;
-    let minute = number(parts.get("BYMINUTE")?, &(0_u8..=59))?;
-    let hour = if frequency == ScheduleFrequency::Hourly {
+    // As the web, only a minute rule some server could save reopens in the editor.
+    if interval < minimum_schedule_interval(frequency, ScheduleLimits::SAVED) {
+        return None;
+    }
+    let minute = if frequency == ScheduleFrequency::Minutely {
+        defaults.minute
+    } else {
+        number(parts.get("BYMINUTE")?, &(0_u8..=59))?
+    };
+    let hour = if matches!(
+        frequency,
+        ScheduleFrequency::Minutely | ScheduleFrequency::Hourly
+    ) {
         defaults.hour
     } else {
         number(parts.get("BYHOUR")?, &(0_u8..=23))?
@@ -435,7 +546,9 @@ pub fn parse_rrule(rrule: &str) -> Option<ScheduleModel> {
             ScheduleFrequency::Daily => SchedulePreset::Daily,
             ScheduleFrequency::Weekly if model.weekdays == WEEKDAYS => SchedulePreset::Weekdays,
             ScheduleFrequency::Weekly => SchedulePreset::Weekly,
-            ScheduleFrequency::Monthly | ScheduleFrequency::Yearly => SchedulePreset::Custom,
+            ScheduleFrequency::Minutely
+            | ScheduleFrequency::Monthly
+            | ScheduleFrequency::Yearly => SchedulePreset::Custom,
         };
     }
     Some(model)
@@ -515,6 +628,9 @@ fn first_number(value: Option<&String>, high: u8) -> Option<u8> {
 fn describe(rrule: &str) -> Option<String> {
     let parts = rule_parts(rrule)?;
     let frequency = ScheduleFrequency::from_code(parts.get("FREQ")?)?;
+    if frequency == ScheduleFrequency::Minutely {
+        return describe_minutely(&parts);
+    }
     let hour = first_number(parts.get("BYHOUR"), 23_u8)?;
     let minute = first_number(parts.get("BYMINUTE"), 59_u8)?;
     let at = format!(" at {}", clock_time(hour, minute));
@@ -534,6 +650,7 @@ fn describe(rrule: &str) -> Option<String> {
         }
     };
     Some(match frequency {
+        ScheduleFrequency::Minutely => return None,
         ScheduleFrequency::Hourly => describe_hourly(interval, minute),
         ScheduleFrequency::Daily if interval > 1 => format!("Every {interval} days{at}"),
         ScheduleFrequency::Daily => format!("Every day{at}"),
@@ -553,6 +670,22 @@ fn describe(rrule: &str) -> Option<String> {
                 format!("Yearly{months}{on_days}{at}")
             }
         }
+    })
+}
+
+/// "Every minute", "Every 10 minutes"; a minute rule with `BY` filters stays raw, as the web.
+fn describe_minutely(parts: &BTreeMap<String, String>) -> Option<String> {
+    if parts.keys().any(|key| key.starts_with("BY")) {
+        return None;
+    }
+    let interval = match parts.get("INTERVAL") {
+        None => 1,
+        Some(value) => number(value, &(1_u32..=u32::MAX))?,
+    };
+    Some(if interval == 1 {
+        "Every minute".to_owned()
+    } else {
+        format!("Every {interval} minutes")
     })
 }
 

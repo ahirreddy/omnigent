@@ -26,6 +26,10 @@ private let githubInfo = #"""
 private let githubDiff = #"""
   {"object":"session.github.pr_diff","patch":"diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n"}
   """#
+private let githubChanges = #"""
+  {"object":"list","data":[{"path":"a.txt","name":"a.txt","status":"modified","lines_added":1,
+   "lines_removed":1}],"has_more":false}
+  """#
 
 /// The Pull Requests tab: choices read from the host and each edit going out.
 @MainActor
@@ -42,6 +46,7 @@ struct PullRequestPanelTests {
     server.route(githubPath, .json(githubInfo))
     server.route("\(githubPath)/prs", method: "POST", .json(githubInfo))
     server.route("\(githubPath)/diff", .json(githubDiff))
+    server.route("\(githubPath)/changes", .json(githubChanges))
     server.route(
       "\(githubPath)/labels", method: "GET",
       .json(#"{"data":[{"name":"bug","color":"d73a4a"}],"has_more":false}"#))
@@ -126,12 +131,13 @@ struct PullRequestPanelTests {
   @Test("Changes say when they can't load, are unavailable, or there are none")
   func changesStates() async throws {
     let server = server()
-    server.route("\(githubPath)/diff", .json(#"{"detail":"no"}"#, status: 500))
+    server.route(
+      "\(githubPath)/diff", .json(#"{"detail":"The host could not read the diff"}"#, status: 500))
     let panel = try await panel(server)
     await panel.showPullRequest(pullRequestURL)
     var view = try #require(PullRequestPanelSlots.extras(panel, canEdit: true).changes)
     var shown = OffscreenWindow(view, width: 600, height: 400)
-    #expect(try shown.shows("Couldn't Load the Changes"))
+    #expect(try shown.shows("The host could not read the diff"))
     shown.close()
 
     server.route(
@@ -142,15 +148,16 @@ struct PullRequestPanelTests {
     await panel.reloadDetail()
     view = try #require(PullRequestPanelSlots.extras(panel, canEdit: true).changes)
     shown = OffscreenWindow(view, width: 600, height: 400)
-    #expect(try shown.shows("Diff Unavailable"))
+    #expect(try shown.shownText().contains { $0.contains("outside this workspace") })
     shown.close()
 
     server.route("\(githubPath)/diff", .json(#"{"object":"session.github.pr_diff","patch":""}"#))
+    server.route("\(githubPath)/changes", .json(#"{"object":"list","data":[],"has_more":false}"#))
     await panel.reloadDetail()
     view = try #require(PullRequestPanelSlots.extras(panel, canEdit: true).changes)
     shown = OffscreenWindow(view, width: 600, height: 400)
     defer { shown.close() }
-    #expect(try shown.shows("No Changes"))
+    #expect(try shown.shows("No changes vs base."))
   }
 
   @Test("The Changes tab says it is loading until the files are read")

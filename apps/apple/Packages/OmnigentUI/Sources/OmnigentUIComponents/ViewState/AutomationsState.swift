@@ -16,6 +16,33 @@ nonisolated public struct AutomationRow: Hashable, Sendable, Identifiable {
   public var isBusy = false
   /// The latest run's session, to open it.
   public var lastRunSessionID: String?
+  /// Its latest run failed, so the card shows a warning.
+  public var lastRunFailed = false
+  /// It runs when new items match a trigger: no schedule, next run or Run now.
+  public var isTrigger = false
+  /// Whose it is, when someone shared it with the caller; every action is then theirs.
+  public var sharedBy: String?
+  /// Share is offered.
+  public var canShare = false
+  /// Why Share shows disabled, e.g. while the server turns sharing off.
+  public var shareDisabledReason: String?
+
+  /// The caller only reads it.
+  public var isReadOnly: Bool { sharedBy != nil }
+
+  /// The line under the name: whose it is, then the schedule and next run, or that a trigger
+  /// runs when new items match.
+  public var subtitle: String {
+    var parts: [String] = []
+    if let owner = sharedBy { parts.append("Shared by \(owner)") }
+    if isTrigger {
+      parts.append("Runs when new items match")
+    } else {
+      parts.append(scheduleText)
+      if let next = nextRunText { parts.append("Next run \(next)") }
+    }
+    return parts.joined(separator: " \u{00B7} ")
+  }
 
   /// Creates a row.
   public init(
@@ -64,9 +91,13 @@ nonisolated public struct AutomationsViewState: Hashable, Sendable {
   public var loadError: String?
   /// Why the last change failed.
   public var actionError: String?
-  /// The Jira, Slack and GitHub trigger templates offered; empty when the server can't keep a
-  /// trigger's session.
-  public var triggers: [AutomationTriggerChip] = []
+  /// The integration templates offered; empty when the server can't keep a trigger's session.
+  public var templates: [AutomationTemplateCard] = []
+  /// What the Templates tab says while the server offers none.
+  public var templatesUnavailable =
+    "Automation templates are not available on this server. You can still create an automation from scratch."
+  /// The Shared with me tab; `nil` where the server doesn't list shared automations.
+  public var shared: SharedAutomationsState?
 
   /// Creates the state.
   public init(
@@ -81,19 +112,68 @@ nonisolated public struct AutomationsViewState: Hashable, Sendable {
   }
 }
 
-/// A trigger template offered with the suggestions.
-nonisolated public struct AutomationTriggerChip: Hashable, Sendable, Identifiable {
-  /// The source's id (`jira`, `slack`, `github`).
+/// The Shared with me tab: other users' automations, read-only, a page at a time.
+nonisolated public struct SharedAutomationsState: Hashable, Sendable {
+  /// The rows for the current filter and search.
+  public var rows: [AutomationRow] = []
+  /// Anything is shared with the caller at all.
+  public var hasAny = false
+  /// The first page is being read.
+  public var isLoading = false
+  /// Why the list could not be read.
+  public var loadError: String?
+  /// More pages remain.
+  public var hasMore = false
+  /// A further page is being read.
+  public var isLoadingMore = false
+
+  /// Creates the state.
+  public init() {}
+}
+
+/// The Automations page's tabs (the web's `?view=`).
+nonisolated public enum AutomationsTab: String, Hashable, Sendable, CaseIterable, Identifiable {
+  /// The caller's own automations.
+  case yours
+  /// Other users' automations shared with the caller.
+  case shared
+  /// The integration templates.
+  case templates
+
+  /// The tab itself.
+  public var id: Self { self }
+
+  /// The label.
+  public var title: String {
+    switch self {
+    case .yours: "Your automations"
+    case .shared: "Shared with me"
+    case .templates: "Templates"
+    }
+  }
+}
+
+/// An integration template card: "Jira tickets", what it does, and what it needs.
+nonisolated public struct AutomationTemplateCard: Hashable, Sendable, Identifiable {
+  /// The source's id (`jira`, `slack`, `github`, `linear`, `pagerduty`).
   public var id: String
-  /// The chip's title, e.g. "Jira tickets".
+  /// Title, e.g. "Jira tickets".
   public var title: String
+  /// What it does.
+  public var description: String
+  /// "Requires a Jira MCP server."
+  public var requirement: String
   /// SF Symbol.
   public var systemImage: String
 
-  /// Creates a chip.
-  public init(id: String, title: String, systemImage: String) {
+  /// Creates a card.
+  public init(
+    id: String, title: String, description: String, requirement: String, systemImage: String
+  ) {
     self.id = id
     self.title = title
+    self.description = description
+    self.requirement = requirement
     self.systemImage = systemImage
   }
 }
@@ -102,10 +182,16 @@ nonisolated public struct AutomationTriggerChip: Hashable, Sendable, Identifiabl
 public struct AutomationsActions {
   /// Narrow the list.
   public var filter: (@MainActor (AutomationsFilter, String) -> Void)?
-  /// Open the editor for a new automation, optionally prefilled from a suggestion.
-  public var create: (@MainActor (AutomationSuggestion?) -> Void)?
-  /// Open the editor on a trigger template, by its chip id.
+  /// Open the editor for a new automation.
+  public var create: (@MainActor () -> Void)?
+  /// Open the editor on an integration template, by its card id.
   public var createTrigger: (@MainActor (String) -> Void)?
+  /// Share an automation the caller owns.
+  public var share: (@MainActor (String) -> Void)?
+  /// Read the Shared with me tab, as it opens.
+  public var loadShared: (@MainActor () -> Void)?
+  /// Read the next page of shared automations.
+  public var loadMoreShared: (@MainActor () -> Void)?
   /// Open an automation's page with its run history.
   public var openDetail: (@MainActor (String) -> Void)?
   /// Open the editor for an automation.
@@ -127,43 +213,12 @@ public struct AutomationsActions {
   public init() {}
 }
 
-/// A starting point offered under the list, as the web's Suggestions.
-nonisolated public struct AutomationSuggestion: Hashable, Sendable, Identifiable {
-  /// Id.
-  public var id: String
-  /// The chip's title and the automation's name.
-  public var title: String
-  /// SF Symbol.
-  public var systemImage: String
-  /// The prompt.
-  public var prompt: String
-  /// The schedule.
-  public var schedule: ScheduleChoice
-
-  /// The web's static suggestions (`components/scheduled/suggestions.ts`).
-  public static let all: [Self] = [
-    Self(
-      id: "follow-up-monitor", title: "Follow-up monitor", systemImage: "calendar.badge.clock",
-      prompt:
-        "Review recent email and calendar activity every weekday morning. Summarize anything that needs my attention and call out follow-ups I should handle today.",
-      schedule: ScheduleChoice(preset: .weekdays)),
-    Self(
-      id: "pr-sweep", title: "PR sweep", systemImage: "arrow.triangle.pull",
-      prompt:
-        "List open pull requests waiting on review. Highlight stale PRs that need a nudge and summarize the next action for each one.",
-      schedule: ScheduleChoice()),
-    Self(
-      id: "news-digest", title: "News digest", systemImage: "newspaper",
-      prompt:
-        "Summarize notable news from the last day. Keep it concise, group related items, and flag anything worth reading more closely.",
-      schedule: ScheduleChoice()),
-  ]
-}
-
 /// The schedule editor's model, mirroring the core's: weekdays count from Monday (0).
 nonisolated public struct ScheduleChoice: Hashable, Sendable {
   /// The picker's choice.
   public enum Preset: String, Hashable, Sendable, CaseIterable, Identifiable {
+    /// Every few minutes (a minute rule), as the web's Interval.
+    case interval
     /// Every hour.
     case hourly
     /// Every day.
@@ -181,6 +236,7 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
     /// The label.
     public var title: String {
       switch self {
+      case .interval: "Interval"
       case .hourly: "Every hour"
       case .daily: "Every day"
       case .weekdays: "Every weekday"
@@ -192,6 +248,8 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
 
   /// A custom schedule's unit.
   public enum Frequency: String, Hashable, Sendable, CaseIterable, Identifiable {
+    /// Minutes.
+    case minutely
     /// Hours.
     case hourly
     /// Days.
@@ -209,6 +267,7 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
     /// The label.
     public var title: String {
       switch self {
+      case .minutely: "Minutes"
       case .hourly: "Hours"
       case .daily: "Days"
       case .weekly: "Weeks"
@@ -228,7 +287,7 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
   public var weekdays: Set<Int>
   /// A custom schedule's unit.
   public var frequency: Frequency
-  /// A custom schedule's interval.
+  /// A custom schedule's interval; the minutes of an Interval schedule.
   public var interval: Int
   /// Monthly and yearly days of the month.
   public var monthDays: [Int]

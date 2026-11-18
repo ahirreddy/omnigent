@@ -52,8 +52,13 @@ struct InboxTriageLogicTests {
 
   @Test("each kind and filter has its label")
   func labels() {
-    let kinds: [InboxItem.Kind] = [.approval, .question, .comment, .unread]
-    #expect(kinds.map(\.title) == ["Approval needed", "Question", "Comment", "Unread"])
+    let kinds: [InboxItem.Kind] = [
+      .approval, .question, .comment, .unread, .suggestion, .automationFailure,
+    ]
+    #expect(
+      kinds.map(\.title) == [
+        "Approval needed", "Question", "Comment", "Unread", "Suggestion", "Automation failed",
+      ])
     #expect(InboxFilter.allCases.map(\.title) == ["All", "Unread", "Needs you"])
     #expect(InboxFilter.allCases.map(\.id) == InboxFilter.allCases)
   }
@@ -93,6 +98,58 @@ struct InboxTriageLogicTests {
     #expect(InboxTriage.summary([item("a", kind: .question)]) == "1 approval")
     #expect(InboxTriage.summary([item("c", kind: .comment)]) == "1 comment")
     #expect(InboxTriage.summary([item("e")]) == "1 unread")
+  }
+
+  @Test("chart values read as the web prints them")
+  func chartValues() {
+    #expect(InboxChartView.format(12, unit: "ms") == "12 ms")
+    #expect(InboxChartView.format(40, unit: "%") == "40%")
+    #expect(InboxChartView.format(1.5, unit: nil) == "1.5")
+    #expect(InboxChartView.format(1.257, unit: "") == "1.26")
+    #expect(InboxChartView.format(0.999, unit: nil) == "1")
+  }
+
+  @Test("the pill counts failed automations and suggestions, with the unread total")
+  func feedSummary() {
+    let items = [
+      item("a", kind: .automationFailure), item("b", kind: .suggestion),
+      item("c", kind: .suggestion),
+    ]
+    #expect(
+      InboxTriage.summary(items, unreadSuggestions: 1)
+        == "1 failed automation \u{00B7} 2 suggestions (1 unread)")
+    #expect(
+      InboxTriage.summary(items, unreadSuggestions: 100, unreadSuggestionsCapped: true)
+        == "1 failed automation \u{00B7} 2 suggestions (100+ unread)")
+    #expect(
+      InboxTriage.summary([item("a", kind: .automationFailure), item("d", kind: .suggestion)])
+        == "1 failed automation \u{00B7} 1 suggestion")
+  }
+
+  @Test("agent items and failures show under All and Unread, never under Needs you")
+  func feedFilters() {
+    var read = item("read", kind: .suggestion)
+    read.isUnread = false
+    let items = [item("unread", kind: .suggestion), read, item("failed", kind: .automationFailure)]
+    func shown(_ filter: InboxFilter) -> Set<String> {
+      Set(InboxTriage.items(items, filter: filter, search: "", now: now).map(\.id))
+    }
+    #expect(shown(.all) == ["unread", "read", "failed"])
+    #expect(shown(.unread) == ["unread", "failed"])
+    #expect(shown(.awaiting).isEmpty)
+    var suggestion = item("s", kind: .suggestion, preview: "")
+    suggestion.suggestion = InboxSuggestion(
+      kindLabel: "Reminder", title: "Renew the certificate", body: "It expires on Friday.")
+    var failure = item("f", kind: .automationFailure, preview: "")
+    failure.automationFailure = InboxAutomationFailure(
+      automationID: "t1", name: "Nightly sync", reason: "Host \u{00B7} The host was offline.")
+    let found = { (query: String) in
+      InboxTriage.items([suggestion, failure], filter: .all, search: query, now: now).map(\.id)
+    }
+    #expect(found("certificate") == ["s"])
+    #expect(found("friday") == ["s"])
+    #expect(found("nightly") == ["f"])
+    #expect(found("offline") == ["f"])
   }
 
   @Test(

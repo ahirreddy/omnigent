@@ -72,6 +72,8 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   public var projects: [String] = []
   /// The name the session starts with; empty leaves it to its first message.
   public var name = ""
+  /// The server-configured MCP services it can start with; `nil` where the server has none.
+  public var mcpServices: McpLaunchServices?
 
   /// Creates options.
   /// - Parameters:
@@ -141,6 +143,8 @@ public struct NewSessionOptionActions {
   public var selectProject: (@MainActor (String?) -> Void)?
   /// Name the session.
   public var setName: (@MainActor (String) -> Void)?
+  /// The MCPs menu's toggles and retry.
+  public var mcpServices: McpLaunchActions?
 
   /// Creates actions.
   /// - Parameters:
@@ -217,6 +221,7 @@ struct NewSessionOptionsBar: View {
           NewSessionProjectMenu(
             project: options.project, projects: options.projects, select: selectProject)
         }
+        McpLaunchMenu(state: options.mcpServices, actions: actions.mcpServices)
         if options.isPlanMode {
           Label("Plan mode", systemImage: "doc.text")
             .accessibilityIdentifier("new-session-plan-mode")

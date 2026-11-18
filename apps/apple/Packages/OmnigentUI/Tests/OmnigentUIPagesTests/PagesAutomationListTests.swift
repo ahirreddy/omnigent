@@ -17,7 +17,7 @@
       let log = log
       var actions = AutomationsActions()
       actions.filter = { log.record("filter \($0.rawValue) [\($1)]") }
-      actions.create = { log.record("create \($0?.id ?? "blank")") }
+      actions.create = { log.record("create blank") }
       actions.createTrigger = { log.record("trigger \($0)") }
       actions.openDetail = { log.record("detail \($0)") }
       actions.edit = { log.record("edit \($0)") }
@@ -49,15 +49,27 @@
         AutomationsView(state: state, actions: actions ?? self.actions), width: 1_000, height: 800)
     }
 
-    private var chips: [AutomationTriggerChip] {
-      [AutomationTriggerChip(id: "jira", title: "Jira tickets", systemImage: "ticket")]
+    private var cards: [AutomationTemplateCard] {
+      [
+        AutomationTemplateCard(
+          id: "jira", title: "Jira tickets", description: "Watch for matching tickets.",
+          requirement: "Requires a Jira MCP server.", systemImage: "ticket"),
+        AutomationTemplateCard(
+          id: "linear", title: "Linear issues", description: "Watch teams.",
+          requirement: "Requires a Linear MCP server.", systemImage: "line.3.horizontal"),
+      ]
+    }
+
+    /// The All / Active / Paused filter, after the tabs.
+    private func filter<Content>(_ screen: OffscreenWindow<Content>) throws -> NSSegmentedControl {
+      try #require(screen.segmentedControls.dropFirst().first)
     }
 
     @Test("the filter and search report both values as they change")
     func filterAndSearch() throws {
       let screen = page(AutomationsViewState(rows: [row("a")], hasAny: true))
       defer { screen.close() }
-      let filter = try #require(screen.segmentedControls.first)
+      let filter = try filter(screen)
       try screen.click(segment: 1, of: filter)
       #expect(log.entries == ["filter active []"])
       try screen.click(segment: 2, of: filter)
@@ -67,37 +79,75 @@
       #expect(log.entries.suffix(2) == ["filter paused [b]", "filter paused [br]"])
     }
 
-    @Test("suggestions show under the All filter only, and go away for the others")
+    @Test("the suggested templates show under the All filter only, and go away for the others")
     func suggestionsFollowFilter() throws {
-      let screen = page(AutomationsViewState(rows: [row("a")], hasAny: true))
-      defer { screen.close() }
-      #expect(try screen.shows("Suggestions"))
-      let filter = try #require(screen.segmentedControls.first)
-      try screen.click(segment: 1, of: filter)
-      #expect(try !screen.shows("Suggestions"))
-    }
-
-    @Test("New automation offers a blank one, triggers and templates, each creating its own")
-    func newMenu() throws {
-      var state = AutomationsViewState(rows: [], hasAny: true)
-      state.triggers = chips
+      var state = AutomationsViewState(rows: [row("a")], hasAny: true)
+      state.templates = cards
       let screen = page(state)
       defer { screen.close() }
-      let new = try #require(screen.popUps.first)
-      #expect(new.title == "New automation")
-      try screen.choose("Create manually", inPopUp: new)
-      try screen.choose("Jira tickets", inPopUp: new)
-      try screen.choose("PR sweep", inPopUp: new)
-      #expect(log.entries == ["create blank", "trigger jira", "create pr-sweep"])
+      #expect(try screen.shows("Suggested"))
+      try screen.click(segment: 1, of: try filter(screen))
+      #expect(try !screen.shows("Suggested"))
     }
 
-    @Test("a server with no triggers offers no trigger section")
-    func newMenuWithoutTriggers() throws {
+    @Test("New opens a blank automation, as the web's button")
+    func newButton() throws {
       let screen = page(AutomationsViewState(rows: [], hasAny: true))
       defer { screen.close() }
-      let titles = try screen.titles(inPopUp: try #require(screen.popUps.first))
-      #expect(!titles.contains("When something happens"))
-      #expect(titles.contains("From a template"))
+      #expect(screen.popUps.isEmpty, "New is a button, not a menu")
+      try screen.clickControl(at: 0)
+      #expect(log.entries == ["create blank"])
+    }
+
+  }
+
+  extension PagesAutomationListTests {
+    @Test("the Templates tab shows the gallery, or says the server offers none")
+    func templatesTab() throws {
+      var state = AutomationsViewState(rows: [], hasAny: true)
+      let bare = page(state)
+      defer { bare.close() }
+      let tabs = try #require(bare.segmentedControls.first)
+      #expect(tabs.segmentCount == 2, "Your automations and Templates, without Shared with me")
+      try bare.click(segment: 1, of: tabs)
+      #expect(try bare.shows(state.templatesUnavailable))
+      state.templates = cards
+      state.shared = SharedAutomationsState()
+      let offered = page(state)
+      defer { offered.close() }
+      let allTabs = try #require(offered.segmentedControls.first)
+      #expect(allTabs.segmentCount == 3)
+      try offered.click(segment: 2, of: allTabs)
+      #expect(try offered.shows("Requires a Linear MCP server."))
+    }
+
+    @Test("Shared with me lists other users' automations read-only, and asks for more")
+    func sharedTab() throws {
+      var state = AutomationsViewState(rows: [], hasAny: true)
+      var shared = SharedAutomationsState()
+      var theirs = row("s")
+      theirs.sharedBy = "Ana"
+      shared.rows = [theirs]
+      shared.hasAny = true
+      shared.hasMore = true
+      state.shared = shared
+      var actions = actions
+      let log = log
+      actions.loadShared = { log.record("load shared") }
+      actions.loadMoreShared = { log.record("more shared") }
+      let screen = page(state, actions: actions)
+      defer { screen.close() }
+      try screen.click(segment: 1, of: try #require(screen.segmentedControls.first))
+      #expect(log.entries == ["load shared"])
+      #expect(
+        try screen.shows("Shared by Ana \u{00B7} Every day at 9:00 AM \u{00B7} Next run in 8 mins"))
+      let menu = try #require(screen.popUps.first)
+      let disabled = try screen.titles(inPopUp: menu)
+      #expect(disabled.contains("Edit"))
+      try screen.choose("Edit", inPopUp: menu)
+      #expect(log.entries == ["load shared"], "a viewer's Edit is disabled")
+      #expect(try screen.shows("Show more"), "more pages remain")
+      #expect(try !screen.shows("No automations are shared with you yet"))
     }
 
     @Test("without a create action there is nothing to create from")
@@ -107,31 +157,44 @@
       let screen = page(AutomationsViewState(rows: [], hasAny: false), actions: actions)
       defer { screen.close() }
       #expect(screen.popUps.isEmpty)
-      #expect(screen.controlFrames.count == 1, "only the search field")
+      #expect(screen.controlFrames.count == 2, "the tabs and the search field")
       #expect(try screen.shows("No automations yet"))
     }
 
-    @Test("each suggestion button creates from that suggestion")
-    func suggestionButtons() throws {
+    @Test("each template card creates from that template")
+    func templateCards() throws {
       var state = AutomationsViewState(rows: [], hasAny: false)
-      state.triggers = chips
+      state.templates = cards
       let screen = page(state)
       defer { screen.close() }
-      // New automation, search, then the trigger chip and the three suggestions.
-      let buttons = screen.controlFrames.dropFirst(2)
-      #expect(buttons.count == 4)
+      // New, the tabs, search, then the cards.
+      let buttons = screen.controlFrames.dropFirst(3)
+      #expect(buttons.count == 2)
       for frame in buttons { try screen.click(CGPoint(x: frame.midX, y: frame.midY)) }
-      #expect(
-        log.entries == [
-          "trigger jira", "create follow-up-monitor", "create pr-sweep", "create news-digest",
-        ])
+      #expect(log.entries == ["trigger jira", "trigger linear"])
+      #expect(try screen.shows("Requires a Jira MCP server."))
+    }
+
+    @Test("a failed last run warns, and a trigger runs when items match, with no Run now")
+    func failedAndTriggerRows() throws {
+      var failed = row("f")
+      failed.lastRunFailed = true
+      var trigger = row("t")
+      trigger.isTrigger = true
+      let screen = page(AutomationsViewState(rows: [failed, trigger], hasAny: true))
+      defer { screen.close() }
+      #expect(try screen.shows("Runs when new items match"))
+      #expect(try screen.shows("Every day at 9:00 AM \u{00B7} Next run in 8 mins"))
+      let triggerMenu = try #require(screen.popUps.last)
+      #expect(try !screen.titles(inPopUp: triggerMenu).contains("Run now"))
+      #expect(try screen.titles(inPopUp: try #require(screen.popUps.first)).contains("Run now"))
     }
 
     /// A point on row `index`'s title, level with the row's menu.
     private func rowTitle<Content>(_ index: Int, _ screen: OffscreenWindow<Content>) throws
       -> CGPoint
     {
-      let menu = try #require(Array(screen.popUps.dropFirst()).dropFirst(index).first)
+      let menu = try #require(Array(screen.popUps).dropFirst(index).first)
       let frame = menu.convert(menu.bounds, to: screen.activeWindow.contentView)
       return CGPoint(x: 120, y: frame.midY)
     }
@@ -170,7 +233,7 @@
       defer { screen.close() }
       #expect(try screen.shows("Every day at 9:00 AM \u{00B7} Next run in 8 mins"))
       #expect(try screen.shows("Paused"))
-      let menus = screen.popUps.dropFirst()
+      let menus = screen.popUps
       let first = try #require(menus.first)
       let second = try #require(menus.last)
       #expect(try screen.titles(inPopUp: second).contains("Resume"))
@@ -232,10 +295,10 @@
       #expect(try screen.shows("Couldn\u{2019}t load automations."))
       #expect(try screen.shows("Server down"))
       #expect(try screen.shows("Can't pause"))
-      // New automation, search, filter, Dismiss, Retry.
-      try screen.clickControl(at: 3)
-      #expect(log.entries == ["dismiss"])
+      // New, the tabs, search, filter, Dismiss, Retry.
       try screen.clickControl(at: 4)
+      #expect(log.entries == ["dismiss"])
+      try screen.clickControl(at: 5)
       #expect(log.entries == ["dismiss", "retry"])
     }
 
@@ -257,7 +320,7 @@
     func noFilterWhenEmpty() {
       let screen = page(AutomationsViewState(rows: [], hasAny: false))
       defer { screen.close() }
-      #expect(screen.segmentedControls.isEmpty)
+      #expect(screen.segmentedControls.count == 1, "only the tabs")
     }
 
     @Test("every button stays in the window at a narrow width, even with a long name")
@@ -266,7 +329,7 @@
       var state = AutomationsViewState(
         rows: [row("a")], hasAny: true)
       state.rows[0].name = String(repeating: "Long automation name ", count: 12)
-      state.triggers = chips
+      state.templates = cards
       let screen = OffscreenWindow(
         AutomationsView(state: state, actions: actions), width: 520, height: 800)
       defer { screen.close() }

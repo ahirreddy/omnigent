@@ -58,6 +58,37 @@ struct MessageActionRowTests {
     #expect(ConversationActions().menuSignature != reasonOnly.menuSignature)
   }
 
+  @Test("Edit and resend: the viewer's own accepted message with text, where a composer takes it")
+  func editAndResend() {
+    var edited: [String] = []
+    var actions = ConversationActions()
+    actions.editSentMessage = { edited.append($0.text) }
+    actions.viewerID = "ada"
+    let mine = Row(id: "u1", role: .user, text: "Fix it", author: "ada")
+    let items = MessageActionItem.items(for: mine, actions: actions)
+    #expect(items.map(\.kind) == [.copy, .edit])
+    #expect(items[1].identifier == "message-edit-u1")
+    #expect(items[1].title == "Edit and resend" && items[1].systemImage == "pencil")
+    items[1].perform()
+    #expect(edited == ["Fix it"])
+    // A single-user message carries no author.
+    #expect(kinds(Row(id: "u2", role: .user, text: "Hi"), actions).contains(.edit))
+    var pending = mine
+    pending.isEphemeral = true
+    let other = Row(id: "u3", role: .user, text: "Hi", author: "grace")
+    let blank = Row(id: "u4", role: .user, text: "  ")
+    let answer = Row(id: "a1", role: .assistant, text: "Done.", responseId: "resp_1")
+    for row in [pending, other, blank, answer] {
+      #expect(!kinds(row, actions).contains(.edit), "\(row.id)")
+    }
+    #expect(!kinds(mine, ConversationActions()).contains(.edit), "a read-only composer has none")
+    // The relay's forwarding copy keeps it, and rows redraw when it appears.
+    let latest = actions
+    let forwarded = actions.forwarding(to: { latest })
+    #expect(kinds(mine, forwarded) == [.copy, .edit])
+    #expect(ConversationActions().menuSignature != actions.menuSignature)
+  }
+
   @Test("An empty message has nothing to copy")
   func emptyText() {
     let row = Row(id: "a1", role: .assistant, text: "", responseId: "resp_1")

@@ -12,6 +12,8 @@ use crate::client::ClientCore;
 use crate::errors::CoreError;
 use crate::pull_requests::{PullRequestStatus, SessionPullRequest};
 
+#[path = "pull_request_changes.rs"]
+pub mod changes;
 #[path = "pull_request_reviews.rs"]
 pub mod reviews;
 
@@ -342,6 +344,9 @@ pub struct PullRequestDetail {
     pub reports_merge_state: bool,
     /// Auto-merge's method, when it is on (for example `SQUASH`; empty when unknown).
     pub auto_merge_method: Option<String>,
+    /// The web page of the source (possibly fork) repository, when known.
+    #[uniffi(default)]
+    pub head_repository_url: Option<String>,
 }
 
 impl From<core::PullRequestDetail> for PullRequestDetail {
@@ -375,6 +380,7 @@ impl From<core::PullRequestDetail> for PullRequestDetail {
             auto_merge_method: detail
                 .auto_merge
                 .map(|auto| auto.merge_method.unwrap_or_default()),
+            head_repository_url: detail.head_repository_url,
         }
     }
 }
@@ -515,6 +521,10 @@ pub struct PullRequestInfo {
     pub pull_request: Option<PullRequestDetail>,
     /// How often readers of this info re-read it.
     pub polling: PullRequestPolling,
+    /// The provider's id (`github`, `gitlab`, `azure_devops`); `None` when none serves the
+    /// workspace.
+    #[uniffi(default)]
+    pub provider: Option<String>,
 }
 
 /// How often a reader re-reads a PR's info, in milliseconds; `None` rests until a turn ends,
@@ -577,17 +587,35 @@ impl From<core::PullRequestInfo> for PullRequestInfo {
             capabilities: info.capabilities.into(),
             pull_request: info.pull_request.map(Into::into),
             polling: info.polling.into(),
+            provider: info.provider,
         }
     }
 }
 
-/// The PR's patch.
+/// A patch of the PR: the whole PR, one commit, or the changes since a commit.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct PullRequestPatch {
     /// One unified diff.
     pub patch: String,
     /// Why the host cannot diff it.
     pub unavailable: Option<String>,
+    /// The head it was read at, when the host names it.
+    #[uniffi(default)]
+    pub head_sha: Option<String>,
+    /// The base it was read at, when the host names it.
+    #[uniffi(default)]
+    pub base_sha: Option<String>,
+}
+
+impl From<core::PullRequestPatch> for PullRequestPatch {
+    fn from(patch: core::PullRequestPatch) -> Self {
+        Self {
+            patch: patch.patch,
+            unavailable: patch.unavailable,
+            head_sha: patch.head_sha,
+            base_sha: patch.base_sha,
+        }
+    }
 }
 
 /// How a PR is merged.
@@ -729,27 +757,6 @@ impl ClientCore {
             .await
             .map(Into::into)
             .map_err(CoreError::from)
-    }
-
-    /// The whole of `pr_url` as one unified-diff patch.
-    ///
-    /// # Errors
-    ///
-    /// As `pull_request_info`.
-    pub async fn pull_request_patch(
-        &self,
-        session_id: String,
-        pr_url: Option<String>,
-    ) -> Result<PullRequestPatch, CoreError> {
-        let patch = self
-            .sessions()
-            .pull_request_patch(&session_id, pr_url.as_deref())
-            .await
-            .map_err(CoreError::from)?;
-        Ok(PullRequestPatch {
-            patch: patch.patch,
-            unavailable: patch.unavailable,
-        })
     }
 
     /// Links the PR at `url` to the session.

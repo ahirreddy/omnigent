@@ -72,7 +72,7 @@
       let menu = try #require(try screen.menu(ofRow: workRow))
       SystemSideEffects.answer(alert: .alertSecondButtonReturn)
       try screen.choose("Delete project\u{2026}", in: menu)
-      #expect(SystemSideEffects.record.alertMessages.contains("Delete this project?"))
+      #expect(SystemSideEffects.record.alertMessages.contains("Delete project?"))
       #expect(spy.calls.isEmpty)
 
       SystemSideEffects.answer(alert: .alertFirstButtonReturn)
@@ -111,8 +111,8 @@
       #expect(MainLoop.settle(until: { expanded()?.isEmpty == true }))
     }
 
-    @Test("a project's sessions line up with the sessions outside it")
-    func noIndent() throws {
+    @Test("the outline doesn't indent a project's sessions: the rows draw their own step")
+    func noOutlineIndent() throws {
       let spy = spy()
       let key = SidebarNavigationOrder.expandedProjectsKey
       let before = UserDefaults.standard.string(forKey: key)

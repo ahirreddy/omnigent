@@ -21,6 +21,9 @@ const NO_OPTIONS: SlashOptions = SlashOptions {
     server_clears: false,
     smart_routing: false,
     routes_native_panes: false,
+    claude_sdk_clears: false,
+    rewinds: false,
+    goal: false,
 };
 
 fn act(
@@ -481,5 +484,131 @@ fn a_name_that_is_no_built_in_has_no_action() {
     assert_eq!(
         builtin_action("nonsense", String::new(), "", &[], &configuration),
         None
+    );
+}
+
+/// The command fields of the `/v1/info` body main's server sends.
+fn main_info() -> SlashOptions {
+    let envelope =
+        crate::client::test_support::fixture_json("sessions/ComposerParity--v1-info-main.json");
+    SlashOptions::from_info(&envelope["response"]).expect("decodes")
+}
+
+#[test]
+fn main_info_offers_clear_and_rewind_to_claude_sessions() {
+    let options = main_info();
+    assert!(options.server_clears && options.claude_sdk_clears && options.rewinds);
+    assert!(!options.goal);
+    assert_eq!(
+        names(&slash_commands(&session("claude-sdk"), &[], &options)),
+        [
+            "/compact", "/clear", "/rewind", "/context", "/mcp", "/new", "/side", "/help"
+        ]
+    );
+    let native = names(&slash_commands(&session("claude-native"), &[], &options));
+    assert_eq!(&native[..3], ["/compact", "/clear", "/rewind"]);
+    // Codex clears in its terminal but has no rewind.
+    let codex_names = names(&slash_commands(&codex(), &[], &options));
+    assert!(codex_names.contains(&"/clear".to_owned()));
+    assert!(!codex_names.contains(&"/rewind".to_owned()));
+    assert!(
+        !names(&slash_commands(&session("openai-agents"), &[], &options))
+            .iter()
+            .any(|name| name == "/clear" || name == "/rewind")
+    );
+}
+
+#[test]
+fn an_older_server_leaves_clear_and_rewind_as_text_on_claude_sdk() {
+    // Older servers list `clear` but send neither newer field.
+    let older = SlashOptions::from_info(&json!({"session_event_types": ["clear"]})).unwrap();
+    assert!(older.server_clears && !older.claude_sdk_clears && !older.rewinds);
+    let sdk = session("claude-sdk");
+    assert_eq!(slash_action("/clear", false, &sdk, &[], &older), None);
+    assert_eq!(slash_action("/rewind", false, &sdk, &[], &older), None);
+    // A project command of that name still runs.
+    assert_eq!(
+        slash_action("/rewind", false, &sdk, &[skill("rewind")], &older),
+        Some(SlashAction::RunSkill {
+            name: "rewind".to_owned(),
+            arguments: String::new()
+        })
+    );
+}
+
+#[test]
+fn clear_and_rewind_act_on_claude_sdk_and_take_no_arguments() {
+    let options = main_info();
+    let sdk = session("claude-sdk");
+    assert_eq!(
+        slash_action("/clear", false, &sdk, &[], &options),
+        Some(SlashAction::Clear)
+    );
+    assert_eq!(
+        slash_action("/rewind", false, &sdk, &[], &options),
+        Some(SlashAction::Rewind)
+    );
+    assert_eq!(
+        slash_action(" /Rewind ", false, &session("claude-native"), &[], &options),
+        Some(SlashAction::Rewind)
+    );
+    assert_eq!(
+        slash_action("/rewind 3", false, &sdk, &[], &options),
+        Some(SlashAction::Show {
+            text: "/rewind does not accept arguments".to_owned()
+        })
+    );
+    assert_eq!(slash_action("/rewind", true, &sdk, &[], &options), None);
+}
+
+#[test]
+fn goal_opens_the_sheet_bare_and_sends_an_objective() {
+    let options = SlashOptions {
+        goal: true,
+        ..NO_OPTIONS
+    };
+    let polly = session("claude-sdk");
+    assert_eq!(
+        names(&slash_commands(
+            &polly,
+            &[skill("goal"), skill("review")],
+            &options
+        )),
+        ["/compact", "/context", "/mcp", "/goal", "/new", "/side", "/help", "/review"]
+    );
+    assert_eq!(
+        slash_action("/goal", false, &polly, &[skill("goal")], &options),
+        Some(SlashAction::Goal)
+    );
+    assert_eq!(
+        slash_action("/GOAL\n ship it ", false, &polly, &[], &options),
+        Some(SlashAction::SendGoal {
+            message: "/goal ship it".to_owned()
+        })
+    );
+    // With attachments it is an ordinary message.
+    assert_eq!(slash_action("/goal", true, &polly, &[], &options), None);
+    // Codex keeps its `$goal` skill beside the built-in.
+    let codex_names = names(&slash_commands(&codex(), &[skill("goal")], &options));
+    assert!(codex_names.contains(&"$goal".to_owned()));
+    assert!(codex_names.contains(&"/goal".to_owned()));
+    // Without a Goal control the text, or a same-named skill, goes out as before.
+    assert_eq!(
+        slash_action("/goal", false, &polly, &[skill("goal")], &NO_OPTIONS),
+        Some(SlashAction::RunSkill {
+            name: "goal".to_owned(),
+            arguments: String::new()
+        })
+    );
+    assert_eq!(act("/goal", false, &polly, &[]), None);
+}
+
+#[test]
+fn skills_match_their_exact_case_and_built_ins_any_case() {
+    let commands = slash_commands(&session("openai-agents"), &[skill("review")], &NO_OPTIONS);
+    assert!(match_invocation("/Review", &commands).is_none());
+    assert_eq!(
+        match_invocation("/HELP", &commands).map(|(command, _)| command.name.as_str()),
+        Some("help")
     );
 }

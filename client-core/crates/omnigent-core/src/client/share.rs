@@ -19,6 +19,30 @@ pub const PUBLIC_GRANTEE: &str = "__public__";
 /// The most grants read from one session.
 const MAX_GRANT_PAGES: usize = 10;
 
+/// Whether `workspace` is a home or root folder, which a `restricted_read_only` server refuses
+/// to share (the web's `workspaceSharingBlocked`): `/`, `/root`, or a direct child of `/home`,
+/// `/Users` or `/var/home`, after `.` and `..` resolve. A relative path is not blocked.
+#[must_use]
+pub fn workspace_sharing_blocked(workspace: &str) -> bool {
+    if !workspace.starts_with('/') {
+        return false;
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    for part in workspace.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            part => parts.push(part),
+        }
+    }
+    match parts.as_slice() {
+        [] | ["root"] | ["home" | "Users", _] | ["var", "home", _] => true,
+        _ => false,
+    }
+}
+
 /// One grant on a session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionGrant {
@@ -37,7 +61,7 @@ impl SessionGrant {
 }
 
 /// `value` can be sent as a grantee: non-blank, no path or query characters.
-fn validate_grantee(value: &str) -> Result<(), SessionError> {
+pub(super) fn validate_grantee(value: &str) -> Result<(), SessionError> {
     let trimmed = value.trim();
     if trimmed.is_empty()
         || trimmed.len() > 320
@@ -184,6 +208,24 @@ mod tests {
 
     use super::super::test_support::{Reply, RouteTransport, body_json, connected, path_of};
     use super::*;
+
+    #[test]
+    fn home_and_root_folders_are_blocked_as_the_web_blocks_them() {
+        for blocked in [
+            "/",
+            "/root",
+            "/Users/bob",
+            "/home/alice/",
+            "/var/home/carol",
+            "/home/alice/proj/..",
+            "/./Users//bob",
+        ] {
+            assert!(workspace_sharing_blocked(blocked), "{blocked}");
+        }
+        for open in ["/home/alice/proj", "/Users", "/srv/app", "relative/path", "", "/rootish"] {
+            assert!(!workspace_sharing_blocked(open), "{open}");
+        }
+    }
 
     #[test]
     fn an_unreadable_grant_acknowledgement_is_uncertain() {

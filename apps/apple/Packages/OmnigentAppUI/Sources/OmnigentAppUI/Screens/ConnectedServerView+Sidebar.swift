@@ -119,6 +119,10 @@ final class SidebarModel {
   var share: ShareStore?
   /// An archive waiting on whether to delete worktrees.
   var archiveRequest: ArchiveWorktreeRequest?
+  /// An archive waiting on a confirmation that working agents stop.
+  var archiveRunningRequest: ArchiveRunningRequest?
+  /// A project delete waiting on a confirmation that working agents stop.
+  var projectDeleteRunning: ProjectDeleteRunningRequest?
   /// The session a chat tab's menu is renaming.
   var renamingFromTab: OmnigentUIComponents.SessionSummary?
   var renameText = ""
@@ -193,7 +197,7 @@ extension ConnectedServerView {
     }
     actions.dropSession = { session, action in drop(session, action) }
     actions.retryPages = { connection.reloadOfferedPages() }
-    actions.live = SidebarAdapter.live(connection.sessionList)
+    actions.live = SidebarAdapter.live(connection.sessionList, pages: connection.pages)
     let paging = connection.sessionList.paging
     actions.loadMoreSessions = { paging.loadMore() }
     actions.loadProjectPage = { project in
@@ -234,12 +238,16 @@ extension ConnectedServerView {
     actions.deleteWithBranch = { summary, deleteBranch in
       removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
     }
+    actions.isUnread = { list.isUnread($0) }
     if NestedAgentGate.offered(connection) {
       actions.addNestedAgent = { addNestedAgent(beside: $0.id) }
     }
     // Split view holds two tabs of one session; another session goes beside it in a window
     // (Open in New Window), so the rows offer no Open in Split View.
     actions.shareUnavailableReason = shareUnavailableReason
+    actions.createAutomation = AutomationsAdapter.createFromSession(connection) {
+      selection.wrappedValue = .automations
+    }
     actions.forkUnavailableReason = { summary in
       list.sessionWithoutActivity(summary.id).flatMap { forkUnavailableReason(source: $0) }
     }

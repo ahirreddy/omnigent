@@ -47,7 +47,7 @@ struct ReviewThreadsAdapterTests {
       "/v1/info": .json(#"{"single_user":true,"accounts_enabled":false}"#),
       "/v1/sessions/conv/resources/github": .json(info),
       "/v1/sessions/conv/resources/github/diff": .json(
-        #"{"object":"session.github.pr_diff","patch":""}"#),
+        #"{"object":"session.github.pr_diff","patch":"","head_sha":"head1","base_sha":"base1"}"#),
       "/v1/sessions/conv/resources/github/review-threads": .json(page),
     ])
     let panel = SessionPanelStore(sessionID: "conv", core: core)

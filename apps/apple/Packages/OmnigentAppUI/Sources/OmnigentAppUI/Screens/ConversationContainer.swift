@@ -87,6 +87,9 @@ struct ConversationContainer: View {
   // swiftlint:disable:next private_swiftui_state
   @State var markerLinks = TaskMarkerLinks()
 
+  /// The session's grants once read, for author badges.
+  var loadedGrants: [OmnigentCoreFFI.SessionGrant] { shareStore?.grants.value ?? [] }
+
   var body: some View {
     let composer = conversation.composer
     let screen = state
@@ -125,6 +128,10 @@ struct ConversationContainer: View {
     )
     .task {
       if shareStore == nil { shareStore = makeShareStore?() }
+      // As the web, an owner's grants say whether others write here, for author badges.
+      if offersShare, let shareStore, ConversationAdapter.ownedByViewer(summary, server: server) {
+        await shareStore.load()
+      }
       composer.searchMentions = workspace.map(Self.mentionSearch)
       // A queued `/side` asks for its fork's tab when it goes out after the turn.
       SessionToolsAdapter.watchForks(conversation, routes: toolRoutes)
@@ -142,6 +149,10 @@ struct ConversationContainer: View {
       SessionGoalPresenter(
         conversation: conversation, summary: summary, isPresented: $showsGoal,
         report: { failures.append($0) })
+    )
+    .modifier(
+      SessionRewindPresenter(
+        composer: composer, open: toolRoutes.openSession, report: { failures.append($0) })
     )
     .onChange(of: conversation.isRunning) { _, running in
       Task { await composer.drainQueue(isRunning: running) }
@@ -306,6 +317,12 @@ extension ConversationContainer {
     actions.loadOlder = { conversation.loadOlderHistory() }
     actions.openSignIn = openSignIn
     actions.sessionTitle = sessionTitle
+    // Edit and resend, wherever the viewer could type the message.
+    if !ComposerAdapter.isReadOnly(conversation) {
+      let composer = conversation.composer
+      actions.editSentMessage = { row in composer.editSentMessage(row.text) }
+      actions.viewerID = server?.userId
+    }
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     actions.messageURL = { row in Self.messageURL(row, in: link) }
     actions.retryFailedTurn = { row in
@@ -366,6 +383,16 @@ extension ConversationContainer {
       conversation.composer, isRunning: { conversation.isRunning }, reconnect: retry,
       prompts: { ComposerAdapter.prompts(conversation) })
     SessionToolsAdapter.add(to: &extras, store: conversation, summary: summary, routes: toolRoutes)
+    if let panel {
+      let composer = conversation.composer
+      let showPullRequests = toolRoutes.showPullRequests
+      extras.openReviewComment = { id in
+        guard let comment = composer.reviewComments.first(where: { $0.id == id }) else { return }
+        showPullRequests()
+        Task { await panel.revealLocalComment(comment) }
+      }
+      extras.deleteReviewComment = { id in Task { await panel.deleteLocalComment(id) } }
+    }
     extras.liveness.fork = forkSession
     addHostMoves(to: &extras.liveness, sheets: livenessSheets)
     return extras

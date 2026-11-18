@@ -193,5 +193,32 @@
       let stepper = try #require(screen.allViews.compactMap { $0 as? NSStepper }.first)
       #expect(!stepper.isEnabled)
     }
+
+    @Test("Interval starts at the shortest allowed minutes and has no time of day")
+    func intervalPreset() throws {
+      let choice = EditedValue(ScheduleChoice())
+      let screen = screen(choice)
+      defer { screen.close() }
+      let preset = try #require(screen.popUps.first)
+      #expect(try screen.titles(inPopUp: preset).first == "Interval")
+      try screen.choose("Interval", inPopUp: preset)
+      #expect(choice.value.preset == .interval)
+      #expect(choice.value.frequency == .minutely)
+      #expect(choice.value.interval == 10)
+      #expect(try screen.shows("Every 10 minutes"))
+      #expect(try !screen.shows("At"), "a minute rule has no time")
+      try screen.choose("Every day", inPopUp: try #require(screen.popUps.first))
+      #expect(choice.value.preset == .daily)
+    }
+
+    @Test("a server that doesn't anchor schedules offers neither Interval nor Custom")
+    func unanchoredInterval() throws {
+      let choice = EditedValue(ScheduleChoice())
+      let screen = screen(choice, anchored: false)
+      defer { screen.close() }
+      let titles = try screen.titles(inPopUp: try #require(screen.popUps.first))
+      #expect(!titles.contains("Interval"))
+      #expect(!titles.contains("Custom schedule"))
+    }
   }
 #endif

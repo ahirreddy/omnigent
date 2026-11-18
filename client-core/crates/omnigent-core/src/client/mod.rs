@@ -41,16 +41,19 @@ pub mod events;
 mod export;
 mod families;
 pub mod fork;
+pub mod harness_inventory;
 mod harness_setup;
 pub mod host_switch;
 mod hydration;
 pub mod inbox;
+pub mod inbox_items;
 mod intent_lanes;
 pub mod items;
 mod journal;
 pub(crate) mod json;
 pub mod pin_order;
 pub mod policy_registry;
+pub mod project_repository;
 pub mod project_settings;
 pub mod projects;
 pub mod pull_request_detail;
@@ -59,6 +62,7 @@ pub mod pull_requests;
 mod recovery;
 mod remote_browsers;
 mod requests;
+pub mod rewind;
 mod routing;
 mod sandbox;
 mod sandbox_operations;
@@ -71,6 +75,7 @@ pub mod share;
 mod skills;
 mod terminals;
 pub mod usage;
+pub mod user_settings;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -80,7 +85,7 @@ use events::ChangedFilesUpdate;
 pub use routing::{SLICE_KEY_HEADER, SLICE_KEY_QUERY};
 use sessions::SessionSummary;
 
-use crate::attachments::AttachmentDraftStore;
+use crate::attachments::{AttachmentDraftStore, FilesystemAttachments};
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
 use crate::auth::hosted::{ConnectedServer, HostedConnection};
@@ -215,6 +220,9 @@ struct State {
     /// How often the live link has returned; a write lost with it goes again after the next.
     link_returns: u64,
     drafts: AttachmentDraftStore,
+    /// Which files the server delivers as files, from the last `/v1/info` read; the default
+    /// extensions until one is read.
+    attachment_policy: FilesystemAttachments,
     composer: BTreeMap<(String, String), String>,
     /// The last [`ClientEvent::TurnExpected`] id handed out.
     turn_expectations: u64,
@@ -251,6 +259,7 @@ impl State {
         self.first_message_titles.clear();
         self.routing = routing::ReplicaRouting::default();
         self.side_chats.clear();
+        self.attachment_policy = FilesystemAttachments::default();
     }
 
     /// The send behind `expectation` was not accepted: the conversation stops showing its turn.
@@ -594,6 +603,19 @@ impl<T: HttpTransport> ClientCore<T> {
     /// What the last successful connect confirmed, while still connected.
     pub fn connected_server(&self) -> Option<ConnectedServer> {
         lock(&self.state).connected.clone()
+    }
+
+    /// Which files the server delivers to the agent as files, from the last `/v1/info` read
+    /// (the composer's command options or the new-session catalog); the default extensions
+    /// until one is read.
+    pub fn attachment_policy(&self) -> FilesystemAttachments {
+        lock(&self.state).attachment_policy.clone()
+    }
+
+    /// Keeps the filesystem attachment policy of a `/v1/info` body just read on this connection
+    /// (a read from an earlier connection fails before it gets here).
+    pub(crate) fn record_attachment_policy(&self, info: &serde_json::Value) {
+        lock(&self.state).attachment_policy = FilesystemAttachments::from_info(info);
     }
 
     /// The cached summary of `session_id`.

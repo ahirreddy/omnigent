@@ -111,6 +111,10 @@ extension NewSessionForm {
     case .idle, .loading: return .unavailable(reason: "Loading hosts and agents\u{2026}")
     case .failed(let error): return .unavailable(reason: error.message)
     case .loaded:
+      // Chosen MCP services wait for the registry, as the web's launch does.
+      if nested == nil, let problem = mcpProblem(creation) {
+        return .unavailable(reason: problem)
+      }
       if isSandbox {
         if selectedAgent(creation) == nil || startsPendingAgent {
           return .unavailable(reason: "Choose an agent.")

@@ -83,6 +83,11 @@ struct ComposerDraftAccessories: View {
     if !state.mentions.isEmpty {
       MentionChips(paths: state.mentions, remove: actions.extras.removeMention)
     }
+    if !state.reviewComments.isEmpty {
+      ComposerReviewChips(
+        comments: state.reviewComments, open: actions.extras.openReviewComment,
+        delete: actions.extras.deleteReviewComment)
+    }
     if !state.quotes.isEmpty {
       QuoteBlocks(
         quotes: state.quotes, actions: actions.extras.quotes,

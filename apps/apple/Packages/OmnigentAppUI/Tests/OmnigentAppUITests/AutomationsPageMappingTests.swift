@@ -101,7 +101,8 @@ struct AutomationsPageMappingTests {
     #expect(view.loadError != nil)
     #expect(view.rows.isEmpty)
     #expect(!view.hasAny)
-    #expect(view.triggers.isEmpty)
+    #expect(view.templates.isEmpty)
+    #expect(view.shared == nil)
   }
 
   @Test("Agents offered skip what can't start a session, and an empty catalog is fine")
@@ -118,8 +119,8 @@ struct AutomationsPageMappingTests {
           pickerSection: .agent),
       ])
     #expect(AutomationsMapping.agents(catalog).map(\.id) == [""])
-    #expect(AutomationsMapping.newDraft(nil, catalog: catalog).agentID.isEmpty)
-    #expect(AutomationsMapping.newDraft(nil, catalog: catalog).hostID.isEmpty)
+    #expect(AutomationsMapping.newDraft(catalog: catalog).agentID.isEmpty)
+    #expect(AutomationsMapping.newDraft(catalog: catalog).hostID.isEmpty)
   }
 
   @Test("A run's time reads at both ends of the 64-bit range, for every status")
@@ -158,8 +159,20 @@ struct AutomationsPageMappingTests {
     #expect(AutomationTriggerMapping.source("exploded") == nil)
     #expect(AutomationTriggerMapping.source("") == nil)
     var draft = AutomationDraftState()
-    #expect(AutomationTriggerMapping.prompt(draft, sessionLink: "", sendsOverrides: false).isEmpty)
+    let budget = triggerMessageBudget(serverMaxChars: 0, target: .unknown, savedMaxChars: nil)
+    #expect(
+      AutomationTriggerMapping.config(
+        draft, budget: budget, workerPermissionMode: "", sendsOverrides: false) == nil)
     draft.trigger = AutomationTriggerDraft(source: "exploded", event: "")
-    #expect(AutomationTriggerMapping.prompt(draft, sessionLink: "", sendsOverrides: true).isEmpty)
+    #expect(
+      AutomationTriggerMapping.config(
+        draft, budget: budget, workerPermissionMode: "", sendsOverrides: true) == nil)
+    #expect(
+      AutomationTriggerMapping.prompt(
+        nil,
+        context: TriggerConfigContext(
+          sessionLink: "", pollingIntervalMinutes: nil, taskSessionTitle: nil,
+          messageMaxChars: nil), withHeader: true
+      ).isEmpty)
   }
 }

@@ -40,7 +40,7 @@ public final class PagesStore {
   /// Automations with a write in flight.
   public private(set) var busyAutomationIDs: Set<String> = []
   /// The last failed automation write, until dismissed.
-  public private(set) var automationError: CoreError?
+  public internal(set) var automationError: CoreError?
   /// The agents an automation can run and the hosts it can pin.
   public private(set) var automationCatalog: CreationLoad<CreationCatalog> = .idle
   /// The projects an automation can file its sessions into.
@@ -49,6 +49,26 @@ public final class PagesStore {
   public private(set) var automationModels: [String: CreationLoad<[ModelChoice]>] = [:]
   /// Each automation's run history, by automation.
   public private(set) var automationRuns: [String: CreationLoad<[AutomationRun]>] = [:]
+  /// The automations others shared with the caller, as far as paged.
+  public internal(set) var sharedAutomations: CreationLoad<[Automation]> = .idle
+  /// The next page of ``sharedAutomations``; `nil` on the last.
+  public internal(set) var sharedAutomationsCursor: String?
+  /// A further page of ``sharedAutomations`` is being read.
+  public internal(set) var isLoadingMoreSharedAutomations = false
+  /// The PRs each run created or worked on, by automation and then run.
+  public internal(set) var automationRunPullRequests: [String: [String: RunPullRequests]] = [:]
+  /// Who each automation is shared with, by automation.
+  public internal(set) var automationGrants: [String: CreationLoad<[AutomationGrant]>] = [:]
+  /// A share change is in flight.
+  public internal(set) var isSavingAutomationGrant = false
+  /// The last failed share change, until the sheet closes.
+  public internal(set) var automationGrantError: CoreError?
+  /// The MCP services an automation's runs can start with.
+  public internal(set) var automationMcpServices: CreationLoad<[McpServiceRecord]> = .idle
+  /// The hosts that deliver long session messages.
+  public internal(set) var longMessageHosts: CreationLoad<Set<String>> = .idle
+  /// A session a menu asked to make an automation from, for the Automations page to open.
+  public internal(set) var pendingAutomationSource: AutomationSource?
   /// The caller's spend.
   public private(set) var usage: CreationLoad<UsageReport> = .idle
   /// File comments by session, for sessions that report some.
@@ -67,8 +87,12 @@ public final class PagesStore {
   public private(set) var inboxReads = 0
   /// The Inbox is still reading comments or latest replies.
   public var isReadingInbox: Bool { inboxReads > 0 }
+  /// Agent-posted Inbox items and automation failures that made no session.
+  public let feeds: InboxFeedsStore
+  /// The automation the Automations page should open, as the Inbox's Open automation asks.
+  public var requestedAutomationID: String?
 
-  private let core: ClientCore
+  let core: ClientCore
   private let defaults: UserDefaults
   private var seenKey: String?
   /// The comment count each session's list was read at.
@@ -83,6 +107,7 @@ public final class PagesStore {
   init(core: ClientCore, defaults: UserDefaults = .standard) {
     self.core = core
     self.defaults = defaults
+    feeds = InboxFeedsStore(core: core, defaults: defaults)
   }
 
   /// Reads which pages the server offers. A failure keeps the pages last read; with none, they
@@ -123,6 +148,14 @@ public final class PagesStore {
     offeredReads += 1
     offered = nil
     offeredError = nil
+    feeds.reset()
+  }
+
+  /// Reads the Inbox feeds this server offers: agent-posted items and automation failures.
+  public func refreshInboxFeeds() async {
+    guard let offered else { return }
+    if offered.inboxItems { await feeds.refreshItems() }
+    if offered.automationInbox { await feeds.refreshFailures() }
   }
 
   // MARK: Automations
@@ -224,11 +257,6 @@ public final class PagesStore {
     } catch {
       automationCatalog = .failed(coreError(error))
     }
-  }
-
-  /// Clears ``automationError`` after the user has seen it.
-  public func dismissAutomationError() {
-    automationError = nil
   }
 
   private func writeAutomation(_ id: String?, _ operation: (ClientCore) async throws -> Void)

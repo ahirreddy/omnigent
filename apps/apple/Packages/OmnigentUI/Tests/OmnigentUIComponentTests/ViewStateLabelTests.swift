@@ -69,7 +69,7 @@ struct ViewStateLabelTests {
   func settingsPanes() {
     #expect(
       ServerSettingsPane.allCases.map(\.title) == [
-        "Account", "Harnesses", "Custom Agents", "MCP", "Sandbox Integrations", "Git",
+        "Account", "Harnesses", "Custom Agents", "MCP", "Sandbox Integrations", "Sessions", "Git",
         "Import Sessions", "Members", "Policies", "Sharing", "Archived Sessions",
       ])
     #expect(ServerSettingsPane.allCases.filter(\.isAdmin) == [.members, .policies, .sharing])

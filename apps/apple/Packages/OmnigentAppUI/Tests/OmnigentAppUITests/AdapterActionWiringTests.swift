@@ -175,7 +175,8 @@ struct AdapterActionWiringTests {
     defer { screen.close() }
     try await settle(screen, untilShowing: "Standup")
     let paused = try #require(AutomationsFilter.allCases.firstIndex(of: .paused))
-    try chooseSegment(paused, on: screen)
+    // The status filter follows the Your automations / Templates tabs.
+    try chooseSegment(paused, on: screen, control: 1)
     // A row leaving a lazy list stays in what an offscreen window reads, so an empty page proves it.
     try await settle(screen, untilShowing: "No automations found")
   }

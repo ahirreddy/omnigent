@@ -27,7 +27,8 @@ use std::sync::{Mutex, PoisonError};
 
 use omnigent_protocol::sessions::{SessionSnapshot, SessionStatus};
 use omnigent_protocol::{
-    ContentPart, ConversationItem, Field, FromWire, ItemData, ItemStatus, TextPartKind,
+    ContentPart, ConversationItem, Field, FromWire, ItemData, ItemStatus, MessageRole,
+    TextPartKind,
 };
 use serde_json::{Map, Value, json};
 use url::Url;
@@ -571,8 +572,10 @@ impl DemoTransport {
         match (request.method.as_str(), segments.as_slice()) {
             ("GET", ["v1", "info"]) => Ok((
                 200,
-                json!({"single_user": true, "accounts_enabled": false, "server_version": "demo"}),
+                json!({"single_user": true, "accounts_enabled": false, "server_version": "demo",
+                       "session_rewind": true}),
             )),
+            ("POST", ["v1", "sessions", id, "rewind"]) => state.rewind(id, &body()?),
             ("GET", ["v1", "me"]) => Ok((200, json!({"user_id": "local", "is_admin": true}))),
             ("GET", ["v1", "sessions"]) => Ok(state.list(&query)),
             ("POST", ["v1", "sessions"]) => state.create(&body()?),
@@ -885,6 +888,9 @@ impl DemoState {
             .and_then(|limit| limit.parse::<usize>().ok())
             .unwrap_or(100);
         let mut items: Vec<&ConversationItem> = session.snapshot.items.iter().collect();
+        if query.get("type").map(String::as_str) == Some("message") {
+            items.retain(|item| matches!(item.data, ItemData::Message(_)));
+        }
         if query.get("order").map(String::as_str) == Some("desc") {
             items.reverse();
         }
@@ -1213,6 +1219,67 @@ impl DemoState {
         let response = snapshot_json(&session, false);
         self.sessions.insert(0, session);
         Ok((201, response))
+    }
+
+    /// `POST /v1/sessions/{id}/rewind`, as the server's: a new session of the same agent with
+    /// the history before the chosen prompt, which comes back for its composer.
+    fn rewind(&mut self, id: &str, body: &Value) -> Routed {
+        let item_id = body
+            .get("item_id")
+            .and_then(Value::as_str)
+            .ok_or(Reject(422, "item_id is required"))?;
+        let session = self.find(id)?;
+        if permission(session) < 4 {
+            return Err(Reject(403, "Only the owner can rewind this session."));
+        }
+        let harness = session.snapshot.harness.value().cloned().unwrap_or_default();
+        if !matches!(harness.as_str(), "claude-native" | "claude-sdk") {
+            return Err(Reject(400, "/rewind is not available for this session type."));
+        }
+        if self.replies.contains_key(id) {
+            return Err(Reject(400, "Stop the current turn before running /rewind."));
+        }
+        let not_a_prompt = || Reject(400, "/rewind needs one of this session's prompts.");
+        let index = session
+            .snapshot
+            .items
+            .iter()
+            .position(|item| item.id == item_id)
+            .ok_or_else(not_a_prompt)?;
+        let prompt = match &session.snapshot.items[index].data {
+            ItemData::Message(message) if message.role == MessageRole::User && !message.is_meta => {
+                message.visible_text()
+            }
+            _ => return Err(not_a_prompt()),
+        };
+        let kept: Vec<Value> = session.snapshot.items[..index]
+            .iter()
+            .map(|item| serde_json::to_value(item).unwrap_or(Value::Null))
+            .collect();
+        let mut fields = snapshot_fields(&session.snapshot)?;
+        let sequence = self.allocate();
+        let rewound_id = format!("demo-session-{sequence}");
+        let now = self.now;
+        fields.insert("id".into(), json!(rewound_id));
+        fields.insert("items".into(), Value::Array(kept));
+        fields.insert("status".into(), json!("idle"));
+        fields.insert("created_at".into(), json!(now));
+        fields.insert("updated_at".into(), json!(now));
+        fields.insert("pending_elicitations".into(), json!([]));
+        let snapshot = SessionSnapshot::from_value(Value::Object(fields))
+            .map_err(|_| Reject(500, "Could not rewind the session"))?;
+        self.sessions.insert(
+            0,
+            WorkspaceSession {
+                revision: 1,
+                snapshot,
+            },
+        );
+        Ok((
+            200,
+            json!({"session_id": rewound_id, "prompt": prompt, "attachments": [],
+                   "attachments_incomplete": false}),
+        ))
     }
 
     fn switch_agent(&mut self, id: &str, body: &Value) -> Routed {

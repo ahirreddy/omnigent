@@ -104,6 +104,10 @@ public struct HarnessDetailState: Equatable, Sendable {
   public var notice: String?
   /// The startup command.
   public var startup: Startup
+  /// The MCP servers, skills and plugins tabs; `nil` where the harness lists none.
+  public var catalog: HarnessCatalogState?
+  /// The open skill's page.
+  public var skillPage: HarnessSkillPageState?
 
   /// Creates the state.
   public init(
@@ -135,6 +139,10 @@ public struct HarnessDetailActions {
   public var fixWarning: @MainActor () -> Void
   /// The credential row's button: switch account, sign in again or reconfigure.
   public var fixCredential: @MainActor () -> Void
+  /// Opens a skill's page; `nil` leaves skills as rows.
+  public var openSkill: (@MainActor (HarnessCatalogState.Skill) -> Void)?
+  /// Closes the skill's page.
+  public var closeSkill: (@MainActor () -> Void)?
 
   /// Creates the actions.
   public init(
@@ -152,6 +160,8 @@ public struct HarnessDetailActions {
 public struct HarnessDetailView: View {
   private let state: HarnessDetailState
   private let actions: HarnessDetailActions
+  @State private var tab: HarnessCatalogState.Tab?
+  @State private var openPluginID: String?
 
   /// Creates the details.
   public init(state: HarnessDetailState, actions: HarnessDetailActions) {
@@ -159,8 +169,36 @@ public struct HarnessDetailView: View {
     self.actions = actions
   }
 
-  /// The details, as grouped form sections.
+  /// The details, as grouped form sections: with the MCP servers, Skills, Plugins and Settings
+  /// tabs where the harness lists them, as the web's harness page.
   public var body: some View {
+    if let page = state.skillPage, let close = actions.closeSkill {
+      HarnessSkillPage(page: page, back: close)
+    } else if let catalog = state.catalog {
+      if let plugin = catalog.plugins.first(where: { $0.id == openPluginID }) {
+        HarnessPluginPage(
+          plugin: plugin, back: { openPluginID = nil }, openSkill: actions.openSkill)
+      } else {
+        let shown = tab ?? catalog.firstTab
+        header
+        HarnessCatalogTabs(catalog: catalog, tab: Binding(get: { shown }, set: { tab = $0 }))
+        if shown == .settings {
+          credential
+          startupSection
+        } else {
+          HarnessCatalogList(
+            catalog: catalog, tab: shown, openSkill: actions.openSkill,
+            openPlugin: { openPluginID = $0.id })
+        }
+      }
+    } else {
+      header
+      credential
+      startupSection
+    }
+  }
+
+  private var header: some View {
     Section {
       HStack(spacing: Theme.Spacing.medium) {
         HarnessGlyph(harness: state.harness, size: 28)
@@ -195,6 +233,9 @@ public struct HarnessDetailView: View {
         .buttonStyle(.borderless)
         .accessibilityIdentifier("harness-detail-back")
     }
+  }
+
+  private var credential: some View {
     Section("Credential") {
       HStack(spacing: Theme.Spacing.medium) {
         Image(systemName: state.credentialWarning ? "exclamationmark.triangle" : "key")
@@ -215,7 +256,6 @@ public struct HarnessDetailView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("harness-detail-credential")
     }
-    startupSection
   }
 
   @ViewBuilder private var startupSection: some View {

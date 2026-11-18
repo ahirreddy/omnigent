@@ -23,7 +23,7 @@ struct ShortcutGuideTests {
       AppShortcuts.commandPalette, AppShortcuts.findSession, AppShortcuts.keyboardShortcuts,
       AppShortcuts.previousSession, AppShortcuts.nextSession, AppShortcuts.send,
       AppShortcuts.sendAlternative, AppShortcuts.stopAgent, AppShortcuts.renameSession,
-      AppShortcuts.addNestedAgent,
+      AppShortcuts.toggleUnread, AppShortcuts.addNestedAgent,
       AppShortcuts.focusComposer, AppShortcuts.jumpToLatest, AppShortcuts.previousMessage,
       AppShortcuts.nextMessage, AppShortcuts.dictate, AppShortcuts.expandEditor,
       AppShortcuts.chooseModel, AppShortcuts.cycleModel, AppShortcuts.cycleEffort,
@@ -57,6 +57,7 @@ struct ShortcutGuideTests {
     #expect(rows["Paste as attachment"] == nil)
     #expect(rows["Find a session by name"] == "⌥⌘S")
     #expect(rows["Rename current session"] == "⌥⌘R")
+    #expect(rows["Mark current session unread or read"] == "⌥⌘U")
     #expect(rows["Open pinned session 1–9 / 10"] == "⌃⌘1–9 / ⌃⌘0")
     #expect(rows["Reconnect"] == "⌥⇧⌘R")
     #expect(rows["Next / previous tab"] == "⇧⌘] / ⇧⌘[ or ⌃Tab / ⌃⇧Tab")

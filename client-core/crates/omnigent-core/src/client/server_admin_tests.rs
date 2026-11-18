@@ -6,8 +6,9 @@ use serde_json::json;
 
 use super::super::SessionError;
 use super::super::test_support::{
-    Reply, RouteTransport, body_json, connected, path_of, query_value,
+    Reply, RouteTransport, body_json, connected, fixture_json, path_of, query_value,
 };
+
 use super::{
     DefaultPolicy, ImportResult, Member, ProviderConnection, ServerSettingsInfo, SharingUpdate,
 };
@@ -19,8 +20,8 @@ fn info_reads_admin_mode_and_known_connections() {
         "/v1/info",
         r#"{"single_user":false,"accounts_enabled":true,"archive_worktree_cleanup":true,
             "login_url":"/login","enabled_connections":["mcp","github","slack","databricks"],
-            "agent_install":true,"agent_detail":true,
-            "features":{"custom_agents_settings_ui":true}}"#,
+            "agent_install":true,"agent_detail":true,"agent_config_edit":true,
+            "session_title_instructions":true}"#,
     );
     assert_eq!(
         block_on(core.server_settings_info()).unwrap(),
@@ -35,6 +36,8 @@ fn info_reads_admin_mode_and_known_connections() {
             has_login_session: true,
             custom_agents: true,
             agent_detail: true,
+            agent_config_edit: true,
+            session_title_instructions: true,
         }
     );
 
@@ -43,15 +46,36 @@ fn info_reads_admin_mode_and_known_connections() {
     let info = block_on(core.server_settings_info()).unwrap();
     assert!(info.single_user && !info.mcp_registry && info.connections.is_empty());
     assert!(!info.archive_worktree_cleanup && !info.has_login_session);
-    assert!(!info.custom_agents && !info.agent_detail);
+    assert!(!info.custom_agents && !info.agent_detail && !info.agent_config_edit);
+    assert!(!info.session_title_instructions);
 
-    // The Custom Agents page also needs `agent_install`.
+    // The retired `custom_agents_settings_ui` flag no longer matters: `agent_install` alone
+    // shows the page, as on the web.
     let core = connected(RouteTransport::local());
     core.transport().ok(
         "/v1/info",
         r#"{"single_user":true,"features":{"custom_agents_settings_ui":true}}"#,
     );
     assert!(!block_on(core.server_settings_info()).unwrap().custom_agents);
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok("/v1/info", r#"{"single_user":true,"agent_install":true}"#);
+    let info = block_on(core.server_settings_info()).unwrap();
+    assert!(info.custom_agents && !info.agent_detail);
+}
+
+#[test]
+fn recorded_main_info_shows_custom_agents_without_the_retired_flag() {
+    let recorded = fixture_json("sessions/recorded-v1-info.json");
+    let info = &recorded["response"];
+    assert!(info["features"].get("custom_agents_settings_ui").is_none());
+    let settings =
+        ServerSettingsInfo::from_values(info, &json!({"user_id": "local", "is_admin": true}))
+            .unwrap();
+    assert!(settings.custom_agents && settings.agent_detail && settings.agent_config_edit);
+    assert!(settings.session_title_instructions);
+    let creation = crate::creation::CreationCapabilities::from_value(info).unwrap();
+    assert!(creation.custom_agents_settings_enabled());
 }
 
 #[test]

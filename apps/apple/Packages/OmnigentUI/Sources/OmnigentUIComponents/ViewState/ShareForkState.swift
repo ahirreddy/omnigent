@@ -48,6 +48,13 @@ nonisolated public struct ShareViewState: Hashable, Sendable {
   public var isSaving: Bool
   /// The last save failed.
   public var errorMessage: String?
+  /// The roles a grant can have: Read alone on a read-only sharing server.
+  public var roles: [ShareGrant.Role] = ShareGrant.Role.allCases
+  /// The server allows read-only sharing only, so the sheet says so.
+  public var isReadOnlySharing = false
+  /// Why this session can't be shared at all (its folder is a home or root directory); new
+  /// grants are then off, and existing ones can still be removed.
+  public var blockedReason: String?
 
   /// Creates share state.
   /// - Parameters:

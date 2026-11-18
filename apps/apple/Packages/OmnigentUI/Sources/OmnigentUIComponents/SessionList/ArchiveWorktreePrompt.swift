@@ -48,7 +48,73 @@ nonisolated public struct ArchiveWorktreeRequest: Hashable, Sendable, Identifiab
   }
 }
 
+/// An archive waiting on a confirmation: some of the sessions' agents are still working.
+nonisolated public struct ArchiveRunningRequest: Hashable, Sendable, Identifiable {
+  /// The sessions being archived.
+  public var sessionIDs: [String]
+  /// How many of them are working: running, waiting on an approval, or with background work.
+  public var runningCount: Int
+
+  /// The sessions, as the dialog's identity.
+  public var id: [String] { sessionIDs }
+
+  /// Creates a request.
+  public init(sessionIDs: [String], runningCount: Int) {
+    self.sessionIDs = sessionIDs
+    self.runningCount = runningCount
+  }
+
+  /// The dialog's title, as the web words it.
+  public var title: String {
+    if sessionIDs.count == 1 { return "Archive running session?" }
+    return runningCount == 1
+      ? "Archive a running session?" : "Archive \(runningCount) running sessions?"
+  }
+
+  /// The dialog's message, as the web words it.
+  public var message: String {
+    if sessionIDs.count == 1 {
+      return "This session's agent is still working. Archiving stops it. You can unarchive the "
+        + "session later."
+    }
+    if runningCount == 1 {
+      return "1 of the \(sessionIDs.count) sessions you're archiving has an agent still working. "
+        + "Archiving stops it. You can unarchive sessions later."
+    }
+    return "\(runningCount) of the \(sessionIDs.count) sessions you're archiving have agents still "
+      + "working. Archiving stops them. You can unarchive sessions later."
+  }
+}
+
 extension View {
+  /// Asks before archiving sessions whose agents are still working; dismissing cancels.
+  /// - Parameters:
+  ///   - request: The pending archive; `nil` hides the dialog.
+  ///   - archive: Called when the user archives anyway.
+  /// - Returns: The view with the dialog.
+  public func archiveRunningPrompt(
+    _ request: Binding<ArchiveRunningRequest?>,
+    archive: @escaping @MainActor (ArchiveRunningRequest) -> Void
+  ) -> some View {
+    background {
+      Color.clear.confirmationDialog(
+        request.wrappedValue?.title ?? "",
+        isPresented: Binding(
+          get: { request.wrappedValue != nil }, set: { if !$0 { request.wrappedValue = nil } }),
+        titleVisibility: .visible, presenting: request.wrappedValue
+      ) { pending in
+        Button("Archive", role: .destructive) {
+          request.wrappedValue = nil
+          archive(pending)
+        }
+        .accessibilityIdentifier("archive-running-confirm")
+        Button("Cancel", role: .cancel) {}
+      } message: { pending in
+        Text(pending.message)
+      }
+    }
+  }
+
   /// Asks whether archiving also deletes the sessions' worktrees, with "Remember my choice".
   /// Dismissing the dialog cancels the archive.
   /// - Parameters:

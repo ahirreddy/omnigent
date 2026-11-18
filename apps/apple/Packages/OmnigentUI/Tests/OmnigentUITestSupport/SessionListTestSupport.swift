@@ -87,6 +87,53 @@
       settle()
     }
 
+    /// The list row that shows `sessionID`, by its row's accessibility frame.
+    func listRow(of sessionID: String) throws -> Int? {
+      let list = try #require(list)
+      let frame = try withAccessibilityTree { try listElementFrame("session-row-\(sessionID)") }
+      let row = list.row(at: list.convert(CGPoint(x: frame.midX, y: frame.midY), from: host))
+      return row < 0 ? nil : row
+    }
+
+    /// The accessibility element with this identifier in a list's rows. Each row hosts its
+    /// content in a hosting view of its own, which the window's accessibility tree doesn't reach,
+    /// so this searches from every hosting view.
+    func listElement(_ identifier: String) throws -> NSObject {
+      var pending: [Any] = allViews.filter {
+        String(describing: Swift.type(of: $0)).contains("HostingView")
+      }
+      var seen = Set<ObjectIdentifier>()
+      while let next = pending.popLast() {
+        guard let element = next as? NSObject, seen.insert(ObjectIdentifier(element)).inserted
+        else { continue }
+        if Self.listAttribute("accessibilityIdentifier", of: element) as? String == identifier {
+          return element
+        }
+        pending.append(
+          contentsOf: Self.listAttribute("accessibilityChildren", of: element) as? [Any] ?? [])
+      }
+      throw OffscreenWindowError.notFound(identifier)
+    }
+
+    /// Where the element is, from the top left of the window's root view.
+    func listElementFrame(_ identifier: String) throws -> CGRect {
+      let frame = Self.listAttribute("accessibilityFrame", of: try listElement(identifier))
+      guard let onScreen = (frame as? NSValue)?.rectValue else {
+        throw OffscreenWindowError.notFound("the frame of \(identifier)")
+      }
+      return host.convert(window.convertFromScreen(onScreen), from: nil)
+    }
+
+    /// Clicks the middle of the element.
+    func clickListElement(_ identifier: String) throws {
+      let frame = try withAccessibilityTree { try listElementFrame(identifier) }
+      try click(CGPoint(x: frame.midX, y: frame.midY))
+    }
+
+    private static func listAttribute(_ name: String, of element: NSObject) -> Any? {
+      element.responds(to: NSSelectorFromString(name)) ? element.value(forKey: name) : nil
+    }
+
     /// Ends a hover over a list row.
     func endRowHover() throws {
       let event = try #require(

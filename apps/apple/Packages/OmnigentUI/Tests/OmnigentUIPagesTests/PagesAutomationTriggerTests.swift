@@ -202,5 +202,41 @@
       defer { screen.close() }
       #expect(screen.buttonFrames.count == 1, "Cancel")
     }
+
+    @Test("an event's help, scope operators, inline value and budget hint come from main's form")
+    func eventDetails() throws {
+      var rich = template
+      rich.eventDetails = [
+        "created": .init(
+          description: "Runs your automation on all new tickets.", scopeLabel: "project",
+          scopePlaceholder: "ES, OPS"),
+        "updated": .init(
+          description: "Runs each time a matching ticket is assigned.", scopeLabel: "project",
+          scopePlaceholder: "ES",
+          target: .init(
+            word: "to", label: "Assignee", placeholder: "me or email", hint: nil,
+            isRequired: false)),
+      ]
+      rich.scopeOperators = [
+        AutomationOption(id: "is", name: "equals"), AutomationOption(id: "in", name: "in"),
+      ]
+      rich.budgetHint = "Update the Omnigent server to allow up to 16,000."
+      let draft = draft()
+      let screen = sheet(draft, template: rich)
+      defer { screen.close() }
+      #expect(try screen.shows("Runs your automation on all new tickets."))
+      #expect(try screen.shows("Update the Omnigent server to allow up to 16,000."))
+      let operation = try #require(screen.popUps.first { $0.title == "equals" })
+      try screen.choose("in", inPopUp: operation)
+      #expect(draft.value.trigger?.scopeOperator == "in")
+      let event = try #require(screen.popUps.first { $0.title == "A ticket is created" })
+      try screen.choose("A ticket is updated", inPopUp: event)
+      #expect(try screen.shows("Runs each time a matching ticket is assigned."))
+      let target = try #require(screen.textFields.first { $0.placeholderString == "me or email" })
+      try screen.replaceText(in: target, with: "me")
+      #expect(draft.value.trigger?.target == "me")
+      try screen.click(try #require(screen.switches.last))
+      #expect(draft.value.trigger?.linkBackTouched == true)
+    }
   }
 #endif

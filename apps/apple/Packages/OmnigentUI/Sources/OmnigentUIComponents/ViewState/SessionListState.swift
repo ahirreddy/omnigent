@@ -205,6 +205,8 @@ public struct SessionListActions {
   public var rename: (@MainActor (SessionSummary, String) -> Void)?
   /// Mark read or unread.
   public var setUnread: (@MainActor (SessionSummary, Bool) -> Void)?
+  /// Whether a session is unread now, read when a command runs rather than when it is drawn.
+  public var isUnread: (@MainActor (String) -> Bool)?
   /// Open the Share sheet.
   public var share: (@MainActor (SessionSummary) -> Void)?
   /// Why Share is unavailable on this server (sharing turned off); it then shows disabled.
@@ -213,6 +215,8 @@ public struct SessionListActions {
   public var fork: (@MainActor (SessionSummary) -> Void)?
   /// Why a session cannot be forked; Fork then shows disabled with the reason.
   public var forkUnavailableReason: (@MainActor (SessionSummary) -> String?)?
+  /// Open a new automation whose runs each start from a copy of the session.
+  public var createAutomation: (@MainActor (SessionSummary) -> Void)?
   /// Move to a project (`nil` removes it from its project).
   public var moveToProject: (@MainActor (SessionSummary, SessionProject?) -> Void)?
   /// Stop the running session.

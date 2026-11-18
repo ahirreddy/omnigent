@@ -4,9 +4,10 @@
 
 use serde_json::{Map, Value, json};
 
-use super::json::{as_object, opt_bool, opt_object, opt_str, req_str};
+use super::json::{as_object, opt_array, opt_bool, opt_object, opt_str, opt_u64, req_str};
 use super::requests::validate_identifier;
 use super::{ClientCore, SessionError};
+use crate::automation_triggers::is_trigger_prompt;
 use crate::http::HttpTransport;
 use crate::schedule::{describe_schedule, parse_iso8601};
 use crate::session_families::{SiblingDestinations, sibling_sessions_enabled};
@@ -46,6 +47,45 @@ pub struct ServerPages {
     pub sibling_sessions: bool,
     /// `sibling_session_destinations`: where a nested agent may start.
     pub sibling_destinations: SiblingDestinations,
+    /// `inbox_items_available`: agents post items to the caller's Inbox.
+    pub inbox_items: bool,
+    /// `scheduled_task_inbox`: the Inbox lists automation failures that made no session.
+    pub automation_inbox: bool,
+    /// `public_sharing_enabled`: a session can be opened to anyone with the link. Only an
+    /// explicit `false` turns it off, as on the web.
+    pub public_sharing: bool,
+    /// `sharing_mode` is `read_only` or `restricted_read_only`: grants are Read only.
+    pub sharing_read_only: bool,
+    /// `sharing_mode` is `restricted_read_only`: home and root folders are not shared either.
+    pub sharing_restricted: bool,
+    /// The `project_repository_creation` feature: New project can start from a repository.
+    pub project_repository_creation: bool,
+    /// `scheduled_task_subhour`: hosts and continued sessions run schedules under an hour.
+    pub automation_subhour: bool,
+    /// `scheduled_task_trigger_headers`: runs drop a trigger prompt's header before dispatch.
+    pub automation_trigger_headers: bool,
+    /// `automation_trigger_poll_minutes`: how often a trigger checks its service (10 when
+    /// the server doesn't say).
+    pub automation_trigger_poll_minutes: u32,
+    /// `session_message_max_chars`: the longest message the server delivers; 0 on older
+    /// servers, which deliver 8,000 characters.
+    pub session_message_max_chars: u32,
+    /// `scheduled_task_mcp_services` and an MCP registry: runs can start with MCP services.
+    pub automation_mcp_services: bool,
+    /// `scheduled_task_source_sessions`: an automation can start each run from a session copy.
+    pub automation_source_sessions: bool,
+    /// `scheduled_task_sharing` on a multi-user server: automations can be shared.
+    pub automation_sharing: bool,
+    /// `scheduled_task_shared_with_me` on a multi-user server: the Shared with me list.
+    pub automation_shared_with_me: bool,
+    /// `scheduled_task_run_pull_requests`: the PRs each run created or worked on.
+    pub automation_run_pull_requests: bool,
+    /// `scheduled_task_harness_settings`: every native harness takes a permission mode.
+    pub automation_harness_settings: bool,
+    /// `scheduled_task_approval_skipping_modes`: modes that skip approval are accepted.
+    pub automation_approval_skipping_modes: bool,
+    /// `session_create_permission_modes`: a trigger's workers can take a permission mode.
+    pub session_create_permission_modes: bool,
 }
 
 impl ServerPages {
@@ -64,8 +104,28 @@ impl ServerPages {
         };
         let session_modes = opt_bool(object, "scheduled_task_session_modes")?.unwrap_or(false);
         let single_user = opt_bool(object, "single_user")?.unwrap_or(false);
-        let sharing_off = opt_str(object, "sharing_mode")?.as_deref() == Some("off");
+        let sharing_mode = opt_str(object, "sharing_mode")?;
+        let sharing_off = sharing_mode.as_deref() == Some("off");
+        let sharing_restricted = sharing_mode.as_deref() == Some("restricted_read_only");
+        let flag =|name: &str| opt_bool(object, name).map(|flag| flag.unwrap_or(false));
+        let count = |name: &str| {
+            opt_u64(object, name).map(|value| value.map(|value| u32::try_from(value).unwrap_or(u32::MAX)))
+        };
+        let mcp_registry = opt_array(object, "enabled_connections")?
+            .is_some_and(|connections| connections.iter().any(|entry| entry.as_str() == Some("mcp")));
         Ok(Self {
+            automation_subhour: flag("scheduled_task_subhour")?,
+            automation_trigger_headers: flag("scheduled_task_trigger_headers")?,
+            automation_trigger_poll_minutes: count("automation_trigger_poll_minutes")?.unwrap_or(10),
+            session_message_max_chars: count("session_message_max_chars")?.unwrap_or(0),
+            automation_mcp_services: flag("scheduled_task_mcp_services")? && mcp_registry,
+            automation_source_sessions: flag("scheduled_task_source_sessions")?,
+            automation_sharing: flag("scheduled_task_sharing")? && !single_user,
+            automation_shared_with_me: flag("scheduled_task_shared_with_me")? && !single_user,
+            automation_run_pull_requests: flag("scheduled_task_run_pull_requests")?,
+            automation_harness_settings: flag("scheduled_task_harness_settings")?,
+            automation_approval_skipping_modes: flag("scheduled_task_approval_skipping_modes")?,
+            session_create_permission_modes: flag("session_create_permission_modes")?,
             automations: opt_bool(object, "automations_enabled")?.unwrap_or(false),
             automation_session_modes: session_modes,
             usage: feature("usage_page")?,
@@ -80,6 +140,12 @@ impl ServerPages {
             canvas: feature("canvas")?,
             sibling_sessions: sibling_sessions_enabled(object),
             sibling_destinations: SiblingDestinations::from_info(object),
+            inbox_items: opt_bool(object, "inbox_items_available")?.unwrap_or(false),
+            automation_inbox: opt_bool(object, "scheduled_task_inbox")?.unwrap_or(false),
+            public_sharing: opt_bool(object, "public_sharing_enabled")? != Some(false),
+            sharing_read_only: sharing_restricted || sharing_mode.as_deref() == Some("read_only"),
+            sharing_restricted,
+            project_repository_creation: feature("project_repository_creation")?,
         })
     }
 }
@@ -145,6 +211,19 @@ pub struct Automation {
     pub runs_in_sandbox: bool,
     /// The project every run's session is filed into.
     pub project_id: Option<String>,
+    /// It continues one session whose prompt a trigger template rendered: it runs when new
+    /// items match, so it shows no schedule, next run or Run now.
+    pub is_trigger: bool,
+    /// The MCP services every run's session starts with.
+    pub mcp_services: Vec<String>,
+    /// The cost limit per run in USD, as decimal text (`2.5`); `None` is no limit.
+    pub max_cost_usd: Option<String>,
+    /// The session copy every run starts from.
+    pub source_session_id: Option<String>,
+    /// Someone else shared it with the caller, who may only read it.
+    pub shared_with_me: bool,
+    /// Whose it is, for a shared one: the owner's name, else their id.
+    pub owner_name: String,
 }
 
 impl Automation {
@@ -194,6 +273,12 @@ pub struct AutomationDraft {
     pub permission_mode: Option<String>,
     /// A continuing automation's next run starts a new session.
     pub start_new_session: bool,
+    /// The MCP services every run starts with; `None` leaves them as they are.
+    pub mcp_services: Option<Vec<String>>,
+    /// The cost limit per run in USD as typed; blank is no limit.
+    pub max_cost_usd: String,
+    /// Create the automation from this session: each run starts from a copy of it.
+    pub source_session_id: Option<String>,
 }
 
 /// What one run of an automation did.
@@ -267,6 +352,146 @@ pub struct AutomationRun {
     pub failure_reason: Option<String>,
     /// Its session has news the caller has not seen.
     pub unread: bool,
+    /// "Session cost $1.23": the session's current recorded total.
+    pub session_cost: Option<String>,
+    /// Its session waits on an approval or a question.
+    pub needs_approval: bool,
+    /// The server's description of the failure, e.g. a sandbox provider's recovery steps.
+    pub error_detail: Option<String>,
+    /// It succeeded but its session is still working.
+    pub session_running: bool,
+}
+
+/// The automations other users shared with the caller, one page at a time.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SharedAutomationsPage {
+    /// The page, each read-only.
+    pub automations: Vec<Automation>,
+    /// The next page's cursor; a short page can still have one.
+    pub next_cursor: Option<String>,
+}
+
+/// A PR's state as its host last fetched it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RunPullRequestStatus {
+    /// Open.
+    Open,
+    /// An open draft.
+    Draft,
+    /// Merged.
+    Merged,
+    /// Closed without merging.
+    Closed,
+    /// Not fetched yet.
+    Unknown,
+}
+
+impl RunPullRequestStatus {
+    /// The summary's word: `open`, `draft`, `merged`, `closed`, `unknown`.
+    #[must_use]
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Draft => "draft",
+            Self::Merged => "merged",
+            Self::Closed => "closed",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    /// The list's label: "Open", "Closed without merging".
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Open => "Open",
+            Self::Draft => "Draft",
+            Self::Merged => "Merged",
+            Self::Closed => "Closed without merging",
+            Self::Unknown => "Status unknown",
+        }
+    }
+}
+
+/// One PR a run created or worked on.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RunPullRequest {
+    /// Its page.
+    pub url: String,
+    /// `owner/repo`.
+    pub repository: String,
+    /// `#212`, with the provider's prefix.
+    pub number: String,
+    /// Title, when known.
+    pub title: Option<String>,
+    /// Its state.
+    pub status: RunPullRequestStatus,
+    /// The run opened it, rather than worked on it.
+    pub created_by_run: bool,
+}
+
+/// The PRs one run created or worked on.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RunPullRequests {
+    /// The run.
+    pub run_id: String,
+    /// Its PRs.
+    pub pull_requests: Vec<RunPullRequest>,
+}
+
+/// One line for a run's PRs: `PR #212 merged`, or `PRs: 2 merged, 1 closed`.
+#[must_use]
+pub fn run_pull_requests_summary(pull_requests: &[RunPullRequest]) -> String {
+    if let [only] = pull_requests {
+        return if only.status == RunPullRequestStatus::Unknown {
+            format!("PR {}", only.number)
+        } else {
+            format!("PR {} {}", only.number, only.status.word())
+        };
+    }
+    let parts: Vec<String> = [
+        RunPullRequestStatus::Open,
+        RunPullRequestStatus::Draft,
+        RunPullRequestStatus::Merged,
+        RunPullRequestStatus::Closed,
+        RunPullRequestStatus::Unknown,
+    ]
+    .into_iter()
+    .filter_map(|status| {
+        let count = pull_requests
+            .iter()
+            .filter(|pr| pr.status == status)
+            .count();
+        (count > 0).then(|| format!("{count} {}", status.word()))
+    })
+    .collect();
+    format!("PRs: {}", parts.join(", "))
+}
+
+/// Session spend as the web writes it: `$x.xx`, or `<$0.01` under a cent.
+#[must_use]
+pub fn format_cost_usd(cost: f64) -> String {
+    if cost > 0.0 && cost < 0.01 {
+        "<$0.01".to_owned()
+    } else {
+        format!("${cost:.2}")
+    }
+}
+
+/// The cost limit typed into the editor: `Ok(None)` when blank, or the problem.
+///
+/// # Errors
+///
+/// The web's message for text that isn't a number greater than zero.
+pub fn parse_cost_limit(text: &str) -> Result<Option<f64>, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    text.parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .map(Some)
+        .ok_or_else(|| "Enter a cost limit greater than zero, or leave it blank.".to_owned())
 }
 
 /// The automations page filter.
@@ -318,6 +543,17 @@ pub fn arrange_automations(
     matches
 }
 
+fn opt_number(object: &Map<String, Value>, key: &str) -> Result<Option<f64>, String> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(number)) => number
+            .as_f64()
+            .map(Some)
+            .ok_or_else(|| format!("`{key}` is not a number")),
+        Some(_) => Err(format!("`{key}` is not a number")),
+    }
+}
+
 fn opt_i64(object: &Map<String, Value>, key: &str) -> Result<Option<i64>, String> {
     match object.get(key) {
         None | Some(Value::Null) => Ok(None),
@@ -349,15 +585,41 @@ fn automation_from(value: &Value) -> Result<Automation, String> {
             parse_iso8601(&text).ok_or_else(|| format!("`next_run_at` {text:?} is not a date"))?,
         ),
     };
+    let prompt = opt_str(object, "prompt")?.unwrap_or_default();
+    let continues_session = opt_str(object, "session_mode")?.as_deref() == Some("continue");
+    let mcp_services = opt_array(object, "mcp_services")?
+        .map(|services| {
+            services
+                .iter()
+                .map(|service| {
+                    service
+                        .as_str()
+                        .map(str::to_owned)
+                        .ok_or_else(|| "`mcp_services` holds a non-string".to_owned())
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let owner_name = opt_str(object, "owner_display_name")?
+        .filter(|name| !name.is_empty())
+        .or(opt_str(object, "owner_user_id")?.filter(|id| !id.is_empty()))
+        .unwrap_or_else(|| "another user".to_owned());
     Ok(Automation {
         id: req_str(object, "id")?,
         name: req_str(object, "name")?,
-        prompt: opt_str(object, "prompt")?.unwrap_or_default(),
+        is_trigger: continues_session && is_trigger_prompt(&prompt),
+        prompt,
         schedule_text: describe_schedule(&rrule),
         rrule,
         agent_id: opt_str(object, "agent_id")?.unwrap_or_default(),
         timezone: opt_str(object, "timezone")?.unwrap_or_else(|| "UTC".to_owned()),
-        continues_session: opt_str(object, "session_mode")?.as_deref() == Some("continue"),
+        continues_session,
+        mcp_services,
+        max_cost_usd: opt_number(object, "max_cost_usd")?.map(|cost| cost.to_string()),
+        source_session_id: opt_str(object, "source_session_id")?,
+        shared_with_me: opt_str(object, "viewer_role")?.as_deref() == Some("viewer"),
+        owner_name,
         state,
         next_run_at,
         last_run_at: opt_i64(object, "last_run_at")?,
@@ -399,11 +661,18 @@ const fn session_mode(continues: bool) -> &'static str {
 /// carrying only what changed beyond the always-sent name, prompt, rule and zone.
 fn draft_body(draft: &AutomationDraft, saved: Option<&Automation>) -> Result<Value, SessionError> {
     let name = draft.name.trim();
-    if name.is_empty() || draft.prompt.trim().is_empty() || draft.agent_id.is_empty() {
+    // A session copy carries the work, so its prompt only adds instructions.
+    let from_session = draft.source_session_id.is_some()
+        || saved.is_some_and(|saved| saved.source_session_id.is_some());
+    if name.is_empty()
+        || (draft.prompt.trim().is_empty() && !from_session)
+        || draft.agent_id.is_empty()
+    {
         return Err(rejected(
             "Give the automation a name, a prompt and an agent.",
         ));
     }
+    let max_cost = parse_cost_limit(&draft.max_cost_usd).map_err(|message| rejected(&message))?;
     let host = filled(draft.host_id.as_ref()).filter(|_| !draft.runs_in_sandbox);
     let workspace = filled(draft.workspace.as_ref()).filter(|_| !draft.runs_in_sandbox);
     if workspace.is_some() && host.is_none() {
@@ -414,9 +683,40 @@ fn draft_body(draft: &AutomationDraft, saved: Option<&Automation>) -> Result<Val
     }
     let mut body = Map::new();
     body.insert("name".into(), json!(name));
-    body.insert("prompt".into(), json!(draft.prompt.trim()));
+    // A rendered template prompt is sent as it is; a typed one trimmed. An edit leaves an
+    // unchanged prompt out, so the server doesn't re-check one it already holds.
+    let prompt = if is_trigger_prompt(&draft.prompt) {
+        draft.prompt.as_str()
+    } else {
+        draft.prompt.trim()
+    };
+    if saved.is_none_or(|saved| saved.prompt != prompt && saved.prompt.trim() != prompt) {
+        body.insert("prompt".into(), json!(prompt));
+    }
     body.insert("rrule".into(), json!(draft.rrule));
     body.insert("timezone".into(), json!(draft.timezone));
+    let saved_cost = saved
+        .and_then(|saved| saved.max_cost_usd.as_deref())
+        .and_then(|cost| cost.parse::<f64>().ok());
+    if saved.is_none() {
+        if let Some(cost) = max_cost {
+            body.insert("max_cost_usd".into(), json!(cost));
+        }
+    } else if max_cost != saved_cost {
+        // `null` removes the limit for future runs.
+        body.insert("max_cost_usd".into(), json!(max_cost));
+    }
+    if let Some(services) = &draft.mcp_services {
+        let unchanged = saved.is_some_and(|saved| {
+            saved.mcp_services.len() == services.len()
+                && services
+                    .iter()
+                    .all(|service| saved.mcp_services.contains(service))
+        });
+        if !unchanged && (saved.is_some() || !services.is_empty()) {
+            body.insert("mcp_services".into(), json!(services));
+        }
+    }
     // The server rejects clearing a pinned host or folder, so only new pins are sent.
     if let Some(host) = host {
         body.insert("host_id".into(), json!(host));
@@ -441,6 +741,9 @@ fn create_fields(draft: &AutomationDraft, body: &mut Map<String, Value>) {
     }
     if let Some(project) = filled(draft.project_id.as_ref()) {
         body.insert("project_id".into(), json!(project));
+    }
+    if let Some(source) = filled(draft.source_session_id.as_ref()) {
+        body.insert("source_session_id".into(), json!(source));
     }
     if draft.sends_overrides {
         for (key, value) in overrides(draft) {
@@ -507,10 +810,14 @@ fn run_from(value: &Value) -> Result<AutomationRun, String> {
             | AutomationRunStatus::Incomplete
     )
     .then(|| describe_run_failure(error_code.as_deref(), &status));
+    // The server's detail explains a failure; on another run it says nothing new.
+    let error_detail = opt_str(object, "error_detail")?
+        .filter(|detail| failure.is_some() && !detail.trim().is_empty());
     let (failure_stage, failure_reason) = match failure {
         Some((stage, reason)) => (stage.map(str::to_owned), Some(reason.to_owned())),
         None => (None, None),
     };
+    let approvals = opt_u64(object, "conversation_pending_approvals")?.unwrap_or(0);
     // As the web's `isConversationUnread` with no local mark: the server's flag, or news since
     // the caller last looked once no turn is running.
     let updated_at = opt_i64(object, "conversation_updated_at")?;
@@ -519,7 +826,9 @@ fn run_from(value: &Value) -> Result<AutomationRun, String> {
     let unread = session_id.is_some()
         && updated_at.is_some()
         && (opt_bool(object, "viewer_unread")?.unwrap_or(false)
-            || (session_status.is_some_and(|status| status != "running")
+            || (session_status
+                .as_deref()
+                .is_some_and(|status| status != "running")
                 && last_seen
                     .zip(updated_at)
                     .is_some_and(|(seen, updated)| updated > seen)));
@@ -531,6 +840,13 @@ fn run_from(value: &Value) -> Result<AutomationRun, String> {
         duration: fired_at
             .zip(finished_at)
             .and_then(|(fired, finished)| format_run_duration(fired, finished)),
+        session_cost: opt_number(object, "session_cost_usd")?
+            .map(|cost| format!("Session cost {}", format_cost_usd(cost))),
+        needs_approval: approvals > 0 && session_id.is_some(),
+        session_running: status == AutomationRunStatus::Succeeded
+            && session_id.is_some()
+            && session_status.as_deref() == Some("running"),
+        error_detail,
         session_id,
         failure_stage,
         failure_reason,
@@ -569,7 +885,15 @@ pub fn describe_run_failure(
         "owner_deleted" => ("Owner", "The owner's account was removed."),
         "owner_identity_unavailable" => (
             "Owner",
-            "Couldn't act as the owner. The next run tries again.",
+            "Couldn't act as the owner. A recurring automation tries again at its next run.",
+        ),
+        "permission_harness_unresolved" => (
+            "Permissions",
+            "Couldn't load the agent's permission settings. Restore access to the agent and retry.",
+        ),
+        "permission_mode_unsupported" => (
+            "Permissions",
+            "The saved permission isn't supported by this agent. Edit the automation to change or clear it.",
         ),
         "reauthorization_required" => (
             "Owner",
@@ -622,6 +946,81 @@ pub fn describe_run_failure(
         }
     };
     (Some(known.0), known.1)
+}
+
+/// One person or group an automation is shared with, at read access.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AutomationGrant {
+    /// The grantee's id or email.
+    pub user_id: String,
+    /// Their name, as the server gives it.
+    pub display_name: String,
+}
+
+/// The only level an automation can be shared at: read.
+const LEVEL_READ: u8 = 1;
+
+/// The most grant pages read from one automation.
+const MAX_GRANT_PAGES: usize = 10;
+
+fn grant_from(value: &Value) -> Result<AutomationGrant, String> {
+    let object = as_object(value, "permission")?;
+    let user_id = req_str(object, "user_id")?;
+    Ok(AutomationGrant {
+        display_name: opt_str(object, "display_name")?
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| user_id.clone()),
+        user_id,
+    })
+}
+
+/// The web's page of shared automations.
+const SHARED_PAGE_SIZE: u32 = 50;
+
+/// Runs read per page of PRs: the server's most.
+const RUN_PULL_REQUEST_PAGE_SIZE: u32 = 50;
+
+/// Pages of PRs read: as many runs as the history shows.
+const RUN_PULL_REQUEST_PAGES: usize = 2;
+
+fn run_pull_request_from(value: &Value) -> Result<RunPullRequest, String> {
+    let object = as_object(value, "a pull request")?;
+    let open = opt_str(object, "state")?.map(|state| state.to_uppercase());
+    let status = match open.as_deref() {
+        Some("MERGED") => RunPullRequestStatus::Merged,
+        Some("CLOSED") => RunPullRequestStatus::Closed,
+        Some("OPEN") if opt_bool(object, "is_draft")?.unwrap_or(false) => {
+            RunPullRequestStatus::Draft
+        }
+        Some("OPEN") => RunPullRequestStatus::Open,
+        _ => RunPullRequestStatus::Unknown,
+    };
+    let prefix = opt_object(object, "provider_display")?
+        .map(|display| opt_str(display, "number_prefix"))
+        .transpose()?
+        .flatten()
+        .unwrap_or_else(|| "#".to_owned());
+    let number = opt_u64(object, "number")?.ok_or("`number` is missing")?;
+    Ok(RunPullRequest {
+        url: req_str(object, "url")?,
+        repository: opt_str(object, "repository")?.unwrap_or_default(),
+        number: format!("{prefix}{number}"),
+        title: opt_str(object, "title")?.filter(|title| !title.trim().is_empty()),
+        status,
+        created_by_run: opt_str(object, "relationship")?.as_deref() == Some("created"),
+    })
+}
+
+fn run_pull_requests_from(value: &Value) -> Result<RunPullRequests, String> {
+    let object = as_object(value, "a run's pull requests")?;
+    Ok(RunPullRequests {
+        run_id: req_str(object, "run_id")?,
+        pull_requests: opt_array(object, "pull_requests")?
+            .into_iter()
+            .flatten()
+            .map(run_pull_request_from)
+            .collect::<Result<_, _>>()?,
+    })
 }
 
 fn malformed(path: &str) -> impl Fn(String) -> SessionError + '_ {
@@ -808,6 +1207,219 @@ impl<T: HttpTransport> ClientCore<T> {
         let result = self.automation_write("DELETE", id, "").await;
         self.dispatch();
         result
+    }
+
+    /// One page of the automations other users shared with the caller
+    /// (`GET /v1/scheduled-tasks/shared`), after `after`'s cursor.
+    ///
+    /// # Errors
+    ///
+    /// The read errors; [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn shared_automations(
+        &self,
+        after: Option<&str>,
+    ) -> Result<SharedAutomationsPage, SessionError> {
+        let path = "/v1/scheduled-tasks/shared";
+        let mut query = vec![("limit", SHARED_PAGE_SIZE.to_string())];
+        if let Some(after) = after {
+            query.push(("after", after.to_owned()));
+        }
+        let result = self.get_json(path, &query).await;
+        self.dispatch();
+        let value = result?;
+        let decode = || -> Result<SharedAutomationsPage, String> {
+            let object = as_object(&value, path)?;
+            let automations = opt_array(object, "scheduled_tasks")?
+                .map(|rows| rows.iter().map(automation_from).collect::<Result<Vec<_>, _>>())
+                .transpose()?
+                .unwrap_or_default()
+                .into_iter()
+                // The list holds other users' automations, whatever an older row says.
+                .map(|automation| Automation {
+                    shared_with_me: true,
+                    ..automation
+                })
+                .collect();
+            Ok(SharedAutomationsPage {
+                automations,
+                next_cursor: opt_str(object, "next_cursor")?,
+            })
+        };
+        decode().map_err(malformed(path))
+    }
+
+    /// The PRs the newest runs of `id` created or worked on
+    /// (`GET /v1/scheduled-tasks/{id}/run-pull-requests`), two pages of 50 runs at most.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; the read errors; [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn automation_run_pull_requests(
+        &self,
+        id: &str,
+    ) -> Result<Vec<RunPullRequests>, SessionError> {
+        let result = async {
+            validate_identifier(id)?;
+            let path = format!("/v1/scheduled-tasks/{id}/run-pull-requests");
+            let mut runs = Vec::new();
+            let mut after: Option<String> = None;
+            for _ in 0..RUN_PULL_REQUEST_PAGES {
+                let mut query = vec![("limit", RUN_PULL_REQUEST_PAGE_SIZE.to_string())];
+                if let Some(cursor) = &after {
+                    query.push(("after", cursor.clone()));
+                }
+                let value = self.get_json(&path, &query).await?;
+                let object = as_object(&value, &path).map_err(malformed(&path))?;
+                for row in opt_array(object, "runs").map_err(malformed(&path))?.into_iter().flatten() {
+                    runs.push(run_pull_requests_from(row).map_err(malformed(&path))?);
+                }
+                match opt_str(object, "next_cursor").map_err(malformed(&path))? {
+                    Some(cursor) if after.as_deref() != Some(cursor.as_str()) => {
+                        after = Some(cursor);
+                    }
+                    _ => break,
+                }
+            }
+            Ok(runs)
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Everyone automation `id` is shared with (`GET /v1/scheduled-tasks/{id}/permissions`),
+    /// following `next_cursor`; only its owner may list them. The owner isn't listed.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; the read errors; [`SessionError::MalformedResponse`] and
+    /// [`SessionError::InvalidPagination`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn automation_grants(&self, id: &str) -> Result<Vec<AutomationGrant>, SessionError> {
+        let result = async {
+            validate_identifier(id)?;
+            let path = format!("/v1/scheduled-tasks/{id}/permissions");
+            let mut grants = Vec::new();
+            let mut cursors = std::collections::BTreeSet::new();
+            let mut after: Option<String> = None;
+            for _ in 0..MAX_GRANT_PAGES {
+                let query: Vec<(&str, String)> =
+                    after.iter().map(|cursor| ("after", cursor.clone())).collect();
+                let value = self.get_json(&path, &query).await?;
+                let object = as_object(&value, &path).map_err(malformed(&path))?;
+                for row in opt_array(object, "permissions")
+                    .map_err(malformed(&path))?
+                    .ok_or_else(|| malformed(&path)("`permissions` is missing".into()))?
+                {
+                    let level = as_object(row, "permission")
+                        .and_then(|grant| opt_u64(grant, "level"))
+                        .map_err(malformed(&path))?;
+                    // The owner's own grant can't be changed here.
+                    if level.is_some_and(|level| level >= 4) {
+                        continue;
+                    }
+                    grants.push(grant_from(row).map_err(malformed(&path))?);
+                }
+                match opt_str(object, "next_cursor").map_err(malformed(&path))? {
+                    None => return Ok(grants),
+                    Some(cursor) if cursors.insert(cursor.clone()) => after = Some(cursor),
+                    Some(_) => return Err(SessionError::InvalidPagination),
+                }
+            }
+            Ok(grants)
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Shares automation `id` with `user_id` at read access, as the web's dialog does; its
+    /// runs' sessions follow. Never retried.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier` before any request, and the write errors: `Rejected` with the
+    /// server's reason (the owner, the public, a sharing policy), `Forbidden`.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn grant_automation_access(&self, id: &str, user_id: &str) -> Result<(), SessionError> {
+        let result = async {
+            validate_identifier(id)?;
+            super::share::validate_grantee(user_id)?;
+            let path = format!("/v1/scheduled-tasks/{id}/permissions");
+            let body = json!({"user_id": user_id.trim(), "level": LEVEL_READ});
+            self.write_json("PUT", &path, &body).await.map(|_| ())
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Stops sharing automation `id` with `user_id`. Never retried.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier` before any request, and the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn revoke_automation_access(
+        &self,
+        id: &str,
+        user_id: &str,
+    ) -> Result<(), SessionError> {
+        let result = async {
+            validate_identifier(id)?;
+            super::share::validate_grantee(user_id)?;
+            let path = format!("/v1/scheduled-tasks/{id}/permissions/{}", user_id.trim());
+            self.write(self.prepare("DELETE", &path, &[], None)?)
+                .await
+                .map(|_| ())
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// The hosts that deliver long session messages (`long_session_messages_supported` in
+    /// `GET /v1/hosts`), so a trigger polling there gets the full budget.
+    ///
+    /// # Errors
+    ///
+    /// The read errors; [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn long_message_hosts(&self) -> Result<Vec<String>, SessionError> {
+        let path = "/v1/hosts";
+        let result = self.host_rows().await;
+        self.dispatch();
+        let mut hosts = Vec::new();
+        for row in &result? {
+            let object = as_object(row, "host").map_err(malformed(path))?;
+            if opt_bool(object, "long_session_messages_supported")
+                .map_err(malformed(path))?
+                .unwrap_or(false)
+            {
+                hosts.push(req_str(object, "host_id").map_err(malformed(path))?);
+            }
+        }
+        Ok(hosts)
     }
 
     #[allow(

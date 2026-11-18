@@ -50,12 +50,28 @@ fn a_catalog_carries_nested_agents_and_reads_a_missing_destination_as_any_host()
             sibling_sessions: true,
             sibling_destinations:
                 omnigent_core::session_families::SiblingDestinations::CurrentHostOrNewSandbox,
+            mcp_registry: true,
             ..core::CreationCapabilities::default()
         },
         ..core::CreationCatalog::default()
     };
     let mapped = CreationCatalog::from(on_core.clone());
-    assert!(mapped.sibling_sessions);
+    assert!(mapped.sibling_sessions && mapped.mcp_registry);
+    assert_eq!(
+        crate::creation::launch_mcp_services(
+            vec!["gone".into(), "docs".into(), "docs".into()],
+            vec!["docs".into(), "wiki".into()]
+        ),
+        ["docs"]
+    );
+    assert_eq!(
+        crate::creation::launch_mcp_problem(vec!["docs".into()], true, false).as_deref(),
+        Some("Loading MCP services\u{2026}")
+    );
+    assert_eq!(
+        crate::creation::launch_mcp_problem(Vec::new(), true, false),
+        None
+    );
     assert_eq!(
         mapped.sibling_session_destinations,
         Some(crate::sessions::SiblingSessionDestinations::CurrentHostOrNewSandbox)
@@ -104,7 +120,9 @@ fn a_selection_keeps_every_field() {
         plan_mode: true,
         project_id: Some("p".into()),
         smart_routing: true,
+        mcp_registry_services: vec!["docs".into()],
     });
+    assert_eq!(on_core.mcp_registry_services, ["docs"]);
     assert_eq!(on_core.host_id, "h");
     assert_eq!(on_core.agent_id, "a");
     assert_eq!(on_core.workspace, "/w");

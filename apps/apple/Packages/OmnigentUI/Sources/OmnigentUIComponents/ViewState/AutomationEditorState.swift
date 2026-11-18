@@ -1,4 +1,4 @@
-public import Foundation
+import Foundation
 
 /// The automation editor's fields. Empty ids mean "none".
 nonisolated public struct AutomationDraftState: Hashable, Sendable {
@@ -30,8 +30,22 @@ nonisolated public struct AutomationDraftState: Hashable, Sendable {
   public var permissionMode = ""
   /// A continuing automation's next run starts a new session.
   public var startNewSession = false
-  /// A Jira, Slack or GitHub trigger whose fields write the prompt (new automations only).
+  /// A trigger whose fields write the prompt: a new one, or a saved one whose header reopens
+  /// its form.
   public var trigger: AutomationTriggerDraft?
+  /// The generated template text around an older trigger's instructions, which ``prompt``
+  /// then holds alone. Never shown; saving puts the instructions back into it.
+  public var systemPrompt: String?
+  /// It is a trigger, so its schedule is the polling interval and stays hidden.
+  public var isTrigger = false
+  /// The cost limit per run in USD as typed; empty is no limit.
+  public var maxCost = ""
+  /// The MCP services every run starts with.
+  public var mcpServices: [String] = []
+  /// Create it from this session: each run starts from a copy of it.
+  public var sourceSessionID: String?
+  /// That session's title, for the form.
+  public var sourceSessionTitle: String?
 
   /// Creates the fields.
   public init(
@@ -50,117 +64,9 @@ nonisolated public struct AutomationDraftState: Hashable, Sendable {
   /// Whether the fields the form itself checks are filled; the context adds the server's rules.
   public var canSave: Bool {
     !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && (trigger != nil || !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      && (trigger != nil || sourceSessionID != nil
+        || !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
       && !agentID.isEmpty
-  }
-}
-
-/// A trigger's fields: what to watch, which items match, and what each session does.
-nonisolated public struct AutomationTriggerDraft: Hashable, Sendable {
-  /// The source's id (`jira`, `slack`, `github`).
-  public var source: String
-  /// One of the template's event ids.
-  public var event: String
-  /// Project keys, channels or `owner/repo`s, comma-separated.
-  public var scope = ""
-  /// The condition rows.
-  public var conditions: [AutomationTriggerCondition] = []
-  /// What each started session does with its item.
-  public var instructions = ""
-  /// Post the session link on the item.
-  public var linkBack = true
-
-  /// Creates the fields.
-  public init(source: String, event: String) {
-    self.source = source
-    self.event = event
-  }
-}
-
-/// One "and <field> <operator> <value>" row of a trigger.
-nonisolated public struct AutomationTriggerCondition: Hashable, Sendable, Identifiable {
-  /// Identifies the row while it is edited.
-  public var id = UUID()
-  /// A field id of the template.
-  public var field: String
-  /// An operator id of that field.
-  public var operation: String
-  /// The value; unused for valueless operators.
-  public var value = ""
-
-  /// Creates a row.
-  public init(field: String, operation: String) {
-    self.field = field
-    self.operation = operation
-  }
-}
-
-/// A source's trigger template, as the editor shows it.
-nonisolated public struct AutomationTriggerTemplate: Hashable, Sendable {
-  /// A comparison a field offers.
-  public struct Operation: Hashable, Sendable, Identifiable {
-    /// Id.
-    public var id: String
-    /// Label, e.g. "is unassigned".
-    public var title: String
-    /// The row has no value.
-    public var isValueless: Bool
-
-    /// Creates an operation.
-    public init(id: String, title: String, isValueless: Bool) {
-      self.id = id
-      self.title = title
-      self.isValueless = isValueless
-    }
-  }
-
-  /// A field a row can test.
-  public struct Field: Hashable, Sendable, Identifiable {
-    /// Id.
-    public var id: String
-    /// Label.
-    public var title: String
-    /// Its comparisons, the default first.
-    public var operations: [Operation]
-    /// Placeholder.
-    public var placeholder: String
-
-    /// Creates a field.
-    public init(id: String, title: String, operations: [Operation], placeholder: String) {
-      self.id = id
-      self.title = title
-      self.operations = operations
-      self.placeholder = placeholder
-    }
-  }
-
-  /// Events (id, label), the default first.
-  public var events: [AutomationOption]
-  /// Words between the event and the scope, e.g. "in project".
-  public var scopeLabel: String
-  /// The scope's placeholder.
-  public var scopePlaceholder: String
-  /// Condition fields.
-  public var fields: [Field]
-  /// The instructions' placeholder.
-  public var instructionsPlaceholder: String
-  /// The link-back toggle's label.
-  public var linkBackLabel: String
-  /// The longest instructions, in characters.
-  public var maxInstructions: Int
-
-  /// Creates a template.
-  public init(
-    events: [AutomationOption], scopeLabel: String, scopePlaceholder: String, fields: [Field],
-    instructionsPlaceholder: String, linkBackLabel: String, maxInstructions: Int
-  ) {
-    self.events = events
-    self.scopeLabel = scopeLabel
-    self.scopePlaceholder = scopePlaceholder
-    self.fields = fields
-    self.instructionsPlaceholder = instructionsPlaceholder
-    self.linkBackLabel = linkBackLabel
-    self.maxInstructions = maxInstructions
   }
 }
 
@@ -178,7 +84,24 @@ nonisolated public struct AutomationOption: Hashable, Sendable, Identifiable {
   }
 }
 
-/// The model, effort and permission choices of an agent that takes them (Claude Code).
+/// An MCP service a run can start with.
+nonisolated public struct AutomationMcpOption: Hashable, Sendable, Identifiable {
+  /// Id, the value saved.
+  public var id: String
+  /// Title.
+  public var title: String
+  /// The caller is signed in, so an unattended run can use it.
+  public var isConnected: Bool
+
+  /// Creates an option.
+  public init(id: String, title: String, isConnected: Bool) {
+    self.id = id
+    self.title = title
+    self.isConnected = isConnected
+  }
+}
+
+/// The model, effort and permission choices of the chosen agent's harness.
 nonisolated public struct AutomationOverrideOptions: Hashable, Sendable {
   /// Models.
   public var models: [AutomationOption]
@@ -186,6 +109,10 @@ nonisolated public struct AutomationOverrideOptions: Hashable, Sendable {
   public var efforts: [AutomationOption]
   /// Permission modes.
   public var permissionModes: [AutomationOption]
+  /// The harness takes a model: models show even while the host lists none.
+  public var takesModel = true
+  /// Why no models are listed, e.g. "Connect your host to load models.".
+  public var catalogMessage: String?
 
   /// Creates the options.
   public init(
@@ -223,6 +150,10 @@ public struct AutomationEditorContext {
   public var overrides: AutomationOverrideOptions?
   /// The server runs custom schedules and run-count endings (`automations_v2`).
   public var anchoredScheduling = false
+  /// The minutes an Interval schedule may repeat every here.
+  public var minuteRange: ClosedRange<Int> = 60...21_960
+  /// Custom schedules offer minutes: the server and where runs go allow under an hour.
+  public var offersMinutes = false
   /// Why the schedule can't be saved.
   public var scheduleProblem: String?
   /// What else blocks Save, e.g. "Pick a host before pinning a workspace.".
@@ -235,6 +166,20 @@ public struct AutomationEditorContext {
   public var trigger: AutomationTriggerTemplate?
   /// The rendered trigger prompt; empty until its fields are complete.
   public var triggerPrompt = ""
+  /// Why the cost limit can't be saved.
+  public var costLimitProblem: String?
+  /// The MCP services runs can start with; none hides the picker.
+  public var mcpServices: [AutomationMcpOption] = []
+  /// Why the chosen MCP services can't be saved, e.g. one isn't signed in.
+  public var mcpProblem: String?
+  /// A trigger's own service in the MCP catalog, which it reads its items through.
+  public var triggerMcp: AutomationMcpOption?
+  /// Switches a trigger's event, clearing what the new event reads differently.
+  public var switchTriggerEvent: (@MainActor (String) -> Void)?
+  /// A trigger's hidden schedule doesn't fit where it runs now.
+  public var triggerScheduleUnsupported = false
+  /// Replaces a trigger's hidden schedule with one that fits.
+  public var useSupportedTriggerSchedule: (@MainActor () -> Void)?
 
   /// Creates a context.
   public init(

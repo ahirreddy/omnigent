@@ -279,10 +279,15 @@ func pressShortcut<Content: View>(
   return handled
 }
 
-/// Picks the `index`th segment of the screen's only segmented control, as a click on it does.
+/// Picks the `index`th segment of the screen's `control`th segmented control (in view order),
+/// as a click on it does.
 @MainActor
-func chooseSegment<Content: View>(_ index: Int, on screen: OffscreenWindow<Content>) throws {
-  let control = try #require(screen.allViews.compactMap { $0 as? NSSegmentedControl }.first)
+func chooseSegment<Content: View>(
+  _ index: Int, on screen: OffscreenWindow<Content>, control position: Int = 0
+) throws {
+  let controls = screen.allViews.compactMap { $0 as? NSSegmentedControl }
+  let control = try #require(controls.dropFirst(position).first)
+  try #require(index < control.segmentCount, "the control has \(control.segmentCount) segments")
   control.selectedSegment = index
   control.sendAction(control.action, to: control.target)
 }

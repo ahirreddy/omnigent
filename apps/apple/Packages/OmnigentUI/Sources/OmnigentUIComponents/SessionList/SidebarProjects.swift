@@ -63,29 +63,26 @@ struct ProjectFolder<Row: View>: View {
   var body: some View {
     DisclosureGroup(isExpanded: $isExpanded) {
       if sessions.isEmpty {
-        if pages.isLoading || (pages.load != nil && !pages.isLoaded) {
-          ProgressView().controlSize(.small)
-        } else {
-          Text("No sessions").foregroundStyle(.secondary)
+        Group {
+          if pages.isLoading || (pages.load != nil && !pages.isLoaded) {
+            ProgressView().controlSize(.small)
+          } else {
+            Text("No sessions").foregroundStyle(.secondary)
+          }
         }
+        .padding(.leading, SessionFamilyMetrics.folderNoteIndent)
       }
       ForEach(listed) { session in
         row(session)
       }
       if pages.visibleCount < sessions.count || (pages.hasMore && !sessions.isEmpty) {
-        showMore
+        showMore.padding(.leading, SessionFamilyMetrics.folderNoteIndent)
       }
     } label: {
       HStack(spacing: Theme.Spacing.tiny) {
-        Label {
+        HStack(spacing: SessionFamilyMetrics.gutterSpacing) {
+          folderIcon.frame(width: SessionFamilyMetrics.gutter)
           Text(project.name).lineLimit(1)
-        } icon: {
-          if let icon = project.icon {
-            Text(icon)
-          } else {
-            // The navigation rows' color, not the platform tint (system blue on iOS).
-            Image(systemName: "folder").foregroundStyle(ThemeColor.primary)
-          }
         }
         Spacer(minLength: 4)
         if isHovered {
@@ -94,15 +91,16 @@ struct ProjectFolder<Row: View>: View {
           folderMarker
         }
       }
-      #if os(macOS)
-        // The outline no longer indents, which was also the room between its chevron and this.
-        .padding(.leading, Theme.Spacing.extraSmall + Theme.Spacing.tiny)
-      #endif
+      // The gutter, where the Mac outline draws the folder's disclosure triangle (iOS's trails),
+      // so the folder's icon and name line up with the session rows' outside it.
+      .padding(.leading, SessionFamilyMetrics.step)
       .contentShape(Rectangle())
       .onHover { isHovered = $0 }
       .contextMenu { menu.items }
       .draggable(SidebarDragItem.project(project.id).payload)
       .sidebarDropTarget(drop)
+      // One element for the folder, as its label was, around its name and hover buttons.
+      .accessibilityElement(children: .contain)
       .accessibilityActions {
         if let newSession = menu.actions.newSessionInProject {
           Button("New session in project") { newSession(project) }
@@ -113,6 +111,16 @@ struct ProjectFolder<Row: View>: View {
       .task(id: isExpanded && !pages.isLoaded) {
         if isExpanded, !pages.isLoaded { pages.load?() }
       }
+    }
+  }
+
+  /// The folder's emoji, else a folder; decorative, as its name says which folder it is.
+  @ViewBuilder private var folderIcon: some View {
+    if let icon = project.icon {
+      Text(icon).accessibilityHidden(true)
+    } else {
+      // The navigation rows' color, not the platform tint (system blue on iOS).
+      Image(systemName: "folder").foregroundStyle(ThemeColor.primary).accessibilityHidden(true)
     }
   }
 

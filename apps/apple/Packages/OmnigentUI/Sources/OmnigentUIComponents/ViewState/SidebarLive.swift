@@ -32,16 +32,27 @@ nonisolated public struct SidebarRowContent: Hashable, Sendable {
 nonisolated public struct SidebarCounts: Hashable, Sendable {
   /// The Inbox badge.
   public var inbox: Int
+  /// The Inbox holds at least ``inbox`` items: the server stopped counting, or older
+  /// automations are not checked yet. The badge then reads "N+".
+  public var inboxIsAtLeast = false
   /// The quick filters' counts. A missing filter shows none.
   public var filters: [SessionFilter: Int]
 
   /// Creates counts.
   /// - Parameters:
   ///   - inbox: The Inbox badge.
+  ///   - inboxIsAtLeast: The Inbox holds at least that many.
   ///   - filters: The quick filters' counts.
-  public init(inbox: Int = 0, filters: [SessionFilter: Int] = [:]) {
+  public init(inbox: Int = 0, inboxIsAtLeast: Bool = false, filters: [SessionFilter: Int] = [:]) {
     self.inbox = inbox
+    self.inboxIsAtLeast = inboxIsAtLeast
     self.filters = filters
+  }
+
+  /// The Inbox badge's text, as the web's: "3", "3+" or a lone "+"; `nil` for none.
+  public var inboxBadge: String? {
+    guard inbox > 0 || inboxIsAtLeast else { return nil }
+    return (inbox > 0 ? "\(inbox)" : "") + (inboxIsAtLeast ? "+" : "")
   }
 }
 

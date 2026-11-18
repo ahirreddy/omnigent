@@ -109,7 +109,87 @@
       #expect(try screen.shows("Summarize"))
       #expect(try screen.shows("Build Mac"))
       #expect(try screen.shows("No runs yet."))
-      #expect(screen.controlFrames.isEmpty)
+      #expect(screen.controlFrames.count == 1, "only the Configuration disclosure")
+    }
+
+    @Test("a shared automation names its owner and shows every action disabled")
+    func sharedWithMe() throws {
+      var shared = state()
+      shared.sharedBy = "Ana"
+      shared.startsFrom = "Each run starts with a copy of a session the owner chose."
+      shared.promptTitle = "Additional instructions"
+      let screen = page(shared)
+      defer { screen.close() }
+      #expect(try screen.shows("Shared by Ana"))
+      #expect(try screen.shows("Each run starts with a copy of a session the owner chose."))
+      #expect(try screen.shows("Additional instructions"))
+      #expect(try screen.shows("Run now"), "shown, but disabled")
+      // Share, Edit, Delete, Run now and the switch are disabled; only Back acts.
+      for frame in screen.controlFrames { try screen.click(CGPoint(x: frame.midX, y: frame.midY)) }
+      try screen.click(try #require(screen.switches.first))
+      #expect(log.entries == ["back"], "\(log.entries)")
+      #expect(SystemSideEffects.record.alertMessages.isEmpty)
+    }
+
+    @Test("a trigger runs when items match and has no Run now; its settings are listed")
+    func triggerAndConfiguration() throws {
+      var trigger = state()
+      trigger.isTrigger = true
+      trigger.scheduleText = "Runs when new items match"
+      trigger.promptTitle = "Instructions"
+      trigger.configuration = [
+        AutomationConfigField(label: "Model", value: "Agent default"),
+        AutomationConfigField(label: "Cost limit per run", value: "$5.00"),
+      ]
+      trigger.configurationNote = "The continued session may have changed settings."
+      let screen = page(trigger)
+      defer { screen.close() }
+      #expect(try screen.shows("Runs when new items match"))
+      #expect(try screen.shows("Instructions"))
+      #expect(try !screen.shows("Run now"))
+      #expect(try screen.shows("COST LIMIT PER RUN"))
+      #expect(try screen.shows("$5.00"))
+      #expect(try screen.shows("The continued session may have changed settings."))
+    }
+
+  }
+
+  extension PagesAutomationDetailTests {
+    @Test("a run shows its cost, what it waits on, the server's detail and its PRs")
+    func runDetails() throws {
+      var run = AutomationRunRow(id: "1", indicator: .failed, timestamp: "Today, 8:00 AM")
+      run.sessionID = "s1"
+      run.sessionCost = "Session cost $1.23"
+      run.needsApproval = true
+      run.statusLabel = "Running"
+      run.failureStage = "Sandbox"
+      run.failureReason = "Couldn't create the sandbox."
+      run.errorDetail = "Quota exceeded. Retry later."
+      run.pullRequestSummary = "PR #7 merged"
+      run.pullRequests = [
+        AutomationRunPullRequest(
+          url: try #require(URL(string: "https://git.example.com/acme/app/pull/7")), number: "#7",
+          title: "Fix", status: "Merged", repository: "acme/app", origin: "Opened by this run")
+      ]
+      var withRun = state()
+      withRun.runs = [run]
+      var actions = actions
+      let log = log
+      actions.openPullRequest = { log.record("pr \($0.absoluteString)") }
+      let screen = page(withRun, actions: actions)
+      defer { screen.close() }
+      #expect(try screen.shows("Session cost $1.23"))
+      #expect(try screen.shows("Session needs approval \u{00B7} Open to review"))
+      #expect(try !screen.shows("Running"), "a run waiting on approval says that instead")
+      #expect(try screen.shows("Quota exceeded. Retry later."))
+      #expect(try screen.shows("PR #7 merged"))
+      #expect(
+        try screen.shows(
+          "Session cost is each session\u{2019}s current recorded total. Runs sharing a session show the same total. Separate sub-agent sessions are excluded."
+        ))
+      let menu = try #require(screen.popUps.last)
+      try screen.choose("#7 Fix", inPopUp: menu)
+      #expect(log.entries == ["pr https://git.example.com/acme/app/pull/7"])
     }
 
     @Test("a failed action can be dismissed, and failed runs retried")
@@ -131,9 +211,10 @@
       defer { screen.close() }
       #expect(try screen.shows("Can't pause"))
       #expect(try screen.shows("Couldn\u{2019}t load run history."))
+      // Dismiss, the Configuration disclosure, then Retry.
       try screen.clickControl(at: 0)
       #expect(log.entries == ["dismiss"])
-      try screen.clickControl(at: 1)
+      try screen.clickControl(at: 2)
       #expect(log.entries == ["dismiss", "retry"])
     }
 
@@ -168,8 +249,10 @@
       defer { screen.close() }
       #expect(try screen.shows("1m 42s"))
       #expect(try screen.shows("Host \u{00B7} The host was offline."))
-      #expect(screen.controlFrames.count == 1, "only the run with a session is a button")
-      try screen.clickControl(at: 0)
+      #expect(
+        screen.controlFrames.count == 2,
+        "the Configuration disclosure, and only the run with a session is a button")
+      try screen.clickControl(at: 1)
       #expect(log.entries == ["session s1"])
     }
 

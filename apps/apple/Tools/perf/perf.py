@@ -48,6 +48,8 @@ HITCH_MS = 33.0
 HANG_MS = 100.0
 # Extra launch arguments, for example the transcript style (`--style cli`).
 LAUNCH_ARGS: list[str] = []
+# Whether each driven scenario also lists its passes over a 120 Hz frame (`--passes`).
+PRINT_PASSES = False
 # The launch argument that picks the transcript's list (TranscriptListKind in the app).
 LIST_KEY = "-omnigent:transcript-list"
 # What the Mac UI tests launch with (MacLiveUITestSupport.freshStateArguments): no This Mac
@@ -221,16 +223,29 @@ class Busy:
         )
 
 
-def parse_busy(text: str, start_ms: float, end_ms: float) -> Busy:
-    """The run-loop passes in ``text`` (driver.m busy lines) that began inside [start, end)."""
+def busy_passes(text: str, start_ms: float, end_ms: float) -> list[tuple[float, float]]:
+    """(start, length) of the run-loop passes in ``text`` (driver.m busy lines) that began
+    inside [start, end)."""
     passes = []
     for line in current(text):
         if line.startswith("#"):
             continue
         began, busy = map(float, line.split())
         if start_ms <= began < end_ms:
-            passes.append(busy)
-    return Busy(passes)
+            passes.append((began, busy))
+    return passes
+
+
+def parse_busy(text: str, start_ms: float, end_ms: float) -> Busy:
+    """The run-loop passes in ``text`` (driver.m busy lines) that began inside [start, end)."""
+    return Busy([busy for _, busy in busy_passes(text, start_ms, end_ms)])
+
+
+def pass_timeline(passes: list[tuple[float, float]], start_ms: float) -> str:
+    """The passes that missed a 120 Hz frame, as ``+offset:length`` in ms from ``start``."""
+    return " ".join(
+        f"+{began - start_ms:.0f}:{busy:.1f}" for began, busy in passes if busy > FRAME_120_MS
+    )
 
 
 def scrolled(text: str, start_ms: float, end_ms: float) -> list[tuple[float, float, float]]:
@@ -242,6 +257,17 @@ def scrolled(text: str, start_ms: float, end_ms: float) -> list[tuple[float, flo
             if start_ms <= stamp < end_ms:
                 moves.append((start, end, height))
     return moves
+
+
+def offsets(text: str, start_ms: float, end_ms: float) -> list[tuple[float, float, float]]:
+    """(offset, document height, viewport height) of each ``offset`` step inside [start, end)."""
+    found = []
+    for line in current(text):
+        if line.startswith("# offset"):
+            stamp, offset, height, viewport = map(float, line.split()[2:6])
+            if start_ms <= stamp < end_ms:
+                found.append((offset, height, viewport))
+    return found
 
 
 def settle_time(text: str, start_ms: float, quiet_ms: float = 1000.0) -> float:
@@ -615,6 +641,8 @@ def type_burst(app: Path, sampled: bool = False, count: int = 20) -> dict[str, f
     return {"main_cpu_ms": cpu, **hitches.numbers, **frames.numbers}
 
 
+SIDEBAR_TOGGLES = ["offset 0.6 0.5", *["key s ct", "wait 900"] * 6, "offset 0.6 0.5"]
+
 # Driven scenarios (driver.m steps). Fractions of the window: the sidebar is the left fifth.
 SCENARIOS = {
     "scroll-transcript": ["scroll 0.6 0.5 -60 90", "scroll 0.6 0.5 60 90"],
@@ -631,6 +659,10 @@ SCENARIOS = {
     "count-views": ["views 0.6 0.5"],
     "scroll-sidebar": ["scroll 0.08 0.6 -60 90", "scroll 0.08 0.6 60 90"],
     "toggle-sidebar": ["key s ct", "wait 700", "key s ct"],
+    # The sidebar hidden and shown three times, each animation let finish, with where the reader
+    # is before and after; `-mid` first scrolls the reader up from the end (PREPARE).
+    "sidebar-toggles": SIDEBAR_TOGGLES,
+    "sidebar-toggles-mid": SIDEBAR_TOGGLES,
     "toggle-panel": ["key ] co", "wait 900", "key ] co"],
     "resize": ["resize -320 -160 30", "resize 320 160 30"],
     "palette": ["key k c", "wait 700", "key esc"],
@@ -651,6 +683,24 @@ SCENARIOS = {
 
 # Links a scenario opens before it starts, for the long transcript's session.
 SETUPS = {"scroll-loaded": first_answer_link}
+# Driver steps run, and waited out, before a scenario's first pass; not measured.
+PREPARE = {"sidebar-toggles-mid": ["scroll 0.6 0.5 60 60"]}
+
+
+def prepare(app: Path, name: str) -> None:
+    """Opens ``name``'s link and runs its unmeasured steps, if it has them."""
+    if name in SETUPS:
+        open_link(app, SETUPS[name](long_session(0)))
+    steps = PREPARE.get(name)
+    if not steps:
+        return
+    pid = require_monitored(app)
+    wait_settled(now_ms())
+    DRIVE.write_text("\n".join(steps) + "\n")
+    start = now_ms()
+    subprocess.run(["kill", "-USR2", str(pid)], check=True)
+    time.sleep(0.5 + sum(step_seconds(step) for step in steps))
+    print(f"prepare {name}: settled {wait_settled(start):.0f}ms")
 
 
 def drive(app: Path, name: str, steps: list[str], sampled: bool = False) -> dict[str, float]:
@@ -671,7 +721,8 @@ def drive(app: Path, name: str, steps: list[str], sampled: bool = False) -> dict
     hitches = parse_log(LOG.read_text(), start, end)
     frame_text = FRAMES.read_text()
     frames = parse_frames(frame_text, start, end)
-    busy = parse_busy(BUSY.read_text(), start, end) if BUSY.exists() else Busy([])
+    passes = busy_passes(BUSY.read_text(), start, end) if BUSY.exists() else []
+    busy = Busy([length for _, length in passes])
     cpu = main_cpu_ms(pid) - cpu
     moves = scrolled(frame_text, start, end)
     distance = sum(abs(to - start) for start, to, _ in moves)
@@ -688,6 +739,17 @@ def drive(app: Path, name: str, steps: list[str], sampled: bool = False) -> dict
     for line in current(frame_text):
         if line.startswith("# views") and start <= float(line.split()[2]) < end:
             print(f"  views in the transcript: {' '.join(line.split()[3:])}")
+    if PRINT_PASSES:
+        print(f"  passes over 8.3ms: {pass_timeline(passes, start)}")
+    places = offsets(frame_text, start, end)
+    if places:
+        print(
+            "  reader at "
+            + ", then ".join(
+                f"{offset:.0f} of {height:.0f} ({height - viewport - offset:.0f} above the end)"
+                for offset, height, viewport in places
+            )
+        )
     return {
         "main_cpu_ms": cpu,
         **hitches.numbers,
@@ -886,8 +948,7 @@ def scroll_bench(
     results: dict[str, dict[str, list[dict[str, float]]]] = {}
     for name, variant in bench_order(scenarios, runs, variants):
         launch(app, session, variant.args)
-        if name in SETUPS:
-            open_link(app, SETUPS[name](session))
+        prepare(app, name)
         for label in ("cold", "warm"):
             tag = f"{name} ({label}{', ' + variant.name if variant.name else ''})"
             results.setdefault(variant.name, {}).setdefault(f"{name} {label}", []).append(
@@ -903,8 +964,7 @@ def scroll_bench(
     for name in scenarios if sample_seconds else []:
         for variant in variants:
             launch(app, session, variant.args)
-            if name in SETUPS:
-                open_link(app, SETUPS[name](session))
+            prepare(app, name)
             for label in ("cold", "warm"):
                 suffix = f"-{variant.name}" if variant.name else ""
                 drive(app, f"{name}-{label}{suffix}-sampled", SCENARIOS[name], sampled=True)
@@ -1018,8 +1078,15 @@ def main() -> None:
         help="launch with this scroller style: overlay as with a trackpad, legacy (always shown, "
         "taking width) as with a mouse; a VM without a trackpad has legacy ones by default",
     )
+    parser.add_argument(
+        "--passes",
+        action="store_true",
+        help="drive and scroll: also list each run-loop pass over a 120 Hz frame, by its start",
+    )
     args = parser.parse_args()
     app = args.app.resolve()
+    global PRINT_PASSES
+    PRINT_PASSES = args.passes
     if args.fresh_state:
         LAUNCH_ARGS.extend(FRESH_STATE_ARGS)
     if args.scrollers:

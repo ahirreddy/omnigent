@@ -20,6 +20,14 @@ extension NewSessionForm {
     }
   }
 
+  /// Files a just-created session in a label-only project, which the create cannot name.
+  func fileInLabelProject(_ sessionID: String, list: SessionListStore) {
+    guard let project, project.id == nil, filedSessionID != sessionID else { return }
+    filedSessionID = sessionID
+    // The move reports its own failure in the list's edit error.
+    Task { _ = await list.move(sessionID, to: project) }
+  }
+
   private func apply(_ settings: ProjectSettings, _ creation: CreationStore) {
     let catalog = creation.catalog.value
     if let agentID = settings.agentId, catalog?.agents.contains(where: { $0.id == agentID }) == true

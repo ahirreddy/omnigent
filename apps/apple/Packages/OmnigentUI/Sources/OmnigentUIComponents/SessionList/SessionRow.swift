@@ -29,24 +29,40 @@ struct SessionRow: View {
   /// Double-tap on iOS. On the Mac a tap gesture here would take the row's click from the list,
   /// so the list starts the rename (`SidebarView.renameOnDoubleClick`).
   var beginInlineRename: (() -> Void)?
-  /// How it sits in its session family: the head's chevron leads it, a nested row is indented.
+  /// How it sits in its session family: a head's chevron fills its gutter, a nested row sits a
+  /// step in.
   var family = SessionRowFamily.standalone
+  /// In a project folder: a step in from the folder's row, as the folder's other rows are.
+  var isInFolder = false
 
   @State private var isHovered = false
   @Environment(\.defaultMinListRowHeight) private var rowHeight
 
   var body: some View {
-    switch family {
-    case .standalone:
-      content
-    case .nested:
-      content.sessionFamilyNest(rowHeight: rowHeight)
-    case .head(let isExpanded, let toggle):
-      // Its own button, outside the row's combined element, so VoiceOver reads it apart.
-      HStack(spacing: SessionFamilyMetrics.chevronSpacing) {
-        SessionFamilyChevron(sessionID: session.id, isExpanded: isExpanded, toggle: toggle)
+    Group {
+      let row = HStack(spacing: SessionFamilyMetrics.gutterSpacing) {
+        gutter
         content
       }
+      if case .nested(let continues) = family {
+        row.sessionFamilyConnector(rowHeight: rowHeight, continues: continues)
+      } else {
+        row
+      }
+    }
+    .padding(.leading, family.indent(inFolder: isInFolder))
+  }
+
+  /// The family chevron's place, empty on a row without one, so every row's icon and title line
+  /// up with its siblings'.
+  @ViewBuilder private var gutter: some View {
+    if case .head(let isExpanded, let toggle) = family {
+      // Its own button, outside the row's combined element, so VoiceOver reads it apart.
+      SessionFamilyChevron(sessionID: session.id, isExpanded: isExpanded, toggle: toggle)
+    } else {
+      Color.clear
+        .frame(width: SessionFamilyMetrics.gutter, height: SessionFamilyMetrics.gutter)
+        .accessibilityHidden(true)
     }
   }
 
@@ -60,7 +76,9 @@ struct SessionRow: View {
       if harnessIcon != .hidden {
         SessionHarnessMark(
           harness: info.harness,
-          style: harnessIcon.resolved(isActive: Self.isActive(session, info: info)))
+          style: harnessIcon.resolved(isActive: Self.isActive(session, info: info))
+        )
+        .anchorPreference(key: SessionMarkAnchor.self, value: .bounds) { $0 }
       }
       VStack(alignment: .leading, spacing: 1) {
         if let inlineRename {
@@ -69,7 +87,7 @@ struct SessionRow: View {
           Text(session.title)
             .lineLimit(1)
             .fontWeight(isUnread ? .semibold : .regular)
-            .anchorPreference(key: SessionTitleAnchor.self, value: .bounds) { $0 }
+            .anchorPreference(key: SessionMarkAnchor.self, value: .bounds) { $0 }
         }
         if let line = detailLine {
           Text(line)

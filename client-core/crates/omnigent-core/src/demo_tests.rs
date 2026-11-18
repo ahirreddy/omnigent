@@ -640,6 +640,55 @@ fn a_file_queued_while_the_demo_replies_sends_after_the_reply() {
 }
 
 #[test]
+fn a_claude_session_rewinds_to_an_earlier_prompt_in_a_new_session() {
+    let core = sample();
+    let demo = core.transport();
+    assert!(block_on(core.slash_options()).unwrap().rewinds);
+    let claude = CreationSelection {
+        agent_id: "demo-claude".into(),
+        ..selection()
+    };
+    let created = block_on(core.create_session(&claude, "Rewind"))
+        .unwrap()
+        .session_id;
+    for prompt in ["First prompt", "Second prompt"] {
+        send(&core, &created, prompt).unwrap();
+        while demo.is_replying() {
+            demo.advance_replies();
+        }
+    }
+    let prompts = block_on(core.rewind_prompts(&created, None)).unwrap();
+    let listed: Vec<&str> = prompts
+        .prompts
+        .iter()
+        .map(|prompt| prompt.text.as_str())
+        .collect();
+    assert_eq!(listed, ["Second prompt", "First prompt"]);
+    let rewound = block_on(core.rewind_session(&created, &prompts.prompts[0].item_id)).unwrap();
+    assert_eq!(rewound.prompt, "Second prompt");
+    let fork = demo.session(&rewound.session_id).unwrap();
+    assert_eq!(
+        texts(&fork),
+        ["First prompt".to_owned(), DEMO_REPLY_TEXT.to_owned()]
+    );
+    // The source keeps everything.
+    assert_eq!(texts(&demo.session(&created).unwrap()).len(), 4);
+    // Codex has no rewind.
+    let codex = create(&core, "Codex");
+    send(&core, &codex, "Hello").unwrap();
+    while demo.is_replying() {
+        demo.advance_replies();
+    }
+    let codex_prompt = block_on(core.rewind_prompts(&codex, None)).unwrap().prompts[0]
+        .item_id
+        .clone();
+    assert!(matches!(
+        block_on(core.rewind_session(&codex, &codex_prompt)),
+        Err(SessionError::Rejected { status: 400, .. })
+    ));
+}
+
+#[test]
 fn asking_for_detail_streams_the_longer_reply() {
     let core = sample();
     let demo = core.transport();

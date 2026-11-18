@@ -239,12 +239,20 @@ public struct ComposerExtraActions {
   public var attachMention: (@MainActor (String) -> Void)?
   /// Untag a path (its chip's remove button).
   public var removeMention: (@MainActor (String) -> Void)?
+  /// Opens an attached local review comment in the pull request's Changes tab, by id.
+  public var openReviewComment: (@MainActor (String) -> Void)?
+  /// Deletes an attached local review comment, by id.
+  public var deleteReviewComment: (@MainActor (String) -> Void)?
   /// Remove a quote or edit the text typed before it.
   public var quotes = ComposerQuoteActions()
   /// Turn Smart Routing on or off (the model picker's toggle).
   public var setSmartRouting: (@MainActor (Bool) -> Void)?
   /// The reconnect sheet's Check Again and Fork.
   public var liveness = SessionLivenessActions()
+  /// "Replace draft" in Edit and resend's prompt.
+  public var replaceDraftWithEdit: (@MainActor () -> Void)?
+  /// "Keep draft" in Edit and resend's prompt.
+  public var keepDraftOverEdit: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:
