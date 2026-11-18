@@ -25,17 +25,10 @@
         ? element.value(forKey: name) as? String : nil
     }
 
-    /// A session row's content frame, from its accessibility element.
+    /// A session row's frame, from its accessibility element.
     private func rowFrame(_ id: String, _ screen: OffscreenWindow<SidebarHarness>) throws -> CGRect
     {
       try screen.withAccessibilityTree { try screen.listElementFrame("session-row-\(id)") }
-    }
-
-    /// A session's whole list row.
-    private func listRow(_ id: String, _ screen: OffscreenWindow<SidebarHarness>) throws -> CGRect {
-      let list = try #require(screen.list)
-      let row = list.row(at: list.convert(center(try rowFrame(id, screen)), from: screen.host))
-      return list.convert(list.rect(ofRow: row), to: screen.host)
     }
 
     private func center(_ frame: CGRect) -> CGPoint { CGPoint(x: frame.midX, y: frame.midY) }
@@ -84,34 +77,6 @@
         #expect(attribute("accessibilityLabel", of: chevron) == "Expand session family")
         #expect(attribute("accessibilityValue", of: chevron) == "Collapsed")
       }
-    }
-
-    @Test("Members sit indented with an elbow beside them; their head's chevron leads it")
-    func membersAreIndentedWithAnElbow() throws {
-      let (_, screen) = sidebar()
-      defer { screen.close() }
-      let leading = try rowFrame("solo", screen).minX
-      let chevron = SessionFamilyMetrics.chevronWidth + SessionFamilyMetrics.chevronSpacing
-      #expect(abs(try rowFrame("coord", screen).minX - leading - chevron) < 1)
-      let picture = try Snapshot(screen)
-      // Above a row's content, where only an elbow draws.
-      let line = leading + SessionFamilyMetrics.chevronWidth
-      let hasElbow = { (id: String) throws -> Bool in
-        let top = try listRow(id, screen).minY + 3
-        return picture.inks(CGPoint(x: line, y: top), against: CGPoint(x: line + 4, y: top))
-      }
-      #expect(try hasElbow("impl") && hasElbow("review"))
-      #expect(try !hasElbow("coord") && !hasElbow("solo"))
-      // Below the elbow's turn the first ink is the row's own icon.
-      let contentStart = { (id: String) throws -> CGFloat? in
-        let row = try listRow(id, screen)
-        let blank = CGPoint(x: leading - 8, y: row.midY + 4)
-        return picture.firstInk(
-          from: leading - 4, to: row.maxX, along: row.midY + 4, against: blank)
-      }
-      let lone = try #require(try contentStart("solo"))
-      let member = try #require(try contentStart("impl"))
-      #expect(abs(member - lone - SessionFamilyMetrics.nestedIndent) <= 1)
     }
 
     @Test("A member's row menu has no Pin or Add to project; its representative's has both")
@@ -206,9 +171,7 @@
       UserDefaults.standard.set("work", forKey: SidebarNavigationOrder.expandedProjectsKey)
       let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 320, height: 700)
       defer { screen.close() }
-      let leading = try rowFrame("solo", screen).minX
-      let chevron = SessionFamilyMetrics.chevronWidth + SessionFamilyMetrics.chevronSpacing
-      #expect(abs(try rowFrame("coord", screen).minX - leading - chevron) < 1)
+      // Where its rows sit is SidebarNestingLayoutTests'.
       try screen.clickListElement("session-family-toggle-coord")
       #expect(
         MainLoop.settle(until: {
@@ -245,10 +208,10 @@
       }
     }
 
-    @Test("A row's title anchor keeps the first title it meets")
-    func titleAnchor() {
+    @Test("A row's mark anchor keeps the first mark it meets")
+    func markAnchor() {
       var value: Anchor<CGRect>?
-      SessionTitleAnchor.reduce(value: &value) { nil }
+      SessionMarkAnchor.reduce(value: &value) { nil }
       #expect(value == nil)
     }
   }

@@ -195,12 +195,12 @@ extension SidebarFamilySectionsTests {
   private func kind(_ family: SessionRowFamily) -> String {
     switch family {
     case .standalone: "standalone"
-    case .nested: "nested"
+    case .nested(let continues): continues ? "nested, continued" : "nested"
     case .head(let isExpanded, _): isExpanded ? "expanded head" : "collapsed head"
     }
   }
 
-  @Test("A head leads with a chevron only with members here and a host to collapse it")
+  @Test("A head has a chevron with members here and a host; a member's line runs on to the next")
   func layoutChoosesEachRowsPlace() {
     var state = FamilyFixture.state()
     let rows = SidebarSections.sections(state).last?.sessions ?? []
@@ -211,7 +211,7 @@ extension SidebarFamilySectionsTests {
     }
     #expect(
       rows.map { kind(layout.family(of: $0)) } == [
-        "expanded head", "nested", "nested", "standalone",
+        "expanded head", "nested, continued", "nested", "standalone",
       ])
     if case .head(_, let toggle) = layout.family(of: rows[0]) { toggle() }
     #expect(log.calls == ["true \(scope.key(family: "coord"))"])
