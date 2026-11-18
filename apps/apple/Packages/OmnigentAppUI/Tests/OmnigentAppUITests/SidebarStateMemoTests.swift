@@ -224,6 +224,7 @@ struct SidebarStateMemoTests {
     #expect(observationNotifies(counts) { list.apply(asks) })
     #expect(live.row("s1", true)?.requests == 2)
     #expect(live.row("s2", true)?.requests == nil)
-    #expect(live.counts() == SidebarCounts(inbox: 1, filters: [.running: 0, .needsResponse: 1]))
+    // The Inbox counts s1's two approvals and unread s2, as the web's badge does.
+    #expect(live.counts() == SidebarCounts(inbox: 3, filters: [.running: 0, .needsResponse: 1]))
   }
 }

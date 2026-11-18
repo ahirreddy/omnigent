@@ -32,7 +32,10 @@ struct AttentionAdapterTests {
     let sidebar = SidebarAdapter.state(
       list: list, display: SessionDisplayOptions(), server: store.connectedServer)
     #expect(sidebar.list.filterCounts[.needsResponse] == needing)
-    #expect(sidebar.inboxCount == needing)
+    // The Inbox badge also counts unread sessions, as the web's does.
+    #expect(
+      sidebar.inboxCount
+        == SidebarAdapter.approvals(list.attentionTotals) + Int(list.attentionTotals.unread))
     #expect(sidebar.list.filterCounts[.running] == Int(list.attentionTotals.working))
     #expect(sidebar.list.sessions.count { $0.attention == .needsYou } == needing)
     #expect(sidebar.list.attentionCounts == ["demo-design": 1, "demo-question": 1])
