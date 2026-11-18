@@ -4,7 +4,9 @@ use futures::executor::block_on;
 use serde_json::json;
 
 use super::super::SessionError;
-use super::super::test_support::{Reply, RouteTransport, body_json, connected, path_of};
+use super::super::test_support::{
+    Reply, RouteTransport, body_json, connected, fixture_json, path_of,
+};
 use super::{
     Automation, AutomationDraft, AutomationFilter, AutomationRunStatus, AutomationState,
     ServerPages, arrange_automations, automation_from, describe_run_failure, draft_body,
@@ -342,6 +344,7 @@ fn pages_follow_what_the_server_advertises() {
             archive_worktree_cleanup: true,
             sharing: true,
             canvas: true,
+            public_sharing: true,
             ..ServerPages::default()
         })
     );
@@ -361,7 +364,10 @@ fn pages_follow_what_the_server_advertises() {
     // An older server that names none of them offers none; a single-user one has no sharing.
     assert_eq!(
         ServerPages::from_value(&json!({"single_user": true})),
-        Ok(ServerPages::default())
+        Ok(ServerPages {
+            public_sharing: true,
+            ..ServerPages::default()
+        })
     );
     // Sharing is on unless the server turns it off.
     assert!(ServerPages::from_value(&json!({})).is_ok_and(|pages| pages.sharing));
@@ -378,6 +384,33 @@ fn pages_follow_what_the_server_advertises() {
     assert!(ServerPages::from_value(&json!({"features": {"usage_page": "yes"}})).is_err());
     assert!(ServerPages::from_value(&json!({"features": {"canvas": "yes"}})).is_err());
     assert!(ServerPages::from_value(&json!({"sharing_mode": 1})).is_err());
+}
+
+#[test]
+fn the_inbox_feeds_follow_main_s_info() {
+    let recorded = fixture_json("sessions/recorded-v1-info.json");
+    let pages = ServerPages::from_value(&recorded["response"]).unwrap();
+    assert!(pages.inbox_items && pages.automation_inbox);
+    assert!(pages.project_repository_creation);
+    let older = ServerPages::from_value(&json!({"single_user": true})).unwrap();
+    assert!(!older.inbox_items && !older.automation_inbox);
+    assert!(ServerPages::from_value(&json!({"inbox_items_available": "yes"})).is_err());
+}
+
+#[test]
+fn sharing_policy_follows_the_mode_and_public_switch() {
+    let on = ServerPages::from_value(&json!({})).unwrap();
+    assert!(on.public_sharing && !on.sharing_read_only && !on.sharing_restricted);
+    let read_only =
+        ServerPages::from_value(&json!({"sharing_mode": "read_only", "public_sharing_enabled": true}))
+            .unwrap();
+    assert!(read_only.sharing_read_only && !read_only.sharing_restricted);
+    let restricted =
+        ServerPages::from_value(&json!({"sharing_mode": "restricted_read_only"})).unwrap();
+    assert!(restricted.sharing_read_only && restricted.sharing_restricted);
+    let closed = ServerPages::from_value(&json!({"public_sharing_enabled": false})).unwrap();
+    assert!(!closed.public_sharing);
+    assert!(ServerPages::from_value(&json!({"public_sharing_enabled": "no"})).is_err());
 }
 
 #[test]
