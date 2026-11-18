@@ -203,8 +203,28 @@ extension ConversationContainer {
       canEdit: !(conversation.header?.readOnly ?? false),
       newSideChat: SessionToolsAdapter.sideChat(conversation, routes: routes),
       agents: AgentTreeAdapter.panel(conversation, open: routes.openSession),
+      tasks: tasksContent(report: routes.report),
       composer: conversation.composer, report: routes.report
     ).slots
+  }
+
+  /// The server keeps session journals, so the Tasks tab shows plans too.
+  var tasksSupported: Bool { panel?.features?.sessionJournal == true }
+
+  /// The Tasks tab; `nil` hides it.
+  func tasksContent(report: @escaping @MainActor (String) -> Void) -> TasksPanelContent? {
+    let (focus, sessionID) = (transcriptFocus, conversation.sessionID)
+    return TasksAdapter.content(
+      tasks: tasks, supported: tasksSupported, conversation: conversation, summary: summary,
+      routes: TasksAdapter.Routes(
+        showRow: { focus?.focus($0, in: sessionID) }, report: report))
+  }
+
+  /// How the chat's task markers open the Tasks tab.
+  var taskMarkerLinks: TaskMarkerLinks? {
+    TasksAdapter.markerLinks(
+      tasks: tasks, supported: tasksSupported, conversation: conversation, summary: summary,
+      showTasks: showTasks)
   }
 
   /// The window loads what its panel shows of this chat's session, so the chat does not.

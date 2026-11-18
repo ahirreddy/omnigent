@@ -150,6 +150,10 @@ public struct WorkspaceInspector: View {
         } else {
           PullRequestList(pullRequests: state.pullRequests, open: actions.openURL)
         }
+      case .tasks:
+        if let tasks = slots.tasks {
+          TasksPanel(content: tasks)
+        }
       case .agents:
         if let agents = slots.agents {
           agents

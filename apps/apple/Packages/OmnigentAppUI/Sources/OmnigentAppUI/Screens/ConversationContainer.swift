@@ -16,6 +16,10 @@ struct ConversationContainer: View {
   let workspace: WorkspaceBrowserModel?
   /// The right panel's server data (panel features, pull requests).
   let panel: SessionPanelStore?
+  /// The Tasks tab's journal.
+  var tasks: SessionTasksStore?
+  /// The window's message focus, where a task's Show in the chat scrolls.
+  var transcriptFocus: TranscriptFocus?
   /// The file changes that reached this chat's workspace, read by ``ChangedFilesFollower`` and
   /// not here.
   let changedFilesRevision: @MainActor () -> Int
@@ -100,6 +104,11 @@ struct ConversationContainer: View {
       .modifier(TerminalPageFocus(surface: harnessSurface))
     }
     .modifier(MessageMediaEnvironment(fileLinks: fileLinks, conversation: conversation))
+    .environment(\.taskMarkerLinks, taskMarkerLinks)
+    .task(id: conversation.sessionID) {
+      await panel?.loadFeatures()
+      await tasks?.load(supported: tasksSupported)
+    }
     .task(id: (linkedWorkspace ?? workspace).map(ObjectIdentifier.init)) {
       fileLinks = (linkedWorkspace ?? workspace).map(MarkdownLinksAdapter.links)
     }
@@ -218,6 +227,16 @@ struct ConversationContainer: View {
         showPullRequests()
         Task { await panel?.showPullRequest(url) }
       })
+  }
+
+  /// Shows the right panel on the Tasks tab: the window's, or this chat's own.
+  func showTasks() {
+    if let panel = tabRoutes?.windowPanel {
+      panel.show(.tasks)
+    } else {
+      inspectorTab = .tasks
+      panelRoute.choice = .open
+    }
   }
 
   /// Attaches the harness TUI once ready (the store keeps it), applying the default view.

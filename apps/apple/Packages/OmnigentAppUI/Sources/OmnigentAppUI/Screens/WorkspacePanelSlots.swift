@@ -22,6 +22,8 @@ struct WorkspacePanelSlots {
   var newSideChat: (@MainActor () -> Void)?
   /// The Agents tab; `nil` lists the conversation's own sub-agents.
   var agents: AnyView?
+  /// The Tasks tab; `nil` hides it.
+  var tasks: TasksPanelContent?
   /// The conversation's composer, for path references and "Ask About This".
   let composer: ComposerStore?
   /// Shows a failure, such as a path that would not open.
@@ -32,6 +34,7 @@ struct WorkspacePanelSlots {
     // Read when the panel draws, so terminal list changes redraw only the panel.
     if tabRoutes != nil { slots.openNew = { openNew } }
     slots.agents = agents
+    slots.tasks = tasks
     if let panel {
       slots.pullRequests = PullRequestAdapter.state(panel)
       slots.refreshPullRequests = { Task { await panel.reloadPullRequests() } }

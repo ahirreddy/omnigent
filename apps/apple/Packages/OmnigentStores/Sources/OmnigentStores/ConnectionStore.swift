@@ -69,6 +69,8 @@ public final class ConnectionStore {
   public internal(set) var workspaceStores: [String: WorkspaceStore] = [:]
   /// Terminal lists of open sessions, by session id.
   public internal(set) var terminalStores: [String: SessionTerminalsStore] = [:]
+  /// The Tasks tab's journals of open sessions, by session id.
+  public internal(set) var tasksStores: [String: SessionTasksStore] = [:]
   /// The new-session form, once created.
   public internal(set) var creationStore: CreationStore?
   /// Automations, Usage and the Inbox's comments and replies; `nil` when the core did not start.
@@ -360,8 +362,7 @@ public final class ConnectionStore {
   /// - Parameter sessionID: The session.
   public func closeConversation(_ sessionID: String) {
     withMutation(keyPath: \.[open: sessionID]) { conversations[sessionID] = nil }
-    workspaceStores[sessionID] = nil
-    terminalStores[sessionID] = nil
+    dropStores(of: sessionID)
     core?.closeSession(sessionId: sessionID)
   }
 

@@ -1,7 +1,8 @@
 public import SwiftUI
 
-/// The right panel's fixed tabs: the web's Files, Changes, Pull Requests and Agents, the
+/// The right panel's fixed tabs: the web's Files, Changes, Pull Requests, Tasks and Agents, the
 /// native Info tab with the session facts, and content Search when the server offers it.
+/// Tasks shows while the session has tasks of the agent's own or the server keeps journals.
 /// Terminals, browsers and side chats open as window tabs, not panel tabs.
 nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, Identifiable {
   /// Files.
@@ -10,6 +11,8 @@ nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, 
   case changes
   /// Pull requests.
   case pullRequests
+  /// The session's tasks: its plan's steps, or the agent's own list.
+  case tasks
   /// Agents (sub-agents).
   case agents
   /// Session facts (native).
@@ -20,11 +23,19 @@ nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, 
   /// The tab itself.
   public var id: Self { self }
 
-  /// The tabs the panel shows, in order; Search only when the server offers it.
-  /// - Parameter hasSearch: The panel has content search.
+  /// The tabs the panel shows, in order; Search and Tasks only when the panel has them.
+  /// - Parameters:
+  ///   - hasSearch: The panel has content search.
+  ///   - hasTasks: The panel has the Tasks tab.
   /// - Returns: The tabs.
-  static func shown(hasSearch: Bool) -> [Self] {
-    allCases.filter { $0 != .search || hasSearch }
+  static func shown(hasSearch: Bool, hasTasks: Bool = false) -> [Self] {
+    allCases.filter { ($0 != .search || hasSearch) && ($0 != .tasks || hasTasks) }
+  }
+
+  /// The tabs `slots` shows, in order.
+  @MainActor
+  static func shown(_ slots: WorkspaceSlots) -> [Self] {
+    shown(hasSearch: slots.search != nil, hasTasks: slots.tasks != nil)
   }
 
   /// The label.
@@ -33,6 +44,7 @@ nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, 
     case .files: "Files"
     case .changes: "Changes"
     case .pullRequests: "Pull Requests"
+    case .tasks: "Tasks"
     case .agents: "Agents"
     case .info: "Info"
     case .search: "Search"
@@ -53,6 +65,7 @@ nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, 
     case .files: "folder"
     case .changes: "plus.forwardslash.minus"
     case .pullRequests: "arrow.triangle.pull"
+    case .tasks: "checklist"
     case .agents: "cpu"
     case .info: "info.circle"
     case .search: "magnifyingglass"
@@ -208,6 +221,8 @@ public struct WorkspaceSlots {
   public var refreshPullRequests: (@MainActor () -> Void)?
   /// The Agents tab; `nil` lists the conversation's own sub-agents.
   public var agents: AnyView?
+  /// The Tasks tab; `nil` hides it.
+  public var tasks: TasksPanelContent?
   /// The "Open new" menu, read when the panel draws so its sources are observed there; `nil`
   /// or empty hides it.
   public var openNew: (@MainActor () -> [InspectorMenuSection])?
