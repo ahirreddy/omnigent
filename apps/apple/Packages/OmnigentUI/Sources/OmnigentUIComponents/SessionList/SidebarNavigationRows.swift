@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The sidebar's top rows: New session, Automations, Inbox, Canvas, Usage, and the native quick
-/// filters (Running, Needs you).
+/// filters (Running, Needs you). While the server's pages can't be read, a quiet row says so.
 struct SidebarNavigationRows: View {
   let state: SidebarViewState
   let selection: SidebarDestination?
@@ -21,6 +21,9 @@ struct SidebarNavigationRows: View {
         .tag(SidebarDestination.automations)
         .sidebarSelection(selection == .automations)
         .accessibilityIdentifier("sidebar-automations")
+    }
+    if let failure = state.pagesFailure {
+      SidebarPagesFailureRow(failure: failure, retry: actions.retryPages)
     }
     SidebarCountedRow(counts: counts) { counts in
       Label("Inbox", systemImage: "tray")
@@ -71,4 +74,30 @@ private struct SidebarCountedRow<Row: View>: View {
   @ViewBuilder let row: (SidebarCounts) -> Row
 
   var body: some View { row(counts()) }
+}
+
+/// In place of Automations, Usage and Canvas while the pages the server offers could not be
+/// read: a failure, unlike a server that turned them off, which shows no row at all.
+struct SidebarPagesFailureRow: View {
+  let failure: String
+  let retry: (@MainActor () -> Void)?
+
+  static let text = "Couldn\u{2019}t load Automations and other pages"
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
+      Image(systemName: "exclamationmark.circle")
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+      Text(Self.text).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+      Spacer(minLength: 4)
+      if let retry {
+        Button("Retry", action: retry).controlSize(.small)
+          .accessibilityIdentifier("sidebar-pages-retry")
+      }
+    }
+    .help(failure)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("sidebar-pages-failure")
+  }
 }

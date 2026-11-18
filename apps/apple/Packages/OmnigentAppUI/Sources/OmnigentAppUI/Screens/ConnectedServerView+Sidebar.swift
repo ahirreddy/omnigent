@@ -192,6 +192,7 @@ extension ConnectedServerView {
       }
     }
     actions.dropSession = { session, action in drop(session, action) }
+    actions.retryPages = { connection.reloadOfferedPages() }
     actions.live = SidebarAdapter.live(connection.sessionList)
     let paging = connection.sessionList.paging
     actions.loadMoreSessions = { paging.loadMore() }

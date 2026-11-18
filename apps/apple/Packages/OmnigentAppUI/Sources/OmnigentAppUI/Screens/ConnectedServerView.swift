@@ -168,6 +168,7 @@ public struct ConnectedServerView: View {
     state.showsUsage = connection.pages?.offered?.usage == true
     state.showsCanvas = connection.pages?.offered?.canvas == true
     state.showsSharedScope = connection.pages?.offered?.sharing ?? true
+    state.pagesFailure = SidebarAdapter.pagesFailure(connection)
     state.projectSort = connection.sessionList.projectSortMode.map {
       $0 == .manual ? .manual : .alphabetical
     }

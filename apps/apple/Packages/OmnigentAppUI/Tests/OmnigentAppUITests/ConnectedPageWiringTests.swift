@@ -12,6 +12,38 @@ import Testing
 
 /// What a window's pages do to its navigation.
 extension ConnectedWindowFlowTests {
+  @Test("Pages that couldn't be read say so in the sidebar; Automations shows once a read works")
+  func pagesReadFailure() async throws {
+    let server = threeSessionServer()
+    // The sign-in reads only `single_user` and `accounts_enabled`; the pages don't decode.
+    server.route(
+      "/v1/info",
+      .json(#"{"single_user":true,"accounts_enabled":false,"automations_enabled":"soon"}"#))
+    let mounted = try await mounted(server)
+    defer { mounted.screen.close() }
+    let unreadable = {
+      mounted.session.connection.issues.contains { issue in
+        if case .Session(.malformedResponse, _, _, _, _) = issue.error { return true }
+        return false
+      }
+    }
+    // Exact strings: the failure's own text names Automations.
+    let showing = { (text: String) in (try? mounted.screen.shownText().contains(text)) == true }
+    let failureText = "Couldn\u{2019}t load Automations and other pages"
+    try await settle(mounted.screen, until: "the failure row") { showing(failureText) }
+    #expect(!showing("Automations"))
+    #expect(unreadable(), "the failure is in the issues too")
+
+    server.route(
+      "/v1/info",
+      .json(#"{"single_user":true,"accounts_enabled":false,"automations_enabled":true}"#))
+    let retry = try #require(mounted.view.sidebarActions.retryPages)
+    retry()
+    try await settle(mounted.screen, until: "the Automations row") { showing("Automations") }
+    #expect(!showing(failureText))
+    #expect(!unreadable(), "the read's issue went with it")
+  }
+
   @Test("A session on the Usage page opens in the window")
   func usageOpensSession() async throws {
     let server = threeSessionServer()
