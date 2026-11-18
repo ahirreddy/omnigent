@@ -4463,13 +4463,21 @@ async def test_permission_suggestions_roundtrip_real_executor_through_adapter_br
         ToolPermissionContext(suggestions=[rule], tool_use_id="tool_1"),
     )
 
+    # A whole-tool rule has no content, never ``null``: Claude refuses that.
+    suggested = {
+        "type": "addRules",
+        "rules": [{"toolName": "mcp__omnigent__sys_os_shell"}],
+        "behavior": "allow",
+        "destination": "localSettings",
+    }
     [(_, params)] = ctx.seen
-    assert params.permission_suggestions == [rule.to_dict()]
+    assert params.permission_suggestions == [suggested]
     if applied is None:
         assert isinstance(result, PermissionResultDeny)
     else:
         assert isinstance(result, PermissionResultAllow)
-        assert result.updated_permissions == ([rule] if applied else None)
+        sent = [update.to_dict() for update in result.updated_permissions or []]
+        assert sent == ([suggested] if applied else [])
     assert ctx.cancelled.was_set is cancelled
 
 

@@ -252,13 +252,35 @@ def _permission_suggestion_dicts(perm_ctx: object) -> list[dict[str, Any]]:
     """
     suggestions = getattr(perm_ctx, "suggestions", None) or []
     try:
-        return [
+        updates = [
             update.to_dict() if hasattr(update, "to_dict") else dict(update)
             for update in suggestions
         ]
     except (TypeError, ValueError):
         logger.warning("permission suggestions the SDK cannot send; offering none")
         return []
+    # Older SDKs write a whole-tool rule's absent content back as ``null``.
+    for update in updates:
+        for rule in update.get("rules") or []:
+            if isinstance(rule, dict) and rule.get("ruleContent", "") is None:
+                del rule["ruleContent"]
+    return updates
+
+
+class _CheckedPermissionUpdate:
+    """
+    A checked permission update the SDK sends exactly as Claude suggested it.
+
+    Older SDKs serialize a whole-tool rule as ``ruleContent: null``, which Claude
+    refuses along with every update beside it; this keeps the suggested dict.
+    """
+
+    def __init__(self, update: dict[str, Any]) -> None:
+        self._update = update
+
+    def to_dict(self) -> dict[str, Any]:
+        """The update in the control protocol's shape, as the SDK serializes it."""
+        return dict(self._update)
 
 
 # Opaque SDK artifacts whose concrete shape we don't touch directly:
@@ -3487,15 +3509,11 @@ class ClaudeSDKExecutor(Executor):
         if suggestions and self._permission_suggestions_handler is not None:
             # Claude's "don't ask again" offer rides on the card; the grant says
             # which updates to apply, if any.
-            from claude_agent_sdk import PermissionUpdate
-
             grant = await self._permission_suggestions_handler(tool_name, tool_input, suggestions)
             if grant is None:
                 return PermissionResultDeny(message="Denied via Omnigent elicitation")
-            return PermissionResultAllow(
-                updated_permissions=[PermissionUpdate.from_dict(update) for update in grant]
-                or None
-            )
+            updates: list[Any] = [_CheckedPermissionUpdate(update) for update in grant]
+            return PermissionResultAllow(updated_permissions=updates or None)
         allowed = await self._elicitation_handler(tool_name, tool_input)
         if allowed:
             return PermissionResultAllow()
