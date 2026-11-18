@@ -1,4 +1,4 @@
-"""Tests for the conversation metadata turn-count migration (a1fc08d02b91).
+"""Tests for the conversation metadata turn-count migration (a1fc08d02b91) and its merge.
 
 The migration and the ORM model both add ``turns_started`` as a nullable integer
 with no database default. Existing rows keep their values and read ``NULL``;
@@ -26,6 +26,8 @@ from omnigent.db.utils import _build_alembic_config, clear_engine_cache
 
 _PREVIOUS = "27d16059fab9"
 _REVISION = "a1fc08d02b91"
+_MEMORIES_REVISION = "ffeec66eadb5"
+_MERGE_REVISION = "844462a089df"
 _TABLE = "omnigent_conversation_metadata"
 _SESSION_ID = bytes.fromhex("0123456789abcdef0123456789abcdef")
 
@@ -145,3 +147,30 @@ def test_downgrade_drops_the_column_and_keeps_rows(database: tuple[str, sa.Engin
     assert "turns_started" not in _columns(engine)
     with engine.connect() as conn:
         assert conn.execute(sa.text(f"SELECT git_branch FROM {_TABLE}")).scalar_one() == "main"
+
+
+def _version_rows(engine: sa.Engine) -> set[str]:
+    with engine.connect() as conn:
+        return set(conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalars())
+
+
+@pytest.mark.parametrize("starting_revision", ["base", _REVISION, _MEMORIES_REVISION])
+def test_merge_reconciles_turn_count_and_memories_branches(
+    database: tuple[str, sa.Engine], starting_revision: str
+) -> None:
+    """Fresh databases and either deployed branch gain both schemas and one head."""
+    uri, engine = database
+    _migrate(uri, engine, "upgrade", starting_revision)
+    _migrate(uri, engine, "upgrade", _MERGE_REVISION)
+
+    assert "turns_started" in _columns(engine)
+    assert "memories" in sa.inspect(engine).get_table_names()
+    assert _version_rows(engine) == {_MERGE_REVISION}
+    _insert(engine, 1, 3)
+
+    _migrate(uri, engine, "downgrade", _REVISION)
+    assert _version_rows(engine) == {_REVISION, _MEMORIES_REVISION}
+    with engine.connect() as conn:
+        assert conn.execute(sa.text(f"SELECT turns_started FROM {_TABLE}")).scalar_one() == 3
+    _migrate(uri, engine, "upgrade", _MERGE_REVISION)
+    assert _version_rows(engine) == {_MERGE_REVISION}

@@ -28,6 +28,13 @@ import { SideChatPane } from "@/components/chat/SideChatPane";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { handleSessionEvent, useChatStore, type ChatState } from "@/store/chatStore";
+import { useSessionTasksActions } from "@/store/sessionTasksActions";
+import {
+  continuePlanMessage,
+  REVIEW_PLAN_FIRST,
+  stopPlanMessage,
+  taskActionMessage,
+} from "@/lib/workflow";
 import {
   clearSessionDrafts,
   getSessionDraft,
@@ -85,6 +92,10 @@ vi.mock("@/lib/mcpRegistry", () => ({
 // (default: no PR) so bare Composer renders don't need a QueryClientProvider.
 vi.mock("@/hooks/usePullRequests", () => ({
   usePullRequestInfo: () => ({ data: undefined }),
+}));
+// Run a workflow lists saved workflows from a TanStack query; none here.
+vi.mock("@/hooks/useSavedWorkflows", () => ({
+  useSavedWorkflows: () => ({ workflows: [], refresh: () => {} }),
 }));
 // The workspace bar's git-status hook uses TanStack Query; stub it so the
 // composer renders in isolation (no QueryClient) with a neutral empty status.
@@ -307,10 +318,10 @@ function textarea() {
   return screen.getByLabelText("Message the agent") as HTMLTextAreaElement;
 }
 
-function forceDesktopCoarsePointer(): () => void {
+function forceMobileViewport(): () => void {
   const original = window.matchMedia;
   window.matchMedia = ((query: string) => ({
-    matches: query.includes("pointer: coarse"),
+    matches: query.includes("max-width"),
     media: query,
     onchange: null,
     addListener: () => {},
@@ -642,11 +653,11 @@ describe("Composer growth layout", () => {
   });
 
   it("publishes mobile overlay height only when it changes and clears it on unmount", () => {
-    const mediaQuery = window.matchMedia("(max-width: 767.98px)");
+    const mediaQuery = window.matchMedia("(max-width: 1180.98px)");
     vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
       ...mediaQuery,
       media: query,
-      matches: query === "(max-width: 767.98px)",
+      matches: query === "(max-width: 1180.98px)",
     }));
     let height = 48;
     const getRect = HTMLElement.prototype.getBoundingClientRect;
@@ -856,8 +867,8 @@ describe("Composer send shortcut", () => {
     expect(tooltipKeys(tooltip)).toEqual(["Ctrl", "↵"]);
   });
 
-  it("keeps Enter native and hides its hint on a desktop-width coarse pointer", () => {
-    const restorePointer = forceDesktopCoarsePointer();
+  it("keeps Enter native and hides its hint in the mobile layout", () => {
+    const restoreViewport = forceMobileViewport();
     const onSend = vi.fn();
     try {
       render(<Composer {...composerProps({ onSend })} />);
@@ -869,15 +880,14 @@ describe("Composer send shortcut", () => {
       fireEvent.focus(screen.getByRole("button", { name: "Send" }));
       expect(screen.queryByRole("tooltip")).toBeNull();
     } finally {
-      restorePointer();
+      restoreViewport();
     }
   });
 
-  it("leaves plain Enter as a newline on a coarse pointer, even with no menu open", async () => {
-    // Touch keyboards own the send action (the on-screen button), so Enter on
-    // a coarse pointer must stay a plain newline — same rule the landing
-    // composer follows on a phone viewport.
-    const restorePointer = forceDesktopCoarsePointer();
+  it("leaves plain Enter as a newline in the mobile layout, even with no menu open", async () => {
+    // Touch keyboards own the send action (the on-screen button), so Enter in
+    // the mobile layout must stay a plain newline, as in the landing composer.
+    const restoreViewport = forceMobileViewport();
     const onSend = vi.fn();
     try {
       const user = userEvent.setup();
@@ -886,7 +896,7 @@ describe("Composer send shortcut", () => {
       expect(textarea().value).toBe("first\nsecond");
       expect(onSend).not.toHaveBeenCalled();
     } finally {
-      restorePointer();
+      restoreViewport();
     }
   });
 
@@ -4087,11 +4097,11 @@ describe("Composer background tasks", () => {
   it.each([false, true])(
     "keeps a running monitor reachable after foreground work ends (mobile=%s)",
     (mobile) => {
-      const mediaQuery = window.matchMedia("(max-width: 767.98px)");
+      const mediaQuery = window.matchMedia("(max-width: 1180.98px)");
       const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
         ...mediaQuery,
         media: query,
-        matches: mobile && query === "(max-width: 767.98px)",
+        matches: mobile && query === "(max-width: 1180.98px)",
       }));
       onTestFinished(() => matchMedia.mockRestore());
       useChatStore.setState({
@@ -7009,6 +7019,241 @@ describe("Composer side-chat entry points", () => {
     expect(textarea()).toHaveFocus();
     await user.keyboard("question");
     expect(textarea()).toHaveValue("/side question");
+  });
+});
+
+describe("Composer workflow entry point", () => {
+  afterEach(cleanup);
+
+  function renderWithWorkflows(ui: ReactElement, enabled = true) {
+    return renderWithTooltips(
+      <CapabilitiesProvider info={{ ...FALLBACK_SERVER_INFO, features: { workflows: enabled } }}>
+        {ui}
+      </CapabilitiesProvider>,
+    );
+  }
+
+  it("hides workflow actions and commands when the server disables workflows", () => {
+    setComposerState({
+      conversationId: "conv_test",
+      sessionHarness: "openai-agents",
+      skills: [
+        { name: "workflow", description: "Run a workflow" },
+        { name: "save-workflow", description: "Save a workflow" },
+      ],
+    });
+    renderWithWorkflows(<Composer {...composerProps()} />, false);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Add" }), { key: "ArrowDown" });
+    expect(screen.queryByTestId("composer-workflow-action")).toBeNull();
+    expect(useSessionTasksActions.getState().startWorkflow.conv_test).toBeUndefined();
+    expect(useSessionTasksActions.getState().saveWorkflow.conv_test).toBeUndefined();
+  });
+
+  const workflowSkills = [{ name: "workflow", description: "Plan and run a multi-step workflow" }];
+
+  async function runWorkflowFromMenu(description: string, { reviewPlanFirst = true } = {}) {
+    fireEvent.keyDown(screen.getByRole("button", { name: "Add" }), { key: "ArrowDown" });
+    fireEvent.click(screen.getByTestId("composer-workflow-action"));
+    fireEvent.change(await screen.findByTestId("workflow-dialog-description"), {
+      target: { value: description },
+    });
+    if (!reviewPlanFirst) fireEvent.click(screen.getByTestId("workflow-dialog-review-plan"));
+    fireEvent.click(screen.getByTestId("workflow-dialog-run"));
+  }
+
+  it("sends the workflow skill from its dialog and leaves the draft alone", async () => {
+    setComposerState({
+      conversationId: "conv_test",
+      sessionHarness: "openai-agents",
+      skills: workflowSkills,
+    });
+    const handlers = { onSend: vi.fn(), onSendSlashCommand: vi.fn(), onStop: vi.fn() };
+    renderWithWorkflows(<Composer {...composerProps(handlers)} />);
+    fireEvent.change(textarea(), { target: { value: "an unrelated draft" } });
+
+    await runWorkflowFromMenu("Add retries");
+
+    expect(handlers.onSendSlashCommand).toHaveBeenCalledWith(
+      "workflow",
+      `Add retries\n\n${REVIEW_PLAN_FIRST}`,
+    );
+    expect(handlers.onSend).not.toHaveBeenCalled();
+    expect(handlers.onStop).not.toHaveBeenCalled();
+    expect(textarea().value).toBe("an unrelated draft");
+  });
+
+  it("sends a native session's workflow as text in its CLI's prefix", async () => {
+    setComposerState({
+      conversationId: "conv_test",
+      sessionHarness: "codex-native",
+      skills: workflowSkills,
+    });
+    const onSend = vi.fn();
+    renderWithWorkflows(<Composer {...composerProps({ onSend })} />);
+
+    await runWorkflowFromMenu("Add retries", { reviewPlanFirst: false });
+
+    expect(onSend).toHaveBeenCalledWith("$workflow Add retries");
+  });
+
+  it("holds a workflow while the session is offline", async () => {
+    setComposerState({
+      conversationId: "conv_test",
+      sessionHarness: "openai-agents",
+      skills: workflowSkills,
+    });
+    const onSendSlashCommand = vi.fn();
+    renderWithWorkflows(<Composer {...composerProps({ onSendSlashCommand, unreachable: true })} />);
+
+    await runWorkflowFromMenu("Add retries");
+
+    expect(
+      screen.getByText("The session is offline. Reconnect it to run a workflow."),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("workflow-dialog-run")).toBeDisabled();
+    expect(onSendSlashCommand).not.toHaveBeenCalled();
+  });
+
+  it("runs or continues a task for the Tasks tab, or says why it can't", () => {
+    setComposerState({ conversationId: "conv_test", sessionHarness: "openai-agents", skills: [] });
+    const onSend = vi.fn();
+    const error = vi.spyOn(toast, "error");
+    const { rerender } = renderWithWorkflows(<Composer {...composerProps({ onSend })} />);
+
+    const taskAction = (action: "run" | "continue" | "proceed", name: string) =>
+      act(() => useSessionTasksActions.getState().taskAction.conv_test?.(action, name));
+    taskAction("continue", "Run the tests");
+    expect(onSend).toHaveBeenLastCalledWith(taskActionMessage("continue", "Run the tests"));
+    taskAction("run", "Ship it");
+    expect(onSend).toHaveBeenLastCalledWith(taskActionMessage("run", "Ship it"));
+    taskAction("proceed", "Approve the deploy");
+    expect(onSend).toHaveBeenLastCalledWith(taskActionMessage("proceed", "Approve the deploy"));
+
+    rerender(
+      <TooltipProvider>
+        <Composer {...composerProps({ onSend, unreachable: true })} />
+      </TooltipProvider>,
+    );
+    taskAction("run", "Ship it");
+    expect(error).toHaveBeenCalledWith("The session is offline. Reconnect it to run the task.");
+    taskAction("proceed", "Approve the deploy");
+    expect(error).toHaveBeenCalledWith(
+      "The session is offline. Reconnect it to continue the task.",
+    );
+    expect(onSend).toHaveBeenCalledTimes(3);
+    error.mockRestore();
+  });
+
+  it("continues the plan for the Tasks tab's play button, or says why it can't", () => {
+    setComposerState({ conversationId: "conv_test", sessionHarness: "openai-agents", skills: [] });
+    const onSend = vi.fn();
+    const error = vi.spyOn(toast, "error");
+    const { rerender } = renderWithWorkflows(<Composer {...composerProps({ onSend })} />);
+
+    const continuePlan = (planName: string | null) =>
+      act(() => useSessionTasksActions.getState().continuePlan.conv_test?.(planName));
+    continuePlan("Ship the fix");
+    expect(onSend).toHaveBeenLastCalledWith(continuePlanMessage("Ship the fix"));
+
+    rerender(
+      <TooltipProvider>
+        <Composer {...composerProps({ onSend, unreachable: true })} />
+      </TooltipProvider>,
+    );
+    continuePlan(null);
+    expect(error).toHaveBeenCalledWith(
+      "The session is offline. Reconnect it to continue the plan.",
+    );
+    expect(onSend).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+  });
+
+  it.each([true, false])(
+    "asks the main agent to stop the workflow without clearing a draft (main turn active: %s)",
+    async (isWorking) => {
+      const original = useChatStore.getState();
+      const queued = [{ queueId: "q_held", text: "Later work", conversationId: "conv_test" }];
+      setComposerState({
+        conversationId: "conv_test",
+        sessionHarness: "openai-agents",
+        skills: [],
+        status: isWorking ? "streaming" : "idle",
+        sessionStatus: "running",
+        queuedMessages: queued,
+      });
+      writeAlwaysSteer(false);
+      const fetchMessage = vi.spyOn(globalThis, "fetch").mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ queued: true, item_id: "stop_message" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+      onTestFinished(() => {
+        fetchMessage.mockRestore();
+        localStorage.clear();
+        useChatStore.setState({
+          queuedMessages: original.queuedMessages,
+          status: original.status,
+          sessionStatus: original.sessionStatus,
+        });
+      });
+      const onStop = vi.fn();
+      const onSend = vi.fn(useChatStore.getState().enqueueMessage);
+      const error = vi.spyOn(toast, "error");
+      const { rerender } = renderWithWorkflows(
+        <Composer {...composerProps({ onStop, onSend, isWorking })} />,
+      );
+      fireEvent.change(textarea(), { target: { value: "An unsent note" } });
+      act(() => useSessionTasksActions.getState().stopWork.conv_test?.());
+      await waitFor(() =>
+        expect(fetchMessage).toHaveBeenCalledWith(
+          "/v1/sessions/conv_test/events",
+          expect.objectContaining({ method: "POST" }),
+        ),
+      );
+      expect(JSON.parse(fetchMessage.mock.calls[0]![1]!.body as string)).toMatchObject({
+        type: "message",
+        data: { role: "user", content: [{ type: "input_text", text: stopPlanMessage(null) }] },
+      });
+      expect(onSend).not.toHaveBeenCalled();
+      expect(useChatStore.getState().queuedMessages).toEqual(queued);
+      expect(onStop).not.toHaveBeenCalled();
+      expect(textarea().value).toBe("An unsent note");
+
+      rerender(
+        <TooltipProvider>
+          <Composer {...composerProps({ onStop, onSend, isWorking, unreachable: true })} />
+        </TooltipProvider>,
+      );
+      act(() => useSessionTasksActions.getState().stopWork.conv_test?.());
+      expect(error).toHaveBeenCalledWith(
+        "The session is offline. Reconnect it to stop the workflow.",
+      );
+      expect(fetchMessage).toHaveBeenCalledOnce();
+      expect(onStop).not.toHaveBeenCalled();
+      error.mockRestore();
+    },
+  );
+
+  it("opens the dialog for the Tasks tab's empty state", async () => {
+    setComposerState({
+      conversationId: "conv_test",
+      sessionHarness: "openai-agents",
+      skills: workflowSkills,
+    });
+    renderWithWorkflows(<Composer {...composerProps()} />);
+
+    act(() => useSessionTasksActions.getState().startWorkflow.conv_test?.());
+
+    expect(await screen.findByTestId("workflow-dialog")).toBeInTheDocument();
+  });
+
+  it("is absent when the session has no workflow skill", () => {
+    setComposerState({ conversationId: "conv_test", sessionHarness: "openai-agents", skills: [] });
+    renderWithWorkflows(<Composer {...composerProps()} />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Add" }), { key: "ArrowDown" });
+    expect(screen.queryByTestId("composer-workflow-action")).toBeNull();
   });
 });
 
