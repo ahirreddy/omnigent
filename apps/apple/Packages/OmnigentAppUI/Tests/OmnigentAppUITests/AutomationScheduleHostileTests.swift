@@ -100,8 +100,10 @@ struct AutomationScheduleHostileTests {
         choice.preset = preset
         choice.frequency = frequency
         let round = AutomationsMapping.choice(AutomationsMapping.model(choice))
-        #expect(round.preset == preset)
-        #expect(round.frequency == frequency)
+        // Interval is a minute rule, and a saved minute rule reopens as Interval, as the web's.
+        let minutes = preset == .interval || (preset == .custom && frequency == .minutely)
+        #expect(round.preset == (minutes ? .interval : preset))
+        #expect(round.frequency == (preset == .interval ? .minutely : frequency))
       }
     }
   }

@@ -39,6 +39,8 @@ struct MessageRowView: View, Equatable {
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.conversationActions) private var actions
   @FocusState private var actionsFocused: Bool
+  /// Where a message from another session keeps whether it is open.
+  @RowDisclosure var disclosure
 
   static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.row == rhs.row && lhs.decoration == rhs.decoration
@@ -63,33 +65,28 @@ struct MessageRowView: View, Equatable {
       HStack(alignment: .top, spacing: Theme.Spacing.small) {
         Spacer(
           minLength: layoutWidth == .compact ? Theme.Spacing.extraLarge : Theme.Spacing.section)
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-          // Attachments lead the message, as on the web.
-          AttachmentStrip(attachments: row.attachments)
-          if !row.text.isEmpty { UserPromptBody(text: row.text) }
-          if let activity = row.activity {
-            UnsupportedContentView(activity: activity, rowID: row.id)
-          }
-        }
-        .padding(.horizontal, Theme.Spacing.large)
-        .padding(.vertical, Theme.Spacing.bubbleVertical)
-        .background(
-          Theme.userBubble,
-          in: RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous)
-        )
-        .frame(maxWidth: Theme.userMessageWidth, alignment: .trailing)
-        .fixedSize(horizontal: false, vertical: true)
+        userBubbleContent
+          .padding(.horizontal, Theme.Spacing.large)
+          .padding(.vertical, Theme.Spacing.bubbleVertical)
+          .background(
+            Theme.userBubble,
+            in: RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous)
+          )
+          .frame(maxWidth: Theme.userMessageWidth, alignment: .trailing)
+          .fixedSize(horizontal: false, vertical: true)
         if decoration.showsAvatar, let author = row.author {
           AuthorAvatar(name: author)
         }
       }
       if row.interrupted { InterruptedLabel(rowID: row.id) }
-      MessageActionRow(
-        row: row, actions: actions, timestamp: decoration.timestamp, focus: $actionsFocused,
-        overlaysGap: true)
+      if !isCollapsedOrigin {
+        MessageActionRow(
+          row: row, actions: actions, timestamp: decoration.timestamp, focus: $actionsFocused,
+          overlaysGap: true)
+      }
     }
     .accessibilityElement(children: .contain)
-    .accessibilityLabel(decoration.showsAvatar ? "\(row.author ?? "Someone") said" : "You said")
+    .accessibilityLabel(speaker)
     .accessibilityIdentifier("message-\(row.id)")
   }
 

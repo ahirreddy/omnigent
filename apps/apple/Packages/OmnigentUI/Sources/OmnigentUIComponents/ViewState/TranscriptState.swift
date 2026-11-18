@@ -50,6 +50,15 @@ nonisolated public enum ActivityKind: String, Hashable, Sendable, CaseIterable {
   case browser
   /// A side question and its answer.
   case sidechat
+  /// A runtime `[System: …]` notice: a muted marker, never the person's message.
+  case systemNotice
+  /// A sub-agent's start or end; the `session` detail is its session.
+  case subagentMarker
+  /// A task's start or end, or a plan change.
+  case taskMarker
+
+  /// A centered marker in the chat: a notice, or a sub-agent's or a task's start or end.
+  public var isMarker: Bool { [.systemNotice, .subagentMarker, .taskMarker].contains(self) }
 }
 
 /// One titled block of detail text inside an activity or a session section.
@@ -210,6 +219,8 @@ nonisolated public struct Row: Hashable, Sendable, Identifiable {
   public var isActivityOnly: Bool
   /// When the server wrote it; live previews have none.
   public var createdAt: Date?
+  /// The session that sent this user message; its sender line is not in ``text``.
+  public var originSessionId: String?
 
   /// Creates a row.
   /// - Parameters:
@@ -227,12 +238,13 @@ nonisolated public struct Row: Hashable, Sendable, Identifiable {
   ///   - isEphemeral: Live preview or event row.
   ///   - isActivityOnly: Belongs in the activity drawer.
   ///   - createdAt: When the server wrote it.
+  ///   - originSessionId: The session that sent it.
   public init(
     id: String, role: RowRole, text: String = "", isStreaming: Bool = false,
     activity: Activity? = nil, attachments: [Attachment] = [], callId: String? = nil,
     responseId: String? = nil, interrupted: Bool = false, author: String? = nil,
     agent: String? = nil, isEphemeral: Bool = false, isActivityOnly: Bool = false,
-    createdAt: Date? = nil
+    createdAt: Date? = nil, originSessionId: String? = nil
   ) {
     self.id = id
     self.role = role
@@ -248,5 +260,6 @@ nonisolated public struct Row: Hashable, Sendable, Identifiable {
     self.isEphemeral = isEphemeral
     self.isActivityOnly = isActivityOnly
     self.createdAt = createdAt
+    self.originSessionId = originSessionId
   }
 }

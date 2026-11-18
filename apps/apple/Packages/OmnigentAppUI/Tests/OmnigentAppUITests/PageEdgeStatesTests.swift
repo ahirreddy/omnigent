@@ -61,7 +61,8 @@ struct PageEdgeStatesTests {
     let connection = try await signedInStore(threeSessionServer())
     let pages = try #require(connection.pages)
     let source = try #require(triggerSources().first)
-    var draft = AutomationTriggerMapping.newDraft(source, base: AutomationDraftState())
+    var draft = AutomationTriggerMapping.newDraft(
+      source, base: AutomationDraftState(), schedule: ScheduleChoice(preset: .hourly))
     draft.trigger?.scope = "PROJ"
     draft.trigger?.instructions = "Triage it"
     let context = AutomationEditorMapping.context(

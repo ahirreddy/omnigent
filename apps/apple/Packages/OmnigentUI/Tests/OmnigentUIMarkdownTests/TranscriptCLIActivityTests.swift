@@ -76,20 +76,6 @@
       #expect(try bare.shows("Bare text"))
     }
 
-    @Test("Show details opens the reasoning, and Hide details closes it")
-    func reasoningDetails() throws {
-      let row = Fixture.activityRow(.reasoning, summary: "Weighed the options")
-      let screen = line(row)
-      defer { screen.close() }
-      #expect(try !screen.shows("Weighed the options"))
-      let closed = try #require(try screen.firstContextMenu())
-      try screen.choose("Show details", in: closed)
-      #expect(try screen.shows("Weighed the options"))
-      let open = try #require(try screen.firstContextMenu())
-      try screen.choose("Hide details", in: open)
-      #expect(try !screen.shows("Weighed the options"))
-    }
-
     @Test("A shell command's output shows under it with its errors, and the copy is the command")
     func terminalDetails() throws {
       let row = Fixture.activityRow(

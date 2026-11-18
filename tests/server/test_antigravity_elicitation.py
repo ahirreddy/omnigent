@@ -5,6 +5,9 @@ Pure-function tests — no HTTP or runtime needed.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from omnigent.server.routes._antigravity_elicitation import (
@@ -593,3 +596,45 @@ class TestUnknownKind:
         result = ElicitationResult(action="accept")
         with pytest.raises(ValueError, match="unknown_kind"):
             to_interaction_payload("unknown_kind", result, {})
+
+
+# ── shared decision fixtures ─────────────────────────────────────────
+
+# Shared with omnigent-core's `decisions/harness_tests.rs`: each file holds one agy pending
+# interaction, the elicitation published for it, an answer the app posts, and what agy receives.
+_AGY_DECISION_FIXTURES = sorted(
+    (Path(__file__).resolve().parents[2] / "client-core" / "fixtures" / "decisions").glob(
+        "Antigravity--*.json"
+    )
+)
+
+
+class TestSharedDecisionFixtures:
+    """Every agy interaction kind maps to the card the native app reads, and back."""
+
+    def test_every_interaction_kind_has_a_fixture(self) -> None:
+        kinds = {
+            json.loads(path.read_text(encoding="utf-8"))["agy"]["kind"]
+            for path in _AGY_DECISION_FIXTURES
+        }
+        assert kinds == {"ask_question", "permission"}
+
+    @pytest.mark.parametrize("path", _AGY_DECISION_FIXTURES, ids=lambda path: path.stem)
+    def test_fixture_publishes_its_elicitation_and_answers_agy(self, path: Path) -> None:
+        fixture = json.loads(path.read_text(encoding="utf-8"))
+        pending = fixture["agy"]
+
+        params = to_elicitation_params(pending)
+
+        published = {
+            key: value
+            for key, value in params.model_dump(mode="json").items()
+            if value is not None
+        }
+        assert published == fixture["elicitation"]["params"]
+        result = ElicitationResult.model_validate(fixture["answer"])
+        delivered = to_interaction_payload(pending["kind"], result, pending["spec"])
+        assert delivered == fixture["agy_response"]
+        if "agy_tui_keys" in fixture:
+            keys = to_tui_selection_keys(pending["kind"], result, pending["spec"])
+            assert keys == fixture["agy_tui_keys"]

@@ -63,16 +63,49 @@ struct AdapterTests {
       "number": .number(value: 1.5), "text": .text(value: "yes"),
       "list": .textList(values: ["a", "b"]),
     ]
-    let responses: [OmnigentUIComponents.DecisionResponse] = [
-      .approve, .decline, .cancel, .answer(value: "Sessions"), .form(values: values),
-      .approveAllEdits, .approveAutoMode, .approveDirectories, .approveRemembering,
-      .approveCommandPolicy(policy: ["cargo", "test"]), .approvePersist(mode: .session),
-      .approvePersist(mode: .always), .declineWithFeedback(feedback: "Only the auth tests"),
-    ]
+    let responses: [OmnigentUIComponents.DecisionResponse] =
+      [
+        .approve, .decline, .cancel, .answer(value: "Sessions"), .form(values: values),
+        .approveAllEdits, .approveAutoMode, .approveDirectories, .approveRemembering,
+        .approveCommandPolicy(policy: ["cargo", "test"]), .approvePersist(mode: .session),
+        .approvePersist(mode: .always), .declineWithFeedback(feedback: "Only the auth tests"),
+        .formWithNotes(values: ["text": .text(value: "yes")], notes: ["text": "Because"]),
+        .approveSuggestions,
+      ] + OmnigentUIComponents.PermissionMode.allCases.map { .approvePlanMode(mode: $0) }
     for response in responses {
       let held = OmnigentCoreFFI.DecisionResponse(response)
       #expect(OmnigentUIComponents.DecisionResponse(held) == response)
     }
+  }
+
+  @Test("Option previews, notes, suggestions and plan modes reach the card")
+  func claudeShapes() {
+    let field = OmnigentCoreFFI.FormField(
+      key: "layout", title: "Layout", detail: "", kind: .singleChoice, required: true,
+      options: [
+        OmnigentCoreFFI.FormOption(
+          value: "Sidebar", label: "Sidebar", detail: "Left", preview: "[nav] | [body]")
+      ],
+      allowsCustom: true, isSecret: false, minimum: nil, maximum: nil, minLength: nil,
+      maxLength: nil, minItems: nil, maxItems: nil, acceptsNotes: true)
+    let mapped = OmnigentUIComponents.FormField(field)
+    #expect(mapped.acceptsNotes)
+    #expect(mapped.options.map(\.preview) == ["[nav] | [body]"])
+    let options = OmnigentUIComponents.PermissionOptions(
+      OmnigentCoreFFI.PermissionOptions(
+        allowAllEdits: true, allowAutoMode: false, permissionDirectories: [],
+        rememberLabel: nil, plan: "Ship it.", command: nil, execPolicyAmendment: nil,
+        persistModes: [], antigravity: nil, fileChanges: [],
+        suggestions: [
+          OmnigentCoreFFI.PermissionSuggestion(label: "Allow Read in this project", persists: true)
+        ],
+        planModes: [.auto, .acceptEdits]))
+    #expect(
+      options.suggestions == [
+        OmnigentUIComponents.PermissionSuggestion(
+          label: "Allow Read in this project", persists: true)
+      ])
+    #expect(options.planModes == [.auto, .acceptEdits])
   }
 
   @Test("A card's feedback support and a reply reach the core unchanged")

@@ -32,10 +32,10 @@ fn unknown_live_events_have_bounded_inspectable_safe_fallback() {
 #[test]
 fn the_union_has_every_server_event_type_once() {
     let mut types = ServerStreamEvent::KNOWN_TYPES.to_vec();
-    assert_eq!(types.len(), 56);
+    assert_eq!(types.len(), 58);
     types.sort_unstable();
     types.dedup();
-    assert_eq!(types.len(), 56);
+    assert_eq!(types.len(), 58);
 }
 
 #[test]
@@ -80,6 +80,59 @@ fn types_missing_from_native_lab_decode_typed() {
         panic!()
     };
     assert!(!sidechat.truncated);
+}
+
+// The events a codex-native session and the journal send between turns
+// (`SessionBackgroundTasksEvent`, `SessionJournalAppendedEvent` in `omnigent/server/schemas.py`).
+#[test]
+fn background_tasks_and_journal_entries_decode_typed() {
+    let ServerStreamEvent::SessionBackgroundTasks(tasks) = decode(json!({
+        "type": "session.background_tasks", "conversation_id": "conv_abc123",
+        "background_task_count": 1,
+        "background_tasks": [{"id": "bg1", "type": "shell", "status": "running",
+                              "description": "Wait for CI", "command": "sleep 120"}]
+    })) else {
+        panic!()
+    };
+    assert_eq!(tasks.conversation_id.as_deref(), Some("conv_abc123"));
+    assert_eq!(tasks.background_task_count, 1);
+    assert_eq!(
+        tasks.background_tasks[0].command.as_deref(),
+        Some("sleep 120")
+    );
+    let ServerStreamEvent::SessionBackgroundTasks(cleared) = decode(json!({
+        "type": "session.background_tasks", "conversation_id": "c",
+        "background_task_count": 0, "background_tasks": null
+    })) else {
+        panic!()
+    };
+    assert_eq!(cleared.background_task_count, 0);
+    assert_eq!(cleared.background_tasks, Vec::<BackgroundTaskInfo>::new());
+    for broken in [
+        json!({"type": "session.background_tasks", "conversation_id": "c"}),
+        json!({"type": "session.background_tasks", "background_task_count": -1}),
+        json!({"type": "session.background_tasks", "background_task_count": 1.5}),
+    ] {
+        assert!(
+            ServerStreamEvent::from_value(broken.clone()).is_err(),
+            "{broken}"
+        );
+    }
+    let ServerStreamEvent::SessionJournalAppended(appended) = decode(json!({
+        "type": "session.journal.appended", "conversation_id": "c",
+        "entry": {"id": "0f3c2a9d8e7b6a5f4e3d2c1b0a998877", "position": 2, "created_at": 1_795_080_600,
+                  "scheduled_task_run_id": null, "step": "propose",
+                  "author": {"kind": "agent"}, "kind": "status",
+                  "content": {"status": "done", "text": "PR merged"}, "workflow_id": null}
+    })) else {
+        panic!()
+    };
+    assert_eq!(appended.entry.position, 2);
+    assert_eq!(appended.entry.kind.as_deref(), Some("status"));
+    assert!(
+        ServerStreamEvent::from_value(json!({"type": "session.journal.appended", "entry": {}}))
+            .is_err()
+    );
 }
 
 // Divergence D3: NativeLab-only types are not in the server union.

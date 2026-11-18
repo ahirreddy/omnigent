@@ -25,6 +25,8 @@ enum SessionToolsAdapter {
     var showGoal: @MainActor () -> Void
     /// Shows a failure.
     var report: @MainActor (String) -> Void
+    /// Shows one linked pull request in the Pull Requests tab; `nil` shows the tab.
+    var showPullRequest: (@MainActor (String) -> Void)?
   }
 
   /// How the session takes a goal, or `nil` when it has no goal control.
@@ -80,8 +82,8 @@ enum SessionToolsAdapter {
       }
     }
     extras.indicators = ComposerIndicatorActions(
-      openPullRequests: routes.showPullRequests, openSubagent: routes.openSession,
-      openGoal: extras.setGoal)
+      openPullRequests: routes.showPullRequests, openPullRequest: routes.showPullRequest,
+      openSubagent: routes.openSession, openGoal: extras.setGoal)
   }
 
   /// Side chat, for a session the viewer can write to and may start one in, and that is not
@@ -102,18 +104,21 @@ enum SessionToolsAdapter {
   }
 
   /// Sends the composer's draft and does what its command leaves to the screen: `/new` opens a
-  /// blank session and `/side` a side chat. A `/side` the agent forks itself is a message like
-  /// any other, whose fork the window then waits for.
+  /// blank session, `/side` a side chat, `/goal` the Goal sheet, and a claude-sdk `/clear` the
+  /// session it continues in. A `/side` the agent forks itself is a message like any other,
+  /// whose fork the window then waits for; `/rewind`'s picker shows from the composer.
   static func send(
     _ store: ConversationStore, newSession: (@MainActor () -> Void)?, routes: Routes
   ) async {
     watchForks(store, routes: routes)
     switch await store.composer.send() {
-    case .handled: break
+    case .handled, .rewind: break
     case .newSession: newSession?()
     case .sideChat(let question):
       // A typed `/side` is done once its side chat opens.
       if startSideChat(store, routes: routes, question: question) { store.composer.text = "" }
+    case .goal: routes.showGoal()
+    case .openSession(let sessionID): routes.openSession(sessionID)
     }
   }
 
@@ -300,6 +305,10 @@ struct SessionGoalPresenter: ViewModifier {
           await conversation.tools.loadGoal()
         }
       }
+      // A session with a Goal control takes `/goal` as the sheet's command.
+      .onChange(
+        of: SessionToolsAdapter.goalControl(conversation, summary: summary) != nil, initial: true
+      ) { _, offers in conversation.composer.offersGoal = offers }
       .sheet(isPresented: $isPresented) {
         if let goal = SessionToolsAdapter.goalSheet(conversation, summary: summary) {
           GoalSheet(

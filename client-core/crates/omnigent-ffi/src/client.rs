@@ -1393,7 +1393,8 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
-    /// Stages a file in `session_id`'s draft; returns its id.
+    /// Stages a file in `session_id`'s draft; returns its id. Archives, Office documents and
+    /// databases go as files under the server's filesystem policy ([`Self::attachment_policy`]).
     ///
     /// # Errors
     ///
@@ -1406,8 +1407,9 @@ impl ClientCore {
         media_type: Option<String>,
         data: Vec<u8>,
     ) -> Result<u64, CoreError> {
-        let file =
-            UploadFile::new(&filename, media_type.as_deref(), data).map_err(CoreError::from)?;
+        let policy = self.inner.sessions.attachment_policy();
+        let file = UploadFile::under(&filename, media_type.as_deref(), data, &policy)
+            .map_err(CoreError::from)?;
         self.inner
             .sessions
             .add_attachment(&session_id, file)

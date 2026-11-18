@@ -1,3 +1,4 @@
+public import Foundation
 public import OmnigentCoreFFI
 
 /// The panel's changes to the session's pull requests. One runs at a time (``pendingEdit``);
@@ -17,13 +18,20 @@ extension SessionPanelStore {
     return true
   }
 
-  /// Unlinks the PR at `url`; the list shows when it was the open one.
+  /// Unlinks the PR at `url`; the list shows when it was the open one. A server that stores
+  /// PRs unlinks it itself, so this works while the host is offline.
   /// - Parameter url: The PR's address.
   public func unlinkPullRequest(_ url: String) async {
-    let info = await edit(.unlink(url: url)) { core, session in
-      try await core.unlinkPullRequest(sessionId: session, url: url)
+    await loadFeatures()
+    let stored = offersPullRequests
+    let unlinked: Void? = await edit(.unlink(url: url)) { core, session in
+      if stored {
+        try await core.unlinkSessionPullRequest(sessionId: session, url: url)
+      } else {
+        _ = try await core.unlinkPullRequest(sessionId: session, url: url)
+      }
     }
-    guard info != nil else { return }
+    guard unlinked != nil else { return }
     if openPullRequest == url { showPullRequestList() }
     await reloadPullRequests()
   }
@@ -142,9 +150,53 @@ extension SessionPanelStore {
     return true
   }
 
+  /// Replaces the open PR's title and/or description; `nil` keeps one as it is.
+  /// - Parameters:
+  ///   - title: The new title.
+  ///   - body: The new Markdown description.
+  /// - Returns: Whether the provider saved it.
+  @discardableResult
+  public func updateDetails(title: String?, body: String?) async -> Bool {
+    guard let url = openPullRequest else { return false }
+    let text = await edit(.details) { core, session in
+      try await core.updatePullRequestDetails(
+        sessionId: session, prUrl: url, title: title, body: body)
+    }
+    guard let text else { return false }
+    if openPullRequest == url, var info = detail.value {
+      info.pullRequest?.title = text.title
+      info.pullRequest?.body = text.body
+      detail = .loaded(info)
+    }
+    return true
+  }
+
+  /// Uploads an image or video for the open PR's description. Uploads run beside other
+  /// changes, as the web's do.
+  /// - Parameters:
+  ///   - fileName: The file's name, for its alt text.
+  ///   - contentType: Its media type.
+  ///   - data: Its bytes.
+  /// - Returns: The Markdown that embeds it, or why it was not uploaded.
+  public func uploadAttachment(fileName: String, contentType: String, data: Data) async
+    -> Result<String, CoreError>
+  {
+    guard let url = openPullRequest else {
+      return .failure(.InvalidState(message: "Open the pull request first."))
+    }
+    do {
+      let attachment = try await core.uploadPullRequestAttachment(
+        sessionId: sessionID, prUrl: url, fileName: fileName, contentType: contentType,
+        bytes: data)
+      return .success(attachment.markdown)
+    } catch {
+      return .failure(coreError(error))
+    }
+  }
+
   /// Runs one change, keeping its failure in ``editError``; `nil` when it failed or another
   /// change is in flight.
-  private func edit<Value>(
+  func edit<Value>(
     _ kind: PullRequestEdit,
     _ operation: (ClientCore, String) async throws -> Value
   ) async -> Value? {

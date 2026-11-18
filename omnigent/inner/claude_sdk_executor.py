@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import pathlib
+import secrets
 import shlex
 import shutil
 import sys
@@ -227,6 +228,60 @@ AskQuestionHandler: TypeAlias = Callable[
     [ToolArgs],
     Awaitable[dict[str, Any] | str],
 ]
+
+# Adapter bridge for an MCP server's request for input: an elicitation id and the
+# card's ``ElicitationRequestParams`` in, the ``ElicitationResult`` out.
+FormElicitationHandler: TypeAlias = Callable[[str, Any], Awaitable[Any]]
+
+# Adapter bridge for a permission request carrying Claude's suggested updates (as
+# control-protocol dicts): ``None`` denies, else the updates to apply with the allow.
+PermissionSuggestionsHandler: TypeAlias = Callable[
+    [str, ToolArgs, list[dict[str, Any]]],
+    Awaitable[list[dict[str, Any]] | None],
+]
+
+
+def _permission_suggestion_dicts(perm_ctx: object) -> list[dict[str, Any]]:
+    """
+    Claude's suggested updates on a permission request, as control-protocol dicts.
+
+    :param perm_ctx: The SDK's ``ToolPermissionContext``; its ``suggestions`` are
+        ``PermissionUpdate`` objects (raw dicts on older SDKs).
+    :returns: Every suggestion, or none when any cannot be sent, so the card
+        never offers less than Claude would apply.
+    """
+    suggestions = getattr(perm_ctx, "suggestions", None) or []
+    try:
+        updates = [
+            update.to_dict() if hasattr(update, "to_dict") else dict(update)
+            for update in suggestions
+        ]
+    except (TypeError, ValueError):
+        logger.warning("permission suggestions the SDK cannot send; offering none")
+        return []
+    # Older SDKs write a whole-tool rule's absent content back as ``null``.
+    for update in updates:
+        for rule in update.get("rules") or []:
+            if isinstance(rule, dict) and rule.get("ruleContent", "") is None:
+                del rule["ruleContent"]
+    return updates
+
+
+class _CheckedPermissionUpdate:
+    """
+    A checked permission update the SDK sends exactly as Claude suggested it.
+
+    Older SDKs serialize a whole-tool rule as ``ruleContent: null``, which Claude
+    refuses along with every update beside it; this keeps the suggested dict.
+    """
+
+    def __init__(self, update: dict[str, Any]) -> None:
+        self._update = update
+
+    def to_dict(self) -> dict[str, Any]:
+        """The update in the control protocol's shape, as the SDK serializes it."""
+        return dict(self._update)
+
 
 # Opaque SDK artifacts whose concrete shape we don't touch directly:
 # - ``SdkMcpTool``: returned by ``sdk.tool(...)`` decorator and passed back
@@ -2386,6 +2441,10 @@ class ClaudeSDKExecutor(Executor):
         self._elicitation_handler: ElicitationHandler | None = None
         # AskUserQuestion bridge installed by ExecutorAdapter; None until wired.
         self._ask_question_handler: AskQuestionHandler | None = None
+        # MCP elicitation bridge installed by ExecutorAdapter; None until wired.
+        self._form_elicitation_handler: FormElicitationHandler | None = None
+        # Permission card offering Claude's suggestions; installed by ExecutorAdapter.
+        self._permission_suggestions_handler: PermissionSuggestionsHandler | None = None
         # Live Claude SDK clients keyed by Omnigent session id.
         self._clients: dict[str, _ClaudeClientState] = {}
         self._pending_framework_context: dict[str, str] = {}
@@ -3345,6 +3404,65 @@ class ClaudeSDKExecutor(Executor):
         hooks["PreToolUse"] = entries
         options.hooks = hooks
 
+    def _install_elicitation_hook(
+        self,
+        sdk: _ClaudeSDK,
+        options: Any,  # type: ignore[explicit-any]  # ClaudeAgentOptions — avoid a hard sdk import
+    ) -> None:
+        """
+        Register the ``Elicitation`` hook: an MCP server's request for input becomes a card.
+
+        The Python SDK declines MCP elicitations it is asked to show, and Claude
+        runs this hook first, so the card's answer reaches the server instead.
+        An unreadable request or a failed card returns no answer, leaving the
+        SDK's decline. No-op until the adapter wires ``_form_elicitation_handler``.
+
+        :param sdk: The ``claude_agent_sdk`` module (or a test double).
+        :param options: ``ClaudeAgentOptions`` to mutate.
+        """
+        hook_matcher_cls = getattr(sdk, "HookMatcher", None)
+        if self._form_elicitation_handler is None or hook_matcher_cls is None:
+            return
+
+        async def handle_elicitation(
+            payload: Any,  # type: ignore[explicit-any]  # HookInput TypedDict
+            tool_use_id: str | None,  # noqa: ARG001 -- HookCallback signature
+            context: Any,  # type: ignore[explicit-any]  # HookContext  # noqa: ARG001 -- HookCallback signature
+        ) -> dict[str, Any]:  # type: ignore[explicit-any]  # HookJSONOutput
+            from omnigent.errors import OmnigentError
+            from omnigent.server.claude_elicitation import (
+                CLAUDE_SDK_MCP_ELICITATION_POLICY,
+                claude_mcp_elicitation_output,
+                claude_mcp_elicitation_params,
+            )
+
+            handler = self._form_elicitation_handler
+            if handler is None or not isinstance(payload, dict):
+                return {}
+            try:
+                params = claude_mcp_elicitation_params(payload, CLAUDE_SDK_MCP_ELICITATION_POLICY)
+            except OmnigentError as exc:
+                logger.warning("MCP elicitation the app cannot show: %s", exc)
+                return {}
+            try:
+                result = await handler(f"elicit_{secrets.token_hex(16)}", params)
+            except Exception:
+                logger.exception("MCP elicitation card failed; leaving the request to Claude")
+                return {}
+            return claude_mcp_elicitation_output(result)
+
+        hooks = dict(getattr(options, "hooks", None) or {})
+        entries = list(hooks.get("Elicitation") or [])
+        entries.append(
+            hook_matcher_cls(
+                matcher=None,
+                timeout=self._ASK_QUESTION_HOOK_TIMEOUT_S,
+                hooks=[handle_elicitation],
+            )
+        )
+        hooks["Elicitation"] = entries
+        options.hooks = hooks
+
     async def _can_use_tool_for_permission(
         self,
         tool_name: str,
@@ -3387,6 +3505,15 @@ class ClaudeSDKExecutor(Executor):
             # is included for safety if the SDK ever calls the callback
             # after the handler was cleared.
             return PermissionResultAllow()
+        suggestions = _permission_suggestion_dicts(perm_ctx)
+        if suggestions and self._permission_suggestions_handler is not None:
+            # Claude's "don't ask again" offer rides on the card; the grant says
+            # which updates to apply, if any.
+            grant = await self._permission_suggestions_handler(tool_name, tool_input, suggestions)
+            if grant is None:
+                return PermissionResultDeny(message="Denied via Omnigent elicitation")
+            updates: list[Any] = [_CheckedPermissionUpdate(update) for update in grant]
+            return PermissionResultAllow(updated_permissions=updates or None)
         allowed = await self._elicitation_handler(tool_name, tool_input)
         if allowed:
             return PermissionResultAllow()
@@ -3862,6 +3989,7 @@ class ClaudeSDKExecutor(Executor):
         self._install_subagent_router_hook(sdk, options, model)
         self._install_framework_context_hook(sdk, options, session_key)
         self._install_ask_user_question_hook(sdk, options)
+        self._install_elicitation_hook(sdk, options)
 
         # Log the full configuration for debugging
         logger.info(

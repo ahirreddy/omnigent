@@ -7,20 +7,48 @@ public import OmnigentCoreFFI
 /// caching of its own, and returns every HTTP status as a response rather than an error.
 public final class URLSessionHttpTransport: HttpTransport, Sendable {
   private let session: URLSession
+  private let heldSession: URLSession
   private let redirectPolicy = RefuseRedirects()
+
+  /// How long a request the server holds for the user may wait for its reply: the server's
+  /// longest approval wait, one day.
+  static let heldRequestTimeout: TimeInterval = 86_400
 
   /// Creates a transport.
   /// - Parameter session: Session used for every request. Defaults to
-  ///   ``makeDefaultSession()``.
-  public init(session: URLSession = URLSessionHttpTransport.makeDefaultSession()) {
-    self.session = session
+  ///   ``makeDefaultSession()``, with ``makeHeldSession()`` for the requests the server may hold
+  ///   for the user (``isHeldForTheUser(_:)``).
+  public init(session: URLSession? = nil) {
+    self.session = session ?? Self.makeDefaultSession()
+    heldSession = session ?? Self.makeHeldSession()
+  }
+
+  /// The default session, except that it waits up to ``heldRequestTimeout`` for a reply.
+  /// - Returns: A new `URLSession`.
+  public static func makeHeldSession() -> URLSession {
+    makeDefaultSession(timeout: heldRequestTimeout)
+  }
+
+  /// Whether the server may hold `request` until the user answers: a session event, such as a
+  /// message a policy asks the user about before the agent may read it. Closing it early would
+  /// drop the message.
+  /// - Parameter request: The request built by the core.
+  /// - Returns: `true` for a `POST` to a session's events.
+  static func isHeldForTheUser(_ request: HttpRequest) -> Bool {
+    guard request.method == "POST", let path = URLComponents(string: request.url)?.path else {
+      return false
+    }
+    // `/v1/sessions/{id}/events`, under any mount.
+    let tail = Array(path.split(separator: "/").suffix(4))
+    return tail.count == 4 && tail[0] == "v1" && tail[1] == "sessions" && tail[3] == "events"
   }
 
   /// An ephemeral session with cookies and caching disabled.
+  /// - Parameter timeout: How long a request may wait for more data.
   /// - Returns: A new `URLSession`.
-  public static func makeDefaultSession() -> URLSession {
+  public static func makeDefaultSession(timeout: TimeInterval = 30) -> URLSession {
     let configuration = URLSessionConfiguration.ephemeral
-    configuration.timeoutIntervalForRequest = 30
+    configuration.timeoutIntervalForRequest = timeout
     configuration.waitsForConnectivity = false
     configuration.httpShouldSetCookies = false
     configuration.httpCookieAcceptPolicy = .never
@@ -35,11 +63,14 @@ public final class URLSessionHttpTransport: HttpTransport, Sendable {
   /// - Returns: The HTTP response.
   /// - Throws: `TransportError` when no HTTP response was received.
   public func send(request: HttpRequest) async throws(TransportError) -> HttpResponse {
-    let urlRequest = try Self.makeURLRequest(request)
+    var urlRequest = try Self.makeURLRequest(request)
+    let held = Self.isHeldForTheUser(request)
+    if held { urlRequest.timeoutInterval = Self.heldRequestTimeout }
     let data: Data
     let response: URLResponse
     do {
-      (data, response) = try await session.data(for: urlRequest, delegate: redirectPolicy)
+      (data, response) = try await (held ? heldSession : session).data(
+        for: urlRequest, delegate: redirectPolicy)
     } catch {
       throw TransportErrorMapping.map(error)
     }

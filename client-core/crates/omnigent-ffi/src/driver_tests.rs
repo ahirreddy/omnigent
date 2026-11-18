@@ -831,9 +831,10 @@ fn a_newest_page_of_terminal_events_reads_on_to_the_messages_above_it() {
     sink.chunk(HEARTBEAT.to_vec());
     harness.pump();
 
-    harness
-        .http
-        .route(&items, json(200, &terminal_page(&["term_4", "term_3"], true)));
+    harness.http.route(
+        &items,
+        json(200, &terminal_page(&["term_4", "term_3"], true)),
+    );
     newest.send(()).unwrap();
     harness.pump();
     // Its rows all belong in the activity drawer, so the page above is read unasked.
@@ -842,9 +843,10 @@ fn a_newest_page_of_terminal_events_reads_on_to_the_messages_above_it() {
     let above = lock(&harness.http.requests).last().cloned().unwrap();
     assert!(above.url.contains("after=term_3"), "{}", above.url);
 
-    harness
-        .http
-        .route(&items, json(200, &terminal_page(&["term_2", "term_1"], true)));
+    harness.http.route(
+        &items,
+        json(200, &terminal_page(&["term_2", "term_1"], true)),
+    );
     terminals_above.send(()).unwrap();
     harness.pump();
     let next = lock(&harness.http.requests).last().cloned().unwrap();

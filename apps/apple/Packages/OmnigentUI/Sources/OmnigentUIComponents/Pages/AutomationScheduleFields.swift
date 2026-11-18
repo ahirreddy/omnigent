@@ -1,27 +1,40 @@
 import SwiftUI
 
 /// The schedule picker: a preset, the time, the custom unit, interval and days, and the ending.
-/// Custom schedules and run-count endings need a server with anchored scheduling.
+/// Interval and custom schedules and run-count endings need a server with anchored scheduling.
 struct ScheduleFields: View {
   @Binding var choice: ScheduleChoice
   var anchoredScheduling = true
+  /// The minutes an Interval schedule may repeat every, from the server and where runs go.
+  var minuteRange: ClosedRange<Int> = 10...21_960
+  /// Custom schedules offer minutes, as where runs go allows schedules under an hour.
+  var offersMinutes = true
 
   private static let weekdayNames = Calendar.current.shortWeekdaySymbols
 
   var body: some View {
-    Picker("Repeats", selection: $choice.preset) {
-      ForEach(ScheduleChoice.Preset.allCases) { preset in
+    Picker("Repeats", selection: presetSelection) {
+      ForEach(presets) { preset in
         Text(preset.title).tag(preset)
-          .selectionDisabled(preset == .custom && !anchoredScheduling && choice.preset != .custom)
+          .selectionDisabled(
+            [.custom, .interval].contains(preset) && !anchoredScheduling
+              && choice.preset != preset)
       }
     }
     .accessibilityIdentifier("automation-schedule-preset")
+    if choice.preset == .interval {
+      Stepper(value: $choice.interval, in: minuteRange) {
+        Text("Every \(choice.interval) minutes")
+      }
+      .accessibilityIdentifier("automation-schedule-interval")
+    }
     if choice.preset == .custom {
-      Stepper(value: $choice.interval, in: 1...366) {
-        Picker("Every \(choice.interval)", selection: $choice.frequency) {
-          ForEach(ScheduleChoice.Frequency.allCases) { Text($0.title).tag($0) }
+      Stepper(value: $choice.interval, in: intervalRange) {
+        Picker("Every \(choice.interval)", selection: frequencySelection) {
+          ForEach(frequencies) { Text($0.title).tag($0) }
         }
       }
+      .accessibilityIdentifier("automation-schedule-custom-interval")
     }
     if showsWeekdays { weekdays }
     if choice.preset == .custom, choice.frequency == .yearly {
@@ -32,15 +45,82 @@ struct ScheduleFields: View {
     if choice.preset == .custom, [.monthly, .yearly].contains(choice.frequency) {
       TextField("Days of the month", text: monthDays, prompt: Text("1, 15"))
     }
-    if isHourly {
-      Picker("At minute", selection: $choice.minute) {
-        ForEach(0..<60, id: \.self) { Text($0 < 10 ? ":0\($0)" : ":\($0)").tag($0) }
+    // A minute rule has no time of day.
+    if !isMinutely {
+      if isHourly {
+        Picker("At minute", selection: $choice.minute) {
+          ForEach(0..<60, id: \.self) { Text($0 < 10 ? ":0\($0)" : ":\($0)").tag($0) }
+        }
+      } else {
+        DatePicker("At", selection: time, displayedComponents: .hourAndMinute)
+          .accessibilityIdentifier("automation-schedule-time")
       }
-    } else {
-      DatePicker("At", selection: time, displayedComponents: .hourAndMinute)
-        .accessibilityIdentifier("automation-schedule-time")
     }
     ending
+  }
+
+  /// Interval and Custom show only on servers that run them, or while chosen.
+  private var presets: [ScheduleChoice.Preset] {
+    ScheduleChoice.Preset.allCases.filter {
+      anchoredScheduling || ![.interval, .custom].contains($0) || $0 == choice.preset
+    }
+  }
+
+  private var frequencies: [ScheduleChoice.Frequency] {
+    ScheduleChoice.Frequency.allCases.filter {
+      $0 != .minutely || offersMinutes || choice.frequency == .minutely
+    }
+  }
+
+  private var intervalRange: ClosedRange<Int> {
+    choice.frequency == .minutely ? minuteRange : 1...366
+  }
+
+  /// As the web's `changePreset`: Interval starts at the shortest allowed interval, and Custom
+  /// carries over the preset's unit and days.
+  private var presetSelection: Binding<ScheduleChoice.Preset> {
+    Binding(
+      get: { choice.preset },
+      set: { preset in
+        let previous = choice
+        choice.preset = preset
+        switch preset {
+        case .interval:
+          if previous.frequency != .minutely { choice.interval = minuteRange.lowerBound }
+          choice.frequency = .minutely
+        case .custom:
+          switch previous.preset {
+          case .weekdays:
+            choice.frequency = .weekly
+            choice.weekdays = [0, 1, 2, 3, 4]
+          case .hourly: choice.frequency = .hourly
+          case .daily: choice.frequency = .daily
+          case .weekly: choice.frequency = .weekly
+          case .interval, .custom: break
+          }
+          if previous.preset != .custom, previous.preset != .interval { choice.interval = 1 }
+        case .hourly, .daily, .weekdays, .weekly:
+          break
+        }
+      })
+  }
+
+  /// Minutes start at the shortest allowed interval; leaving them starts over at 1.
+  private var frequencySelection: Binding<ScheduleChoice.Frequency> {
+    Binding(
+      get: { choice.frequency },
+      set: { frequency in
+        if frequency == .minutely {
+          choice.interval = max(minuteRange.lowerBound, choice.interval)
+        } else if choice.frequency == .minutely {
+          choice.interval = 1
+        }
+        choice.frequency = frequency
+      })
+  }
+
+  private var isMinutely: Bool {
+    choice.preset == .interval || (choice.preset == .custom && choice.frequency == .minutely)
   }
 
   /// The ending as the web's "ends" select: never, on a date, or after a number of runs.

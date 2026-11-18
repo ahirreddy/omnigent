@@ -245,6 +245,9 @@ extension ConnectedServerView {
     // Split view holds two tabs of one session; another session goes beside it in a window
     // (Open in New Window), so the rows offer no Open in Split View.
     actions.shareUnavailableReason = shareUnavailableReason
+    actions.createAutomation = AutomationsAdapter.createFromSession(connection) {
+      selection.wrappedValue = .automations
+    }
     actions.forkUnavailableReason = { summary in
       list.sessionWithoutActivity(summary.id).flatMap { forkUnavailableReason(source: $0) }
     }

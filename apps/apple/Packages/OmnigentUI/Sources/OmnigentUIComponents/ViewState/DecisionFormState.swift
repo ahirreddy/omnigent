@@ -10,6 +10,9 @@ nonisolated public struct FormOption: Hashable, Sendable, Identifiable {
   public var label: String
   /// Extra description.
   public var detail: String
+  /// What choosing it would look like (a mockup, code or a diagram), shown as written; empty
+  /// when none.
+  public var preview: String
 
   /// The option's identity is its value; values are unique within a field.
   public var id: String { value }
@@ -19,10 +22,12 @@ nonisolated public struct FormOption: Hashable, Sendable, Identifiable {
   ///   - value: Posted value.
   ///   - label: Display label.
   ///   - detail: Extra description.
-  public init(value: String, label: String? = nil, detail: String = "") {
+  ///   - preview: What choosing it would look like.
+  public init(value: String, label: String? = nil, detail: String = "", preview: String = "") {
     self.value = value
     self.label = label ?? value
     self.detail = detail
+    self.preview = preview
   }
 }
 
@@ -73,6 +78,8 @@ nonisolated public struct FormField: Hashable, Sendable, Identifiable {
   public var allowsCustom: Bool
   /// Render as a secure field.
   public var isSecret: Bool
+  /// An editor: the text exactly as typed, empty included, is the answer.
+  public var exactText: Bool
   /// Lowest number.
   public var minimum: Double?
   /// Highest number.
@@ -89,6 +96,8 @@ nonisolated public struct FormField: Hashable, Sendable, Identifiable {
   public var format: TextFormat?
   /// The answer the field starts with until the user changes it; always a valid answer.
   public var defaultValue: ElicitationValue?
+  /// The answer may carry a note (``DecisionResponse/formWithNotes(values:notes:)``).
+  public var acceptsNotes: Bool
 
   /// The field's identity is its key.
   public var id: String { key }
@@ -103,6 +112,7 @@ nonisolated public struct FormField: Hashable, Sendable, Identifiable {
   ///   - options: Choices.
   ///   - allowsCustom: Free text allowed.
   ///   - isSecret: Secure entry.
+  ///   - exactText: The exact text, empty included, is the answer.
   ///   - minimum: Lowest number.
   ///   - maximum: Highest number.
   ///   - minLength: Shortest text.
@@ -111,12 +121,14 @@ nonisolated public struct FormField: Hashable, Sendable, Identifiable {
   ///   - maxItems: Most choices.
   ///   - format: Text format.
   ///   - defaultValue: Starting answer.
+  ///   - acceptsNotes: The answer may carry a note.
   public init(
     key: String, title: String, detail: String = "", kind: FieldKind, required: Bool = true,
     options: [FormOption] = [], allowsCustom: Bool = false, isSecret: Bool = false,
-    minimum: Double? = nil, maximum: Double? = nil, minLength: UInt64? = nil,
-    maxLength: UInt64? = nil, minItems: UInt64? = nil, maxItems: UInt64? = nil,
-    format: TextFormat? = nil, defaultValue: ElicitationValue? = nil
+    exactText: Bool = false, minimum: Double? = nil, maximum: Double? = nil,
+    minLength: UInt64? = nil, maxLength: UInt64? = nil, minItems: UInt64? = nil,
+    maxItems: UInt64? = nil, format: TextFormat? = nil, defaultValue: ElicitationValue? = nil,
+    acceptsNotes: Bool = false
   ) {
     self.key = key
     self.title = title
@@ -126,6 +138,7 @@ nonisolated public struct FormField: Hashable, Sendable, Identifiable {
     self.options = options
     self.allowsCustom = allowsCustom
     self.isSecret = isSecret
+    self.exactText = exactText
     self.minimum = minimum
     self.maximum = maximum
     self.minLength = minLength
@@ -134,5 +147,9 @@ nonisolated public struct FormField: Hashable, Sendable, Identifiable {
     self.maxItems = maxItems
     self.format = format
     self.defaultValue = defaultValue
+    self.acceptsNotes = acceptsNotes
   }
+
+  /// Whether any option shows a preview.
+  public var hasPreviews: Bool { options.contains { !$0.preview.isEmpty } }
 }

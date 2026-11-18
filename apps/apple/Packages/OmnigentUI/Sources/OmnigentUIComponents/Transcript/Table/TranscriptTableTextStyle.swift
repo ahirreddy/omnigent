@@ -99,22 +99,32 @@
     /// ``liveResizeSnap`` meanwhile, and exactly once the resize ends.
     private(set) var isLiveResizing = false
     static let liveResizeSnap: CGFloat = 32
+    /// While a column slides beside the transcript, the widest the chat column lays out at: its
+    /// width as the slide began, so a widening slide lays no text out again until it ends.
+    var columnCeiling: CGFloat?
 
-    /// Starts or ends a live resize.
+    /// Starts or ends a live resize. `restyles` lays the cells out again in the new style, which
+    /// an end needs only when the snapped widths differed from the exact ones.
     /// - Returns: Whether that changed.
     @discardableResult
-    func setLiveResizing(_ resizing: Bool) -> Bool {
+    func setLiveResizing(_ resizing: Bool, restyles: Bool = true) -> Bool {
       guard resizing != isLiveResizing else { return false }
       isLiveResizing = resizing
-      serial += 1
+      if restyles { serial += 1 }
       return true
     }
 
     /// Where a cell `width` wide puts its message's column.
     func metrics(width: CGFloat) -> TranscriptTableTextMetrics {
-      TranscriptTableTextMetrics(
-        width: width, layoutWidth: layoutWidth, maxWidth: maxWidth,
-        snap: isLiveResizing ? Self.liveResizeSnap : 0)
+      guard isLiveResizing else { return exactMetrics(width: width) }
+      return TranscriptTableTextMetrics(
+        width: width, layoutWidth: layoutWidth, maxWidth: maxWidth, snap: Self.liveResizeSnap,
+        ceiling: columnCeiling ?? .infinity)
+    }
+
+    /// The column at `width` with no live resize or slide under way.
+    func exactMetrics(width: CGFloat) -> TranscriptTableTextMetrics {
+      TranscriptTableTextMetrics(width: width, layoutWidth: layoutWidth, maxWidth: maxWidth)
     }
 
     /// Whether runs are drawn ahead, at a known scale.

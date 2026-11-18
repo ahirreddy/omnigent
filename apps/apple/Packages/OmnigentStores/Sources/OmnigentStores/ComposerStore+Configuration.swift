@@ -116,7 +116,7 @@ extension ComposerStore {
   func refreshRules() {
     rules = ConfigurationRules(
       configuration: configuration, catalog: configurationCatalog, skills: skills,
-      options: slashOptions)
+      options: commandOptions)
   }
 
   /// Reads the session's configuration and what it may switch to. Failures are kept in

@@ -304,10 +304,20 @@ fn hidden_context_and_unknown_roles_are_explicit() {
             project_item(&item).expect("projects").map(|row| row.text)
         })
         .collect();
+    // A Claude task notification is a background task's notice, as on the web.
     assert_eq!(
-        shown.iter().filter(|text| text.is_none()).count(),
-        3,
-        "{shown:?}"
+        shown,
+        [
+            None,
+            Some("System: Background task finished".to_owned()),
+            Some("Explain <task-notification> markup.".to_owned()),
+            Some("<task-notification> this is an incomplete example".to_owned()),
+            Some(
+                "The phrase This session is being continued from a previous conversation is quoted."
+                    .to_owned()
+            ),
+            None,
+        ]
     );
     let item = ConversationItem::from_value(
         json!({"id":"m","type":"message","role":"system","content":"x"}),

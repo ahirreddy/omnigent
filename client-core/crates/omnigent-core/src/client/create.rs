@@ -185,6 +185,8 @@ impl<T: HttpTransport> ClientCore<T> {
     )]
     pub(crate) async fn creation_capabilities(&self) -> Result<CreationCapabilities, SessionError> {
         let value = self.get_json("/v1/info", &[]).await?;
+        // The new-session composer stages files before a session exists.
+        self.record_attachment_policy(&value);
         CreationCapabilities::from_value(&value)
             .map_err(|detail| SessionError::MalformedResponse { detail })
     }

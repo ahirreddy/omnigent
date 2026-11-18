@@ -42,6 +42,13 @@ Recorded on 2026-10-31 from this repo's own server, `python -m omnigent server` 
 - `recorded-well-known-manifest.json`: `GET /.well-known/omnigent.json` → manifest v1, `auth.mode: "header"`.
 - `recorded-v1-info.json`: `GET /v1/info` → capability flags (`single_user`, `accounts_enabled`, `durable_initial_input`, ...).
 
+## Main's composer shapes
+
+Written from `omnigent/server` on main (`ServerInfoResponse`, `SessionRewindResponse`, the items list), for the composer's commands, attachments and launch options.
+
+- `ComposerParity--v1-info-main.json`: `GET /v1/info` with `session_claude_sdk_clear`, `session_rewind`, `clear` in `session_event_types`, `enabled_connections: ["mcp"]` and a `filesystem_attachments` policy of `.gz`, `.har` and `.zip`. Expect `/clear` and `/rewind` on Claude sessions, those three extensions delivered as files (other default ones refused), and the MCP registry offered at launch.
+- `ComposerParity--RewindPromptsAndRewind.jsonl`: two `GET /v1/sessions/conv_a/items?type=message&order=desc` pages, then `POST /v1/sessions/conv_a/rewind` → `{session_id, prompt, attachments}`. Expect three prompts newest first (assistant and `is_meta` items skipped, text parts joined by newlines) and the rewound session `conv_rewound`.
+
 ## Extracted from reducer-side NativeLab tests
 
 - `DemoFixtures--demo-design.json`: DemoFixtures.snapshots[0] (demo-design, pinned, one pending decision 'decision-design', workspace 'Omni / iOS'). updatedAt is the Swift reference-date value for unix 1700000000 minus 240s (source uses Date() minus 240s). Used by ConversationStateTests (mutated in-test: revision+1, decision approved, status idle, message appended) and MobileCoreTests. Expect decisions pending and revision 1.

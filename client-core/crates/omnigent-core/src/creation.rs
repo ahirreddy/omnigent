@@ -330,6 +330,42 @@ pub struct CreationSelection {
     /// Smart Routing picks the model and effort each turn (see
     /// [`CreationCatalog::offers_smart_routing`]); no model or effort is pinned with it.
     pub smart_routing: bool,
+    /// Server-configured MCP services the session starts with (`mcp_registry_services`), from
+    /// [`launch_mcp_services`]; empty sends none.
+    pub mcp_registry_services: Vec<String>,
+}
+
+/// The MCP services a launch sends: the remembered or toggled `selected` ids that the registry
+/// still `offered` (its services' ids), in selection order (the web's `servicesForLaunch`). A
+/// service no longer offered stays remembered but is not sent.
+#[must_use]
+pub fn launch_mcp_services(selected: &[String], offered: &[String]) -> Vec<String> {
+    let mut sent: Vec<String> = Vec::new();
+    for id in selected {
+        if offered.contains(id) && !sent.contains(id) {
+            sent.push(id.clone());
+        }
+    }
+    sent
+}
+
+/// Why a launch with MCP services `selected` waits (the web's `selectionError`): the registry
+/// is still loading, or could not be read. `None` lets it go.
+#[must_use]
+pub fn launch_mcp_problem(
+    selected: &[String],
+    registry_loading: bool,
+    registry_failed: bool,
+) -> Option<String> {
+    if selected.is_empty() {
+        None
+    } else if registry_loading {
+        Some("Loading MCP services\u{2026}".to_owned())
+    } else if registry_failed {
+        Some("Could not load MCP services. Open MCPs to retry or turn them off.".to_owned())
+    } else {
+        None
+    }
 }
 
 /// The `git` block of a new external-host session.
@@ -476,6 +512,9 @@ pub struct CreationCapabilities {
     pub sibling_sessions: bool,
     /// `sibling_session_destinations`: where a nested agent may start.
     pub sibling_destinations: crate::session_families::SiblingDestinations,
+    /// `enabled_connections` has `mcp`: sessions can start with server-configured MCP
+    /// services (the web's `McpRegistryLaunchPicker`).
+    pub mcp_registry: bool,
 }
 
 impl CreationCapabilities {
@@ -556,8 +595,11 @@ impl CreationCapabilities {
                     .collect()
             })
             .unwrap_or_default();
-        let github_connection = opt_array(object, "enabled_connections")?
-            .is_some_and(|names| names.iter().any(|name| name.as_str() == Some("github")));
+        let connections = opt_array(object, "enabled_connections")?;
+        let connection = |wanted: &str| {
+            connections.is_some_and(|names| names.iter().any(|name| name.as_str() == Some(wanted)))
+        };
+        let github_connection = connection("github");
         Ok(Self {
             agent_install: opt_bool(object, "agent_install")?.unwrap_or(false),
             managed_sandboxes: opt_bool(object, "managed_sandboxes_enabled")?.unwrap_or(false),
@@ -578,6 +620,7 @@ impl CreationCapabilities {
             },
             sibling_sessions: crate::session_families::sibling_sessions_enabled(object),
             sibling_destinations: crate::session_families::SiblingDestinations::from_info(object),
+            mcp_registry: connection("mcp"),
         })
     }
 }
@@ -914,6 +957,19 @@ pub(crate) fn insert_run_configuration(
 ) {
     if let Some(project) = &selection.project_id {
         body.insert("project_id".into(), Value::String(project.clone()));
+    }
+    if !selection.mcp_registry_services.is_empty() {
+        body.insert(
+            "mcp_registry_services".into(),
+            Value::Array(
+                selection
+                    .mcp_registry_services
+                    .iter()
+                    .cloned()
+                    .map(Value::String)
+                    .collect(),
+            ),
+        );
     }
     if selection.smart_routing {
         // The router owns the model: a pinned one would turn routing off for the session.
@@ -1537,5 +1593,57 @@ mod tests {
         let older = CreationCapabilities::from_value(&serde_json::json!({})).unwrap();
         assert!(!older.sibling_sessions);
         assert_eq!(older.sibling_destinations, SiblingDestinations::AnyHost);
+    }
+
+    #[test]
+    fn the_mcp_registry_offers_services_that_a_launch_sends() {
+        let envelope = crate::client::test_support::fixture_json(
+            "sessions/ComposerParity--v1-info-main.json",
+        );
+        assert!(
+            CreationCapabilities::from_value(&envelope["response"])
+                .unwrap()
+                .mcp_registry
+        );
+        let github_only = serde_json::json!({"enabled_connections": ["github"]});
+        let capabilities = CreationCapabilities::from_value(&github_only).unwrap();
+        assert!(capabilities.github_connection && !capabilities.mcp_registry);
+
+        let ids = |names: &[&str]| names.iter().map(|&name| name.to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            launch_mcp_services(&ids(&["wiki", "gone", "docs", "wiki"]), &ids(&["docs", "wiki"])),
+            ids(&["wiki", "docs"])
+        );
+        assert_eq!(launch_mcp_problem(&[], true, true), None);
+        assert_eq!(
+            launch_mcp_problem(&ids(&["docs"]), true, false).as_deref(),
+            Some("Loading MCP services\u{2026}")
+        );
+        assert!(
+            launch_mcp_problem(&ids(&["docs"]), false, true)
+                .is_some_and(|problem| problem.starts_with("Could not load MCP services"))
+        );
+        assert_eq!(launch_mcp_problem(&ids(&["docs"]), false, false), None);
+        let chosen = CreationSelection {
+            mcp_registry_services: ids(&["docs", "wiki"]),
+            ..selection()
+        };
+        let codex = agent("ag_codex", Some("codex-native"));
+        let body = creation_body(&chosen, "", &codex, None);
+        assert_eq!(
+            body["mcp_registry_services"],
+            serde_json::json!(["docs", "wiki"])
+        );
+        let sandbox = sandbox_creation_body(&chosen, &SandboxTarget::default(), "", &codex);
+        assert_eq!(
+            sandbox["mcp_registry_services"],
+            serde_json::json!(["docs", "wiki"])
+        );
+        // None chosen sends no field, as older servers expect.
+        assert!(
+            creation_body(&selection(), "", &codex, None)
+                .get("mcp_registry_services")
+                .is_none()
+        );
     }
 }

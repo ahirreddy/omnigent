@@ -33,8 +33,9 @@ nonisolated struct TranscriptTableCLIText: Sendable {
       guard !text.isEmpty else { return nil }
       return Self(kind: .footer, spec: .footer(text))
     case .segment(.item(.message(let message))):
+      // A message from another session folds, which the hosted band draws.
       guard !message.isStreaming, !message.text.isEmpty, message.attachments.isEmpty,
-        message.activity == nil, !message.interrupted,
+        message.activity == nil, !message.interrupted, message.originSessionId == nil,
         let spec = spec(of: message, rendering: rendering)
       else { return nil }
       return Self(

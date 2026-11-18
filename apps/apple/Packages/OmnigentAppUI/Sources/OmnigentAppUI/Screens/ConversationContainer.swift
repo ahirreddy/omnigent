@@ -30,6 +30,8 @@ struct ConversationContainer: View {
   var server: OmnigentCoreFFI.ConnectedServer?
   /// Where a session on a host runs, for the titlebar's sandbox status.
   var hostEnvironment: @MainActor (String) -> SessionEnvironment? = { _ in nil }
+  /// A session's title, for the line over a message another session sent.
+  var sessionTitle: @MainActor (String) -> String? = { _ in nil }
   /// Opens the session's terminals and side chats as tabs.
   var tabRoutes: ConversationTabRoutes?
   /// The terminals the agent declares, for New Terminal.
@@ -132,10 +134,16 @@ struct ConversationContainer: View {
     }
     // Reads the features too; the composer tray links the session's pull requests.
     .task { if !windowLoadsPanel { await panel?.reloadPullRequests() } }
+    // The composer's chip keeps its PRs' checks and merge state current.
+    .whileVisible(composerWatch)
     .modifier(
       SessionGoalPresenter(
         conversation: conversation, summary: summary, isPresented: $showsGoal,
         report: { failures.append($0) })
+    )
+    .modifier(
+      SessionRewindPresenter(
+        composer: composer, open: toolRoutes.openSession, report: { failures.append($0) })
     )
     .onChange(of: conversation.isRunning) { _, running in
       Task { await composer.drainQueue(isRunning: running) }
@@ -153,6 +161,12 @@ struct ConversationContainer: View {
           openBrowser: tabRoutes?.openBrowser, openSideChat: tabRoutes?.openNewSideChat))
     #endif
     .modifier(ChangedFilesFollower(revision: changedFilesRevision, workspace: ownPanelWorkspace))
+  }
+
+  /// Keeps the composer chip's PRs current while the chat shows.
+  private var composerWatch: (@MainActor (Bool) async -> Void)? {
+    guard let panel else { return nil }
+    return { resumed in await panel.watch(.composer, resumed: resumed) }
   }
 
   /// The workspace this chat's own right panel shows; none where the window shows the
@@ -193,23 +207,28 @@ struct ConversationContainer: View {
 
   /// What the Add menu and the tray's indicators open.
   var toolRoutes: SessionToolsAdapter.Routes {
-    SessionToolsAdapter.Routes(
+    let showPullRequests: @MainActor () -> Void = {
+      if let panel = tabRoutes?.windowPanel {
+        panel.show(.pullRequests)
+      } else {
+        inspectorTab = .pullRequests
+        panelRoute.choice = .open
+      }
+    }
+    return SessionToolsAdapter.Routes(
       openSession: tabRoutes?.openSession ?? openSession,
       openNewSideChat: tabRoutes?.openNewSideChat,
       awaitForkedSideChat: tabRoutes?.awaitForkedSideChat,
-      showPullRequests: {
-        if let panel = tabRoutes?.windowPanel {
-          panel.show(.pullRequests)
-        } else {
-          inspectorTab = .pullRequests
-          panelRoute.choice = .open
-        }
-      },
+      showPullRequests: showPullRequests,
       showGoal: {
         showsGoal = true
         Task { await conversation.tools.loadGoal() }
       },
-      report: { failures.append($0) })
+      report: { failures.append($0) },
+      showPullRequest: { [panel] url in
+        showPullRequests()
+        Task { await panel?.showPullRequest(url) }
+      })
   }
 
   /// Attaches the harness TUI once ready (the store keeps it), applying the default view.
@@ -278,6 +297,13 @@ extension ConversationContainer {
       resume: { Task { await conversation.recoverTurn(.resume) } })
     actions.loadOlder = { conversation.loadOlderHistory() }
     actions.openSignIn = openSignIn
+    actions.sessionTitle = sessionTitle
+    // Edit and resend, wherever the viewer could type the message.
+    if !ComposerAdapter.isReadOnly(conversation) {
+      let composer = conversation.composer
+      actions.editSentMessage = { row in composer.editSentMessage(row.text) }
+      actions.viewerID = server?.userId
+    }
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     actions.messageURL = { row in Self.messageURL(row, in: link) }
     actions.retryFailedTurn = { row in

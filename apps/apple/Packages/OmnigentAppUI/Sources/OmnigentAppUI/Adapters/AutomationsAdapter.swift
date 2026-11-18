@@ -4,8 +4,9 @@ import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
 
-/// The Automations page over ``PagesStore``: the list, an automation's run history page
-/// (`automations_v2`), their actions and the editor sheet.
+/// The Automations page over ``PagesStore``: the caller's list, Shared with me and the
+/// templates, an automation's run history page (`automations_v2`), their actions, the editor
+/// sheet and the share sheet.
 struct AutomationsAdapter: View {
   let connection: ConnectionStore
   let open: (String) -> Void
@@ -18,11 +19,47 @@ struct AutomationsAdapter: View {
   @State private var isSaving = false
   @State private var saveError: String?
   @State private var detailID: String?
+  @State private var sharing: SharingTarget?
 
   /// The sheet's subject: a new automation, or the one with this id.
   private struct Editing: Identifiable {
     let id: String
     var automationID: String? { id.isEmpty ? nil : id }
+  }
+
+  /// The automation the share sheet is for.
+  private struct SharingTarget: Identifiable {
+    let id: String
+    let continuesSession: Bool
+  }
+
+  /// Opens a new automation from a session row, where the server starts runs from a copy of
+  /// a session; `nil` hides the menu item.
+  /// - Parameters:
+  ///   - connection: The server.
+  ///   - show: Shows the Automations page.
+  /// - Returns: The row action.
+  @MainActor
+  static func createFromSession(
+    _ connection: ConnectionStore, show: @escaping @MainActor () -> Void
+  )
+    -> (@MainActor (OmnigentUIComponents.SessionSummary) -> Void)?
+  {
+    guard let pages = connection.pages, let offered = pages.offered, offered.automations,
+      offered.automationSourceSessions
+    else { return nil }
+    let list = connection.sessionList
+    return { summary in
+      let session = list.sessionsByID[summary.id]
+      let configuration = session?.configuration
+      pages.requestAutomation(
+        from: AutomationSource(
+          sessionID: summary.id, title: summary.title, agentID: configuration?.agentId,
+          hostID: configuration?.hostId,
+          workspace: session.map(\.workspace).flatMap { $0.isEmpty ? nil : $0 },
+          model: configuration?.modelOverride, effort: configuration?.effort))
+      show()
+    }
   }
 
   var body: some View {
@@ -32,8 +69,12 @@ struct AutomationsAdapter: View {
           await pages.loadAutomations()
           await pages.loadAutomationCatalog()
           if pages.offered?.automationProjects == true { await pages.loadAutomationProjects() }
+          if pages.offered?.automationTriggers == true { await pages.loadLongMessageHosts() }
         }
+        .onAppear { openPendingSource(pages) }
+        .onChange(of: pages.pendingAutomationSource) { openPendingSource(pages) }
         .sheet(item: $editing) { target in editor(pages, target: target) }
+        .sheet(item: $sharing) { target in shareSheet(pages, target: target) }
         // The Inbox's Open automation lands on that automation's page.
         .onChange(of: pages.requestedAutomationID, initial: true) { _, requested in
           guard let requested else { return }
@@ -46,11 +87,12 @@ struct AutomationsAdapter: View {
   }
 
   @ViewBuilder private func page(_ pages: PagesStore) -> some View {
-    if let detailID, let automation = pages.automations.value?.first(where: { $0.id == detailID }) {
+    if let detailID, let automation = automation(pages, id: detailID) {
       AutomationDetailAdapter(
         pages: pages, automation: automation, open: open,
         back: { self.detailID = nil },
-        edit: { edit(pages, id: detailID) })
+        edit: { edit(pages, id: detailID) },
+        share: shareAction(pages, automation: automation))
     } else {
       TimelineView(.periodic(from: .now, by: 60)) { context in
         AutomationsView(
@@ -62,11 +104,23 @@ struct AutomationsAdapter: View {
     }
   }
 
+  /// The caller's automation, or one shared with them.
+  private func automation(_ pages: PagesStore, id: String) -> Automation? {
+    pages.automations.value?.first { $0.id == id }
+      ?? pages.sharedAutomations.value?.first { $0.id == id }
+  }
+
   private func editor(_ pages: PagesStore, target: Editing) -> some View {
     let saved = pages.automations.value?.first { $0.id == target.automationID }
-    let inputs = AutomationEditorMapping.Inputs(
+    var inputs = AutomationEditorMapping.Inputs(
       draft: draft, saved: saved, sessionLink: sessionLink, isSaving: isSaving,
       saveError: saveError)
+    inputs.switchTriggerEvent = { event in
+      if let trigger = draft.trigger {
+        draft.trigger = AutomationTriggerMapping.switched(trigger, toEvent: event)
+      }
+    }
+    inputs.replaceSchedule = { draft.schedule = $0 }
     return AutomationEditorSheet(
       draft: $draft, context: AutomationEditorMapping.context(pages: pages, inputs: inputs),
       save: { save(pages, saved: saved) },
@@ -76,16 +130,57 @@ struct AutomationsAdapter: View {
       guard let key = modelsKey(pages) else { return }
       await pages.loadAutomationModels(agentID: key.agentID, hostID: key.hostID)
     }
+    .task {
+      if AutomationEditorMapping.showsMcpServices(pages.offered, draft: draft) {
+        await pages.loadAutomationMcpServices()
+      }
+    }
     .onChange(of: draft.agentID) { _, agentID in
       // Settings are per harness: a switch drops them, and switching back restores them.
       AutomationsMapping.restoreOverrides(&draft, from: saved?.agentId == agentID ? saved : nil)
+      if saved == nil {
+        let agent = pages.automationCatalog.value?.agents.first { $0.id == agentID }
+        draft.permissionMode = AutomationEditorMapping.newAutomationPermission(agent)
+      }
     }
   }
 
-  /// The agent and host whose models the Advanced section lists, when the agent takes them.
+  private func shareSheet(_ pages: PagesStore, target: SharingTarget) -> some View {
+    let grants = pages.automationGrants[target.id]
+    let state = AutomationShareState(
+      people: (grants?.value ?? []).map {
+        AutomationShareState.Person(id: $0.userId, name: $0.displayName)
+      },
+      continuesSession: target.continuesSession, isLoading: grants == .loading,
+      isSaving: pages.isSavingAutomationGrant,
+      errorMessage: pages.automationGrantError?.message ?? grants?.error?.message)
+    return AutomationShareSheet(
+      state: state,
+      add: { person in Task { await pages.grantAutomationAccess(target.id, to: person) } },
+      remove: { person in Task { await pages.revokeAutomationAccess(target.id, from: person) } },
+      done: {
+        pages.dismissAutomationGrantError()
+        sharing = nil
+      }
+    )
+    .task { await pages.loadAutomationGrants(target.id) }
+  }
+
+  /// Share for an automation the caller owns, on a server that shares them and hasn't turned
+  /// sharing off; `nil` hides or disables it.
+  private func shareAction(_ pages: PagesStore, automation: Automation) -> (@MainActor () -> Void)?
+  {
+    guard pages.offered?.automationSharing == true, !automation.sharedWithMe,
+      ShareAdapter.unavailableReason(pages.offered) == nil
+    else { return nil }
+    let target = SharingTarget(id: automation.id, continuesSession: automation.continuesSession)
+    return { sharing = target }
+  }
+
+  /// The agent and host whose models the Advanced section lists, when the harness takes them.
   private func modelsKey(_ pages: PagesStore) -> ModelsKey? {
     guard !draft.hostID.isEmpty, !draft.runsInSandbox,
-      AutomationEditorMapping.sendsOverrides(pages.automationCatalog.value, agentID: draft.agentID)
+      AutomationEditorMapping.takesModel(pages.automationCatalog.value, agentID: draft.agentID)
     else { return nil }
     return ModelsKey(agentID: draft.agentID, hostID: draft.hostID)
   }
@@ -108,15 +203,20 @@ struct AutomationsAdapter: View {
       filter = $0
       search = $1
     }
-    actions.create = { suggestion in
-      draft = AutomationsMapping.newDraft(suggestion, catalog: pages.automationCatalog.value)
+    actions.create = {
+      draft = AutomationsMapping.newDraft(catalog: pages.automationCatalog.value)
       present(id: "")
     }
     actions.createTrigger = { id in
       guard let source = AutomationTriggerMapping.source(id) else { return }
-      let base = AutomationsMapping.newDraft(nil, catalog: pages.automationCatalog.value)
-      draft = AutomationTriggerMapping.newDraft(source, base: base)
+      let base = AutomationsMapping.newDraft(catalog: pages.automationCatalog.value)
+      let schedule = AutomationsMapping.triggerSchedule(
+        pages.offered, continuesSession: true, inSandbox: base.runsInSandbox)
+      draft = AutomationTriggerMapping.newDraft(source, base: base, schedule: schedule)
       present(id: "")
+      if pages.offered?.automationMcpServices == true {
+        Task { await pages.loadAutomationMcpServices() }
+      }
     }
     actions.edit = { edit(pages, id: $0) }
     if pages.offered?.automationsV2 == true {
@@ -125,6 +225,18 @@ struct AutomationsAdapter: View {
     actions.setPaused = { id, paused in Task { await pages.setAutomationPaused(id, paused) } }
     actions.runNow = { id in Task { await pages.runAutomation(id) } }
     actions.delete = { id in Task { await pages.deleteAutomation(id) } }
+    if pages.offered?.automationSharing == true {
+      actions.share = { id in
+        guard let automation = pages.automations.value?.first(where: { $0.id == id }) else {
+          return
+        }
+        sharing = SharingTarget(id: id, continuesSession: automation.continuesSession)
+      }
+    }
+    if pages.offered?.automationSharedWithMe == true {
+      actions.loadShared = { Task { await pages.loadSharedAutomations() } }
+      actions.loadMoreShared = { Task { await pages.loadMoreSharedAutomations() } }
+    }
     actions.openSession = { open($0) }
     actions.retry = { Task { await pages.loadAutomations() } }
     actions.dismissError = { pages.dismissAutomationError() }
@@ -137,6 +249,28 @@ struct AutomationsAdapter: View {
     present(id: id)
   }
 
+}
+
+/// Opening and saving the editor.
+extension AutomationsAdapter {
+  /// Opens the editor on the session a menu asked to make an automation from.
+  private func openPendingSource(_ pages: PagesStore) {
+    guard let source = pages.takePendingAutomationSource() else { return }
+    detailID = nil
+    var next = AutomationsMapping.newDraft(catalog: pages.automationCatalog.value)
+    next.name = source.title
+    next.continuesSession = false
+    next.sourceSessionID = source.sessionID
+    next.sourceSessionTitle = source.title
+    if let agent = source.agentID { next.agentID = agent }
+    if let host = source.hostID { next.hostID = host }
+    next.workspace = source.workspace ?? ""
+    next.model = source.model ?? ""
+    next.effort = source.effort ?? ""
+    draft = next
+    present(id: "")
+  }
+
   private func present(id: String) {
     saveError = nil
     editing = Editing(id: id)
@@ -145,21 +279,41 @@ struct AutomationsAdapter: View {
   private func save(_ pages: PagesStore, saved: Automation?) {
     guard !isSaving else { return }
     isSaving = true
-    let catalog = pages.automationCatalog.value
-    let sendsOverrides = AutomationEditorMapping.sendsOverrides(catalog, agentID: draft.agentID)
-    let prompt =
+    let sendsOverrides = AutomationEditorMapping.sendsOverrides(
+      pages: pages, agentID: draft.agentID, hostID: draft.hostID)
+    // A new trigger's hidden schedule follows where it runs.
+    if saved == nil, draft.trigger != nil,
+      AutomationsMapping.scheduleProblem(
+        draft.schedule, saved: nil, anchored: pages.offered?.automationsV2 == true, now: .now,
+        limits: AutomationsMapping.limits(draft, offered: pages.offered)) != nil
+    {
+      draft.schedule = AutomationsMapping.triggerSchedule(
+        pages.offered, continuesSession: draft.continuesSession, inSandbox: draft.runsInSandbox)
+    }
+    let triggerPrompt =
       draft.trigger == nil
-      ? draft.prompt
-      : AutomationTriggerMapping.prompt(
-        draft, sessionLink: sessionLink, sendsOverrides: sendsOverrides)
+      ? ""
+      : AutomationEditorMapping.triggerPrompt(
+        pages: pages, draft: draft, saved: saved, sessionLink: sessionLink)
     let request = AutomationsMapping.request(
-      draft, prompt: prompt, saved: saved,
-      sessionModes: pages.offered?.automationSessionModes == true, sendsOverrides: sendsOverrides)
+      draft, prompt: AutomationsMapping.prompt(draft, triggerPrompt: triggerPrompt), saved: saved,
+      sessionModes: pages.offered?.automationSessionModes == true, sendsOverrides: sendsOverrides,
+      sendsMcpServices: AutomationEditorMapping.showsMcpServices(pages.offered, draft: draft))
+    let fromSession = saved == nil && draft.sourceSessionID != nil
     Task {
       let didSave = await pages.saveAutomation(request, editing: saved)
       isSaving = false
       if didSave {
         editing = nil
+        // As the web, a new automation made from a session opens its page.
+        if fromSession, pages.offered?.automationsV2 == true,
+          let created = pages.automations.value?.first(where: {
+            $0.sourceSessionId != nil
+              && $0.name == request.name.trimmingCharacters(in: .whitespaces)
+          })
+        {
+          detailID = created.id
+        }
       } else {
         // The sheet shows the failure; the page banner would repeat it.
         saveError = pages.automationError?.message

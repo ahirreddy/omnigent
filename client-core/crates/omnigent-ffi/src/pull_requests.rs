@@ -52,6 +52,18 @@ impl From<core::PullRequestStatus> for PullRequestStatus {
     }
 }
 
+impl From<PullRequestStatus> for core::PullRequestStatus {
+    fn from(status: PullRequestStatus) -> Self {
+        match status {
+            PullRequestStatus::Open => Self::Open,
+            PullRequestStatus::Draft => Self::Draft,
+            PullRequestStatus::Merged => Self::Merged,
+            PullRequestStatus::Closed => Self::Closed,
+            PullRequestStatus::Unknown => Self::Unknown,
+        }
+    }
+}
+
 /// A pull request linked to a session, as the server stores it.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct SessionPullRequest {
@@ -136,5 +148,22 @@ impl ClientCore {
             pull_requests: list.pull_requests.into_iter().map(Into::into).collect(),
             synced: list.synced,
         })
+    }
+
+    /// Unlinks `url` from `session_id` on the server, which answers while the host is offline.
+    /// Check `PanelFeatures::pull_requests` first.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` and the write errors.
+    pub async fn unlink_session_pull_request(
+        &self,
+        session_id: String,
+        url: String,
+    ) -> Result<(), CoreError> {
+        self.sessions()
+            .unlink_session_pull_request(&session_id, &url)
+            .await
+            .map_err(CoreError::from)
     }
 }

@@ -2,7 +2,38 @@ import Foundation
 import SwiftUI
 
 // The parts of a form field beyond the plain control: placeholders and keyboards for formatted
-// text, a date picker for dates, and the range and count hints. The core still checks every rule.
+// text, a date picker for dates, the range and count hints, option previews and answer notes.
+// The core still checks every rule.
+
+extension FormDraft {
+  /// The notes to send: trimmed and non-blank, on fields that take one.
+  func notes(for fields: [FormField]) -> [String: String] {
+    var kept: [String: String] = [:]
+    for field in fields where field.acceptsNotes {
+      let note = notes[field.key, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+      if !note.isEmpty { kept[field.key] = note }
+    }
+    return kept
+  }
+
+  /// What Submit sends: the answers, with the notes when there are any.
+  func response(for fields: [FormField]) -> DecisionResponse {
+    let values = values(for: fields)
+    let notes = notes(for: fields)
+    return notes.isEmpty ? .form(values: values) : .formWithNotes(values: values, notes: notes)
+  }
+
+  /// The option whose preview a choice shows: the first option with one until something is
+  /// chosen, then the chosen option's; `nil` for a choice without a preview or a typed answer.
+  func previewedOption(for field: FormField) -> FormOption? {
+    let typed = custom[field.key, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+    if field.allowsCustom, !typed.isEmpty { return nil }
+    let chosen = selection(for: field)
+    let withPreview = field.options.filter { !$0.preview.isEmpty }
+    if chosen.isEmpty { return withPreview.first }
+    return withPreview.first { chosen.contains($0.value) }
+  }
+}
 
 /// Hints a field shows under its control.
 enum FormFieldHint {
@@ -49,6 +80,30 @@ enum FormFieldHint {
     Text(hint)
       .font(.caption)
       .foregroundStyle(.secondary)
+  }
+}
+
+/// What choosing an option would look like (a mockup, code or a diagram), shown as written. It
+/// scrolls sideways instead of wrapping, so a drawn layout keeps its shape.
+struct OptionPreview: View {
+  let option: FormOption
+  @Environment(\.layoutWidth) private var layoutWidth
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+      Text("Preview: \(option.label)")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      ScrollView(.horizontal) {
+        Text(verbatim: option.preview)
+          .font(DecisionCode.font(layoutWidth))
+          .textSelection(.enabled)
+          .fixedSize(horizontal: true, vertical: true)
+          .padding(Theme.Spacing.medium)
+      }
+      .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+    }
+    .accessibilityElement(children: .combine)
   }
 }
 

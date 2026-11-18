@@ -1,0 +1,67 @@
+{
+  "devin": {
+    "questions": [
+      {
+        "question": "Which color should the demo use?",
+        "header": "Demo color",
+        "multi_select": false,
+        "options": [
+          { "label": "Blue", "description": "A calm, classic color." },
+          { "label": "Green", "description": "A fresh, natural color." }
+        ]
+      },
+      {
+        "question": "Which features should the demo include?",
+        "header": "Features",
+        "multi_select": true,
+        "options": [{ "label": "Dark mode" }, { "label": "Search" }]
+      }
+    ]
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_devin_question_9c8b7a6f5e4d3c2b1a09f8e7d6c5b4a3",
+    "params": {
+      "mode": "form",
+      "message": "Devin is asking a question",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "devin_native_ask_question",
+      "content_preview": null,
+      "target_session_id": null,
+      "ask_user_question": {
+        "questions": [
+          {
+            "question": "Which color should the demo use?",
+            "options": [
+              { "label": "Blue", "description": "A calm, classic color." },
+              { "label": "Green", "description": "A fresh, natural color." }
+            ],
+            "multiSelect": false,
+            "header": "Demo color"
+          },
+          {
+            "question": "Which features should the demo include?",
+            "options": [{ "label": "Dark mode" }, { "label": "Search" }],
+            "multiSelect": true,
+            "header": "Features"
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "Which color should the demo use?": "Teal",
+      "Which features should the demo include?": ["Search", "Offline mode"]
+    }
+  },
+  "devin_answers": {
+    "Which color should the demo use?": { "selected": [], "custom_text": "Teal" },
+    "Which features should the demo include?": {
+      "selected": ["Search"],
+      "custom_text": "Offline mode"
+    }
+  }
+}

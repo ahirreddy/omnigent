@@ -61,7 +61,7 @@ impl SessionGrant {
 }
 
 /// `value` can be sent as a grantee: non-blank, no path or query characters.
-fn validate_grantee(value: &str) -> Result<(), SessionError> {
+pub(super) fn validate_grantee(value: &str) -> Result<(), SessionError> {
     let trimmed = value.trim();
     if trimmed.is_empty()
         || trimmed.len() > 320

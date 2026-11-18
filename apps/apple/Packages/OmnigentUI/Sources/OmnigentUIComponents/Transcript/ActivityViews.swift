@@ -19,6 +19,9 @@ extension ActivityKind {
     case .clientTask: "laptopcomputer"
     case .browser: "globe"
     case .sidechat: "bubble.left.and.text.bubble.right"
+    case .systemNotice: "info.circle"
+    case .subagentMarker: "cpu"
+    case .taskMarker: "checklist"
     }
   }
 
@@ -41,6 +44,9 @@ extension ActivityKind {
     case .clientTask: "Client task"
     case .browser: "Browser"
     case .sidechat: "Side question"
+    case .systemNotice: "System"
+    case .subagentMarker: "Sub-agent"
+    case .taskMarker: "Task"
     }
   }
 }
@@ -52,6 +58,9 @@ struct ExpandableHeader<Accessory: View>: View {
   let systemImage: String
   var tint: ThemeColor = .secondary
   let title: String
+  /// A bold lead before the title ("Thinking:").
+  var titleLead: String?
+  var titleLineLimit = 2
   var subtitle: String?
   var monospacedSubtitle = false
   var isEnabled = true
@@ -69,7 +78,7 @@ struct ExpandableHeader<Accessory: View>: View {
       }
       .buttonStyle(.plain)
       .hoverHighlight()
-      .accessibilityLabel(title)
+      .accessibilityLabel(spokenTitle)
       .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
       .accessibilityHint("Shows details")
       .accessibilityIdentifier(identifier ?? "", isEnabled: identifier != nil)
@@ -79,6 +88,13 @@ struct ExpandableHeader<Accessory: View>: View {
     }
   }
 
+  private var spokenTitle: String { [titleLead, title].compactMap(\.self).joined(separator: " ") }
+
+  private var titleText: Text {
+    guard let titleLead else { return Text(title) }
+    return Text("\(Text(titleLead).fontWeight(.semibold)) \(title)")
+  }
+
   private var row: some View {
     HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
       Image(systemName: systemImage)
@@ -86,10 +102,11 @@ struct ExpandableHeader<Accessory: View>: View {
         .frame(width: Theme.Control.icon)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-        Text(title)
+        titleText
           .font(Theme.Typography.label)
           .foregroundStyle(.secondary)
-          .lineLimit(2)
+          .lineLimit(titleLineLimit)
+          .truncationMode(.tail)
         // A header with nothing to open would otherwise never show it.
         if isExpanded || !isEnabled, let subtitle, !subtitle.isEmpty {
           Text(subtitle)

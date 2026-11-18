@@ -22,6 +22,7 @@ use super::ops::ChangeSet;
 use super::presentation::{
     SUMMARY_CHARS, TITLE_CHARS, bounded, fingerprint, prefix_chars, swift_number,
 };
+use super::reasoning_preview::reasoning_preview;
 use super::state::{
     Activity, ActivityKind, Attachment, AttachmentKind, ChangedFiles, DetailSection, Row, RowRole,
     update_record,
@@ -195,6 +196,15 @@ impl LiveReducer {
                 self.state().permission_mode = Some(mode.permission_mode.clone());
                 changed()
             }
+            // The count is authoritative and carries its detail, as on a `session.status` edge.
+            E::SessionBackgroundTasks(tasks) => {
+                let state = self.state();
+                state.background_task_count = Some(tasks.background_task_count);
+                state.background_tasks = Some(tasks.background_tasks.clone());
+                changed()
+            }
+            // The web's Tasks tab reads the journal; the transcript's task markers arrive as items.
+            E::SessionJournalAppended(_) => Effects::default(),
             E::SessionCodexApprovalMode(mode) => {
                 self.state().approval_mode = Some(mode.approval_mode.as_str().to_owned());
                 changed()
@@ -440,10 +450,11 @@ impl LiveReducer {
             ReasoningInput::Started | ReasoningInput::Private => {}
         }
         self.activity_buffers.insert(id.clone(), summary.clone());
-        let line = if summary.is_empty() {
+        // The line a settled thought previews in its header: its first prose line.
+        let line = if summary.trim().is_empty() {
             "Working…".to_owned()
         } else {
-            prefix_chars(&summary, REASONING_SUMMARY_CHARS)
+            prefix_chars(&reasoning_preview(&summary), REASONING_SUMMARY_CHARS)
         };
         let details = if summary.is_empty() {
             Vec::new()

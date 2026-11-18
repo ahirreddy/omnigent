@@ -196,24 +196,24 @@ fn end_conditions_round_trip() {
 fn validation_matches_the_web() {
     let now = 1_793_865_600;
     let mut daily = model(SchedulePreset::Daily);
-    assert_eq!(validate_schedule(&daily, now, false), None);
+    assert_eq!(validate_schedule(&daily, now, false, ScheduleLimits::SAVED), None);
     daily.end = ScheduleEnd::Count(1);
     assert!(
-        validate_schedule(&daily, now, false)
+        validate_schedule(&daily, now, false, ScheduleLimits::SAVED)
             .unwrap()
             .contains("at least 2")
     );
     daily.end = ScheduleEnd::Until(now - 1);
     assert_eq!(
-        validate_schedule(&daily, now, false).as_deref(),
+        validate_schedule(&daily, now, false, ScheduleLimits::SAVED).as_deref(),
         Some("Choose an end date in the future.")
     );
-    assert_eq!(validate_schedule(&daily, now, true), None);
+    assert_eq!(validate_schedule(&daily, now, true, ScheduleLimits::SAVED), None);
     let weekly = ScheduleModel {
         weekdays: Vec::new(),
         ..model(SchedulePreset::Weekly)
     };
-    assert!(validate_schedule(&weekly, now, false).is_some());
+    assert!(validate_schedule(&weekly, now, false, ScheduleLimits::SAVED).is_some());
     assert!(!needs_anchored_scheduling(&daily));
     daily.end = ScheduleEnd::Count(4);
     assert!(needs_anchored_scheduling(&daily));
@@ -304,7 +304,7 @@ fn custom_rules_build_for_every_unit_and_fall_back_to_the_first_of_the_month() {
         build_rrule(&monthly)
     );
     assert_eq!(
-        validate_schedule(&monthly, 0, false).as_deref(),
+        validate_schedule(&monthly, 0, false, ScheduleLimits::SAVED).as_deref(),
         Some("Pick at least one day of the month.")
     );
 }
@@ -377,4 +377,135 @@ fn a_timestamp_without_seconds_reads_as_the_top_of_the_minute() {
     assert_eq!(parse_iso8601("2026-11-01T00:00:61Z"), None);
     assert_eq!(parse_iso8601("2026-11-01"), None);
     assert_eq!(parse_iso8601("é-11-01T00:00:00Z"), None);
+}
+
+fn minutes(interval: u16) -> ScheduleModel {
+    ScheduleModel {
+        frequency: ScheduleFrequency::Minutely,
+        interval,
+        ..model(SchedulePreset::Custom)
+    }
+}
+
+#[test]
+fn minute_rules_read_as_intervals() {
+    // `scheduleText.test.ts`: unrestricted minute intervals.
+    assert_eq!(describe_schedule("FREQ=MINUTELY;INTERVAL=1"), "Every minute");
+    assert_eq!(describe_schedule("FREQ=MINUTELY"), "Every minute");
+    assert_eq!(
+        describe_schedule("FREQ=MINUTELY;INTERVAL=10"),
+        "Every 10 minutes"
+    );
+    assert_eq!(
+        describe_schedule("RRULE:FREQ=MINUTELY;INTERVAL=10;COUNT=3"),
+        "Every 10 minutes"
+    );
+    // Filters the summary would drop keep the rule as it is.
+    for rule in [
+        "FREQ=MINUTELY;INTERVAL=10;BYDAY=MO",
+        "FREQ=MINUTELY;INTERVAL=10;BYMONTH=3",
+        "FREQ=MINUTELY;INTERVAL=60;BYDAY=MO",
+        "FREQ=MINUTELY;INTERVAL=60;BYMONTH=3",
+        "FREQ=MINUTELY;INTERVAL=10;BYSECOND=30",
+    ] {
+        assert_eq!(describe_schedule(rule), rule);
+    }
+}
+
+#[test]
+fn minute_rules_round_trip_through_the_editor() {
+    assert_eq!(build_rrule(&minutes(10)), "FREQ=MINUTELY;INTERVAL=10");
+    // The time fields don't apply to a minute rule.
+    for interval in [10, 11, 60, MAX_MINUTE_INTERVAL] {
+        let rule = build_rrule(&minutes(interval));
+        let parsed = parse_rrule(&rule).unwrap();
+        assert_eq!(parsed.preset, SchedulePreset::Custom, "{rule}");
+        assert_eq!(parsed.frequency, ScheduleFrequency::Minutely);
+        assert_eq!(parsed.interval, interval);
+        assert_eq!(build_rrule(&parsed), rule);
+        for end in [ScheduleEnd::Count(3), ScheduleEnd::Until(1_830_297_599)] {
+            let ended = ScheduleModel {
+                end,
+                ..parsed.clone()
+            };
+            assert_eq!(parse_rrule(&build_rrule(&ended)), Some(ended));
+        }
+    }
+    assert_eq!(
+        build_rrule(&minutes(u16::MAX)),
+        format!("FREQ=MINUTELY;INTERVAL={MAX_MINUTE_INTERVAL}")
+    );
+}
+
+#[test]
+fn minute_rules_the_editor_cannot_show_stay_as_they_are() {
+    // `scheduleBuilder.test.ts`: no silently discarded fields, and nothing a server refuses.
+    for rule in [
+        "FREQ=MINUTELY;INTERVAL=10;BYMINUTE=5",
+        "FREQ=MINUTELY;INTERVAL=10;BYHOUR=9",
+        "FREQ=MINUTELY;INTERVAL=10;BYSECOND=30",
+        "FREQ=MINUTELY;INTERVAL=5",
+        "FREQ=MINUTELY",
+        "FREQ=MINUTELY;INTERVAL=21961",
+    ] {
+        assert_eq!(parse_rrule(rule), None, "{rule}");
+    }
+}
+
+#[test]
+fn minute_intervals_follow_where_runs_go() {
+    let limits = |subhour_supported, continues_session, on_connected_host| ScheduleLimits {
+        subhour_supported,
+        continues_session,
+        on_connected_host,
+    };
+    let minute = ScheduleFrequency::Minutely;
+    assert_eq!(
+        minimum_schedule_interval(minute, limits(true, false, true)),
+        10
+    );
+    assert_eq!(
+        minimum_schedule_interval(minute, limits(true, true, false)),
+        10
+    );
+    assert_eq!(
+        minimum_schedule_interval(minute, limits(true, false, false)),
+        60
+    );
+    assert_eq!(
+        minimum_schedule_interval(minute, limits(false, true, true)),
+        60
+    );
+    assert_eq!(
+        minimum_schedule_interval(ScheduleFrequency::Hourly, limits(false, false, false)),
+        1
+    );
+
+    let check = |interval, limits| validate_schedule(&minutes(interval), 0, false, limits);
+    assert_eq!(check(10, limits(true, false, true)), None);
+    assert_eq!(
+        check(10, limits(false, true, true)).as_deref(),
+        Some("This server requires schedules of at least 60 minutes.")
+    );
+    assert_eq!(
+        check(30, limits(true, false, false)).as_deref(),
+        Some(
+            "New sandbox sessions require schedules of at least 60 minutes. Continue in the same session or use a connected host for shorter intervals."
+        )
+    );
+    assert_eq!(
+        check(9, limits(true, true, true)).as_deref(),
+        Some("Interval must be a whole number of at least 10 and at most 21960.")
+    );
+    assert_eq!(check(60, limits(false, false, false)), None);
+    let daily = ScheduleModel {
+        frequency: ScheduleFrequency::Daily,
+        interval: 367,
+        ..model(SchedulePreset::Custom)
+    };
+    assert_eq!(
+        validate_schedule(&daily, 0, false, ScheduleLimits::SAVED).as_deref(),
+        Some("Interval must be a whole number of at least 1 and at most 366.")
+    );
+    assert!(needs_anchored_scheduling(&minutes(10)));
 }

@@ -1,11 +1,13 @@
 import OmnigentPlatform
 public import SwiftUI
 
-/// The Automations page (the web's `/tasks`): the caller's scheduled agent sessions with search,
-/// an All / Active / Paused filter, a New automation menu and the suggestions.
+/// The Automations page (the web's `/tasks`): tabs for the caller's automations, those shared
+/// with them and the integration templates; search, an All / Active / Paused filter, New, and
+/// the templates suggested under the list.
 public struct AutomationsView: View {
   private let state: AutomationsViewState
   private let actions: AutomationsActions
+  @State private var tab: AutomationsTab = .yours
   @State private var filter: AutomationsFilter = .all
   @State private var search = ""
   @State private var confirmingDelete: AutomationRow?
@@ -21,20 +23,18 @@ public struct AutomationsView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: Theme.Spacing.large) {
         header
-        TextField("Search automations\u{2026}", text: $search)
-          .textFieldStyle(.roundedBorder)
-          .accessibilityIdentifier("automations-search")
-        if state.hasAny {
-          Picker("Filter", selection: $filter) {
-            ForEach(AutomationsFilter.allCases) { Text($0.title).tag($0) }
-          }
-          .pickerStyle(.segmented)
-          .fixedSize()
-          .accessibilityIdentifier("automations-filter")
+        Picker("Automation views", selection: $tab) {
+          ForEach(tabs) { Text($0.title).tag($0) }
         }
-        if let error = state.actionError { actionErrorBanner(error) }
-        content
-        if filter == .all, !state.rows.isEmpty { suggestions(heading: true) }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .accessibilityIdentifier("automations-tabs")
+        switch tab {
+        case .yours: yours
+        case .shared: shared
+        case .templates: templates
+        }
       }
       .padding(Theme.Spacing.gutter)
       .frame(maxWidth: Theme.inboxWidth, alignment: .leading)
@@ -44,6 +44,7 @@ public struct AutomationsView: View {
     .navigationTitle("Automations")
     .onChange(of: filter) { actions.filter?(filter, search) }
     .onChange(of: search) { actions.filter?(filter, search) }
+    .onChange(of: tab) { _, tab in if tab == .shared { actions.loadShared?() } }
     .confirmationDialog(
       "Delete this automation?",
       isPresented: Binding(
@@ -56,57 +57,131 @@ public struct AutomationsView: View {
     }
   }
 
+  private var tabs: [AutomationsTab] {
+    AutomationsTab.allCases.filter { $0 != .shared || state.shared != nil }
+  }
+
   private var header: some View {
     HStack(alignment: .top) {
-      VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-        Text("Automations").font(.largeTitle.weight(.semibold))
-        Text("Run agent sessions on a recurring schedule.").foregroundStyle(.secondary)
-      }
+      Text("Automations").font(.largeTitle.weight(.semibold))
       Spacer()
       if let create = actions.create {
-        Menu("New automation") {
-          Button("Create manually", systemImage: "pencil") { create(nil) }
-          if let createTrigger = actions.createTrigger, !state.triggers.isEmpty {
-            Section("When something happens") {
-              ForEach(state.triggers) { chip in
-                Button(chip.title, systemImage: chip.systemImage) { createTrigger(chip.id) }
-              }
-            }
-          }
-          Section("From a template") {
-            ForEach(AutomationSuggestion.all) { suggestion in
-              Button(suggestion.title, systemImage: suggestion.systemImage) { create(suggestion) }
-            }
-          }
-        }
-        .fixedSize()
-        .buttonStyle(.borderedProminent)
-        .accessibilityIdentifier("automations-new")
+        Button("New", systemImage: "plus", action: create)
+          .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("automations-new")
       }
     }
   }
 
-  @ViewBuilder private var content: some View {
-    if let error = state.loadError {
-      HStack {
-        Label("Couldn\u{2019}t load automations.", systemImage: "exclamationmark.triangle")
-          .foregroundStyle(.red)
-        Text(error).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-        Spacer()
-        if let retry = actions.retry { Button("Retry", action: retry) }
+  private func controls(hasAny: Bool) -> some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.large) {
+      TextField("Search automations\u{2026}", text: $search)
+        .textFieldStyle(.roundedBorder)
+        .accessibilityIdentifier("automations-search")
+      if hasAny {
+        Picker("Filter", selection: $filter) {
+          ForEach(AutomationsFilter.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .fixedSize()
+        .accessibilityIdentifier("automations-filter")
       }
-      .padding(Theme.Spacing.medium)
-      .cardSurface(cornerRadius: Theme.Radius.medium)
-      .accessibilityIdentifier("automations-load-error")
+      if let error = state.actionError { actionErrorBanner(error) }
+    }
+  }
+
+  @ViewBuilder private var yours: some View {
+    controls(hasAny: state.hasAny)
+    if let error = state.loadError {
+      loadError("Couldn\u{2019}t load automations.", detail: error, retry: actions.retry)
+        .accessibilityIdentifier("automations-load-error")
     } else if state.isLoading {
       LoadingCaption(title: "Loading automations\u{2026}").frame(maxWidth: .infinity).padding()
     } else if state.rows.isEmpty {
       emptyState
     } else {
-      LazyVStack(spacing: Theme.Spacing.small) {
-        ForEach(state.rows) { row in AutomationRowView(row: row, actions: rowActions(row)) }
+      rows(state.rows).accessibilityIdentifier("automations-list")
+    }
+    if state.loadError == nil, !state.isLoading, filter == .all,
+      search.trimmingCharacters(in: .whitespaces).isEmpty, !state.templates.isEmpty
+    {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+        Divider()
+        Text("Suggested").font(.headline)
+        gallery
       }
-      .accessibilityIdentifier("automations-list")
+    }
+  }
+
+  @ViewBuilder private var shared: some View {
+    if let shared = state.shared {
+      controls(hasAny: shared.hasAny)
+      if let error = shared.loadError {
+        loadError(
+          "Couldn\u{2019}t load automations shared with you.", detail: error,
+          retry: actions.loadShared)
+      } else if shared.isLoading || (!shared.hasAny && shared.hasMore) {
+        LoadingCaption(title: "Loading automations\u{2026}").frame(maxWidth: .infinity).padding()
+      } else if shared.rows.isEmpty {
+        Text(shared.hasAny ? "No automations found" : "No automations are shared with you yet")
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity).padding(.vertical, Theme.Spacing.section)
+          .accessibilityIdentifier("automations-shared-empty")
+      } else {
+        rows(shared.rows).accessibilityIdentifier("automations-shared-list")
+      }
+      if shared.loadError == nil, shared.hasAny, shared.hasMore, let more = actions.loadMoreShared {
+        HStack {
+          Spacer()
+          Button(action: more) {
+            if shared.isLoadingMore {
+              ProgressView().controlSize(.small)
+            } else {
+              Text("Show more")
+            }
+          }
+          .disabled(shared.isLoadingMore)
+          .accessibilityIdentifier("automations-shared-more")
+          Spacer()
+        }
+      }
+    }
+  }
+
+  @ViewBuilder private var templates: some View {
+    if state.templates.isEmpty {
+      Text(state.templatesUnavailable).foregroundStyle(.secondary)
+        .padding(.vertical, Theme.Spacing.section)
+        .accessibilityIdentifier("automations-templates-unavailable")
+    } else {
+      gallery
+    }
+  }
+
+  private var gallery: some View {
+    LazyVGrid(
+      columns: [GridItem(.adaptive(minimum: 260), spacing: Theme.Spacing.medium)],
+      alignment: .leading, spacing: Theme.Spacing.medium
+    ) {
+      ForEach(state.templates) { card in
+        Button {
+          actions.createTrigger?(card.id)
+        } label: {
+          AutomationTemplateCardView(card: card)
+        }
+        .buttonStyle(.plain)
+        .disabled(actions.createTrigger == nil)
+        .accessibilityLabel(card.title)
+        .accessibilityHint("\(card.description) \(card.requirement)")
+        .accessibilityIdentifier("automations-trigger-\(card.id)")
+      }
+    }
+    .accessibilityIdentifier("automations-templates")
+  }
+
+  private func rows(_ rows: [AutomationRow]) -> some View {
+    LazyVStack(spacing: Theme.Spacing.small) {
+      ForEach(rows) { row in AutomationRowView(row: row, actions: rowActions(row)) }
     }
   }
 
@@ -121,36 +196,23 @@ public struct AutomationsView: View {
         Text("No automations yet").font(Theme.Typography.label)
         Text("Create an automation to run an agent session automatically on a recurring schedule.")
           .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        if filter == .all { suggestions(heading: false) }
       }
       .frame(maxWidth: .infinity).padding(.vertical, Theme.Spacing.section)
       .accessibilityIdentifier("automations-empty")
     }
   }
 
-  @ViewBuilder private func suggestions(heading: Bool) -> some View {
-    if let create = actions.create {
-      VStack(alignment: heading ? .leading : .center, spacing: Theme.Spacing.small) {
-        if heading {
-          Divider()
-          Text("Suggestions").font(.callout).foregroundStyle(.secondary)
-        }
-        HStack(spacing: Theme.Spacing.small) {
-          if let createTrigger = actions.createTrigger {
-            ForEach(state.triggers) { chip in
-              Button(chip.title, systemImage: chip.systemImage) { createTrigger(chip.id) }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("automations-trigger-\(chip.id)")
-            }
-          }
-          ForEach(AutomationSuggestion.all) { suggestion in
-            Button(suggestion.title, systemImage: suggestion.systemImage) { create(suggestion) }
-              .buttonStyle(.bordered)
-              .accessibilityIdentifier("automations-suggestion-\(suggestion.id)")
-          }
-        }
-      }
+  private func loadError(_ title: String, detail: String, retry: (@MainActor () -> Void)?)
+    -> some View
+  {
+    HStack {
+      Label(title, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+      Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+      Spacer()
+      if let retry { Button("Retry", action: retry) }
     }
+    .padding(Theme.Spacing.medium)
+    .cardSurface(cornerRadius: Theme.Radius.medium)
   }
 
   private func actionErrorBanner(_ message: String) -> some View {
@@ -172,8 +234,9 @@ public struct AutomationsView: View {
       let paused = !row.isPaused
       rowActions.togglePaused = { setPaused(id, paused) }
     }
-    if let runNow = actions.runNow { rowActions.runNow = { runNow(id) } }
+    if let runNow = actions.runNow, !row.isTrigger { rowActions.runNow = { runNow(id) } }
     if actions.delete != nil { rowActions.delete = { confirmingDelete = row } }
+    if let share = actions.share, row.canShare { rowActions.share = { share(id) } }
     rowActions.openLastRun = openLastRun(row)
     if let openDetail = actions.openDetail { rowActions.open = { openDetail(id) } }
     return rowActions
@@ -185,89 +248,31 @@ public struct AutomationsView: View {
   }
 }
 
-/// One automation card: name, Paused pill, schedule and next run, and its menu.
-struct AutomationRowView: View {
-  struct Actions {
-    var edit: (@MainActor () -> Void)?
-    var togglePaused: (@MainActor () -> Void)?
-    var runNow: (@MainActor () -> Void)?
-    var delete: (@MainActor () -> Void)?
-    var openLastRun: (@MainActor () -> Void)?
-    /// Opens the automation's page; without it a double click edits.
-    var open: (@MainActor () -> Void)?
-  }
-
-  let row: AutomationRow
-  let actions: Actions
+/// A template card: the service's mark, its title, what it does and what it needs.
+struct AutomationTemplateCardView: View {
+  let card: AutomationTemplateCard
   @State private var isHovered = false
 
   var body: some View {
-    HStack(spacing: Theme.Spacing.medium) {
+    HStack(alignment: .top, spacing: Theme.Spacing.medium) {
+      Image(systemName: card.systemImage)
+        .font(.title3)
+        .frame(width: 40, height: 40)
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.medium).fill(.quaternary))
+        .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-        HStack(spacing: Theme.Spacing.small) {
-          Text(row.name).font(.headline).lineLimit(1)
-          if row.isPaused {
-            Text("Paused").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
-              .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.tiny)
-              .background(Capsule().fill(.quaternary))
-              .accessibilityIdentifier("automation-paused-\(row.id)")
-          }
-        }
-        Text(scheduleLine).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+        Text(card.title).font(.headline)
+        Text(card.description).font(.callout).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        Text(card.requirement).font(.caption).foregroundStyle(.secondary)
       }
       Spacer(minLength: 0)
-      if row.isBusy { ProgressView().controlSize(.small) }
-      Menu {
-        menuItems
-      } label: {
-        Image(systemName: "ellipsis")
-      }
-      .menuStyle(.button)
-      .buttonStyle(.borderless)
-      .menuIndicator(.hidden)
-      .fixedSize()
-      .disabled(row.isBusy)
-      .opacity(isHovered || row.isBusy ? 1 : 0.4)
-      .accessibilityLabel("Actions for \(row.name)")
-      .accessibilityIdentifier("automation-menu-\(row.id)")
     }
-    .padding(.vertical, Theme.Spacing.medium)
-    .padding(.horizontal, Theme.Spacing.large)
-    .cardSurface(cornerRadius: Theme.Radius.medium)
+    .padding(Theme.Spacing.large)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .cardSurface(cornerRadius: Theme.Radius.large)
+    .opacity(isHovered ? 0.85 : 1)
     .contentShape(Rectangle())
     .onHover { isHovered = $0 }
-    .onTapGesture(count: actions.open == nil ? 2 : 1) {
-      if let open = actions.open { open() } else { actions.edit?() }
-    }
-    // As the row's own menu: a write is in flight, so nothing else can start on this row.
-    .contextMenu {
-      if !row.isBusy { menuItems }
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("automation-\(row.id)")
-  }
-
-  private var scheduleLine: String {
-    guard let next = row.nextRunText else { return row.scheduleText }
-    return "\(row.scheduleText) \u{00B7} Next run \(next)"
-  }
-
-  @ViewBuilder private var menuItems: some View {
-    if let runNow = actions.runNow { Button("Run now", systemImage: "play", action: runNow) }
-    if let edit = actions.edit { Button("Edit", systemImage: "pencil", action: edit) }
-    if let toggle = actions.togglePaused {
-      if row.isPaused {
-        Button("Resume", systemImage: "play.circle", action: toggle)
-      } else {
-        Button("Pause", systemImage: "pause", action: toggle)
-      }
-    }
-    if let open = actions.openLastRun {
-      Button("Open last run", systemImage: "arrow.up.forward.app", action: open)
-    }
-    if let delete = actions.delete {
-      Divider()
-      Button("Delete", systemImage: "trash", role: .destructive, action: delete)
-    }
   }
 }

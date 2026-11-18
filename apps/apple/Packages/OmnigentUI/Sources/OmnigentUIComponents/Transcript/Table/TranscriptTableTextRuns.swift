@@ -54,7 +54,13 @@
     func makeAccessoryView() -> TranscriptTableAccessoryView {
       let view = TranscriptTableAccessoryView.make(environment: style.environment)
       view.sizeChanged = { [weak self] in self?.invalidateIntrinsicContentSize() }
-      view.action = { [weak self] in self?.togglePrompt() }
+      view.action = { [weak self, weak view] in
+        if view?.accessory?.togglesOrigin == true {
+          self?.toggleOrigin()
+        } else {
+          self?.togglePrompt()
+        }
+      }
       addSubview(view)
       return view
     }

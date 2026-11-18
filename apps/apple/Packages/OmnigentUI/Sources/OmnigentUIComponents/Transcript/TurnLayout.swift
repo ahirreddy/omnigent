@@ -35,7 +35,7 @@ nonisolated enum TurnLayout {
     }
 
     for item in items {
-      if item.isUserMessage {
+      if item.isTurnBoundary {
         flush(isLast: false)
         result.append(.item(item))
       } else {
@@ -54,8 +54,9 @@ nonisolated enum TurnLayout {
   private static func fold(_ turn: [TranscriptItem], isLive: Bool) -> [TurnSegment] {
     let hasMessage = turn.contains(where: \.isVisibleMessage)
     guard isLive || hasMessage else { return turn.map(TurnSegment.item) }
+    let latest = latestNewsStart(turn)
     var pieces: [Piece] = []
-    for item in turn {
+    for item in turn[..<latest] {
       if item.isVisibleMessage || item.staysVisible {
         pieces.append(.visible(item))
       } else if case .work(let run) = pieces.last {
@@ -64,30 +65,79 @@ nonisolated enum TurnLayout {
         pieces.append(.work([item]))
       }
     }
-    mergeTrailingReasoning(&pieces)
+    var wrapUp: [TranscriptItem] = []
+    if case .work(let trailing) = pieces.last, trailing.allSatisfy(\.isTrailingWrapUp) {
+      wrapUp = trailing
+      pieces.removeLast()
+    }
+    foldMarkerRuns(&pieces)
+    mergeWrapUp(wrapUp, into: &pieces)
     let last = pieces.count - 1
-    return pieces.enumerated().map { index, piece in
+    let folded: [TurnSegment] = pieces.enumerated().map { index, piece in
       switch piece {
       case .visible(let item): .item(item)
       case .work(let run):
         .worked(
           id: run[0].id, responseID: run[0].responseID, items: run,
-          isLive: isLive && index == last)
+          isLive: isLive && index == last && latest == turn.count)
+      }
+    }
+    return folded + turn[latest...].map(TurnSegment.item)
+  }
+
+  /// Where the turn's latest news starts, as the web's `latestNewsStart`: its trailing markers
+  /// and the uncommitted output after them stay visible after the fold until committed work
+  /// follows them.
+  private static func latestNewsStart(_ turn: [TranscriptItem]) -> Int {
+    var start = turn.count
+    while start > 0, turn[start - 1].isMarkerOrUncommitted { start -= 1 }
+    return turn[start...].firstIndex(where: \.isActivityMarker) ?? turn.count
+  }
+
+  /// A run of only markers folds with the nearest work, the earlier first (the web's
+  /// `foldNoticeRuns`). With no other work in the turn there is nothing to fold into, so the
+  /// markers stay visible.
+  private static func foldMarkerRuns(_ pieces: inout [Piece]) {
+    func isMarkerRun(_ piece: Piece) -> Bool {
+      if case .work(let run) = piece { return run.allSatisfy(\.isActivityMarker) }
+      return false
+    }
+    func isWork(_ piece: Piece) -> Bool {
+      if case .work = piece { return !isMarkerRun(piece) }
+      return false
+    }
+    guard pieces.contains(where: isMarkerRun) else { return }
+    var index = 0
+    while index < pieces.count {
+      guard isMarkerRun(pieces[index]), case .work(let markers) = pieces[index] else {
+        index += 1
+        continue
+      }
+      pieces.remove(at: index)
+      if let earlier = pieces[..<index].lastIndex(where: isWork),
+        case .work(let run) = pieces[earlier]
+      {
+        pieces[earlier] = .work(run + markers)
+      } else if let later = pieces.firstIndex(where: isWork), case .work(let run) = pieces[later] {
+        pieces[later] = .work(markers + run)
+      } else {
+        pieces.insert(contentsOf: markers.map(Piece.visible), at: index)
+        index += markers.count
       }
     }
   }
 
   /// Reasoning and bookkeeping tools after the last message join the previous run, so live and
   /// reloaded turns agree and the answer ends the turn.
-  private static func mergeTrailingReasoning(_ pieces: inout [Piece]) {
-    guard case .work(let trailing) = pieces.last, trailing.allSatisfy(\.isTrailingWrapUp),
-      let earlier = pieces.dropLast().lastIndex(where: {
-        if case .work = $0 { true } else { false }
-      }),
+  private static func mergeWrapUp(_ wrapUp: [TranscriptItem], into pieces: inout [Piece]) {
+    guard !wrapUp.isEmpty else { return }
+    if let earlier = pieces.lastIndex(where: { if case .work = $0 { true } else { false } }),
       case .work(let run) = pieces[earlier]
-    else { return }
-    pieces[earlier] = .work(run + trailing)
-    pieces.removeLast()
+    {
+      pieces[earlier] = .work(run + wrapUp)
+    } else {
+      pieces.append(.work(wrapUp))
+    }
   }
 
   /// "8s", "1m 46s", "1m", "1h 2m".
@@ -171,6 +221,31 @@ extension TranscriptItem {
   nonisolated var isUserMessage: Bool {
     if case .message(let row) = self { return row.role == .user }
     return false
+  }
+
+  /// A runtime `[System: …]` notice: like a user message, it starts a new turn.
+  nonisolated var isSystemNotice: Bool {
+    if case .activity(let row) = self { return row.activity?.kind == .systemNotice }
+    return false
+  }
+
+  /// Where one turn ends and the next starts: a user message or a notice.
+  nonisolated var isTurnBoundary: Bool { isUserMessage || isSystemNotice }
+
+  /// A sub-agent's or a task's start or end, or a plan change: it folds with the turn's work.
+  nonisolated var isActivityMarker: Bool {
+    if case .activity(let row) = self {
+      return row.activity?.kind == .subagentMarker || row.activity?.kind == .taskMarker
+    }
+    return false
+  }
+
+  /// A marker, or output no server item stands for yet (a live preview) that has not failed.
+  nonisolated var isMarkerOrUncommitted: Bool {
+    if isActivityMarker { return true }
+    let rows = rows
+    return !rows.isEmpty && rows.allSatisfy(\.isEphemeral)
+      && !rows.contains { $0.activity?.isFailure == true }
   }
 
   /// An assistant message with text, or one still streaming: it never folds.

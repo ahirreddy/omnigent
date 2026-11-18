@@ -322,6 +322,7 @@ extension ConversationActions: FocusedActions {
       messageURL != nil, resume != nil, share != nil, openSideChat != nil, openChild != nil,
       retryFailedTurn != nil, replyWithSelection != nil, askInSideChat != nil,
       forkUnavailableReason != nil, forkToRecover != nil, openSignIn != nil,
+      sessionTitle != nil, editSentMessage != nil,
     ]
   }
 
@@ -359,6 +360,7 @@ extension ConversationActions: FocusedActions {
     if openSignIn != nil {
       copy.openSignIn = { await latest()?.openSignIn?() ?? .notPending }
     }
+    if sessionTitle != nil { copy.sessionTitle = { latest()?.sessionTitle?($0) } }
   }
 
   /// Reply and Ask in side chat, which quote text from the transcript.
@@ -367,5 +369,7 @@ extension ConversationActions: FocusedActions {
       copy.replyWithSelection = { latest()?.replyWithSelection?($0) }
     }
     if askInSideChat != nil { copy.askInSideChat = { latest()?.askInSideChat?($0) } }
+    if editSentMessage != nil { copy.editSentMessage = { latest()?.editSentMessage?($0) } }
+    copy.viewerID = viewerID
   }
 }

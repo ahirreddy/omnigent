@@ -65,6 +65,42 @@ pub struct ServerPages {
     /// New project can start from a repository (`project_repository_creation`).
     #[uniffi(default)]
     pub project_repository_creation: bool,
+    /// Hosts and continued sessions run schedules under an hour (`scheduled_task_subhour`).
+    #[uniffi(default)]
+    pub automation_subhour: bool,
+    /// Runs drop a trigger prompt's header before dispatch, so triggers save one.
+    #[uniffi(default)]
+    pub automation_trigger_headers: bool,
+    /// How often a trigger checks its service, in minutes.
+    #[uniffi(default = 10)]
+    pub automation_trigger_poll_minutes: u32,
+    /// The longest message the server delivers; 0 on older servers (8,000 characters).
+    #[uniffi(default)]
+    pub session_message_max_chars: u32,
+    /// Runs can start with MCP services.
+    #[uniffi(default)]
+    pub automation_mcp_services: bool,
+    /// An automation can start each run from a copy of a session.
+    #[uniffi(default)]
+    pub automation_source_sessions: bool,
+    /// Automations can be shared.
+    #[uniffi(default)]
+    pub automation_sharing: bool,
+    /// The Shared with me list.
+    #[uniffi(default)]
+    pub automation_shared_with_me: bool,
+    /// The PRs each run created or worked on.
+    #[uniffi(default)]
+    pub automation_run_pull_requests: bool,
+    /// Every native harness takes a permission mode.
+    #[uniffi(default)]
+    pub automation_harness_settings: bool,
+    /// Modes that skip approval are accepted.
+    #[uniffi(default)]
+    pub automation_approval_skipping_modes: bool,
+    /// A trigger's workers can take a permission mode.
+    #[uniffi(default)]
+    pub session_create_permission_modes: bool,
 }
 
 /// Whether an automation fires.
@@ -136,6 +172,24 @@ pub struct Automation {
     /// The project every run's session is filed into.
     #[uniffi(default)]
     pub project_id: Option<String>,
+    /// It runs when new items match a trigger, not on its schedule.
+    #[uniffi(default)]
+    pub is_trigger: bool,
+    /// The MCP services every run starts with.
+    #[uniffi(default)]
+    pub mcp_services: Vec<String>,
+    /// The cost limit per run in USD as decimal text; `None` is no limit.
+    #[uniffi(default)]
+    pub max_cost_usd: Option<String>,
+    /// The session copy every run starts from.
+    #[uniffi(default)]
+    pub source_session_id: Option<String>,
+    /// Someone else shared it with the caller, who may only read it.
+    #[uniffi(default)]
+    pub shared_with_me: bool,
+    /// Whose it is, for a shared one.
+    #[uniffi(default)]
+    pub owner_name: String,
 }
 
 /// What one run of an automation did.
@@ -183,6 +237,110 @@ pub struct AutomationRun {
     pub failure_reason: Option<String>,
     /// Its session has news the caller has not seen.
     pub unread: bool,
+    /// "Session cost $1.23".
+    #[uniffi(default)]
+    pub session_cost: Option<String>,
+    /// Its session waits on an approval or a question.
+    #[uniffi(default)]
+    pub needs_approval: bool,
+    /// The server's description of the failure.
+    #[uniffi(default)]
+    pub error_detail: Option<String>,
+    /// It succeeded but its session is still working.
+    #[uniffi(default)]
+    pub session_running: bool,
+}
+
+/// A page of the automations shared with the caller.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct SharedAutomationsPage {
+    /// The page, each read-only.
+    pub automations: Vec<Automation>,
+    /// The next page's cursor.
+    pub next_cursor: Option<String>,
+}
+
+/// A PR's state as its host last fetched it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum RunPullRequestStatus {
+    /// Open.
+    Open,
+    /// An open draft.
+    Draft,
+    /// Merged.
+    Merged,
+    /// Closed without merging.
+    Closed,
+    /// Not fetched yet.
+    Unknown,
+}
+
+/// One PR a run created or worked on.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct RunPullRequest {
+    /// Its page.
+    pub url: String,
+    /// `owner/repo`.
+    pub repository: String,
+    /// `#212`.
+    pub number: String,
+    /// Title, when known.
+    pub title: Option<String>,
+    /// Its state.
+    pub status: RunPullRequestStatus,
+    /// "Open", "Closed without merging".
+    pub status_label: String,
+    /// The run opened it, rather than worked on it.
+    pub created_by_run: bool,
+}
+
+/// The PRs one run created or worked on.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct RunPullRequests {
+    /// The run.
+    pub run_id: String,
+    /// Its PRs.
+    pub pull_requests: Vec<RunPullRequest>,
+    /// "PR #212 merged", "PRs: 2 merged, 1 closed".
+    pub summary: String,
+}
+
+impl From<core::RunPullRequests> for RunPullRequests {
+    fn from(run: core::RunPullRequests) -> Self {
+        use core::RunPullRequestStatus as Status;
+        Self {
+            summary: core::run_pull_requests_summary(&run.pull_requests),
+            run_id: run.run_id,
+            pull_requests: run
+                .pull_requests
+                .into_iter()
+                .map(|pr| RunPullRequest {
+                    status_label: pr.status.label().to_owned(),
+                    status: match pr.status {
+                        Status::Open => RunPullRequestStatus::Open,
+                        Status::Draft => RunPullRequestStatus::Draft,
+                        Status::Merged => RunPullRequestStatus::Merged,
+                        Status::Closed => RunPullRequestStatus::Closed,
+                        Status::Unknown => RunPullRequestStatus::Unknown,
+                    },
+                    url: pr.url,
+                    repository: pr.repository,
+                    number: pr.number,
+                    title: pr.title,
+                    created_by_run: pr.created_by_run,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// One person or group an automation is shared with, at read access.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct AutomationGrant {
+    /// The grantee's id or email.
+    pub user_id: String,
+    /// Their name.
+    pub display_name: String,
 }
 
 impl From<core::AutomationRun> for AutomationRun {
@@ -207,6 +365,10 @@ impl From<core::AutomationRun> for AutomationRun {
             failure_stage: run.failure_stage,
             failure_reason: run.failure_reason,
             unread: run.unread,
+            session_cost: run.session_cost,
+            needs_approval: run.needs_approval,
+            error_detail: run.error_detail,
+            session_running: run.session_running,
         }
     }
 }
@@ -258,6 +420,15 @@ pub struct AutomationDraft {
     /// A continuing automation's next run starts a new session.
     #[uniffi(default)]
     pub start_new_session: bool,
+    /// The MCP services every run starts with; `None` leaves them as they are.
+    #[uniffi(default)]
+    pub mcp_services: Option<Vec<String>>,
+    /// The cost limit per run in USD as typed; blank is no limit.
+    #[uniffi(default)]
+    pub max_cost_usd: String,
+    /// Create it from this session: each run starts from a copy of it.
+    #[uniffi(default)]
+    pub source_session_id: Option<String>,
 }
 
 /// When a schedule stops firing.
@@ -345,6 +516,8 @@ pub enum SchedulePreset {
 /// A custom schedule's unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum ScheduleFrequency {
+    /// Minutes: Interval schedules and trigger polling.
+    Minutely,
     /// Hours.
     Hourly,
     /// Days.
@@ -410,7 +583,7 @@ mirror_enum!(
 mirror_enum!(
     ScheduleFrequency,
     rules::ScheduleFrequency,
-    [Hourly, Daily, Weekly, Monthly, Yearly]
+    [Minutely, Hourly, Daily, Weekly, Monthly, Yearly]
 );
 mirror_enum!(
     AutomationFilter,
@@ -480,6 +653,12 @@ macro_rules! automation_record {
             workspace: $source.workspace,
             runs_in_sandbox: $source.runs_in_sandbox,
             project_id: $source.project_id,
+            is_trigger: $source.is_trigger,
+            mcp_services: $source.mcp_services,
+            max_cost_usd: $source.max_cost_usd,
+            source_session_id: $source.source_session_id,
+            shared_with_me: $source.shared_with_me,
+            owner_name: $source.owner_name,
         }
     };
 }
@@ -524,16 +703,75 @@ impl From<AutomationDraft> for core::AutomationDraft {
             reasoning_effort: draft.reasoning_effort,
             permission_mode: draft.permission_mode,
             start_new_session: draft.start_new_session,
+            mcp_services: draft.mcp_services,
+            max_cost_usd: draft.max_cost_usd,
+            source_session_id: draft.source_session_id,
+        }
+    }
+}
+
+/// Why the cost limit typed into the editor can't be saved, or `None`.
+#[must_use]
+#[uniffi::export]
+pub fn cost_limit_problem(text: String) -> Option<String> {
+    core::parse_cost_limit(&text).err()
+}
+
+/// A cost limit as the page shows it: `$5.00`, or "No limit" for `None` or unreadable text.
+#[must_use]
+#[uniffi::export]
+pub fn describe_cost_limit(max_cost_usd: Option<String>) -> String {
+    max_cost_usd
+        .and_then(|text| text.parse::<f64>().ok())
+        .map_or_else(|| "No limit".to_owned(), core::format_cost_usd)
+}
+
+/// What decides how short a minute schedule may be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct ScheduleLimits {
+    /// The server runs schedules under an hour (`scheduled_task_subhour`).
+    pub subhour_supported: bool,
+    /// Every run continues one session.
+    pub continues_session: bool,
+    /// Runs go to a connected host rather than a new sandbox.
+    pub on_connected_host: bool,
+}
+
+impl From<ScheduleLimits> for rules::ScheduleLimits {
+    fn from(limits: ScheduleLimits) -> Self {
+        Self {
+            subhour_supported: limits.subhour_supported,
+            continues_session: limits.continues_session,
+            on_connected_host: limits.on_connected_host,
         }
     }
 }
 
 /// Why the editor cannot save `model`, or `None`. `now` is Unix seconds; an unchanged schedule
-/// may keep an end in the past.
+/// may keep an end in the past; `limits` bound minute intervals.
 #[must_use]
 #[uniffi::export]
-pub fn validate_schedule(model: ScheduleModel, now: i64, allow_past_end: bool) -> Option<String> {
-    rules::validate_schedule(&model.into(), now, allow_past_end)
+pub fn validate_schedule(
+    model: ScheduleModel,
+    now: i64,
+    allow_past_end: bool,
+    limits: ScheduleLimits,
+) -> Option<String> {
+    rules::validate_schedule(&model.into(), now, allow_past_end, limits.into())
+}
+
+/// The smallest interval `frequency` allows: 1, or 10 or 60 minutes.
+#[must_use]
+#[uniffi::export]
+pub fn minimum_schedule_interval(frequency: ScheduleFrequency, limits: ScheduleLimits) -> u16 {
+    rules::minimum_schedule_interval(frequency.into(), limits.into())
+}
+
+/// The largest interval `frequency` allows: 366, or 366 days in minutes.
+#[must_use]
+#[uniffi::export]
+pub fn maximum_schedule_interval(frequency: ScheduleFrequency) -> u16 {
+    rules::maximum_schedule_interval(frequency.into())
 }
 
 /// Whether `model` needs a server with `automations_v2`: custom schedules and run-count endings.
@@ -626,7 +864,122 @@ impl ClientCore {
             sharing_read_only: pages.sharing_read_only,
             sharing_restricted: pages.sharing_restricted,
             project_repository_creation: pages.project_repository_creation,
+            automation_subhour: pages.automation_subhour,
+            automation_trigger_headers: pages.automation_trigger_headers,
+            automation_trigger_poll_minutes: pages.automation_trigger_poll_minutes,
+            session_message_max_chars: pages.session_message_max_chars,
+            automation_mcp_services: pages.automation_mcp_services,
+            automation_source_sessions: pages.automation_source_sessions,
+            automation_sharing: pages.automation_sharing,
+            automation_shared_with_me: pages.automation_shared_with_me,
+            automation_run_pull_requests: pages.automation_run_pull_requests,
+            automation_harness_settings: pages.automation_harness_settings,
+            automation_approval_skipping_modes: pages.automation_approval_skipping_modes,
+            session_create_permission_modes: pages.session_create_permission_modes,
         })
+    }
+
+    /// One page of the automations other users shared with the caller, after `after`.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the read errors and `MalformedResponse`.
+    pub async fn shared_automations(
+        &self,
+        after: Option<String>,
+    ) -> Result<SharedAutomationsPage, CoreError> {
+        let page = self
+            .sessions()
+            .shared_automations(after.as_deref())
+            .await
+            .map_err(CoreError::from)?;
+        Ok(SharedAutomationsPage {
+            automations: page.automations.into_iter().map(Into::into).collect(),
+            next_cursor: page.next_cursor,
+        })
+    }
+
+    /// The PRs the newest runs of automation `id` created or worked on.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`; the read errors and `MalformedResponse`.
+    pub async fn automation_run_pull_requests(
+        &self,
+        id: String,
+    ) -> Result<Vec<RunPullRequests>, CoreError> {
+        self.sessions()
+            .automation_run_pull_requests(&id)
+            .await
+            .map(|runs| runs.into_iter().map(Into::into).collect())
+            .map_err(CoreError::from)
+    }
+
+    /// Everyone automation `id` is shared with; only its owner may list them.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`, the read errors, `MalformedResponse` and
+    /// `InvalidPagination`.
+    pub async fn automation_grants(&self, id: String) -> Result<Vec<AutomationGrant>, CoreError> {
+        self.sessions()
+            .automation_grants(&id)
+            .await
+            .map(|grants| {
+                grants
+                    .into_iter()
+                    .map(|grant| AutomationGrant {
+                        user_id: grant.user_id,
+                        display_name: grant.display_name,
+                    })
+                    .collect()
+            })
+            .map_err(CoreError::from)
+    }
+
+    /// Shares automation `id` with `user_id` at read access. Never retried.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` before any request, and the write errors
+    /// (`Rejected` with the server's reason, `Forbidden`).
+    pub async fn grant_automation_access(
+        &self,
+        id: String,
+        user_id: String,
+    ) -> Result<(), CoreError> {
+        self.sessions()
+            .grant_automation_access(&id, &user_id)
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// Stops sharing automation `id` with `user_id`. Never retried.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` before any request, and the write errors.
+    pub async fn revoke_automation_access(
+        &self,
+        id: String,
+        user_id: String,
+    ) -> Result<(), CoreError> {
+        self.sessions()
+            .revoke_automation_access(&id, &user_id)
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// The hosts that deliver long session messages, for a trigger's message budget.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the read errors and `MalformedResponse`.
+    pub async fn long_message_hosts(&self) -> Result<Vec<String>, CoreError> {
+        self.sessions()
+            .long_message_hosts()
+            .await
+            .map_err(CoreError::from)
     }
 
     /// The caller's automations.

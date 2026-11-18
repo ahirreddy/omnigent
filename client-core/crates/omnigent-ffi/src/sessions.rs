@@ -707,10 +707,7 @@ impl ClientCore {
         project: ProjectSummary,
         name: String,
     ) -> Result<ProjectSummary, CoreError> {
-        let renamed = self
-            .sessions()
-            .rename_project(&project.into(), &name)
-            .await;
+        let renamed = self.sessions().rename_project(&project.into(), &name).await;
         self.events_published().await;
         renamed.map(Into::into).map_err(CoreError::from)
     }

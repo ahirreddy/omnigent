@@ -145,7 +145,8 @@ private struct CLIStatusIndicators: View {
       if let pullRequest = tray.pullRequest {
         ComposerPullRequestChip(
           label: pullRequest, status: tray.pullRequestStatus, preview: tray.pullRequestPreview,
-          open: actions.extras.indicators.openPullRequests
+          open: actions.extras.indicators.openPullRequests,
+          openOne: actions.extras.indicators.openPullRequest
         )
         .buttonStyle(.plain)
       }

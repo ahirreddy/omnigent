@@ -85,6 +85,18 @@ class FrameTests(unittest.TestCase):
         self.assertEqual(perf.scrolled(text, 1000, 2000), [(6196.0, 880.0, 11277.0)])
         self.assertEqual(perf.scrolled(text, 1600, 2000), [])
 
+    def test_reads_where_the_reader_is_inside_the_window(self):
+        text = (
+            "# start 900\n# offset 1200 5000.0 9000.0 800.0\n# offset 2400 4990.5 9010.0 800.0\n"
+        )
+        self.assertEqual(perf.offsets(text, 1000, 2000), [(5000.0, 9000.0, 800.0)])
+        self.assertEqual(len(perf.offsets(text, 1000, 3000)), 2)
+
+    def test_the_mid_transcript_toggles_scroll_up_first(self):
+        self.assertEqual(perf.SCENARIOS["sidebar-toggles-mid"], perf.SCENARIOS["sidebar-toggles"])
+        self.assertIn("sidebar-toggles-mid", perf.PREPARE)
+        self.assertNotIn("sidebar-toggles", perf.PREPARE)
+
 
 BUSY = """# start 900
 1000.0 2.00
@@ -105,6 +117,11 @@ class BusyTests(unittest.TestCase):
         self.assertEqual(numbers["over_16ms"], 1)
         self.assertEqual(numbers["p50_ms"], 9.0)
         self.assertEqual(numbers["max_ms"], 20.0)
+
+    def test_the_timeline_lists_the_passes_a_120hz_frame_misses(self):
+        passes = perf.busy_passes(BUSY, 1000, 2000)
+        self.assertEqual(passes[1], (1100.0, 9.0))
+        self.assertEqual(perf.pass_timeline(passes, 1000), "+100:9.0 +200:20.0")
 
     def test_an_empty_window_has_no_passes(self):
         numbers = perf.parse_busy(BUSY, 3000, 4000).numbers

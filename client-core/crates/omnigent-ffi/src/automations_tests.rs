@@ -12,18 +12,33 @@ use omnigent_core::schedule as rules;
 use serde_json::json;
 
 use crate::automation_triggers::{
-    TriggerCondition, TriggerFields, TriggerOperator, TriggerSource, empty_trigger_fields,
-    max_trigger_instructions_chars, render_trigger_prompt, trigger_fields_complete,
-    trigger_session_link_placeholder, trigger_sources, trigger_template,
+    TriggerCondition, TriggerConfig, TriggerConfigContext, TriggerFields, TriggerOperator,
+    TriggerPollingTarget, TriggerPromptDisplay, TriggerScopeOperator, TriggerSource,
+    TriggerWorker, WorkerPlacement, combine_trigger_prompt, decode_trigger_prompt,
+    empty_trigger_fields, encode_trigger_prompt, is_trigger_prompt,
+    read_trigger_message_max_chars, render_trigger_config_prompt, split_trigger_prompt,
+    strip_trigger_header, trigger_fields_complete, trigger_fields_for_event,
+    trigger_message_budget, trigger_prompt_display, trigger_session_link_placeholder,
+    trigger_sources, trigger_template,
+};
+use crate::automations::{
+    RunPullRequestStatus, RunPullRequests, cost_limit_problem, describe_cost_limit,
 };
 use crate::automations::{
     Automation, AutomationDraft, AutomationFilter, AutomationRunStatus, AutomationState,
-    ScheduleEnd, ScheduleFrequency, ScheduleModel, SchedulePreset, ServerPages, Weekday,
-    arrange_automations, build_schedule_rrule, default_schedule_model, describe_schedule,
-    format_next_run, parse_schedule_rrule, schedule_needs_anchored_scheduling, validate_schedule,
+    ScheduleEnd, ScheduleFrequency, ScheduleLimits, ScheduleModel, SchedulePreset, ServerPages,
+    Weekday, arrange_automations, build_schedule_rrule, default_schedule_model, describe_schedule,
+    format_next_run, maximum_schedule_interval, minimum_schedule_interval, parse_schedule_rrule,
+    schedule_needs_anchored_scheduling, validate_schedule,
 };
 use crate::sessions::SiblingSessionDestinations;
 use crate::test_support::{connected, json as reply};
+
+const LIMITS: ScheduleLimits = ScheduleLimits {
+    subhour_supported: true,
+    continues_session: false,
+    on_connected_host: true,
+};
 
 const TASK: &str = r#"{"id":"t1","name":"Standup","prompt":"Summarize",
   "rrule":"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=8;BYMINUTE=0","agent_id":"a1",
@@ -57,6 +72,12 @@ fn saved(id: &str, name: &str, state: AutomationState, next_run_at: Option<i64>)
         workspace: Some("/w".into()),
         runs_in_sandbox: true,
         project_id: Some("pr".into()),
+        is_trigger: true,
+        mcp_services: vec!["jira".into()],
+        max_cost_usd: Some("2.5".into()),
+        source_session_id: Some("copy".into()),
+        shared_with_me: true,
+        owner_name: "Ana".into(),
     }
 }
 
@@ -77,6 +98,9 @@ fn draft() -> AutomationDraft {
         reasoning_effort: Some("high".into()),
         permission_mode: Some("plan".into()),
         start_new_session: false,
+        mcp_services: Some(vec!["github".into()]),
+        max_cost_usd: "4".into(),
+        source_session_id: None,
     }
 }
 
@@ -105,6 +129,10 @@ fn every_mirrored_schedule_enum_maps_both_ways() {
         assert_eq!(SchedulePreset::from(core_value), ffi);
     }
     for (ffi, core_value) in [
+        (
+            ScheduleFrequency::Minutely,
+            rules::ScheduleFrequency::Minutely,
+        ),
         (ScheduleFrequency::Hourly, rules::ScheduleFrequency::Hourly),
         (ScheduleFrequency::Daily, rules::ScheduleFrequency::Daily),
         (ScheduleFrequency::Weekly, rules::ScheduleFrequency::Weekly),
@@ -182,15 +210,15 @@ fn the_default_model_validation_and_text_are_the_cores() {
     assert_eq!(model.preset, SchedulePreset::Daily);
     assert_eq!((model.hour, model.minute), (9, 0));
     assert_eq!(model.end, ScheduleEnd::Never);
-    assert_eq!(validate_schedule(model.clone(), 0, false), None);
+    assert_eq!(validate_schedule(model.clone(), 0, false, LIMITS), None);
     assert!(!schedule_needs_anchored_scheduling(model.clone()));
 
     let past_end = ScheduleModel {
         end: ScheduleEnd::Until { at: 10 },
         ..model.clone()
     };
-    assert!(validate_schedule(past_end.clone(), 100, false).is_some());
-    assert_eq!(validate_schedule(past_end, 100, true), None);
+    assert!(validate_schedule(past_end.clone(), 100, false, LIMITS).is_some());
+    assert_eq!(validate_schedule(past_end, 100, true, LIMITS), None);
     assert!(schedule_needs_anchored_scheduling(ScheduleModel {
         end: ScheduleEnd::Count { count: 2 },
         ..model
@@ -201,6 +229,39 @@ fn the_default_model_validation_and_text_are_the_cores() {
     );
     assert_eq!(format_next_run(1000, 1000), "soon");
     assert_eq!(format_next_run(i64::MIN, i64::MAX), "soon");
+}
+
+#[test]
+fn a_minute_schedule_crosses_with_its_limits() {
+    let model = ScheduleModel {
+        preset: SchedulePreset::Custom,
+        frequency: ScheduleFrequency::Minutely,
+        interval: 10,
+        ..default_schedule_model()
+    };
+    let rule = build_schedule_rrule(model.clone());
+    assert_eq!(rule, "FREQ=MINUTELY;INTERVAL=10");
+    assert_eq!(describe_schedule(rule.clone()), "Every 10 minutes");
+    assert_eq!(parse_schedule_rrule(rule), Some(model.clone()));
+    assert_eq!(validate_schedule(model.clone(), 0, false, LIMITS), None);
+    let sandbox = ScheduleLimits {
+        on_connected_host: false,
+        ..LIMITS
+    };
+    assert!(validate_schedule(model, 0, false, sandbox).is_some());
+    assert_eq!(
+        minimum_schedule_interval(ScheduleFrequency::Minutely, sandbox),
+        60
+    );
+    assert_eq!(
+        minimum_schedule_interval(ScheduleFrequency::Minutely, LIMITS),
+        10
+    );
+    assert_eq!(
+        maximum_schedule_interval(ScheduleFrequency::Minutely),
+        21_960
+    );
+    assert_eq!(maximum_schedule_interval(ScheduleFrequency::Daily), 366);
 }
 
 #[test]
@@ -296,6 +357,18 @@ fn server_pages_map_each_flag_to_its_own_field() {
         sharing_read_only: false,
         sharing_restricted: false,
         project_repository_creation: false,
+        automation_subhour: false,
+        automation_trigger_headers: false,
+        automation_trigger_poll_minutes: 10,
+        session_message_max_chars: 0,
+        automation_mcp_services: false,
+        automation_source_sessions: false,
+        automation_sharing: false,
+        automation_shared_with_me: false,
+        automation_run_pull_requests: false,
+        automation_harness_settings: false,
+        automation_approval_skipping_modes: false,
+        session_create_permission_modes: false,
     };
     assert_eq!(read(&mut harness, r#"{"single_user":true}"#), none);
     for (body, expected) in [
@@ -468,7 +541,8 @@ fn automations_are_listed_created_edited_paused_run_and_deleted() {
                    "rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0", "agent_id": "a1",
                    "timezone": "UTC", "session_mode": "continue", "host_id": "h1",
                    "workspace": "/src", "project_id": "p1", "model_override": "opus",
-                   "reasoning_effort": "high", "permission_mode": "plan"})
+                   "reasoning_effort": "high", "permission_mode": "plan",
+                   "max_cost_usd": 4.0, "mcp_services": ["github"]})
         )
     );
 
@@ -590,6 +664,11 @@ fn trigger_enums_map_both_ways_and_sources_keep_the_pages_order() {
         (TriggerSource::Jira, core_triggers::TriggerSource::Jira),
         (TriggerSource::Slack, core_triggers::TriggerSource::Slack),
         (TriggerSource::Github, core_triggers::TriggerSource::Github),
+        (TriggerSource::Linear, core_triggers::TriggerSource::Linear),
+        (
+            TriggerSource::PagerDuty,
+            core_triggers::TriggerSource::PagerDuty,
+        ),
     ] {
         assert_eq!(core_triggers::TriggerSource::from(ffi), core_value);
         assert_eq!(TriggerSource::from(core_value), ffi);
@@ -633,7 +712,9 @@ fn trigger_enums_map_both_ways_and_sources_keep_the_pages_order() {
         [
             TriggerSource::Jira,
             TriggerSource::Slack,
-            TriggerSource::Github
+            TriggerSource::Github,
+            TriggerSource::Linear,
+            TriggerSource::PagerDuty
         ]
     );
 }
@@ -679,54 +760,144 @@ fn a_template_carries_each_of_the_cores_fields() {
     }
 }
 
+fn config(fields: TriggerFields, placement: WorkerPlacement, model: &str) -> TriggerConfig {
+    TriggerConfig {
+        source: TriggerSource::Jira,
+        fields,
+        task_session: false,
+        worker: TriggerWorker {
+            placement,
+            agent_id: None,
+            model: model.into(),
+            effort: String::new(),
+            permission_mode: String::new(),
+        },
+    }
+}
+
 #[test]
-fn fields_round_trip_and_render_with_the_placement_and_overrides() {
+fn a_config_renders_encodes_and_reopens_through_the_header() {
     let empty = empty_trigger_fields(TriggerSource::Jira);
-    assert!(!trigger_fields_complete(empty.clone()), "no scope yet");
+    assert!(
+        !trigger_fields_complete(TriggerSource::Jira, empty.clone(), 16_000),
+        "no scope yet"
+    );
     let fields = TriggerFields {
         event: empty.event,
         scope: "ES".into(),
+        scope_operator: Some(TriggerScopeOperator::Is),
         conditions: vec![TriggerCondition {
             field: "label".into(),
             operator: TriggerOperator::Is,
             value: "omnigent".into(),
+            name: None,
         }],
+        target: None,
         instructions: "Investigate the ticket.".into(),
         link_back: true,
+        link_back_touched: None,
     };
     assert_eq!(
         TriggerFields::from(core_triggers::TriggerFields::from(fields.clone())),
         fields
     );
-    assert!(trigger_fields_complete(fields.clone()));
-    let link = format!("https://x/c/{}", trigger_session_link_placeholder());
-    let same_host = render_trigger_prompt(
+    assert!(trigger_fields_complete(
         TriggerSource::Jira,
         fields.clone(),
-        false,
-        link.clone(),
-        None,
-        None,
+        16_000
+    ));
+    let link = format!("https://x/c/{}", trigger_session_link_placeholder());
+    let context = TriggerConfigContext {
+        session_link: link.clone(),
+        polling_interval_minutes: Some(10),
+        task_session_title: None,
+        message_max_chars: None,
+    };
+    let same_host = render_trigger_config_prompt(
+        config(fields.clone(), WorkerPlacement::SameHost, ""),
+        context.clone(),
     );
-    let in_sandboxes = render_trigger_prompt(
-        TriggerSource::Jira,
-        fields,
-        true,
-        link.clone(),
-        Some("opus".into()),
-        Some("high".into()),
+    let in_sandboxes = render_trigger_config_prompt(
+        config(fields.clone(), WorkerPlacement::Managed, "opus"),
+        context.clone(),
     );
     assert_ne!(same_host, in_sandboxes);
-    assert!(same_host.contains("Investigate the ticket."));
     assert!(same_host.contains(&link));
-    assert!(in_sandboxes.contains("opus"));
-    assert!(in_sandboxes.contains("high"));
+    assert!(in_sandboxes.contains("model \"opus\""));
+    let saved = config(fields, WorkerPlacement::Managed, "opus");
+    let encoded = encode_trigger_prompt(saved.clone(), context);
+    assert_eq!(decode_trigger_prompt(encoded.clone()), Some(saved));
+    assert!(is_trigger_prompt(encoded.clone()));
+    assert_eq!(strip_trigger_header(encoded.clone()), in_sandboxes);
     assert_eq!(
-        u64::from(max_trigger_instructions_chars()),
-        u64::try_from(core_triggers::MAX_INSTRUCTIONS_CHARS).unwrap()
+        trigger_prompt_display(encoded, true),
+        TriggerPromptDisplay {
+            text: "Investigate the ticket.".into(),
+            instructions_only: true,
+        }
     );
+    let parts = split_trigger_prompt(same_host.clone());
+    assert_eq!(parts.user_prompt, "Investigate the ticket.");
+    assert_eq!(
+        combine_trigger_prompt(parts.user_prompt, parts.system_prompt),
+        same_host
+    );
+    assert_eq!(read_trigger_message_max_chars(same_host), Some(32_000));
     assert_eq!(
         trigger_session_link_placeholder(),
         core_triggers::SESSION_LINK_ID_PLACEHOLDER
     );
+}
+
+#[test]
+fn the_budget_and_event_switches_are_the_cores() {
+    let full = trigger_message_budget(
+        32_000,
+        TriggerPollingTarget::Host {
+            name: "laptop".into(),
+            long_messages: true,
+        },
+        None,
+    );
+    assert_eq!(
+        (full.message_max_chars, full.instructions_max_chars),
+        (32_000, 16_000)
+    );
+    let legacy = trigger_message_budget(0, TriggerPollingTarget::ManagedSandbox, None);
+    assert_eq!(legacy.instructions_max_chars, 2_000);
+    assert!(legacy.upgrade_hint.is_some());
+    let review = trigger_fields_for_event(
+        TriggerSource::Github,
+        empty_trigger_fields(TriggerSource::Github),
+        "review".into(),
+    );
+    assert_eq!(review.target.as_deref(), Some("me"));
+    let template = trigger_template(TriggerSource::Github);
+    let event = template.events.iter().find(|event| event.id == "review");
+    assert!(event.is_some_and(|event| event.target.as_ref().is_some_and(|target| target.required)));
+    let pagerduty = trigger_template(TriggerSource::PagerDuty);
+    assert_eq!(pagerduty.scope_operators.len(), 3);
+    assert_eq!(pagerduty.scope_operators[2].label, "contains");
+}
+
+#[test]
+fn run_pull_requests_and_cost_limits_cross_with_their_text() {
+    assert_eq!(cost_limit_problem("2".into()), None);
+    assert!(cost_limit_problem("0".into()).is_some());
+    assert_eq!(describe_cost_limit(Some("2.5".into())), "$2.50");
+    assert_eq!(describe_cost_limit(None), "No limit");
+    let run = RunPullRequests::from(core::RunPullRequests {
+        run_id: "r1".into(),
+        pull_requests: vec![core::RunPullRequest {
+            url: "https://git.example.com/pull/7".into(),
+            repository: "acme/app".into(),
+            number: "#7".into(),
+            title: None,
+            status: core::RunPullRequestStatus::Closed,
+            created_by_run: true,
+        }],
+    });
+    assert_eq!(run.summary, "PR #7 closed");
+    assert_eq!(run.pull_requests[0].status, RunPullRequestStatus::Closed);
+    assert_eq!(run.pull_requests[0].status_label, "Closed without merging");
 }

@@ -50,6 +50,11 @@
       super.viewWillMove(toWindow: newWindow)
     }
 
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      owner?.watchColumns()
+    }
+
     override func viewWillStartLiveResize() {
       super.viewWillStartLiveResize()
       owner?.liveResizeChanged(true)

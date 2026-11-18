@@ -14,6 +14,14 @@
       var fraction: CGFloat
     }
 
+    /// What lays the rows' text out at snapped widths until it ends.
+    enum WidthHold: Hashable {
+      /// The window is being resized live.
+      case liveResize
+      /// A split view column beside the transcript is sliding in or out (`columnMotionBegan()`).
+      case columnMotion
+    }
+
     /// Where a reader is kept through a change of the rows' width.
     enum WidthAnchor: Equatable {
       /// At the top, where no row lies above.
@@ -101,14 +109,30 @@
         if !frameIfReady(), follow.layoutGrew() { pinBottom() }
         return
       }
+      columnMotionStepped()
+      if textStyle.isLiveResizing, heldTextDiffers(at: model.width) { heldTextDiffered = true }
       takeWidth(keeping: anchor)
     }
 
-    /// The window started or ended a live resize. Meanwhile text lays out at snapped widths, so
-    /// a drag lays each message out every few points, not at each; once it ends, the rows
-    /// measured meanwhile are measured again at the exact width, those on screen now.
+    /// The window started or ended a live resize.
     func liveResizeChanged(_ isResizing: Bool) {
-      guard textStyle.setLiveResizing(isResizing), !isResizing else { return }
+      holdWidths(.liveResize, isResizing)
+    }
+
+    /// Starts or ends `hold`. While one lasts, text lays out at snapped widths, so a drag or an
+    /// animated column lays each message out every few points, not at each; once the last
+    /// ends, the rows measured meanwhile are measured again at the exact width, those on screen
+    /// now, unless every width they took laid them out as the exact one does.
+    func holdWidths(_ hold: WidthHold, _ isHeld: Bool) {
+      if isHeld { widthHolds.insert(hold) } else { widthHolds.remove(hold) }
+      let isHolding = !widthHolds.isEmpty
+      let restyles = isHolding || heldTextDiffered
+      guard textStyle.setLiveResizing(isHolding, restyles: restyles), !isHolding else { return }
+      heldTextDiffered = false
+      guard restyles else {
+        measuredWhileResizing = []
+        return
+      }
       let anchor = widthAnchor()
       model.markStale(measuredWhileResizing)
       measuredWhileResizing = []

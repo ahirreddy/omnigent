@@ -61,8 +61,9 @@ nonisolated enum TranscriptLayout {
     var callIndex: [String: Int] = [:]
 
     func flush() {
-      guard let first = group.first else { return }
-      items.append(.tools(id: first.id, entries: group))
+      // A journal write the chat marks with a task or plan line gets no row of its own.
+      let shown = group.filter { !JournalWrite.repeatsMarker($0) }
+      if let first = shown.first { items.append(.tools(id: first.id, entries: shown)) }
       group.removeAll(keepingCapacity: true)
       callIndex.removeAll(keepingCapacity: true)
     }
@@ -93,6 +94,55 @@ nonisolated enum TranscriptLayout {
     }
     flush()
     return items
+  }
+}
+
+/// The journal writes whose accepted calls the chat marks with a task marker or a plan line
+/// (the web's `repeatsTaskMarker`): such a call's row would repeat the marker, so it shows none.
+/// A rejected write gets no marker, so its row stays and shows the error.
+nonisolated enum JournalWrite {
+  static let marked: Set<String> = ["sys_journal_write_status", "sys_journal_write_plan"]
+
+  /// Whether `entry` is a status or plan write the journal accepted, or one still running,
+  /// whose marker lands once it is accepted.
+  static func repeatsMarker(_ entry: ToolEntry) -> Bool {
+    guard let call = entry.call, call.activity?.kind == .toolCall,
+      let name = call.activity?.title, let tool = ownTool(name), marked.contains(tool)
+    else { return false }
+    guard let result = entry.result else { return entry.isRunning }
+    if entry.isFailure { return false }
+    return !reportsError(result.activity?.detail("output") ?? result.text)
+  }
+
+  /// The tool an Omnigent tool name names: `mcp__omnigent__x` and `x` are `x`; another
+  /// server's tool is `nil`.
+  static func ownTool(_ name: String) -> String? {
+    let bare = name.hasPrefix("mcp__") ? String(name.dropFirst("mcp__".count)) : name
+    guard let separator = bare.range(of: "__"), separator.lowerBound > bare.startIndex else {
+      return name
+    }
+    let server = bare[..<separator.lowerBound]
+    guard server.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }) else {
+      return name
+    }
+    return server == "omnigent" ? ownTool(String(bare[separator.upperBound...])) : nil
+  }
+
+  /// Whether a tool's output reports a failure (the web's `toolErrorMessage`).
+  static func reportsError(_ output: String) -> Bool {
+    let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
+    // Output that does not parse as a JSON object is read as text.
+    if text.first == "{", let data = text.data(using: .utf8),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    {
+      // A JSON result reports a failure only through its fields.
+      if let error = object["error"] as? String { return !error.isEmpty }
+      if object["error"] is [String: Any] { return true }
+      return object["error"] as? Bool == true || object["isError"] as? Bool == true
+    }
+    if text.hasPrefix("<tool_use_error>") { return true }
+    let errorLead = /^(?:(?:error|fatal)\s*:|mcp error\b|error (?:executing|calling|running)\b)/
+    return text.lowercased().firstMatch(of: errorLead) != nil
   }
 }
 

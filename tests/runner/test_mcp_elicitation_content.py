@@ -20,7 +20,7 @@ import copy
 from typing import Any, cast
 
 import pytest
-from mcp.types import ElicitRequestFormParams
+from mcp.types import ElicitRequestFormParams, ElicitRequestURLParams
 
 from omnigent.runner import pending_approvals
 from omnigent.runner.mcp_manager import RunnerMcpManager
@@ -265,6 +265,47 @@ async def test_reconnect_republishes_the_same_question_with_a_fresh_id() -> None
             "data": {"message": "Which environment?", "requestedSchema": ENV_SCHEMA},
         },
     ]
+
+
+async def test_a_url_mode_request_offers_its_page_and_accepts_without_content() -> None:
+    """A URL-mode request reaches the person as its page, not a bare approval."""
+
+    class _RecordingServerClient(_StubServerClient):
+        def __init__(self) -> None:
+            self.bodies: list[dict[str, Any]] = []
+
+        async def post(self, url: str, json: Any = None, timeout: float = 30.0) -> Any:
+            self.bodies.append(copy.deepcopy(json))
+            return await super().post(url, json=json, timeout=timeout)
+
+    server_client = _RecordingServerClient()
+    manager = RunnerMcpManager(server_client=cast(Any, server_client))
+    callback = manager._build_elicitation_callback()
+    params = ElicitRequestURLParams(
+        message="Sign in to the tracker",
+        url="https://auth.example.com/consent/42",
+        elicitationId="consent-42",
+    )
+    task = asyncio.ensure_future(callback(SESSION, params))
+    for _ in range(500):
+        if ELICIT_ID in pending_approvals._pending:
+            break
+        await asyncio.sleep(0.001)
+    pending_approvals.resolve(ELICIT_ID, True)
+    result = await task
+
+    assert server_client.bodies == [
+        {
+            "type": "mcp_elicitation",
+            "data": {
+                "message": "Sign in to the tracker",
+                "mode": "url",
+                "url": "https://auth.example.com/consent/42",
+            },
+        }
+    ]
+    assert result.action == "accept"
+    assert result.content is None
 
 
 async def test_a_bare_approval_still_falls_back_to_the_schema() -> None:

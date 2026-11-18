@@ -121,6 +121,60 @@ struct PagesStoreTests {
   }
 
   @Test(.timeLimit(.minutes(1)))
+  func sharedAutomationsRunPullRequestsAndGrants() async throws {
+    let server = PagesServer()
+    let shared =
+      #"{"id":"s1","name":"Theirs","prompt":"P","rrule":"FREQ=MINUTELY;INTERVAL=10","state":"active","viewer_role":"viewer","owner_display_name":"Ana"}"#
+    server.route(
+      "/v1/scheduled-tasks/shared", .json(#"{"scheduled_tasks":[\#(shared)],"next_cursor":"c2"}"#))
+    server.route(
+      "/v1/scheduled-tasks/t1/run-pull-requests",
+      .json(
+        #"{"runs":[{"run_id":"r1","pull_requests":[{"url":"https://git.example.com/acme/app/pull/7","provider":"github","repository":"acme/app","number":7,"relationship":"created","state":"MERGED"}]}],"next_cursor":null}"#
+      ))
+    server.route(
+      "/v1/scheduled-tasks/t1/permissions", method: "GET",
+      .json(
+        #"{"permissions":[{"user_id":"ana@example.com","level":1,"display_name":"Ana"}],"next_cursor":null}"#
+      ))
+    server.route(
+      "/v1/scheduled-tasks/t1/permissions", method: "PUT",
+      .json(#"{"user_id":"bob@example.com","level":1}"#))
+    let pages = try #require(try await connected(server).pages)
+
+    await pages.loadSharedAutomations()
+    let theirs = try #require(pages.sharedAutomations.value?.first)
+    #expect(theirs.sharedWithMe)
+    #expect(theirs.ownerName == "Ana")
+    #expect(theirs.scheduleText == "Every 10 minutes")
+    #expect(pages.sharedAutomationsCursor == "c2")
+    // The next page repeats the row; it is listed once, and an unchanged cursor ends paging.
+    server.route(
+      "/v1/scheduled-tasks/shared", .json(#"{"scheduled_tasks":[\#(shared)],"next_cursor":"c2"}"#))
+    await pages.loadMoreSharedAutomations()
+    #expect(pages.sharedAutomations.value?.count == 1)
+    #expect(pages.sharedAutomationsCursor == nil)
+
+    await pages.loadAutomationRunPullRequests("t1")
+    #expect(pages.automationRunPullRequests["t1"]?["r1"]?.summary == "PR #7 merged")
+
+    await pages.loadAutomationGrants("t1")
+    #expect(pages.automationGrants["t1"]?.value?.map(\.displayName) == ["Ana"])
+    await pages.grantAutomationAccess("t1", to: "bob@example.com")
+    #expect(pages.automationGrantError == nil)
+    #expect(server.writes == ["PUT /v1/scheduled-tasks/t1/permissions"])
+    // A refused revoke is kept for the sheet until it closes.
+    await pages.revokeAutomationAccess("t1", from: "bob@example.com")
+    #expect(pages.automationGrantError != nil)
+    pages.dismissAutomationGrantError()
+    #expect(pages.automationGrantError == nil)
+
+    pages.requestAutomation(from: AutomationSource(sessionID: "conv_a", title: "Notes"))
+    #expect(pages.takePendingAutomationSource()?.sessionID == "conv_a")
+    #expect(pages.takePendingAutomationSource() == nil)
+  }
+
+  @Test(.timeLimit(.minutes(1)))
   func commentsAreReadOnceAndSeenOnThisDevice() async throws {
     let server = PagesServer()
     let store = try await connected(server)

@@ -36,6 +36,7 @@ Plus refactor-specific coverage:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -317,6 +318,26 @@ def test_elicitation_request_event_shape() -> None:
     assert params["phase"] == "tool_call"
     assert params["policy_name"] == "confirm_shell"
     assert params["content_preview"] == "ls -la"
+
+
+def test_shared_fixture_policy_ask_is_the_event_the_native_app_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tool-call ASK, as ``client-core/fixtures/decisions/Omni--PolicyAsk--ToolCall.json``
+    records it for the native core's tests."""
+    path = (
+        Path(__file__).resolve().parents[3]
+        / "client-core/fixtures/decisions/Omni--PolicyAsk--ToolCall.json"
+    )
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+    monkeypatch.setattr("omnigent.runtime.policies.approval._ELICITATION_MODE", "url")
+    req = ElicitationRequest(requested_schema={}, **fixture["policy"])
+
+    event = _elicitation_request_event(
+        fixture["elicitation"]["elicitation_id"], req, session_id="conv_a"
+    )
+
+    assert event == fixture["elicitation"]
 
 
 def test_elicitation_request_event_url_mode(monkeypatch: pytest.MonkeyPatch) -> None:

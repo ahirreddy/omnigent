@@ -73,7 +73,10 @@ struct PullRequestPanelTests {
   @Test("Unlink, Turn Off Auto-Merge and dismissing a failed edit reach the panel")
   func smallerEdits() async throws {
     let server = server()
-    server.route("\(githubPath)/prs", method: "POST", .json(#"{"detail":"refused"}"#, status: 500))
+    // The server unlinks a PR it stores, host or not.
+    server.route(
+      "/v1/sessions/conv_a/pull-requests", method: "DELETE",
+      .json(#"{"detail":"refused"}"#, status: 422))
     server.route("\(githubPath)/disable-auto-merge", method: "POST", .json("{}"))
     let panel = try await panel(server)
     let actions = PullRequestPanelSlots.extras(panel, canEdit: true).actions
@@ -88,6 +91,16 @@ struct PullRequestPanelTests {
     try await eventually("the auto-merge edit") {
       !server.requests("POST", "\(githubPath)/disable-auto-merge").isEmpty
     }
+  }
+
+  @Test("The tab watches its pull requests for every viewer, until it goes away")
+  func watches() async throws {
+    let panel = try await panel(server())
+    let watch = try #require(PullRequestPanelSlots.extras(panel, canEdit: false).actions.watch)
+    let watching = Task { await watch(false) }
+    try await eventually("the watch") { panel.watchers[.panel] == 1 }
+    watching.cancel()
+    try await eventually("the end of the watch") { panel.watchers.isEmpty }
   }
 
   @Test("Opening a pull request shows its files, and the list and Refresh read again")

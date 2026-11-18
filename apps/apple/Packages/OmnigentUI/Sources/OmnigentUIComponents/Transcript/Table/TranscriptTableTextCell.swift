@@ -90,7 +90,8 @@
       let isRestyle = next == shown
       guard
         let message = TranscriptTableTextMessage.make(
-          row, ramp: style.ramp, expandsPrompt: folds.isExpanded(row.id, isLive: false)),
+          row, ramp: style.ramp, expandsPrompt: folds.isExpanded(row.id, isLive: false),
+          expandsOrigin: folds.isExpanded(SessionOrigin.disclosureKey(row.id), isLive: false)),
         let textStyle = style.style
       else {
         releaseContent()
@@ -237,6 +238,16 @@
     func togglePrompt() {
       guard let message, let fold = message.promptFold else { return }
       folds.setExpanded(fold == .collapsed, for: message.row.id)
+      MainRunLoop.perform { [weak self] in
+        MainActor.assumeIsolated { self?.showAgain() }
+      }
+    }
+
+    /// The reader opened a message from another session, or collapsed it again; the choice is
+    /// kept where the SwiftUI row keeps it.
+    func toggleOrigin() {
+      guard let message, let fold = message.originFold else { return }
+      folds.setExpanded(fold == .collapsed, for: SessionOrigin.disclosureKey(message.row.id))
       MainRunLoop.perform { [weak self] in
         MainActor.assumeIsolated { self?.showAgain() }
       }

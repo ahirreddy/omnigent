@@ -6,6 +6,8 @@ struct PullRequestSummaryView: View {
   let state: PullRequestDetailViewState
   let extras: PullRequestPanelExtras
   let open: (@MainActor (URL) -> Void)?
+  /// The description being edited, kept by the detail view across tab switches.
+  var draft: Binding<PullRequestDescriptionDraft?> = .constant(nil)
 
   var body: some View {
     ScrollView {
@@ -24,12 +26,7 @@ struct PullRequestSummaryView: View {
           PullRequestMergeSection(state: state, merge: merge, extras: extras)
         }
         if showsChecks || state.merge != nil { Divider() }
-        if let body = state.body {
-          MarkdownView(body)
-            .textSelection(.enabled)
-        } else {
-          Text("No description provided.").foregroundStyle(.secondary)
-        }
+        PullRequestDescriptionSection(state: state, extras: extras, draft: draft)
       }
       .padding(Theme.Spacing.medium)
       .frame(maxWidth: .infinity, alignment: .leading)

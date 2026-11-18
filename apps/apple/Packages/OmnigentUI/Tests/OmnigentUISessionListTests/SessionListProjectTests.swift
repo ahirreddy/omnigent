@@ -111,8 +111,8 @@
       #expect(MainLoop.settle(until: { expanded()?.isEmpty == true }))
     }
 
-    @Test("a project's sessions line up with the sessions outside it")
-    func noIndent() throws {
+    @Test("the outline doesn't indent a project's sessions: the rows draw their own step")
+    func noOutlineIndent() throws {
       let spy = spy()
       let key = SidebarNavigationOrder.expandedProjectsKey
       let before = UserDefaults.standard.string(forKey: key)

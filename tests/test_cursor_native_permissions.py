@@ -1023,6 +1023,27 @@ def test_is_question_call_distinguishes_askquestion() -> None:
     assert not cnp._is_question_call(CursorPendingToolCall("t", "Shell", {"command": "ls"}))
 
 
+def test_shared_fixture_askquestion_becomes_its_card_and_its_keys() -> None:
+    """The shared fixture's question card and the keys its answer types into the picker.
+
+    Shared with omnigent-core's ``decisions/harness_tests.rs``, which checks the
+    native card for the same elicitation.
+    """
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "client-core/fixtures/decisions/Cursor--AskQuestion.json"
+    )
+    fixture = _json.loads(path.read_text(encoding="utf-8"))
+    args = fixture["cursor"]
+    params = fixture["elicitation"]["params"]
+
+    assert cnp._askquestion_message(args) == params["message"]
+    assert cnp._askquestion_payload(args) == params["ask_user_question"]
+    assert cnp._askquestion_preview(args) == params["content_preview"]
+    keys = cnp._askquestion_keystrokes(args, fixture["answer"]["content"])
+    assert keys == fixture["cursor_keys"]
+
+
 def test_askquestion_preview_translates_to_web_form_shape() -> None:
     """cursor args → the ``AskUserQuestion(...)`` preview the web UI parses.
 

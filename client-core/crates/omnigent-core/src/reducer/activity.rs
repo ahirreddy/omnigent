@@ -13,12 +13,15 @@ use omnigent_protocol::items::{
     SlashCommandKind, TerminalCommandData, TerminalCommandKind,
 };
 use omnigent_protocol::native_tools::{NativeToolItem, NativeToolKind};
+use omnigent_protocol::system_message::{self, SystemMessage, SystemMessageKind};
 use omnigent_protocol::{ConversationItem, ItemData, MessageRole};
 use serde_json::Value;
 
 use crate::failure_copy::{failure_headline, is_neutral_failure};
 
+use super::markers;
 use super::presentation::{SUMMARY_CHARS, TITLE_CHARS, bounded, capitalized, type_title};
+use super::reasoning_preview::reasoning_preview;
 use super::state::{
     Activity, ActivityKind, Attachment, AttachmentKind, DetailSection, Row, RowRole,
 };
@@ -79,7 +82,7 @@ pub fn project_item(item: &ConversationItem) -> Result<Option<Row>, ProjectionEr
         ItemData::SlashCommand(command) => projector.slash_command(command),
         ItemData::TerminalCommand(command) => projector.terminal_command(command),
         ItemData::RoutingDecision(routing) => projector.routing(routing),
-        ItemData::ResourceEvent(resource) => projector.resource(resource),
+        ItemData::ResourceEvent(resource) => return Ok(projector.resource(resource)),
         ItemData::NativeTool(native) => projector.native_tool(&native.item),
         ItemData::Unknown { item_type, raw } => {
             if raw.get("is_meta") == Some(&Value::Bool(true)) {
@@ -163,21 +166,92 @@ impl Projector<'_> {
         row
     }
 
+    /// A user message the person sent (`created_by` or `user_authored`), not harness context.
+    const fn is_person_input(&self, message: &MessageData) -> bool {
+        !message.is_meta && (self.item.created_by.is_some() || message.user_authored)
+    }
+
+    /// Whether a user message is context that never shows, as the web's `itemToBlock` hides
+    /// it: `is_meta`, an interrupt marker (shown on the reply it cut off) and, unless the person
+    /// sent it, a legacy continuation summary.
+    fn is_hidden_user_context(&self, message: &MessageData) -> bool {
+        message.is_meta
+            || message.is_interrupt_marker()
+            || (!self.is_person_input(message) && message.is_continuation_summary())
+    }
+
     fn message(&self, message: &MessageData) -> Result<Option<Row>, ProjectionError> {
-        if message.is_hidden_context() {
-            return Ok(None);
-        }
         let role = match &message.role {
             MessageRole::User => RowRole::User,
             MessageRole::Assistant => RowRole::Assistant,
             MessageRole::Unknown { value } => {
+                if message.is_meta {
+                    return Ok(None);
+                }
                 return Err(ProjectionError::UnknownRole {
                     item_id: self.item.id.clone(),
                     role: value.clone(),
                 });
             }
         };
-        let text = content::visible_text(&message.content);
+        if role == RowRole::Assistant {
+            return Ok((!message.is_meta).then(|| self.message_row(message, role, None)));
+        }
+        if !self.is_person_input(message) {
+            // Claude's peer and team envelopes are agent context; its task notifications stand
+            // for a background task's notice.
+            if system_message::is_agent_message_content(&message.content) {
+                return Ok(None);
+            }
+            if let Some(marker) = system_message::task_notification_marker_content(&message.content)
+            {
+                return Ok(system_message::parse_system_message(&marker)
+                    .and_then(|notice| self.system_notice(&notice)));
+            }
+        }
+        if self.is_hidden_user_context(message) {
+            return Ok(None);
+        }
+        let joined = content::visible_text(&message.content);
+        let text = system_message::strip_automation_context(&joined);
+        let origin = system_message::split_session_message_origin(text);
+        // Another session's message keeps its sender; attachments are always the person's own.
+        if origin.is_none() && message.attachments().next().is_none() {
+            let shown = system_message::without_attached_markers(text);
+            if let Some(notice) = system_message::parse_system_message(&shown) {
+                return Ok(self.system_notice(&notice));
+            }
+        }
+        let body = origin.map_or(text, |origin| origin.body);
+        let mut row = self.message_row(message, role, Some(body));
+        row.origin_session_id = origin.map(|origin| origin.source_id.to_owned());
+        Ok(Some(row))
+    }
+
+    /// The row of a `[System: …]` notice: a muted marker. A sub-agent's wake is control traffic
+    /// the web never shows, and an interrupt shows on the reply it cut off.
+    fn system_notice(&self, notice: &SystemMessage) -> Option<Row> {
+        if matches!(
+            notice.kind,
+            SystemMessageKind::SubagentWake | SystemMessageKind::Interrupted
+        ) {
+            return None;
+        }
+        let body = bounded(&notice.body, display::MAX_DISPLAY_CHARS);
+        Some(self.activity(
+            ActivityKind::SystemNotice,
+            &notice.label,
+            &body,
+            Some(notice.kind.as_str()),
+            sections(&[("body", "Details", &body, false)]),
+            Some(format!("System: {}", notice.label)),
+        ))
+    }
+
+    /// A message row: `text` (the message's visible text when `None`), its attachments and the
+    /// content this client does not know.
+    fn message_row(&self, message: &MessageData, role: RowRole, text: Option<&str>) -> Row {
+        let text = text.map_or_else(|| content::visible_text(&message.content), str::to_owned);
         let mut attachments = Vec::new();
         let mut details = Vec::new();
         for (index, part) in message.content.iter().enumerate() {
@@ -214,7 +288,7 @@ impl Projector<'_> {
                 details,
             });
         }
-        Ok(Some(row))
+        row
     }
 
     fn attachment(&self, index: usize, part: &content::AttachmentPart) -> Attachment {
@@ -310,20 +384,32 @@ impl Projector<'_> {
         )
     }
 
+    /// A settled thought. Its summary is the first prose line its header previews; its whole
+    /// text is the `summary` detail.
     fn reasoning(&self, reasoning: &ReasoningData) -> Row {
         let summary = reasoning.public_summary();
-        let shown = if summary.is_empty() {
-            "No public reasoning summary was provided."
+        let has_text = !summary.trim().is_empty();
+        let shown = if has_text {
+            reasoning_preview(&summary)
         } else {
-            &summary
+            "No public reasoning summary was provided.".to_owned()
         };
+        let full = if has_text { summary.as_str() } else { &shown };
         self.activity(
             ActivityKind::Reasoning,
             "Reasoning summary",
-            shown,
+            &shown,
             None,
-            sections(&[("summary", "Summary", &summary, false)]),
-            None,
+            sections(&[(
+                "summary",
+                "Summary",
+                if has_text { &summary } else { "" },
+                false,
+            )]),
+            Some(format!(
+                "Reasoning summary\n{}",
+                bounded(full, SUMMARY_CHARS)
+            )),
         )
     }
 
@@ -453,7 +539,22 @@ impl Projector<'_> {
         )
     }
 
-    fn resource(&self, resource: &ResourceEventData) -> Row {
+    /// A resource receipt. Sub-agent and task markers show as markers; the journal's other
+    /// receipts (checkpoints) never show, as on the web.
+    fn resource(&self, resource: &ResourceEventData) -> Option<Row> {
+        if let Some(marker) = markers::marker(resource) {
+            return Some(self.activity(
+                marker.kind,
+                &marker.title,
+                &marker.summary,
+                Some(marker.status.as_str()),
+                marker.details,
+                Some(marker.text),
+            ));
+        }
+        if resource.resource_type == markers::JOURNAL_RESOURCE {
+            return None;
+        }
         let verb = match resource.action() {
             ResourceAction::Created => "created",
             ResourceAction::Deleted => "deleted",
@@ -467,7 +568,7 @@ impl Projector<'_> {
             .as_ref()
             .map(|fields| display::safe_display_text(&Value::Object(fields.clone())))
             .unwrap_or_default();
-        self.activity(
+        Some(self.activity(
             ActivityKind::Resource,
             &format!("{} {verb}", capitalized(&resource.resource_type)),
             name,
@@ -478,7 +579,7 @@ impl Projector<'_> {
                 ("resource", "Resource", &detail, true),
             ]),
             None,
-        )
+        ))
     }
 
     fn native_tool(&self, native: &NativeToolItem) -> Row {

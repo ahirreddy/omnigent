@@ -332,6 +332,14 @@ public struct ConversationActions {
   /// Fetch the sign-in the session's terminal waits on and open it; `nil` hides the error
   /// card's Open Sign-In Link.
   public var openSignIn: (@MainActor () async -> SignInOutcome)?
+  /// A session's title, for the "From @title" line on a message another session sent; `nil`
+  /// while unknown, when the line reads "From another session".
+  public var sessionTitle: (@MainActor (String) -> String?)?
+  /// Edit and resend: copies one of the viewer's sent messages into the composer; `nil` (a
+  /// read-only composer) hides it.
+  public var editSentMessage: (@MainActor (Row) -> Void)?
+  /// The signed-in viewer's id: only a message they wrote (or one with no author) can be edited.
+  public var viewerID: String?
 
   /// Creates actions.
   /// - Parameters:

@@ -513,6 +513,72 @@ async def test_legitimate_retry_with_pending_entry_proceeds(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "recorded_tool, retired",
+    [("sys_os_shell", True), ("sys_os_write", False)],
+    ids=["same-call", "other-call"],
+)
+async def test_retry_retires_the_card_its_answer_came_through_another_prompt(
+    monkeypatch: pytest.MonkeyPatch, recorded_tool: str, retired: bool
+) -> None:
+    """A retry answered elsewhere clears the proxy card it carries the answer for.
+
+    The pi-native extension answers a proxy ASK through ``/policies/evaluate``
+    and then retries, so the proxy's own card would otherwise stay pending
+    with nothing waiting on it. Only the call that raised the card clears it.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :param recorded_tool: The tool the pending card was raised for.
+    :param retired: Whether the retry of ``sys_os_shell`` clears it.
+    """
+    from omnigent.runtime import pending_elicitations
+
+    ask_engine = _FixedPolicyEngine(
+        result=PolicyResult(
+            action=PolicyAction.ASK, reason="approval required", deciding_policies=["gate"]
+        )
+    )
+    monkeypatch.setattr(
+        sessions_mod, "_load_agent_spec_for_session", lambda conv, agent_store: "fake_spec"
+    )
+    monkeypatch.setattr(
+        sessions_mod,
+        "_build_policy_engine_from_spec",
+        _engine_factory_expecting_preload(ask_engine),
+    )
+    eid = "elicit_" + "c" * 32
+    _pending_policy_ask_writes[eid] = _PendingPolicyAskWrites(
+        state_updates=None,
+        set_labels=None,
+        from_mcp=True,
+        mcp_call_identity=(_SESSION_ID, recorded_tool, None, None),
+    )
+    pending_elicitations.record_publish(
+        _SESSION_ID,
+        {
+            "type": "response.elicitation_request",
+            "elicitation_id": eid,
+            "params": {"mode": "form", "message": "approval required", "requestedSchema": {}},
+        },
+    )
+    try:
+        await _handle_mcp_tools_call(
+            rpc_id=6,
+            session_id=_SESSION_ID,
+            params=_forged_retry_params(elicitation_id=eid),
+            conversation_store=_StubConversationStore(_make_conversation()),  # type: ignore[arg-type]
+            agent_store=_StubAgentStore(),  # type: ignore[arg-type]
+            runner_router=None,
+        )
+
+        still_pending = pending_elicitations.lookup(eid, conversation_id=_SESSION_ID)
+        assert (still_pending is None) is retired
+    finally:
+        _pending_policy_ask_writes.pop(eid, None)
+        pending_elicitations.reset_for_tests()
+
+
+@pytest.mark.asyncio
 async def test_from_mcp_entry_survives_events_handler_accept() -> None:
     """The events handler must NOT pop a ``from_mcp=True`` entry on accept.
 

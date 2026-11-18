@@ -128,6 +128,39 @@ fn session_pull_requests_refuse_a_stuck_cursor_bad_ids_and_bad_rows() {
 }
 
 #[test]
+fn unlinking_deletes_the_stored_pull_request_by_url() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "DELETE",
+        PATH,
+        vec![
+            Reply::json(
+                200,
+                r#"{"object":"list","data":[],"last_id":null,"has_more":false,"synced":true}"#,
+            ),
+            Reply::json(403, r#"{"detail":"Forbidden"}"#),
+        ],
+    );
+    let core = connected(transport);
+    let url = "https://github.com/o/r/pull/1";
+    assert_eq!(
+        block_on(core.unlink_session_pull_request("conv_a", url)),
+        Ok(())
+    );
+    let writes = core.transport().writes();
+    assert_eq!(writes[0].method, "DELETE");
+    assert_eq!(query_value(&writes[0], "url").as_deref(), Some(url));
+    assert_eq!(
+        block_on(core.unlink_session_pull_request("conv_a", url)),
+        Err(SessionError::Forbidden)
+    );
+    assert!(matches!(
+        block_on(core.unlink_session_pull_request("../x", url)),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}
+
+#[test]
 fn pull_request_status_follows_the_provider_state() {
     assert_eq!(
         PullRequestStatus::of(Some("open"), false),

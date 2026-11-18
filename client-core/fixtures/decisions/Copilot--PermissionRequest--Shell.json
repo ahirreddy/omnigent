@@ -1,0 +1,16 @@
+{
+  "elicitation": {
+    "type": "response.elicitation_request",
+    "elicitation_id": "elicit_7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+    "method": "elicitation/create",
+    "sequence_number": 9,
+    "params": {
+      "mode": "form",
+      "message": "Copilot wants to use **shell**",
+      "phase": "tool_call",
+      "policy_name": "copilot_sdk_permission",
+      "content_preview": "shell({\"canOfferSessionApproval\": true, \"commands\": [{\"identifier\": \"ls\", \"readOnly\": true}], \"fullCommandText\": \"ls -la\", \"hasWriteFileRedirection\": false, \"intention\": \"List the files\", \"kind\": \"shell\", \"possiblePaths\": [], \"possibleUrls\": [], \"toolCallId\": \"call_9\"})"
+    }
+  },
+  "answer": { "action": "accept" }
+}

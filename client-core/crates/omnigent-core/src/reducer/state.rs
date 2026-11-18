@@ -86,6 +86,13 @@ pub enum ActivityKind {
     Browser,
     /// A side question and its answer (`session.btw_sidechat`).
     Sidechat,
+    /// A runtime `[System: …]` notice the server stored as a user message: a task, timer or
+    /// terminal event, or a Claude task notification. A muted marker, never a user bubble.
+    SystemNotice,
+    /// A sub-agent's start or end (`session.subagent.delegated` and `.returned`).
+    SubagentMarker,
+    /// A task's start or end, or a plan change (`session.journal.task` and `.plan`).
+    TaskMarker,
 }
 
 impl ActivityKind {
@@ -110,7 +117,20 @@ impl ActivityKind {
             Self::ClientTask => "clientTask",
             Self::Browser => "browser",
             Self::Sidechat => "sidechat",
+            Self::SystemNotice => "systemNotice",
+            Self::SubagentMarker => "subagentMarker",
+            Self::TaskMarker => "taskMarker",
         }
+    }
+
+    /// A muted marker in the chat (a notice, a sub-agent's or a task's start or end): it
+    /// reports what happened and is never itself a failure.
+    #[must_use]
+    pub const fn is_marker(self) -> bool {
+        matches!(
+            self,
+            Self::SystemNotice | Self::SubagentMarker | Self::TaskMarker
+        )
     }
 }
 
@@ -202,7 +222,8 @@ impl Activity {
     /// True for errors and failed, error or denied statuses.
     #[must_use]
     pub fn is_failure(&self) -> bool {
-        self.kind == ActivityKind::Error || self.status_is(&["failed", "error", "denied"])
+        self.kind == ActivityKind::Error
+            || (!self.kind.is_marker() && self.status_is(&["failed", "error", "denied"]))
     }
 
     /// True for routine bookkeeping that belongs in an activity drawer rather than the transcript:
@@ -263,6 +284,9 @@ pub struct Row {
     pub agent: Option<String>,
     /// When the server wrote the item, in Unix seconds; live previews have none.
     pub created_at: Option<i64>,
+    /// The session that sent a user message with `sys_session_message`; its sender line is not
+    /// in `text`.
+    pub origin_session_id: Option<String>,
 }
 
 impl Row {
@@ -282,6 +306,7 @@ impl Row {
             author: None,
             agent: None,
             created_at: None,
+            origin_session_id: None,
         }
     }
 

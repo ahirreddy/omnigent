@@ -245,6 +245,10 @@ public struct ComposerExtraActions {
   public var setSmartRouting: (@MainActor (Bool) -> Void)?
   /// The reconnect sheet's Check Again and Fork.
   public var liveness = SessionLivenessActions()
+  /// "Replace draft" in Edit and resend's prompt.
+  public var replaceDraftWithEdit: (@MainActor () -> Void)?
+  /// "Keep draft" in Edit and resend's prompt.
+  public var keepDraftOverEdit: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:

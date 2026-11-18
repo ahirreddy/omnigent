@@ -95,16 +95,35 @@ struct PullRequestEditTests {
   @Test("Unlinking the open pull request goes back to the list; another stays open")
   func unlinks() async throws {
     let (server, store) = try await opened()
-    server.fail("\(github)/prs", method: "POST")
+    let stored = "/v1/sessions/conv_a/pull-requests"
+    server.fail(stored, method: "DELETE")
     await store.unlinkPullRequest(prURL)
     #expect(store.openPullRequest == prURL, "a refused unlink keeps it open")
     #expect(store.editError != nil)
 
-    server.route("\(github)/prs", method: "POST", .json(nothingSelected))
+    server.route(
+      stored, method: "DELETE", .json(#"{"object":"list","data":[],"has_more":false}"#))
     await store.unlinkPullRequest(otherURL)
     #expect(store.openPullRequest == prURL)
     await store.unlinkPullRequest(prURL)
     #expect(store.openPullRequest == nil)
+    let unlinked = server.requests(to: stored, method: "DELETE").compactMap { request in
+      URLComponents(string: request.url)?.queryItems?.first { $0.name == "url" }?.value
+    }
+    #expect(unlinked == [prURL, otherURL, prURL], "the server unlinks it, host or not")
+    #expect(server.requests(to: "\(github)/prs", method: "POST").isEmpty)
+  }
+
+  @Test("A server that stores no pull requests unlinks through the host")
+  func unlinksThroughTheHost() async throws {
+    let server = RouteServer()
+    server.route("/v1/sessions/conv_a/pull-requests", .json(oneLinked))
+    server.route("\(github)/prs", method: "POST", .json(nothingSelected))
+    let connection = try await connectedStore(server)
+    let store = try #require(connection.makePanelStore("conv_a"))
+    await store.unlinkPullRequest(prURL)
+    #expect(store.editError == nil)
+    #expect(try sentBody(server, "prs")["action"] as? String == "remove")
   }
 
   // MARK: Reads for the pickers

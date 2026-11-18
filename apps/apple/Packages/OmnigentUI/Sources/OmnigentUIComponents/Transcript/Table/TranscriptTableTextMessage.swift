@@ -43,6 +43,8 @@
 
     /// A long prompt's fold; `nil` for any other message.
     var promptFold: PromptFold?
+    /// A message from another session's fold: it starts collapsed to its sender and first line.
+    var originFold: PromptFold?
     /// What shows under a prompt's bubble, at the column's trailing edge: its Interrupted line.
     var belowBubble: TranscriptTableAccessory?
     /// The author whose initials show beside a shared session's prompt.
@@ -69,10 +71,12 @@
     ///   - row: The row.
     ///   - ramp: The reading ramp the text splits at.
     ///   - expandsPrompt: A long prompt shows whole; it starts collapsed.
+    ///   - expandsOrigin: A message from another session shows whole; it starts collapsed.
     /// - Returns: The message, or `nil` for a row that stays SwiftUI's.
-    static func make(_ row: TranscriptTableRow, ramp: TypeRamp, expandsPrompt: Bool = false)
-      -> Self?
-    {
+    static func make(
+      _ row: TranscriptTableRow, ramp: TypeRamp, expandsPrompt: Bool = false,
+      expandsOrigin: Bool = false
+    ) -> Self? {
       guard case .segment(let entry) = row.content,
         case .item(.message(let message)) =
           entry.segment
@@ -100,6 +104,7 @@
           role: .user, row: message, decoration: decoration, markdown: body.markdown,
           split: MessageTextSplits.shared.split(body.markdown, ramp: ramp),
           entries: attachments + body.entries + unsupported, promptFold: body.fold)
+        made = made.fromSession(message.originSessionId, expands: expandsOrigin, ramp: ramp)
         if message.interrupted { made.belowBubble = .interrupted }
         // A shared session shows another author's initials beside their prompt.
         if decoration.showsAvatar { made.avatar = message.author }
@@ -139,6 +144,24 @@
       var body = mentions + pieces(of: markdown, ramp: ramp) + toggle
       if body.isEmpty, !message.text.isEmpty { body = [.empty] }
       return PromptBody(markdown: markdown, entries: body, fold: fold)
+    }
+
+    /// The prompt as a message another session sent, when `origin` names it: its sender over it,
+    /// or, collapsed (as it starts), its sender and first line in place of its text.
+    private func fromSession(_ origin: String?, expands: Bool, ramp: TypeRamp) -> Self {
+      guard let origin else { return self }
+      guard !expands else {
+        return Self(
+          role: role, row: row, decoration: decoration, markdown: markdown, split: split,
+          entries: [.accessory(.origin(sessionID: origin))] + entries, promptFold: promptFold,
+          originFold: .expanded)
+      }
+      let preview = SessionOrigin.preview(row.text)
+      return Self(
+        role: role, row: row, decoration: decoration, markdown: "",
+        split: MessageTextSplits.shared.split("", ramp: ramp),
+        entries: [.accessory(.collapsedOrigin(sessionID: origin, preview: preview))],
+        originFold: .collapsed)
     }
 
     /// The pieces `markdown` splits into at `ramp`.
@@ -202,12 +225,19 @@
 
     /// The column in a cell `width` wide. A column narrower than its limit snaps down to a
     /// multiple of `snap` (0 for none), so a width dragged a point at a time lays text out only
-    /// now and then.
-    init(width: CGFloat, layoutWidth: LayoutWidth, maxWidth: CGFloat, snap: CGFloat = 0) {
+    /// now and then; one with room for `ceiling` takes exactly that.
+    init(
+      width: CGFloat, layoutWidth: LayoutWidth, maxWidth: CGFloat, snap: CGFloat = 0,
+      ceiling: CGFloat = .infinity
+    ) {
       let gutter = layoutWidth == .compact ? Theme.Spacing.compactGutter : Theme.Spacing.gutter
       let limit = layoutWidth == .compact ? CGFloat.infinity : maxWidth
       var columnWidth = max(0, min(limit, width - 2 * gutter))
-      if snap > 0, columnWidth < limit { columnWidth = (columnWidth / snap).rounded(.down) * snap }
+      if columnWidth >= ceiling {
+        columnWidth = ceiling
+      } else if snap > 0, columnWidth < limit {
+        columnWidth = (columnWidth / snap).rounded(.down) * snap
+      }
       self.columnWidth = columnWidth
       columnX = ((width - columnWidth - 2 * gutter) / 2).rounded(.down) + gutter
     }

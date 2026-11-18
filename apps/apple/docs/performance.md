@@ -89,7 +89,10 @@ just apple-perf shot --app "$app" /tmp/window.png
   `toggle-panel` (the right panel), `resize` (the window shrinks by 320 x 160 pt over 30 frames
   and grows back), `palette` (Command-K, then Escape), `search` (Find Session, type "perf",
   delete it), `settings` (Command-comma, then Command-W) and `new-session` (Command-N). The
-  suite runs them after `stream`.
+  suite runs them after `stream`. `sidebar-toggles` hides and shows the sidebar three times
+  and says where the reader was before and after; `sidebar-toggles-mid` first scrolls the
+  reader up from the end. `--passes` also lists each run-loop pass over 8.3 ms by when it
+  began, which shows a toggle's first pass apart from its frames.
 - Frames: `driver.m` also runs a display link on the main run loop and logs every frame
   interval of 1.5 periods or more, so every scenario reports frames per second, long frames,
   dropped frames, hitch time per second (time past each frame's deadline; Apple calls up to
@@ -1679,6 +1682,100 @@ loaded yet):
 | CLI: CPU, cold pass | 62.9 s | 0.70-0.76 s |
 | CLI: CPU, warm pass | 62.5-62.6 s | 0.89-0.93 s |
 
+## The sidebar's slide (November 2026)
+
+Hiding or showing the sidebar (View > Hide Sidebar, Control-Command-S, the toolbar button)
+collapses the split view's sidebar item with AppKit's 0.25 s animation, which sets the detail
+column's width once a frame. Each frame lays the window out again at the new width: the
+detail's SwiftUI layout, the toolbar and its items, and the transcript's rows.
+
+Measured with the scroll bench's `sidebar-toggles` and `sidebar-toggles-mid` (the long chat and
+the CLI-style transcript; three hides and three shows a pass; Release, laptop VM at 60 Hz;
+`--passes` lists each run-loop pass over 8.3 ms by when it began):
+
+```sh
+~/src/omnigent-vm/vmq submit --priority high --only laptop-w1 --tree "$PWD" --label "sidebar" -- \
+  bash apps/apple/Tools/perf/scroll-bench.sh --scenarios sidebar-toggles,sidebar-toggles-mid \
+  --passes --variant "hold=" --variant "exact=-omnigent:transcript-column-motion exact"
+```
+
+Where a toggle goes, about 300 ms of main-thread time each (chat, warm pass, sampled):
+
+- **Frames of 15-65 ms.** `NSHostingView.layout` of the window's hosting views is 43% of the
+  samples and `-[NSToolbarView layout]` 26%. About half of the toolbar's share is SwiftUI
+  rebuilding its items' menu forms on every toolbar layout
+  (`AppKitToolbarItem.updateMenuFormRepresentation`, `PlatformItemList`, resolving each item's
+  symbol image); the rest of a frame is AppKit's view and constraint work. The transcript's
+  own width handling (`viewportResized`, `takeWidth`, measuring the rows on screen) is 4-5%;
+  in the CLI style a frame also laid the rows' text out at the new width.
+- **One pass of 80-140 ms as a hide ends.** SwiftUI tells the shell's visibility binding that
+  the sidebar collapsed (`NavigationSplitViewController.splitViewItem(_:didChangeCollapsed:
+  animated:)`, 15-16% of the samples) once AppKit's hide is over. In that pass
+  `AppShell.layOutVisibleWindows` lays the window out on both sides of the change, the shell
+  renders again for it, and the strip loses the 150 pt the traffic lights and the sidebar
+  toggle take, which has the toolbar lay itself out and rebuild its menu forms. A show pays a
+  smaller one near its start.
+
+What changed: **the transcript holds its text through a slide.** The table watches the split
+view items around it (`isCollapsed`, which AppKit sets as a collapse starts) and lays its text
+out as in a live resize, at widths snapped to 32 pt and no wider than it was as the slide
+began, so a widening slide lays no text out until it ends. Once the widths stop for 0.15 s the
+rows on screen take the exact width, unless every width the slide passed laid them out as the
+exact one does (a reading column at its limit), when nothing is laid out again; a live
+resize's end skips that work the same way. The reader stays on their row through every frame
+(`TranscriptCommittedFramesTests.tableColumnSlideKeepsTheReader`), and
+`TranscriptTableColumnMotionTests` hold the rules. `-omnigent:transcript-column-motion exact`
+lays text out at every width, as before. The transcript was a small share of a toggle: the
+passes over a frame hardly moved, and the worst ones fell in most rows (the same build and
+job, with and without the hold):
+
+| Six toggles (warm pass; medians of 3) | Passes > 8.3 ms | > 16.7 ms | p99 | Worst | Dropped frames | Busy |
+| --- | --- | --- | --- | --- | --- | --- |
+| Chat at the end, exact widths | 50 | 42 | 90.7 ms | 91 ms | 65 | 1.64 s |
+| Chat at the end, held | 50 | 43 | 81.5 ms | 82 ms | 65 | 1.70 s |
+| Chat mid-transcript, exact widths | 47 | 43 | 141.9 ms | 142 ms | 68 | 1.73 s |
+| Chat mid-transcript, held | 51 | 43 | 84.7 ms | 85 ms | 62 | 1.57 s |
+| CLI at the end, exact widths | 48 | 41 | 142.8 ms | 143 ms | 67 | 1.75 s |
+| CLI at the end, held | 52 | 43 | 79.9 ms | 80 ms | 64 | 1.69 s |
+| CLI mid-transcript, exact widths | 46 | 38 | 115.8 ms | 117 ms | 83 | 2.17 s |
+| CLI mid-transcript, held | 54 | 41 | 78.8 ms | 98 ms | 79 | 2.12 s |
+
+The cold passes moved the same way (worst pass 119 to 98 ms in chat, 147 to 144 and 196 to
+128 ms in CLI) except the chat's mid-transcript one (115 to 137 ms). The build before this
+pass (400e1c7fd9, same VM, three runs) measured as the exact-widths rows do: 37-42 passes over
+16.7 ms and a worst pass of 106-178 ms for six toggles. Every frame of a slide still takes
+15-25 ms and about one in ten 30-65 ms, so no toggle stays under 16.7 ms.
+
+Tried and left out, each measured in the same job against the build without it:
+
+- **Holding the strip's width through the slide**, taking the new one once the widths
+  stopped. It took the strip's resize out of the hide's last pass, but since SwiftUI reports
+  the hide only as it ends, the hold ran out 0.4 s later and the resize came back as a pass of
+  70-85 ms after the slide.
+- **Sizing the strip from where the column starts** (the traffic lights' 150 pt less what the
+  sidebar beside the column still covers, reported by the detail's `DetailBesideSidebar`
+  view), so the end of a hide changes its width by nothing. In the bench it lowered the CLI
+  style's worst passes (p99 72-86 ms against 85-145) and left the chat's within noise, but
+  every sidebar divider step then rendered the strip twice (over `WindowRenderBudgetTests`'
+  budget of one), and the hosted window's column start did not match the sidebar's state at
+  rest. Worth finishing: report the start and the width together, from AppKit.
+- **Having the strip and the peek read the visibility from an observable**, so a toggle renders
+  only them. The shell still rendered on every toggle: the binding it builds for
+  `NavigationSplitView` reads the visibility as it is made.
+
+What still costs, and the next things to try: the shell's render and the strip's resize in the
+pass that ends a hide (`NavigationSplitView` in a view of its own that reads the binding, so
+the shell does not render; the strip resized without the toolbar rebuilding every item's menu
+form), and SwiftUI rebuilding the toolbar items' menu forms in every frame. A frame's SwiftUI
+layout of the detail column is the cost of animating its width at all; keeping it under
+16.7 ms in the VM would take not changing that width while the sidebar slides (the detail
+under the floating sidebar, or its layout held for the 0.25 s), which is a design choice.
+
+iPad does not share the cause. UIKit hides and shows the split view's primary column inside an
+animation block, so the transcript's collection view takes the new width in one layout pass
+(`TranscriptCollectionController.viewportResized`) and Core Animation moves the columns; round
+4's iPad sidebar row (1.4 s of main-thread CPU) is that single relayout, not one a frame.
+
 ## Where the time still goes
 
 - **Switching tabs** renders the detail and the tab that shows once, 50-80 ms in Release to a
@@ -1705,7 +1802,8 @@ loaded yet):
   bodies: each size step is SwiftUI's attribute-graph and layout pass over the whole window
   (`NSHostingView.layout`, with the titlebar's toolbar layout about a fifth of it), 50-80 ms per
   step in Debug under load and about 20 ms in Release, in either direction since the ninth
-  pass. Toggling the sidebar or the right panel animates the same relayout.
+  pass. Toggling the sidebar or the right panel animates the same relayout (see "The
+  sidebar's slide").
   Text measuring is under 1% of a resize, so a fixed-width transcript column would not help.
   Through the widths where rows change width a step costs 49-118 ms, and a long chat that
   ends in a very tall row no longer takes half a second in one of them (see "The slow

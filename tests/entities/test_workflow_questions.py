@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from omnigent.entities.session_journal import InvalidJournalEntryError
@@ -154,3 +157,18 @@ def test_questions_have_no_length_limit_on_their_text() -> None:
         "label": ("Use staging " * 10).strip(),
         "description": ("Probe it first. " * 30).strip(),
     }
+
+
+def test_the_shared_fixture_question_is_the_card_the_native_app_reads() -> None:
+    # Shared with omnigent-core's `decisions/omni_tests.rs`, which checks the native card.
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "client-core/fixtures/decisions/Omni--WorkflowRequestInput.json"
+    )
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+    questions = normalize_questions(fixture["tool"]["questions"])
+
+    expected = fixture["elicitation"]["params"]["ask_user_question"]
+    assert question_form(questions) == expected
+    answers = answers_from_content(questions, fixture["answer"]["content"])
+    assert answers == fixture["tool_answers"]

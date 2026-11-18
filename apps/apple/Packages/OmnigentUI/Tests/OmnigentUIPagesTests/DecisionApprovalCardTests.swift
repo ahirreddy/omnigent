@@ -166,6 +166,19 @@
         WideningCase(
           PermissionOptions(persistModes: [.always]), "Always allow this tool",
           .approvePersist(mode: .always)),
+        WideningCase(
+          PermissionOptions(suggestions: [
+            PermissionSuggestion(label: "Allow Bash(npm test:*) in this project", persists: true)
+          ]),
+          "Approve and allow Bash(npm test:*) in this project", .approveSuggestions),
+        WideningCase(
+          PermissionOptions(suggestions: [
+            PermissionSuggestion(label: "Allow Read"), PermissionSuggestion(label: "Allow Grep"),
+          ]),
+          "Approve and apply: Allow Read; Allow Grep", .approveSuggestions),
+        WideningCase(
+          PermissionOptions(plan: "Ship it.", planModes: [.auto, .acceptEdits]),
+          "Approve and accept all edits for this session", .approvePlanMode(mode: .acceptEdits)),
       ]
       for item in cases {
         log.responses = []
