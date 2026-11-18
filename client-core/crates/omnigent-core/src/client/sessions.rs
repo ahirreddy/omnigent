@@ -879,6 +879,9 @@ pub const DEFAULT_PAGE_LIMIT: u32 = 50;
 pub const OLDER_HISTORY_PAGE_LIMIT: u32 = 200;
 /// How many rows one Canvas page asks for: the server's maximum.
 pub const CANVAS_PAGE_LIMIT: u32 = 1_000;
+/// How many pinned sessions the list reads beside its first page; the Pinned section rarely
+/// holds more.
+pub const PINNED_PAGE_LIMIT: u32 = 50;
 /// The most sessions the Canvas shows, as the web.
 pub const MAX_CANVAS_SESSIONS: usize = 5_000;
 
@@ -1045,17 +1048,31 @@ fn malformed(context: &str) -> impl FnOnce(String) -> SessionError + '_ {
     }
 }
 
+/// Which sessions the sidebar's list pages hold.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ListedSessions {
+    /// Unarchived sessions, as the web's sidebar lists them.
+    #[default]
+    Active,
+    /// Archived sessions too, while the sidebar shows them.
+    WithArchived,
+}
+
 /// Which sessions a list read asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ListScope {
     /// The sidebar's sessions, archived included.
     Visible,
+    /// The sidebar's unarchived sessions.
+    Active,
     /// Every session of every kind, for the attention inventory.
     Inventory,
     /// Archived sessions only.
     Archived,
     /// The caller's own top-level, unarchived sessions, for the Canvas.
     Canvas,
+    /// Pinned unarchived sessions and their families, for the Pinned section.
+    Pinned,
 }
 
 /// Asks a sidebar read for the members of each session family it lists, appended after its
@@ -1070,8 +1087,22 @@ fn list_query(
 ) -> Result<Vec<(&'static str, String)>, SessionError> {
     let mut query = page_query(after, limit)?;
     query.push(("sort_by", "updated_at".to_owned()));
-    if matches!(scope, ListScope::Visible | ListScope::Archived) {
+    if matches!(
+        scope,
+        ListScope::Visible | ListScope::Active | ListScope::Archived | ListScope::Pinned
+    ) {
         query.push((EXPAND_FAMILIES.0, EXPAND_FAMILIES.1.to_owned()));
+    }
+    if scope == ListScope::Active {
+        // The server leaves archived sessions out unless asked, as the web's sidebar reads it.
+        query.push(("visibility", "all".to_owned()));
+        return Ok(query);
+    }
+    if scope == ListScope::Pinned {
+        // The web's Pinned query; archived pins never show.
+        query.push(("visibility", "all".to_owned()));
+        query.push(("pinned", "true".to_owned()));
+        return Ok(query);
     }
     if scope == ListScope::Canvas {
         // The web Canvas's query; rows an older server returns anyway are filtered after.
@@ -1125,7 +1156,31 @@ impl<T: HttpTransport> ClientCore<T> {
         after: Option<&str>,
         limit: u32,
     ) -> Result<SessionPage, SessionError> {
-        let result = self.list_page(after, limit, ListScope::Visible).await;
+        self.listed_page(after, limit, ListedSessions::WithArchived)
+            .await
+    }
+
+    /// One page of the sidebar's list, holding the `listed` sessions; otherwise as
+    /// [`Self::session_page`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::session_page`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn listed_page(
+        &self,
+        after: Option<&str>,
+        limit: u32,
+        listed: ListedSessions,
+    ) -> Result<SessionPage, SessionError> {
+        let scope = match listed {
+            ListedSessions::Active => ListScope::Active,
+            ListedSessions::WithArchived => ListScope::Visible,
+        };
+        let result = self.list_page(after, limit, scope).await;
         self.dispatch();
         result.map(|mut page| {
             if after.is_none() {
@@ -1133,6 +1188,29 @@ impl<T: HttpTransport> ClientCore<T> {
             }
             page
         })
+    }
+
+    /// The caller's pinned sessions with their families (`pinned=true`), wherever they fall in
+    /// the list: the Pinned section, before the pages that hold them load. `None` when the
+    /// server ignored the filter (an older one lists every session), so nothing is added.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::session_page`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn pinned_session_page(&self) -> Result<Option<SessionPage>, SessionError> {
+        let result = self
+            .list_page(None, PINNED_PAGE_LIMIT, ListScope::Pinned)
+            .await;
+        self.dispatch();
+        let page = result?;
+        let honored = page.sessions.iter().all(|session| {
+            session.is_pinned || session.family.as_ref().is_some_and(|family| family.pinned)
+        });
+        Ok(honored.then_some(page))
     }
 
     /// One page of archived sessions (`visibility=archived`), most recently updated first, for

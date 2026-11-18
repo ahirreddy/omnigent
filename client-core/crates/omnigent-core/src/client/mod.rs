@@ -623,6 +623,17 @@ impl<T: HttpTransport> ClientCore<T> {
         lock(&self.state).summaries.get(session_id).cloned()
     }
 
+    /// The rows of `ids`, in order, as the list shows them now: their cached summaries with any
+    /// pending edit applied. An id without one, or whose row an edit hides, is left out.
+    pub fn shown_summaries(&self, ids: &[String]) -> Vec<SessionSummary> {
+        let state = lock(&self.state);
+        let rows = ids
+            .iter()
+            .filter_map(|id| state.summaries.get(id).cloned())
+            .collect();
+        state.shown_rows(rows)
+    }
+
     /// Every cached summary, by id.
     pub fn cached_summaries(&self) -> Vec<SessionSummary> {
         lock(&self.state).summaries.values().cloned().collect()

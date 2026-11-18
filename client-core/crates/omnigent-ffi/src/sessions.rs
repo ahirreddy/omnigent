@@ -143,7 +143,7 @@ pub enum SiblingSessionDestinations {
 }
 
 /// How many sessions one project folder page reads, as the web's folder.
-const PROJECT_PAGE_LIMIT: u32 = 20;
+pub(crate) const PROJECT_PAGE_LIMIT: u32 = 20;
 
 /// One page of a project folder's sessions.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]

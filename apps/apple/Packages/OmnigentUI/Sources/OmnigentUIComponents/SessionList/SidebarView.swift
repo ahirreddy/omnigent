@@ -112,6 +112,7 @@ public struct SidebarView: View {
     .onChange(of: state.display.show) { bulk.end() }
     // After the update that drew them, so a selection that waited on a new group is told late.
     .task(id: groups.all) { drawnGroups.settle(groups.all) }
+    .onChange(of: expandedProjectIDs, initial: true) { actions.setOpenProjects?(expandedProjects) }
     .modifier(
       SessionDialogs(
         renaming: $renaming, renameText: $renameText, confirmingDelete: $confirmingDelete,

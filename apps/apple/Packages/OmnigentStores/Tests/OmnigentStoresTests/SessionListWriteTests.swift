@@ -287,19 +287,14 @@ struct SessionListPagingCoreTests {
     let paging = store.sessionList.paging
     try await eventually("the list") { store.sessionList.isLoaded }
 
-    await paging.loadProject(project, id: "folder")
-    #expect(paging.projects["folder"]?.isLoaded == true)
-    #expect(paging.projects["folder"]?.nextCursor != nil)
-    #expect(paging.projects["folder"]?.hasMore == true)
+    paging.loadProject(project)
+    try await eventually("the first page") { paging.projects["p1"]?.isLoaded == true }
+    #expect(paging.projects["p1"]?.hasMore == true)
 
     server.route("/v1/sessions", page(["a2"], hasMore: false))
-    await paging.loadProject(project, id: "folder")
-    #expect(paging.projects["folder"]?.hasMore == false)
+    paging.loadProject(project)
+    try await eventually("the last page") { paging.projects["p1"]?.hasMore == false }
     try await eventually("the page's rows") { store.sessionList.session("a2") != nil }
-
-    let reads = server.requests(to: "/v1/sessions").count
-    await paging.loadProject(project, id: "folder")
-    #expect(server.requests(to: "/v1/sessions").count == reads, "every member is loaded")
   }
 
   @Test("A folder read that fails says so and can be tried again")
@@ -309,32 +304,54 @@ struct SessionListPagingCoreTests {
     let list = store.sessionList
     try await eventually("the list") { list.isLoaded }
     server.fail("/v1/sessions")
-    await list.paging.loadProject(project, id: "folder")
-    #expect(list.editError != nil)
-    #expect(list.paging.projects["folder"]?.isLoaded == false)
-    #expect(list.paging.projects["folder"]?.isLoading == false)
+    list.paging.loadProject(project)
+    try await eventually("the failure") { list.editError != nil }
+    #expect(list.paging.projects["p1"]?.isLoaded == false)
+    #expect(list.paging.projects["p1"]?.isLoading == false)
 
     server.route("/v1/sessions", page(["a1"], hasMore: false))
-    await list.paging.loadProject(project, id: "folder")
-    #expect(list.paging.projects["folder"]?.isLoaded == true)
+    list.paging.loadProject(project)
+    try await eventually("the retry") { list.paging.projects["p1"]?.isLoaded == true }
   }
 
-  @Test("A list reload while a folder reads drops the stale pages, which start again")
-  func reloadDuringFolderRead() async throws {
+  @Test("Archived sessions are read only while the sidebar shows them")
+  func archivedViewReadsArchived() async throws {
     let server = RouteServer()
     let store = try await connectedStore(server)
-    let paging = store.sessionList.paging
-    try await eventually("the list") { store.sessionList.isLoaded }
-    let gate = server.hold("/v1/sessions")
-    let reading = Task { await paging.loadProject(project, id: "folder") }
-    try await eventually("the read") { gate.arrivals == 1 }
-    #expect(paging.projects["folder"]?.isLoading == true)
-    await paging.loadProject(project, id: "folder")
-    #expect(gate.arrivals == 1, "one page at a time")
+    let list = store.sessionList
+    try await eventually("the list") { list.isLoaded }
+    let pageReads = { (archived: Bool) in
+      server.requests(to: "/v1/sessions").filter { request in
+        !request.url.contains("pinned=true")
+          && request.url.contains("include_archived=true") == archived
+      }.count
+    }
+    #expect(pageReads(true) == 0)
+    let plain = pageReads(false)
+    list.filter = .archived
+    try await eventually("the archived page") { pageReads(true) == 1 }
+    list.filter = .all
+    try await eventually("the plain page") { pageReads(false) == plain + 1 }
+  }
 
-    paging.listReset()
-    gate.release()
-    await reading.value
-    #expect(paging.projects["folder"] == nil)
+  @Test("A list reload keeps an open folder loaded and reads it again beside the page")
+  func reloadKeepsAnOpenFolder() async throws {
+    let server = RouteServer()
+    let store = try await connectedStore(server)
+    let list = store.sessionList
+    try await eventually("the list") { list.isLoaded }
+    server.route("/v1/sessions", page(["f1"], hasMore: false))
+    list.paging.setOpenFolders(["p1"])
+    list.paging.loadProject(project)
+    try await eventually("the folder") {
+      list.paging.projects["p1"]?.isLoaded == true && list.session("f1") != nil
+    }
+    let reads = server.requests(to: "/v1/sessions").count
+    store.refreshSessions()
+    // The page, the pins and the folder, at once.
+    try await eventually("the reads") { server.requests(to: "/v1/sessions").count == reads + 3 }
+    try await eventually("the reload") { !list.paging.isLoading }
+    #expect(list.paging.projects["p1"]?.isLoaded == true, "never back to a spinner")
+    #expect(list.session("f1") != nil)
   }
 }

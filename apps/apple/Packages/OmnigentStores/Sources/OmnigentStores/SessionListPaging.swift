@@ -3,28 +3,29 @@ public import OmnigentCoreFFI
 
 /// Which pages of sessions are loaded beyond the list's first: the sidebar's and the Inbox's
 /// "Load more" (the core's list window, reported by `SessionListPagingChanged`), and each
-/// project folder's own pages (`?project=`), as the web's folders read them. Loaded sessions
-/// reach ``SessionListStore`` as list upserts.
+/// project folder's own pages (`?project=`, as the web's folders read them), which the core
+/// reads for the open folders and reports by `ProjectFoldersChanged`. Loaded sessions reach
+/// ``SessionListStore`` as list upserts.
 @Observable
 public final class SessionListPaging {
   /// One project folder's pages.
   public struct ProjectPages: Equatable, Sendable {
     /// The folder's first page was read.
     public var isLoaded = false
-    /// The cursor of its next page; `nil` once every member is loaded.
-    public var nextCursor: String?
+    /// Members exist after the loaded pages.
+    public var hasMoreAfter = false
     /// A page is loading.
     public var isLoading = false
 
     /// More members exist on the server.
-    public var hasMore: Bool { !isLoaded || nextCursor != nil }
+    public var hasMore: Bool { !isLoaded || hasMoreAfter }
   }
 
   /// More sessions exist after the loaded ones.
   public private(set) var hasMore = false
   /// A page of them is loading.
   public private(set) var isLoading = false
-  /// Project folders' pages, by folder id.
+  /// Project folders' pages, by folder id (the core's `projectFolderId`).
   public private(set) var projects: [String: ProjectPages] = [:]
 
   /// The core pages load through; set by the owning ``ConnectionStore``.
@@ -43,27 +44,18 @@ public final class SessionListPaging {
     core.loadMoreSessions()
   }
 
-  /// Loads a folder's first page, or its next one once that was read. Nothing happens while a
-  /// page is loading or once every member is loaded.
-  /// - Parameters:
-  ///   - project: The folder's project.
-  ///   - id: The folder id.
-  public func loadProject(_ project: ProjectSummary, id: String) async {
-    var pages = projects[id] ?? ProjectPages()
-    guard pages.hasMore, !pages.isLoading, let core else { return }
-    pages.isLoading = true
-    projects[id] = pages
-    do {
-      let page = try await core.projectSessions(
-        project: project, after: pages.isLoaded ? pages.nextCursor : nil)
-      pages.isLoaded = true
-      pages.nextCursor = page.nextCursor
-    } catch {
-      reportFailure(coreError(error))
-    }
-    pages.isLoading = false
-    // A list reload while reading dropped the folder's pages; they start again.
-    if projects[id] != nil { projects[id] = pages }
+  /// Loads a folder's first page, or its next one once that was read. The core reads nothing
+  /// while a page is loading or once every member is loaded.
+  /// - Parameter project: The folder's project.
+  public func loadProject(_ project: ProjectSummary) {
+    core?.loadProjectFolder(project: project)
+  }
+
+  /// Tells the core which folders the sidebar shows open, so it reads their first pages as soon
+  /// as the projects are known and keeps them through list reloads.
+  /// - Parameter folderIDs: The open folders.
+  public func setOpenFolders(_ folderIDs: Set<String>) {
+    core?.setOpenProjectFolders(folderIds: folderIDs.sorted())
   }
 
   func pagingChanged(hasMore: Bool, isLoading: Bool) {
@@ -71,13 +63,21 @@ public final class SessionListPaging {
     if isLoading != self.isLoading { self.isLoading = isLoading }
   }
 
-  /// The list reloaded only its own pages: folders read theirs again.
-  func listReset() {
-    if !projects.isEmpty { projects = [:] }
+  func foldersChanged(_ folders: [ProjectFolderPaging]) {
+    let pages = Dictionary(
+      folders.map { folder in
+        (
+          folder.folderId,
+          ProjectPages(
+            isLoaded: folder.isLoaded, hasMoreAfter: folder.hasMoreAfter,
+            isLoading: folder.isLoading)
+        )
+      }, uniquingKeysWith: { _, last in last })
+    if pages != projects { projects = pages }
   }
 
   func clear() {
     pagingChanged(hasMore: false, isLoading: false)
-    listReset()
+    if !projects.isEmpty { projects = [:] }
   }
 }

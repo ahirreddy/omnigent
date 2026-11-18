@@ -71,7 +71,9 @@ struct SessionListFamilyMoveTests {
     server.route(
       "/v1/sessions/projects",
       .json(#"[{"id":"p1","name":"Alpha"},{"id":null,"name":"Legacy"}]"#))
-    let list = try await connectedStore(server).sessionList
+    // The store applies the core's events, so it stays for the test.
+    let store = try await connectedStore(server)
+    let list = store.sessionList
     try await eventually("the label-only project") { list.projects.contains { $0.id == nil } }
     let legacy = try #require(list.projects.first { $0.id == nil })
     server.fail("/v1/projects", method: "POST")

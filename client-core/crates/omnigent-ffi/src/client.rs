@@ -1245,6 +1245,31 @@ impl ClientCore {
             .post(Msg::List(crate::list_driver::ListMsg::LoadMore));
     }
 
+    /// Whether the sidebar shows archived sessions. The list holds unarchived sessions only, as
+    /// the web's sidebar reads them, until it does; a change reads its first page again.
+    pub fn set_sidebar_shows_archived(&self, shown: bool) {
+        self.inner
+            .post(Msg::List(crate::list_driver::ListMsg::ShowArchived(shown)));
+    }
+
+    /// The project folders the sidebar shows open (`project_folder_id`s). The core reads each
+    /// one's first page as soon as the projects are known, and again with each list reload; the
+    /// sessions arrive as `SessionListChanged` upserts, the pages as `ProjectFoldersChanged`.
+    pub fn set_open_project_folders(&self, folder_ids: Vec<String>) {
+        self.inner.post(Msg::List(crate::list_driver::ListMsg::OpenFolders(
+            folder_ids.into_iter().collect(),
+        )));
+    }
+
+    /// Reads `project`'s folder's first page, or its next once that is loaded (a folder's Show
+    /// more). Nothing is read while a page loads or once every member is loaded.
+    pub fn load_project_folder(&self, project: crate::sessions::ProjectSummary) {
+        self.inner
+            .post(Msg::List(crate::list_driver::ListMsg::LoadFolder(
+                project.into(),
+            )));
+    }
+
     /// Starts watching `session_id`: a `TranscriptReset`, then its stream and history.
     pub fn open_session(&self, session_id: String) {
         self.inner.post(Msg::Open(session_id));

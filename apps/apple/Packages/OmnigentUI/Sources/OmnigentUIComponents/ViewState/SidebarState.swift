@@ -352,6 +352,8 @@ public struct SidebarActions {
   public var loadMoreSessions: (@MainActor () -> Void)?
   /// Load a folder's first page, or its next one.
   public var loadProjectPage: (@MainActor (SessionProject) -> Void)?
+  /// The folders shown open changed (``SessionProject/id``s), so their pages load ahead.
+  public var setOpenProjects: (@MainActor (Set<String>) -> Void)?
   /// Rows and counts read as they are now; `nil` draws them from the state.
   public var live: SidebarLive?
   /// Collapse (`true`) or expand a family by its key in ``SidebarViewState/collapsedFamilies``;

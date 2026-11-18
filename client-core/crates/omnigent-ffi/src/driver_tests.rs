@@ -1664,7 +1664,14 @@ fn the_socket_reports_each_frame_kind() {
     let events = harness.events.take();
     assert!(events.contains(&CoreEvent::HostsChanged), "{events:#?}");
     assert!(events.contains(&CoreEvent::ProjectsChanged), "{events:#?}");
-    assert_eq!(events.len(), 2, "{events:#?}");
+    // The core reads the changed projects itself.
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, CoreEvent::ProjectsLoaded { .. })),
+        "{events:#?}"
+    );
+    assert_eq!(events.len(), 3, "{events:#?}");
 }
 
 #[test]
@@ -1814,14 +1821,14 @@ fn a_socket_that_resumes_reloads_the_list() {
     });
     harness.pump();
     harness.advance(10_000);
-    let lists = harness.http.count("/v1/sessions");
+    let lists = harness.http.list_reads();
     let (_, sink, _) = harness.sockets.last();
     sink.opened();
     sink.message(SocketMessage::Text {
         text: r#"{"type":"snapshot","items":[]}"#.into(),
     });
     harness.pump();
-    assert_eq!(harness.http.count("/v1/sessions"), lists + 1);
+    assert_eq!(harness.http.list_reads(), lists + 1);
 }
 
 #[test]
@@ -1974,7 +1981,7 @@ fn shutting_down_stops_the_engine_and_every_stream() {
 fn inventory_hints_reload_the_list_after_a_delay_unless_the_socket_is_live() {
     let mut harness = connected();
     let (_, sink, _) = harness.sockets.last();
-    let lists = harness.http.count("/v1/sessions");
+    let lists = harness.http.list_reads();
     harness.core.post(crate::engine::Msg::Client(
         omnigent_core::ClientEvent::InventoryInvalidated,
     ));
@@ -1983,7 +1990,7 @@ fn inventory_hints_reload_the_list_after_a_delay_unless_the_socket_is_live() {
     ));
     harness.pump();
     harness.advance(3_000);
-    assert_eq!(harness.http.count("/v1/sessions"), lists + 1, "one reload");
+    assert_eq!(harness.http.list_reads(), lists + 1, "one reload");
 
     sink.opened();
     sink.message(SocketMessage::Text {
@@ -1996,7 +2003,7 @@ fn inventory_hints_reload_the_list_after_a_delay_unless_the_socket_is_live() {
     harness.pump();
     harness.advance(3_000);
     assert_eq!(
-        harness.http.count("/v1/sessions"),
+        harness.http.list_reads(),
         lists + 1,
         "the socket covers it"
     );
@@ -2005,7 +2012,7 @@ fn inventory_hints_reload_the_list_after_a_delay_unless_the_socket_is_live() {
 #[test]
 fn a_pending_inventory_reload_dies_with_the_connection() {
     let mut harness = connected();
-    let lists = harness.http.count("/v1/sessions");
+    let lists = harness.http.list_reads();
     harness.core.post(crate::engine::Msg::Client(
         omnigent_core::ClientEvent::InventoryInvalidated,
     ));
@@ -2013,7 +2020,7 @@ fn a_pending_inventory_reload_dies_with_the_connection() {
     harness.core.disconnect();
     harness.pump();
     harness.advance(10_000);
-    assert_eq!(harness.http.count("/v1/sessions"), lists);
+    assert_eq!(harness.http.list_reads(), lists);
 }
 
 #[test]
@@ -2438,7 +2445,7 @@ fn a_pushed_row_that_cannot_be_watched_is_reported_and_the_list_reloads() {
     let mut harness = connected();
     let (sink, _) = live_socket(&mut harness);
     harness.events.take();
-    let reads = harness.http.count("/v1/sessions");
+    let reads = harness.http.list_reads();
     frame(
         &mut harness,
         &sink,
@@ -2446,5 +2453,5 @@ fn a_pushed_row_that_cannot_be_watched_is_reported_and_the_list_reloads() {
     );
     let events = harness.events.take();
     assert_eq!(list_errors(&events).len(), 1, "{events:#?}");
-    assert_eq!(harness.http.count("/v1/sessions"), reads + 1);
+    assert_eq!(harness.http.list_reads(), reads + 1);
 }
