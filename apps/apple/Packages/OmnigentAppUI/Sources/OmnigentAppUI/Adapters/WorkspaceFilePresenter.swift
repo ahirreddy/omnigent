@@ -30,7 +30,7 @@
     ) async {
       let file: URL
       do {
-        file = try WorkspaceFileExport.temporary.write(try await source.fileContents(path))
+        file = try WorkspaceFileExport.temporary.write(try await source.download(path))
       } catch let failure as WorkspaceFailure {
         report(failure.message)
         return

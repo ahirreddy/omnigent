@@ -63,6 +63,27 @@ public protocol WorkspaceDataSource: AnyObject {
   /// - Throws: The failure to show.
   func fileContents(_ path: String) async throws(WorkspaceFailure) -> WorkspaceFileContents
 
+  /// The whole file with no size cap, as the web's Download reads it.
+  /// - Parameter path: The file.
+  /// - Returns: Its bytes.
+  /// - Throws: The failure to show.
+  func download(_ path: String) async throws(WorkspaceFailure) -> WorkspaceFileContents
+
+  /// `length` bytes of a video from `offset`, for the player to stream it.
+  /// - Parameters:
+  ///   - path: The video.
+  ///   - offset: The first byte.
+  ///   - length: How many bytes, at least one.
+  /// - Returns: The bytes and what the server said about the file.
+  /// - Throws: The failure to show.
+  func readVideo(_ path: String, offset: UInt64, length: UInt64) async throws(WorkspaceFailure)
+    -> WorkspaceVideoChunk
+
+  /// The chapters of a recording, from its `<path>.chapters.vtt` file; none when it has none.
+  /// - Parameter path: The recording.
+  /// - Returns: The chapters file and its chapters, by start.
+  func videoChapters(_ path: String) async -> VideoChapters
+
   /// Saves an edit of a text file. With `base` (the text the edit started from) a change by
   /// someone else since is a conflict and nothing is written; without it the file is overwritten.
   /// - Parameters:
@@ -135,10 +156,107 @@ extension WorkspaceDataSource {
       return WorkspaceFileContents(path: file.path, data: Data(text.text.utf8))
     case .image(_, let data):
       return WorkspaceFileContents(path: file.path, data: data)
-    case .text, .binary:
+    case .text, .binary, .pdf, .video:
       throw WorkspaceFailure(
         .unavailable, message: "\(WorkspacePaths.name(of: path)) cannot be exported from here.")
     }
+  }
+
+  /// The previewed content; a source that downloads raw bytes (the core's) overrides this.
+  /// - Parameter path: The file.
+  /// - Returns: Its bytes.
+  /// - Throws: The failure to show.
+  public func download(_ path: String) async throws(WorkspaceFailure) -> WorkspaceFileContents {
+    try await fileContents(path)
+  }
+
+  // These defaults answer at once; the requirements are async for the core's reads.
+  // swiftlint:disable async_without_await
+  /// No streaming; a source that reads byte ranges (the core's) overrides this.
+  /// - Parameters:
+  ///   - path: The video.
+  ///   - offset: The first byte.
+  ///   - length: How many bytes.
+  /// - Returns: Never.
+  /// - Throws: Always, ``WorkspaceFailure/Kind/unavailable``.
+  public func readVideo(_ path: String, offset: UInt64, length: UInt64)
+    async throws(WorkspaceFailure) -> WorkspaceVideoChunk
+  {
+    throw WorkspaceFailure(
+      .unavailable, message: "\(WorkspacePaths.name(of: path)) cannot be played from here.")
+  }
+
+  /// No chapters; a source that reads the chapters file (the core's) overrides this.
+  /// - Parameter path: The recording.
+  /// - Returns: None.
+  public func videoChapters(_ path: String) async -> VideoChapters { .none }
+  // swiftlint:enable async_without_await
+}
+
+/// One chapter of a recording.
+nonisolated public struct VideoChapter: Hashable, Sendable {
+  /// Start, in seconds.
+  public var time: Double
+  /// End, in seconds.
+  public var end: Double
+  /// The title.
+  public var title: String
+
+  /// A chapter.
+  /// - Parameters:
+  ///   - time: Start, in seconds.
+  ///   - end: End, in seconds.
+  ///   - title: The title.
+  public init(time: Double, end: Double, title: String) {
+    self.time = time
+    self.end = end
+    self.title = title
+  }
+}
+
+/// A recording's chapters and the file they came from.
+nonisolated public struct VideoChapters: Hashable, Sendable {
+  /// The chapters file, for downloading it; `nil` without chapters.
+  public var file: String?
+  /// The chapters, by start.
+  public var chapters: [VideoChapter]
+
+  /// Chapters.
+  /// - Parameters:
+  ///   - file: The chapters file.
+  ///   - chapters: The chapters, by start.
+  public init(file: String?, chapters: [VideoChapter]) {
+    self.file = file
+    self.chapters = chapters
+  }
+
+  /// None.
+  public static let none = Self(file: nil, chapters: [])
+}
+
+/// Part of a video, read for the player.
+nonisolated public struct WorkspaceVideoChunk: Hashable, Sendable {
+  /// The bytes.
+  public var data: Data
+  /// Where `data` starts in the file; 0 when the server sent the whole file.
+  public var offset: UInt64
+  /// The file's size, when the server said.
+  public var totalLength: UInt64?
+  /// The video type the player plays it as (the core's `allowed_video_type`); `nil` when the
+  /// server's type is not one it accepts.
+  public var videoType: String?
+
+  /// A chunk.
+  /// - Parameters:
+  ///   - data: The bytes.
+  ///   - offset: Where they start.
+  ///   - totalLength: The file's size.
+  ///   - videoType: The accepted video type.
+  public init(data: Data, offset: UInt64, totalLength: UInt64?, videoType: String?) {
+    self.data = data
+    self.offset = offset
+    self.totalLength = totalLength
+    self.videoType = videoType
   }
 }
 
@@ -173,6 +291,8 @@ public struct WorkspaceActions {
   public var share: ((String) -> Void)?
   /// Preview an environment-relative file with Quick Look.
   public var quickLook: ((String) -> Void)?
+  /// Save an environment-relative file where the person picks (macOS: a save panel).
+  public var download: ((String) -> Void)?
   /// Insert a path reference into the composer, for example `@src/main.rs`; also attaches a
   /// line range as `src/main.rs:3-7`.
   public var mention: ((String) -> Void)?
