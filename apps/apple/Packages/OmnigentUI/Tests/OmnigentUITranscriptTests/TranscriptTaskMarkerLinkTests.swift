@@ -40,7 +40,8 @@
       defer { shown.close() }
       #expect(try shown.shows("Completed"))
       #expect(try shown.shows("Run the tests"))
-      try shown.clickControl(at: 0)
+      // By identifier, as a UI test finds it.
+      try shown.clickElement("task-marker-open-m1")
       #expect(log.entries == ["tasks test"])
     }
 
@@ -66,7 +67,7 @@
       let linked = screen(
         plan, links: TaskMarkerLinks(taskIDs: []) { log.add("tasks \($0 ?? "-")") })
       defer { linked.close() }
-      try linked.clickControl(at: 0)
+      try linked.clickElement("task-marker-open-p1")
       #expect(log.entries == ["tasks -"])
       let plain = screen(plan, links: nil)
       defer { plain.close() }

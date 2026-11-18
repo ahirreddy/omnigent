@@ -160,10 +160,21 @@ struct ActivityMarkerRowView: View {
       DashedRule()
     }
     .padding(.vertical, Theme.Spacing.extraSmall)
-    .accessibilityElement(children: .combine)
+    // A row with a link keeps the button its own element, which combining would fold away.
+    .accessibilityElement(children: hasLink ? .contain : .combine)
     .accessibilityLabel(row.text)
     .accessibilityIdentifier(
       activity.kind == .subagentMarker ? "subagent-marker-\(row.id)" : "task-marker-\(row.id)")
+  }
+
+  /// Whether `line` shows a button: the Tasks tab's, or the sub-agent's session.
+  private var hasLink: Bool {
+    if TranscriptMarker.isPlanLine(activity), taskLinks != nil { return true }
+    if let task = TranscriptMarker.task(activity), let taskLinks {
+      return taskLinks.taskIDs.contains(task)
+    }
+    return !activity.summary.isEmpty && TranscriptMarker.childSession(activity) != nil
+      && (actions.openChild ?? actions.openSession) != nil
   }
 
   @ViewBuilder private var line: some View {
