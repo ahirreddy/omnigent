@@ -96,7 +96,7 @@ pub enum FieldKind {
 #[derive(Debug, Clone, PartialEq)]
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "independent per-field flags, mirrored from the schema or question"
+    reason = "independent answer rules a schema or question sets one by one"
 )]
 pub struct FormField {
     /// The `content` key the answer is posted under.
@@ -118,6 +118,9 @@ pub struct FormField {
     /// The user may add a note to the answer (a question with `acceptsNotes`), sent with
     /// [`DecisionResponse::FormWithNotes`](super::DecisionResponse::FormWithNotes).
     pub accepts_notes: bool,
+    /// The text is the answer exactly as typed, whitespace and empty text included (an editor
+    /// with prefilled text, such as Pi's).
+    pub exact_text: bool,
     /// Inclusive lower bound (number kinds).
     pub minimum: Option<f64>,
     /// Inclusive upper bound (number kinds).
@@ -151,6 +154,7 @@ impl FormField {
             allows_custom: false,
             is_secret: false,
             accepts_notes: false,
+            exact_text: false,
             minimum: None,
             maximum: None,
             min_length: None,
@@ -204,7 +208,7 @@ impl FormField {
 
     fn validate_text(&self, text: &str) -> Result<(), AnswerError> {
         let field = || self.title.clone();
-        if self.required && text.trim().is_empty() {
+        if self.required && !self.exact_text && text.trim().is_empty() {
             return Err(AnswerError::Missing { field: field() });
         }
         let length = text.chars().count();
@@ -985,6 +989,7 @@ fn parse_property(
         allows_custom: false,
         is_secret: false,
         accepts_notes: false,
+        exact_text: false,
         minimum,
         maximum,
         min_length,
@@ -1137,9 +1142,10 @@ fn question_options(
 
 /// One question, always required. With options it takes one of them (several with
 /// `multiSelect`), plus a typed answer unless `isOther` is `false`. A single-select question with
-/// no options and `isOther: true` takes free text, prefilled from `textInput.default` when sent;
-/// without `isOther: true` it has nothing to answer with and is malformed. `acceptsNotes: true`
-/// lets the answer carry a note.
+/// no options and `isOther: true` takes free text; with a `textInput` object it is an editor whose
+/// exact text, empty included, is the answer, prefilled from `textInput.default`. Without
+/// `isOther: true` it has nothing to answer with and is malformed. `acceptsNotes: true` lets the
+/// answer carry a note.
 fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError> {
     let malformed = || FormError::MalformedQuestion { index };
     let object = question.as_object().ok_or_else(malformed)?;
@@ -1176,13 +1182,14 @@ fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError
                 field: title.to_owned(),
             });
         }
-        let prefill = object
-            .get("textInput")
+        let text_input = object.get("textInput").filter(|input| input.is_object());
+        let prefill = text_input
             .and_then(|input| input.get("default"))
             .and_then(Value::as_str)
             .map(|text| ElicitationValue::Text(text.to_owned()));
         return Ok(FormField {
             default_value: prefill,
+            exact_text: text_input.is_some(),
             ..field
         }
         .without_invalid_default());

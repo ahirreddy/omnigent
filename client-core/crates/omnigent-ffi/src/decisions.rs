@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use omnigent_core::decisions as core;
+use omnigent_protocol::ElicitationAction;
 use omnigent_protocol::ElicitationValue as CoreValue;
 
 fn count(value: usize) -> u64 {
@@ -76,6 +77,9 @@ pub struct FormField {
     pub allows_custom: bool,
     /// Render as a secure field.
     pub is_secret: bool,
+    /// An editor: the text exactly as typed, empty included, is the answer.
+    #[uniffi(default)]
+    pub exact_text: bool,
     /// Lowest number.
     pub minimum: Option<f64>,
     /// Highest number.
@@ -185,6 +189,40 @@ pub struct AntigravityPermission {
     pub always_allow_pattern: Option<String>,
 }
 
+/// Where a verdict a native terminal must confirm stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum NativeDeliveryState {
+    /// Waiting for a verdict.
+    Ready,
+    /// A verdict is on its way to the terminal; nothing more can be sent.
+    Sending,
+    /// The terminal never confirmed the verdict; only that verdict may be sent again.
+    Unconfirmed,
+}
+
+/// The verdict a native terminal is still delivering (Kiro).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DeliveredVerdict {
+    /// Approved.
+    Accept,
+    /// Rejected.
+    Decline,
+    /// Dismissed.
+    Cancel,
+}
+
+/// A native terminal applies the verdict and confirms it, so the card stays pending until it
+/// does.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NativeDelivery {
+    /// Where delivery stands.
+    pub state: NativeDeliveryState,
+    /// The delivery attempt; a new one means the last answer was never confirmed.
+    pub attempt: String,
+    /// The verdict being delivered, when one was sent.
+    pub verdict: Option<DeliveredVerdict>,
+}
+
 /// What happens to a file an edit approval would change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum EditKind {
@@ -244,6 +282,9 @@ pub struct PermissionOptions {
     /// The modes approving the plan may switch to (`DecisionResponse::ApprovePlanMode`).
     #[uniffi(default)]
     pub plan_modes: Vec<PermissionMode>,
+    /// A native terminal confirms the verdict.
+    #[uniffi(default)]
+    pub native_delivery: Option<NativeDelivery>,
 }
 
 /// A decision card. A pending card is never hidden.
@@ -462,6 +503,7 @@ impl From<FormField> for core::FormField {
             options: field.options.into_iter().map(Into::into).collect(),
             allows_custom: field.allows_custom,
             is_secret: field.is_secret,
+            exact_text: field.exact_text,
             minimum: field.minimum,
             maximum: field.maximum,
             min_length: field.min_length.map(size),
@@ -510,6 +552,7 @@ impl From<core::FormField> for FormField {
             options: field.options.into_iter().map(Into::into).collect(),
             allows_custom: field.allows_custom,
             is_secret: field.is_secret,
+            exact_text: field.exact_text,
             minimum: field.minimum,
             maximum: field.maximum,
             min_length: field.min_length.map(count),
@@ -645,6 +688,26 @@ impl From<core::PermissionOptions> for PermissionOptions {
                 })
                 .collect(),
             plan_modes: options.plan_modes.into_iter().map(Into::into).collect(),
+            native_delivery: options.native_delivery.map(Into::into),
+        }
+    }
+}
+
+impl From<core::NativeDelivery> for NativeDelivery {
+    fn from(delivery: core::NativeDelivery) -> Self {
+        Self {
+            state: match delivery.state {
+                core::NativeDeliveryState::Ready => NativeDeliveryState::Ready,
+                core::NativeDeliveryState::Sending => NativeDeliveryState::Sending,
+                core::NativeDeliveryState::Unconfirmed => NativeDeliveryState::Unconfirmed,
+            },
+            attempt: delivery.attempt,
+            verdict: match delivery.action {
+                Some(ElicitationAction::Accept) => Some(DeliveredVerdict::Accept),
+                Some(ElicitationAction::Decline) => Some(DeliveredVerdict::Decline),
+                Some(ElicitationAction::Cancel) => Some(DeliveredVerdict::Cancel),
+                Some(ElicitationAction::Unknown { .. }) | None => None,
+            },
         }
     }
 }

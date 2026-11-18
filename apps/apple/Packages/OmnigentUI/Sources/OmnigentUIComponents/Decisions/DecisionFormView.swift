@@ -56,7 +56,7 @@ struct FormDraft: Hashable {
     case .number, .integer:
       return numberProblem(for: field)
     case .text:
-      return field.required && text(for: field).isEmpty
+      return field.required && !field.exactText && text(for: field).isEmpty
         ? .missing("Enter \(field.title).") : nil
     case .boolean:
       return field.required && booleanAnswer(for: field) == nil
@@ -87,34 +87,6 @@ struct FormDraft: Hashable {
       .max { $0.title.count < $1.title.count }
   }
 
-  /// The notes to send: trimmed and non-blank, on fields that take one.
-  func notes(for fields: [FormField]) -> [String: String] {
-    var kept: [String: String] = [:]
-    for field in fields where field.acceptsNotes {
-      let note = notes[field.key, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
-      if !note.isEmpty { kept[field.key] = note }
-    }
-    return kept
-  }
-
-  /// What Submit sends: the answers, with the notes when there are any.
-  func response(for fields: [FormField]) -> DecisionResponse {
-    let values = values(for: fields)
-    let notes = notes(for: fields)
-    return notes.isEmpty ? .form(values: values) : .formWithNotes(values: values, notes: notes)
-  }
-
-  /// The option whose preview a choice shows: the first option with one until something is
-  /// chosen, then the chosen option's; `nil` for a choice without a preview or a typed answer.
-  func previewedOption(for field: FormField) -> FormOption? {
-    let typed = custom[field.key, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
-    if field.allowsCustom, !typed.isEmpty { return nil }
-    let chosen = selection(for: field)
-    let withPreview = field.options.filter { !$0.preview.isEmpty }
-    if chosen.isEmpty { return withPreview.first }
-    return withPreview.first { chosen.contains($0.value) }
-  }
-
   /// The typed answers. Fields left empty are omitted.
   func values(for fields: [FormField]) -> [String: ElicitationValue] {
     var values: [String: ElicitationValue] = [:]
@@ -128,8 +100,9 @@ struct FormDraft: Hashable {
     let other = custom[field.key, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
     switch field.kind {
     case .text:
+      // An editor's text is the answer even when empty.
       let raw = text(for: field)
-      return raw.isEmpty ? nil : .text(value: raw)
+      return raw.isEmpty && !field.exactText ? nil : .text(value: raw)
     case .integer:
       return Int64(text(for: field).trimmingCharacters(in: .whitespaces))
         .map { .integer(value: $0) }
@@ -281,7 +254,7 @@ struct DecisionFormFields: View {
             .textEntry(for: format)
         } else if field.kind == .text {
           TextField(field.title, text: binding, axis: .vertical)
-            .lineLimit(1...6)
+            .lineLimit(field.exactText ? 4...12 : 1...6)
         } else {
           TextField(field.kind == .integer ? "Whole number" : "Number", text: binding)
             #if os(iOS)

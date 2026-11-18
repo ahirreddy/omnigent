@@ -11,7 +11,10 @@ use omnigent_protocol::{ElicitationAction, ElicitationResult, ElicitationValue};
 use serde_json::{Map, Value, json};
 
 use super::form::AnswerError;
-use super::{Decision, DecisionForm, DecisionKind, PermissionMode, PersistMode, UnsupportedReason};
+use super::{
+    Decision, DecisionForm, DecisionKind, NativeDeliveryState, PermissionMode, PersistMode,
+    UnsupportedReason,
+};
 use crate::attachments::policy::is_identifier;
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
@@ -181,6 +184,33 @@ impl Decision {
         &self,
         response: &DecisionResponse,
     ) -> Result<ElicitationResult, DecisionError> {
+        let mut result = self.verdict_for(response)?;
+        let Some(delivery) = &self.permissions.native_delivery else {
+            return Ok(result);
+        };
+        match delivery.state {
+            NativeDeliveryState::Ready => {}
+            // The terminal is applying a verdict already; the server ignores another.
+            NativeDeliveryState::Sending => return Err(DecisionError::NotOffered),
+            // Only the verdict the terminal never confirmed may be sent again.
+            NativeDeliveryState::Unconfirmed => require(
+                matches!(
+                    response,
+                    DecisionResponse::Approve
+                        | DecisionResponse::Decline
+                        | DecisionResponse::Cancel
+                ) && delivery.action.as_ref() == Some(&result.action),
+            )?,
+        }
+        result.meta.get_or_insert_with(Map::new).insert(
+            "native_delivery_attempt".to_owned(),
+            Value::String(delivery.attempt.clone()),
+        );
+        Ok(result)
+    }
+
+    /// The verdict for `response` before any native delivery attempt is added.
+    fn verdict_for(&self, response: &DecisionResponse) -> Result<ElicitationResult, DecisionError> {
         if let DecisionKind::Unsupported { reason, .. } = &self.kind {
             return Err(DecisionError::Unsupported(reason.clone()));
         }

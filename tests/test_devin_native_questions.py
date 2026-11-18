@@ -81,6 +81,20 @@ def _mirror() -> dict | None:
     )
 
 
+def test_shared_fixture_question_becomes_its_card_and_its_answers() -> None:
+    # Shared with omnigent-core's `decisions/harness_tests.rs`, which checks the native card.
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "client-core/fixtures/decisions/Devin--AskUserQuestion.json"
+    )
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+
+    expected = fixture["elicitation"]["params"]["ask_user_question"]
+    assert question_payload(fixture["devin"]) == expected
+    answered = answered_question_input(fixture["devin"], fixture["answer"]["content"])
+    assert answered["answers"] == fixture["devin_answers"]
+
+
 def test_question_payload_keeps_all_questions_options_and_descriptions() -> None:
     tool_input = copy.deepcopy(_INPUT)
     tool_input["questions"][1]["options"][0]["description"] = "Long description " * 200

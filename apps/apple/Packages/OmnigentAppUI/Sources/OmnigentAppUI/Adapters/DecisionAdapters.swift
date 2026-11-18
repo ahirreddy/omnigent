@@ -42,7 +42,8 @@ nonisolated extension OmnigentUIComponents.FormField {
         OmnigentUIComponents.FormOption(
           value: $0.value, label: $0.label, detail: $0.detail, preview: $0.preview)
       },
-      allowsCustom: field.allowsCustom, isSecret: field.isSecret, minimum: field.minimum,
+      allowsCustom: field.allowsCustom, isSecret: field.isSecret, exactText: field.exactText,
+      minimum: field.minimum,
       maximum: field.maximum, minLength: field.minLength, maxLength: field.maxLength,
       minItems: field.minItems, maxItems: field.maxItems,
       format: field.format.map(OmnigentUIComponents.TextFormat.init),
@@ -94,7 +95,8 @@ nonisolated extension OmnigentUIComponents.PermissionOptions {
       suggestions: options.suggestions.map {
         OmnigentUIComponents.PermissionSuggestion(label: $0.label, persists: $0.persists)
       },
-      planModes: options.planModes.map(OmnigentUIComponents.PermissionMode.init))
+      planModes: options.planModes.map(OmnigentUIComponents.PermissionMode.init),
+      nativeDelivery: options.nativeDelivery.map(OmnigentUIComponents.NativeDelivery.init))
   }
 }
 
@@ -121,6 +123,25 @@ nonisolated extension OmnigentCoreFFI.PermissionMode {
     case .dontAsk: self = .dontAsk
     case .auto: self = .auto
     }
+  }
+}
+
+nonisolated extension OmnigentUIComponents.NativeDelivery {
+  init(_ delivery: OmnigentCoreFFI.NativeDelivery) {
+    let state: State =
+      switch delivery.state {
+      case .ready: .ready
+      case .sending: .sending
+      case .unconfirmed: .unconfirmed
+      }
+    let verdict: Verdict? =
+      switch delivery.verdict {
+      case .accept: .accept
+      case .decline: .decline
+      case .cancel: .cancel
+      case nil: nil
+      }
+    self.init(state: state, attempt: delivery.attempt, verdict: verdict)
   }
 }
 

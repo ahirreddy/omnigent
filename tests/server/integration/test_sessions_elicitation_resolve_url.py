@@ -700,9 +700,36 @@ async def test_decline_verdict_rides_resolved_events_to_parent(
         pending_elicitations.reset_for_tests()
 
 
+_CONFIRM_SCHEMA = {"type": "object", "properties": {"confirm": {"type": "boolean"}}}
+
+
+@pytest.mark.parametrize(
+    "mcp_request, published",
+    [
+        pytest.param(
+            {
+                "message": "MCP server asks: proceed with deletion?",
+                "requestedSchema": _CONFIRM_SCHEMA,
+            },
+            {"mode": "form", "requestedSchema": _CONFIRM_SCHEMA, "url": None},
+            id="form",
+        ),
+        pytest.param(
+            {
+                "message": "MCP server asks: proceed with deletion?",
+                "mode": "url",
+                "url": "https://auth.example.com/consent/42",
+            },
+            {"mode": "url", "requestedSchema": None, "url": "https://auth.example.com/consent/42"},
+            id="url",
+        ),
+    ],
+)
 async def test_child_mcp_elicitation_bubbles_to_parent_stream(
     client: httpx.AsyncClient,
     db_uri: str,
+    mcp_request: dict[str, Any],
+    published: dict[str, Any],
 ) -> None:
     """
     A child MCP ``elicitation/create`` prompt is actionable from parent chat.
@@ -717,10 +744,12 @@ async def test_child_mcp_elicitation_bubbles_to_parent_stream(
     MCP-driven sub-agent prompt. This guards the
     ``_MCP_ELICITATION_TYPE`` branch, which is a separate
     elicitation-origination path from the policy / Codex / Claude
-    hooks covered above.
+    hooks covered above. A URL-mode request keeps its page.
 
     :param client: The test HTTP client.
     :param db_uri: Test database URI.
+    :param mcp_request: The ``mcp_elicitation`` data the runner posts.
+    :param published: The mirrored params the parent must receive.
     """
     from omnigent.runtime import pending_elicitations
 
@@ -739,16 +768,7 @@ async def test_child_mcp_elicitation_bubbles_to_parent_stream(
         # the child; it resolves synchronously and returns the minted id.
         publish = await client.post(
             f"/v1/sessions/{child_id}/events",
-            json={
-                "type": "mcp_elicitation",
-                "data": {
-                    "message": "MCP server asks: proceed with deletion?",
-                    "requestedSchema": {
-                        "type": "object",
-                        "properties": {"confirm": {"type": "boolean"}},
-                    },
-                },
-            },
+            json={"type": "mcp_elicitation", "data": mcp_request},
         )
         # The events route acknowledges control events with 202.
         assert publish.status_code == 202, publish.text
@@ -762,6 +782,7 @@ async def test_child_mcp_elicitation_bubbles_to_parent_stream(
         # the verdict to the child's resolve endpoint, not the parent's.
         assert event["params"]["target_session_id"] == child_id
         assert event["params"]["message"] == "MCP server asks: proceed with deletion?"
+        assert {key: event["params"][key] for key in published} == published
 
         parent_resolved_subscribed = asyncio.Event()
         parent_resolved = asyncio.create_task(
@@ -1431,6 +1452,39 @@ async def test_elicitation_page_cross_user_forbidden(
         headers={"X-Forwarded-Email": "bob@example.com"},
     )
     assert resp.status_code in (403, 404), resp.text
+
+
+# ── external MCP requests as elicitations ─────────────
+
+
+@pytest.mark.parametrize("kind", ["Form", "Url"])
+def test_mcp_request_becomes_the_shared_fixture_elicitation(kind: str) -> None:
+    """An MCP server's form or URL request publishes the card the native core reads.
+
+    Shared with omnigent-core's ``decisions/omni_tests.rs``.
+    """
+    from pathlib import Path
+
+    from omnigent.server.routes._sessions.orchestration import _mcp_elicitation_params
+
+    path = (
+        Path(__file__).resolve().parents[3]
+        / f"client-core/fixtures/decisions/Omni--McpElicitation--{kind}.json"
+    )
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+
+    params = _mcp_elicitation_params(fixture["mcp"], default_message="")
+
+    assert params.model_dump() == fixture["elicitation"]["params"]
+
+
+def test_mcp_url_request_without_a_page_stays_url_mode() -> None:
+    """A URL request that names no page is never published as an approval."""
+    from omnigent.server.routes._sessions.orchestration import _mcp_elicitation_params
+
+    params = _mcp_elicitation_params({"mode": "url", "message": "Sign in"}, default_message="")
+
+    assert (params.mode, params.url, params.requestedSchema) == ("url", None, None)
 
 
 # ── _mcp_input_required_response URL mode ─────────────

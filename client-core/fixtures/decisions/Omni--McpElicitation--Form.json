@@ -1,0 +1,37 @@
+{
+  "mcp": {
+    "message": "Which environment should the deploy use?",
+    "requestedSchema": {
+      "type": "object",
+      "properties": {
+        "environment": { "type": "string", "title": "Environment", "enum": ["staging", "prod"] },
+        "notify": { "type": "boolean", "title": "Notify the channel", "default": true }
+      },
+      "required": ["environment"]
+    }
+  },
+  "elicitation": {
+    "sequence_number": null,
+    "type": "response.elicitation_request",
+    "elicitation_id": "elicit_a9b8c7d6e5f40312a9b8c7d6e5f40312",
+    "method": "elicitation/create",
+    "params": {
+      "mode": "form",
+      "message": "Which environment should the deploy use?",
+      "requestedSchema": {
+        "type": "object",
+        "properties": {
+          "environment": { "type": "string", "title": "Environment", "enum": ["staging", "prod"] },
+          "notify": { "type": "boolean", "title": "Notify the channel", "default": true }
+        },
+        "required": ["environment"]
+      },
+      "url": null,
+      "phase": null,
+      "policy_name": null,
+      "content_preview": null,
+      "target_session_id": null
+    }
+  },
+  "answer": { "action": "accept", "content": { "environment": "prod", "notify": true } }
+}

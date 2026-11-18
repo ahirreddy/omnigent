@@ -331,6 +331,12 @@ def form_questions(fields: object) -> list[FormQuestion] | None:
             "multiSelect": multi,
             "id": key,
         }
+        # Say which fields take typed text: a field without options is answered by
+        # typing, and Yes/No, Done and closed choices take only their options.
+        if not options:
+            question["isOther"] = True
+        elif kind in ("boolean", "external") or raw_field.get("custom") is False:
+            question["isOther"] = False
         if title is not None:
             question["header"] = title
         questions.append(

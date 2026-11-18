@@ -50,6 +50,33 @@ struct DecisionPresentationTests {
     #expect(unsupported.externalURL?.hasPrefix("https://linear.app/") == true)
   }
 
+  @Test("A verdict the agent's terminal must confirm: nothing while sending, then only a retry")
+  func nativeDelivery() {
+    let delivery = { (state: NativeDelivery.State, verdict: NativeDelivery.Verdict?) in
+      PreviewData.card(
+        "kiro", detail: "Kiro wants approval for Running: pwd",
+        permissions: PermissionOptions(
+          nativeDelivery: NativeDelivery(state: state, attempt: "a1", verdict: verdict)),
+        acceptsFeedback: true)
+    }
+    let ready = DecisionAvailability(delivery(.ready, nil))
+    #expect(ready.approveTitle == "Approve" && ready.canReject && ready.deliveryStatus == nil)
+
+    let sending = DecisionAvailability(delivery(.sending, .accept))
+    #expect(sending.approveTitle == nil && !sending.canReject && !sending.canTellAgent)
+    #expect(sending.deliveryStatus?.contains("until the agent confirms") == true)
+    #expect(!DecisionSummary(delivery(.sending, .accept)).answersInline)
+
+    let approval = DecisionAvailability(delivery(.unconfirmed, .accept))
+    #expect(approval.approveTitle == "Retry sending approval" && !approval.canReject)
+    #expect(approval.deliveryStatus?.contains("hasn\u{2019}t confirmed") == true)
+
+    let rejection = DecisionAvailability(delivery(.unconfirmed, .decline))
+    #expect(rejection.approveTitle == nil && rejection.canReject)
+    #expect(rejection.rejectTitle == "Retry sending rejection")
+    #expect(rejection.widening.isEmpty)
+  }
+
   @Test("Widening labels name scope and duration exactly")
   func wideningWording() {
     let labels = PermissionChoice.choices(for: PreviewData.codexCommand).map(\.label)

@@ -130,6 +130,41 @@ Expected cards:
 - `Elicitation--Form`: an MCP server's form, as a native form.
 - `Elicitation--Url`: an MCP server's URL-mode request, as a page card.
 
+## Omnigent's own agents, sub-agents and the other harnesses
+
+`<Source>--<RequestKind>[--<shape>].json`, one request each unless noted. Each holds the
+`elicitation` the server publishes, the `answer` the app posts, and usually the harness side: the
+request it came from (`pi`, `opencode`, `agy`, `devin`, `cursor`, `kiro`, `acp`, `mcp`, `policy`,
+`tool`) and what the harness receives back (`pi_response`, `opencode_answer`, `agy_response`,
+`agy_tui_keys`, `devin_answers`, `cursor_keys`). Rust: `omni_tests.rs` (Omni, sub-agents) and
+`harness_tests.rs`; server: the harness mapping's own tests (named in each test file).
+
+- `Omni--PolicyAsk--ToolCall`: a policy ASK on an Omnigent tool (`build_elicitation_request_event`,
+  URL mode on its `/approve/` page): an inline approval, never a page handoff.
+- `Omni--PolicyAsk--HeldGate`: the held `/policies/evaluate` gate (`requestedSchema: {}`), for a
+  harness tool and (`request_phase`) for a user message: approvals.
+- `Omni--McpElicitation--Form` / `--Url`: an MCP server's `elicitation/create`: a typed form, and a
+  page card (Done accepts).
+- `Omni--WorkflowRequestInput`: `sys_workflow_request_input` (on main): answers keyed by question
+  text, the recommendation first and labelled, typed answers allowed.
+- `Subagent--MirroredRequests`: `requests` from one child (`conv_child`), each mirrored into the
+  parent (`conv_parent`) with `target_session_id`: a Codex free-text question, a Pi editor, a
+  policy ASK, an MCP URL request, an Antigravity permission with persistence, and a Kiro
+  delivery to resend. Each is answered from the parent and posted to the child.
+- `Pi--Confirm`, `--Select`, `--Input`, `--Editor`: Pi's extension dialogs (SDK `pi` and
+  `pi-native`). An editor's exact text, empty included, is its answer.
+- `OpenCode--FormEveryField`: every `form.created` field type: options with a typed answer,
+  multi-select, Yes/No and Done (options only), number and text (typed), hidden (left out).
+- `Antigravity--AskQuestion` / `--Permission`: agy's question (a repeated option offered once; a
+  question without options is a write-in) and its command permission with an always-allow pattern.
+- `Devin--AskUserQuestion`, `Cursor--AskQuestion`: native question tools; answers keyed by text
+  (Devin) and by id (Cursor).
+- `Copilot--PermissionRequest--Shell`, `Acp--RequestPermission--Choice`: SDK permission cards: a
+  binary approval, and ACP's permission options as a choice.
+- `Kiro--NativePermission--Ready` / `--Unconfirmed`: a verdict Kiro's terminal confirms. Every
+  answer names `_meta.native_delivery_attempt`; while `sending` nothing can be sent, and an
+  `unconfirmed` verdict can only be sent again as it was.
+
 ## Hand-built from the server's request shapes
 
 - `FileChanges--ServerApprovalShapes.json`: elicitation requests keyed by label, each built with the

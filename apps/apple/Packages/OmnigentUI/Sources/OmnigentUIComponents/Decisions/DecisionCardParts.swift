@@ -249,6 +249,13 @@ struct ApprovalControls: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+      if let status = availability.deliveryStatus {
+        Text(status)
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("\(idPrefix)approval-delivery-\(card.id)")
+      }
       ViewThatFits(in: .horizontal) {
         HStack(spacing: Theme.Spacing.small) {
           buttons
@@ -277,7 +284,7 @@ struct ApprovalControls: View {
       Button {
         act(.decline)
       } label: {
-        Text("Reject").frame(minWidth: 64)
+        Text(availability.rejectTitle).frame(minWidth: 64)
       }
       .buttonStyle(.bordered)
       .tint(.primary)

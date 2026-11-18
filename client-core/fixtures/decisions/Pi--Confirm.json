@@ -1,0 +1,35 @@
+{
+  "pi": {
+    "type": "extension_ui_request",
+    "id": "ui_confirm_1",
+    "method": "confirm",
+    "title": "Clear the session?",
+    "message": "All messages will be lost.",
+    "timeout": 30000
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_pi_confirm_1",
+    "params": {
+      "mode": "form",
+      "message": "Clear the session?\n\nAll messages will be lost.",
+      "phase": "pi_extension_ui",
+      "policy_name": "pi_native_extension_ui",
+      "pi_extension_ui": {
+        "type": "extension_ui_request",
+        "id": "ui_confirm_1",
+        "method": "confirm",
+        "title": "Clear the session?",
+        "message": "All messages will be lost.",
+        "timeout": 30000
+      }
+    }
+  },
+  "answer": {
+    "action": "accept"
+  },
+  "pi_response": {
+    "type": "extension_ui_response",
+    "id": "ui_confirm_1",
+    "confirmed": true
+  }
+}

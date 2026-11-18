@@ -323,6 +323,12 @@ class RunnerMcpManager:
             }
             if requested_schema is not None:
                 event_data["requestedSchema"] = requested_schema
+            # URL mode asks the person to finish on the server's page; the
+            # card must offer that page, not a bare approval.
+            url = getattr(params, "url", None)
+            if getattr(params, "mode", None) == "url" and isinstance(url, str) and url:
+                event_data["mode"] = "url"
+                event_data["url"] = url
 
             while True:
                 try:
