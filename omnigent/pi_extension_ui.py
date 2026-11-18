@@ -133,7 +133,8 @@ def _select_labels(req: dict[str, Any]) -> list[str]:
     raw_options = req.get("options")
     if not isinstance(raw_options, list):
         return []
-    return [opt for opt in raw_options if isinstance(opt, str) and opt]
+    # A repeated label answers the same way, so it is offered once.
+    return list(dict.fromkeys(opt for opt in raw_options if isinstance(opt, str) and opt))
 
 
 def _accepted_text(req: dict[str, Any], result: ElicitationResult) -> str | None:

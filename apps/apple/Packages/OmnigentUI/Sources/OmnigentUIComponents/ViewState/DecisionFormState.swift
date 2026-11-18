@@ -73,6 +73,8 @@ nonisolated public struct FormField: Hashable, Sendable, Identifiable {
   public var allowsCustom: Bool
   /// Render as a secure field.
   public var isSecret: Bool
+  /// An editor: the text exactly as typed, empty included, is the answer.
+  public var exactText: Bool
   /// Lowest number.
   public var minimum: Double?
   /// Highest number.
@@ -103,6 +105,7 @@ nonisolated public struct FormField: Hashable, Sendable, Identifiable {
   ///   - options: Choices.
   ///   - allowsCustom: Free text allowed.
   ///   - isSecret: Secure entry.
+  ///   - exactText: The exact text, empty included, is the answer.
   ///   - minimum: Lowest number.
   ///   - maximum: Highest number.
   ///   - minLength: Shortest text.
@@ -114,9 +117,9 @@ nonisolated public struct FormField: Hashable, Sendable, Identifiable {
   public init(
     key: String, title: String, detail: String = "", kind: FieldKind, required: Bool = true,
     options: [FormOption] = [], allowsCustom: Bool = false, isSecret: Bool = false,
-    minimum: Double? = nil, maximum: Double? = nil, minLength: UInt64? = nil,
-    maxLength: UInt64? = nil, minItems: UInt64? = nil, maxItems: UInt64? = nil,
-    format: TextFormat? = nil, defaultValue: ElicitationValue? = nil
+    exactText: Bool = false, minimum: Double? = nil, maximum: Double? = nil,
+    minLength: UInt64? = nil, maxLength: UInt64? = nil, minItems: UInt64? = nil,
+    maxItems: UInt64? = nil, format: TextFormat? = nil, defaultValue: ElicitationValue? = nil
   ) {
     self.key = key
     self.title = title
@@ -126,6 +129,7 @@ nonisolated public struct FormField: Hashable, Sendable, Identifiable {
     self.options = options
     self.allowsCustom = allowsCustom
     self.isSecret = isSecret
+    self.exactText = exactText
     self.minimum = minimum
     self.maximum = maximum
     self.minLength = minLength

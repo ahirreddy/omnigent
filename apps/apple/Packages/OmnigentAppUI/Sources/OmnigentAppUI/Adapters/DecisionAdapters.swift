@@ -41,7 +41,8 @@ nonisolated extension OmnigentUIComponents.FormField {
       options: field.options.map {
         OmnigentUIComponents.FormOption(value: $0.value, label: $0.label, detail: $0.detail)
       },
-      allowsCustom: field.allowsCustom, isSecret: field.isSecret, minimum: field.minimum,
+      allowsCustom: field.allowsCustom, isSecret: field.isSecret, exactText: field.exactText,
+      minimum: field.minimum,
       maximum: field.maximum, minLength: field.minLength, maxLength: field.maxLength,
       minItems: field.minItems, maxItems: field.maxItems,
       format: field.format.map(OmnigentUIComponents.TextFormat.init),
@@ -88,7 +89,27 @@ nonisolated extension OmnigentUIComponents.PermissionOptions {
         OmnigentUIComponents.AntigravityPermission(
           actionDescription: $0.actionDescription, alwaysAllowPattern: $0.alwaysAllowPattern)
       },
-      files: options.fileChanges.map(DecisionFileChange.init))
+      files: options.fileChanges.map(DecisionFileChange.init),
+      nativeDelivery: options.nativeDelivery.map(OmnigentUIComponents.NativeDelivery.init))
+  }
+}
+
+nonisolated extension OmnigentUIComponents.NativeDelivery {
+  init(_ delivery: OmnigentCoreFFI.NativeDelivery) {
+    let state: State =
+      switch delivery.state {
+      case .ready: .ready
+      case .sending: .sending
+      case .unconfirmed: .unconfirmed
+      }
+    let verdict: Verdict? =
+      switch delivery.verdict {
+      case .accept: .accept
+      case .decline: .decline
+      case .cancel: .cancel
+      case nil: nil
+      }
+    self.init(state: state, attempt: delivery.attempt, verdict: verdict)
   }
 }
 

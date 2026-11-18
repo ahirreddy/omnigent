@@ -144,7 +144,11 @@ impl SessionDecisions {
                 RequestOutcome::Added
             }
             Some(index) => match self.entries.get_mut(index) {
-                Some(existing) if existing.state == DecisionState::Pending => {
+                // A verdict the terminal never confirmed may be sent again.
+                Some(existing)
+                    if existing.state == DecisionState::Pending
+                        || entry.decision.awaits_redelivery() =>
+                {
                     *existing = entry;
                     RequestOutcome::Replaced
                 }

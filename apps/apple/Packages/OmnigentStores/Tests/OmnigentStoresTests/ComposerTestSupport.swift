@@ -34,6 +34,8 @@ struct LiveComposer {
   let server: RouteServer
   let store: ConnectionStore
   let conversation: ConversationStore
+  /// The session's live stream, to send it events.
+  let stream: ByteSink
   var composer: ComposerStore { conversation.composer }
 
   // `fields` are JSON fields added to the session's snapshot, `""` for none.
@@ -48,6 +50,7 @@ struct LiveComposer {
     store = try await connectedStore(server, streams: streams)
     conversation = try #require(store.conversation("conv_a"))
     let opened = await streams.waitForOpenedStream()
+    stream = opened.sink
     opened.sink.response(
       status: 200, headers: [HttpHeader(name: "Content-Type", value: "text/event-stream")])
     // The first frame on the stream makes the core read the session's history.

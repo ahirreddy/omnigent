@@ -76,6 +76,23 @@ struct DecisionFormShapeLogicTests {
     #expect(FormFieldHint.placeholder(.date) == "YYYY-MM-DD")
   }
 
+  @Test("An editor sends its exact text, empty included, as Pi's editor takes it")
+  func editorExactText() {
+    let editor = FormField(
+      key: "0", title: "Edit the notes", kind: .text, exactText: true,
+      defaultValue: .text(value: "Fixes\n"))
+    let text = FormField(key: "name", title: "Name", kind: .text)
+    var draft = FormDraft()
+    #expect(draft.values(for: [editor]) == ["0": .text(value: "Fixes\n")])
+    draft.text["0"] = ""
+    draft.text["name"] = ""
+    #expect(draft.values(for: [editor, text]) == ["0": .text(value: "")])
+    #expect(draft.problem(for: editor) == nil)
+    #expect(draft.problem(for: text) == .missing("Enter Name."))
+    draft.text["0"] = "  kept\n"
+    #expect(draft.values(for: [editor]) == ["0": .text(value: "  kept\n")])
+  }
+
   @Test("Dates are written in the formats the core accepts and read back")
   func dates() {
     let instant = Date(timeIntervalSince1970: 1_763_400_000)

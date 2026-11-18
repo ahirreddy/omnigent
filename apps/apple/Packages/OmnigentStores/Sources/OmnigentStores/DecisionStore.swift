@@ -11,6 +11,8 @@ public final class DecisionStore {
   public private(set) var answers: [String: DecisionResponse] = [:]
   /// The last failed answer, by card id.
   public private(set) var errors: [String: CoreError] = [:]
+  /// The native delivery attempt each answer went out for, by card id.
+  private var answeredAttempts: [String: String] = [:]
 
   private let sessionID: String
   private let core: ClientCore
@@ -38,6 +40,7 @@ public final class DecisionStore {
     guard answers[card.id] == nil else { return }
     let othersPending = pending.contains { $0.id != card.id }
     answers[card.id] = response
+    answeredAttempts[card.id] = card.permissions.nativeDelivery?.attempt
     errors[card.id] = nil
     let expectation = othersPending ? nil : listStatus.expect(.running)
     do {
@@ -58,5 +61,14 @@ public final class DecisionStore {
     for id in answers.keys where !ids.contains(id) {
       answers[id] = nil
     }
+    // A verdict the agent's terminal never confirmed comes back under a new attempt; the card
+    // reopens so it can be sent again.
+    for card in cards where answers[card.id] != nil {
+      guard let delivery = card.permissions.nativeDelivery, delivery.state == .unconfirmed,
+        delivery.attempt != answeredAttempts[card.id]
+      else { continue }
+      answers[card.id] = nil
+    }
+    answeredAttempts = answeredAttempts.filter { answers[$0.key] != nil }
   }
 }

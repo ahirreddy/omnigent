@@ -5,11 +5,12 @@
 use std::collections::{BTreeMap, HashMap};
 
 use omnigent_core::decisions as core;
-use omnigent_protocol::ElicitationValue as CoreValue;
+use omnigent_protocol::{ElicitationAction, ElicitationValue as CoreValue};
 
 use crate::decisions::{
-    DecisionKind, DecisionResponse, EditKind, ElicitationValue, FieldKind, FormField, FormOption,
-    PermissionOptions, PersistMode, TextFormat, validate_form,
+    DecisionKind, DecisionResponse, DeliveredVerdict, EditKind, ElicitationValue, FieldKind,
+    FormField, FormOption, NativeDelivery, NativeDeliveryState, PermissionOptions, PersistMode,
+    TextFormat, validate_form,
 };
 
 const KINDS: [(core::FieldKind, FieldKind); 6] = [
@@ -42,6 +43,7 @@ fn every_field_kind_and_a_full_field_map_both_ways() {
     field.options = vec![option_on_core()];
     field.allows_custom = true;
     field.is_secret = true;
+    field.exact_text = true;
     field.minimum = Some(1.5);
     field.maximum = Some(2.5);
     field.min_length = Some(3);
@@ -67,6 +69,7 @@ fn every_field_kind_and_a_full_field_map_both_ways() {
             }],
             allows_custom: true,
             is_secret: true,
+            exact_text: true,
             minimum: Some(1.5),
             maximum: Some(2.5),
             min_length: Some(3),
@@ -185,6 +188,11 @@ fn permission_options_keep_every_field() {
             lines_added: Some(1),
             lines_removed: Some(2),
         }],
+        native_delivery: Some(core::NativeDelivery {
+            state: core::NativeDeliveryState::Unconfirmed,
+            attempt: "a1".into(),
+            action: Some(ElicitationAction::Decline),
+        }),
     });
     assert!(mapped.allow_all_edits);
     assert!(mapped.allow_auto_mode);
@@ -204,6 +212,64 @@ fn permission_options_keep_every_field() {
     assert_eq!(mapped.file_changes[0].kind, Some(EditKind::Delete));
     assert_eq!(mapped.file_changes[0].lines_added, Some(1));
     assert_eq!(mapped.file_changes[0].lines_removed, Some(2));
+    assert_eq!(
+        mapped.native_delivery,
+        Some(NativeDelivery {
+            state: NativeDeliveryState::Unconfirmed,
+            attempt: "a1".into(),
+            verdict: Some(DeliveredVerdict::Decline),
+        })
+    );
+}
+
+#[test]
+fn every_native_delivery_state_and_verdict_maps() {
+    let delivery = |state, action| {
+        NativeDelivery::from(core::NativeDelivery {
+            state,
+            attempt: "a1".into(),
+            action,
+        })
+    };
+    for (on_core, on_ffi) in [
+        (core::NativeDeliveryState::Ready, NativeDeliveryState::Ready),
+        (
+            core::NativeDeliveryState::Sending,
+            NativeDeliveryState::Sending,
+        ),
+        (
+            core::NativeDeliveryState::Unconfirmed,
+            NativeDeliveryState::Unconfirmed,
+        ),
+    ] {
+        assert_eq!(delivery(on_core, None).state, on_ffi);
+    }
+    for (action, verdict) in [
+        (
+            Some(ElicitationAction::Accept),
+            Some(DeliveredVerdict::Accept),
+        ),
+        (
+            Some(ElicitationAction::Decline),
+            Some(DeliveredVerdict::Decline),
+        ),
+        (
+            Some(ElicitationAction::Cancel),
+            Some(DeliveredVerdict::Cancel),
+        ),
+        (
+            Some(ElicitationAction::Unknown {
+                value: "later".into(),
+            }),
+            None,
+        ),
+        (None, None),
+    ] {
+        assert_eq!(
+            delivery(core::NativeDeliveryState::Sending, action).verdict,
+            verdict
+        );
+    }
 }
 
 #[test]

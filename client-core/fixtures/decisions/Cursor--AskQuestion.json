@@ -1,0 +1,59 @@
+{
+  "cursor": {
+    "title": "Pick a stack",
+    "questions": [
+      {
+        "id": "lang",
+        "prompt": "Which language?",
+        "options": [
+          { "id": "py", "label": "Python" },
+          { "id": "ts", "label": "TypeScript" }
+        ],
+        "allowMultiple": false
+      },
+      {
+        "id": "extras",
+        "prompt": "Which extras?",
+        "options": [
+          { "id": "a", "label": "Lint" },
+          { "id": "b", "label": "Tests" }
+        ],
+        "allowMultiple": true
+      }
+    ]
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_cursor_conv_a_0123456789abcdef",
+    "params": {
+      "mode": "form",
+      "message": "Pick a stack",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "cursor_native_permission",
+      "content_preview": "AskUserQuestion({\"questions\": [{\"question\": \"Which language?\", \"options\": [{\"label\": \"Python\"}, {\"label\": \"TypeScript\"}], \"multiSelect\": false, \"id\": \"lang\"}, {\"question\": \"Which extras?\", \"options\": [{\"label\": \"Lint\"}, {\"label\": \"Tests\"}], \"multiSelect\": true, \"id\": \"extras\"}]})",
+      "target_session_id": null,
+      "ask_user_question": {
+        "questions": [
+          {
+            "question": "Which language?",
+            "options": [{ "label": "Python" }, { "label": "TypeScript" }],
+            "multiSelect": false,
+            "id": "lang"
+          },
+          {
+            "question": "Which extras?",
+            "options": [{ "label": "Lint" }, { "label": "Tests" }],
+            "multiSelect": true,
+            "id": "extras"
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": { "lang": "TypeScript", "extras": ["Lint", "Docs"] }
+  },
+  "cursor_keys": ["Down", "Space", "Enter", "Space", "Down", "Down", "Docs", "Enter"]
+}
