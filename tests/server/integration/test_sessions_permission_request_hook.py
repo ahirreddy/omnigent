@@ -51,6 +51,7 @@ from omnigent.server._elicitation_registry import (
 )
 from omnigent.server.auth import LEVEL_EDIT, LEVEL_READ
 from omnigent.server.routes import sessions as sessions_route
+from tests._helpers.polling import poll_until_async
 from tests.server.helpers import create_session_for_agent as _create_session
 from tests.server.helpers import create_test_agent, start_session_stream_collector
 
@@ -1631,7 +1632,7 @@ async def test_claude_fixture_round_trip(client: httpx.AsyncClient, path: Path) 
     )
     session_id = await _create_session(client, agent["id"])
     drain_task = asyncio.create_task(_drain_until_elicitation(session_id))
-    await asyncio.sleep(0.05)
+    await poll_until_async(lambda: session_stream.has_subscribers(session_id), timeout_s=5)
     hook_task = asyncio.create_task(
         client.post(f"/v1/sessions/{session_id}/hooks/{route}", json=payload)
     )
@@ -1712,7 +1713,7 @@ async def test_permission_request_hook_applies_only_offered_updates(
     if tool_name == "ExitPlanMode":
         payload.update(permission_mode="plan", tool_input={"plan": "Run the tests."})
     drain_task = asyncio.create_task(_drain_until_elicitation(session_id))
-    await asyncio.sleep(0.05)
+    await poll_until_async(lambda: session_stream.has_subscribers(session_id), timeout_s=5)
     hook_task = asyncio.create_task(
         client.post(f"/v1/sessions/{session_id}/hooks/permission-request", json=payload)
     )
@@ -1725,6 +1726,59 @@ async def test_permission_request_hook_applies_only_offered_updates(
     assert resp.status_code == 200, resp.text
     decision = resp.json()["hookSpecificOutput"]["decision"]
     assert decision.get("updatedPermissions") == updates
+
+
+async def test_claude_elicitation_hook_answer_between_polls_survives_the_viewer_leaving(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    An answer that lands between a severed poll and its retry reaches Claude even
+    when nobody watches the session by the time the hook retries.
+    """
+    from omnigent.runtime import pending_elicitations
+
+    async def _disconnect_immediately(_request: Any) -> None:
+        await asyncio.sleep(0.01)
+
+    monkeypatch.setattr(sessions_route, "_poll_request_disconnect", _disconnect_immediately)
+    # Long enough for the viewer to leave before the answer lands.
+    monkeypatch.setattr(sessions_route, "_HARNESS_ELICITATION_REPARK_GRACE_S", 2.0)
+    pending_elicitations.reset_for_tests()
+    agent = await create_test_agent(client, "test-claude-elicitation-gap")
+    session_id = await _create_session(client, agent["id"])
+    elicitation_id = f"elicit_claude_{'cd' * 16}"
+    payload = {
+        "hook_event_name": "Elicitation",
+        "mcp_server_name": "deploy",
+        "message": "Choose where to deploy.",
+        "requested_schema": {"type": "object", "properties": {"target": {"type": "string"}}},
+        "_omnigent_elicitation_id": elicitation_id,
+    }
+    drain_task = asyncio.create_task(_drain_until_elicitation(session_id))
+    await poll_until_async(lambda: session_stream.has_subscribers(session_id), timeout_s=5)
+    first = await client.post(f"/v1/sessions/{session_id}/hooks/claude-elicitation", json=payload)
+    assert first.status_code == 200, first.text
+    assert first.content == b""
+    await drain_task
+    await poll_until_async(lambda: not session_stream.has_subscribers(session_id), timeout_s=5)
+
+    verdict = await _post_approval(
+        client, session_id, elicitation_id, "accept", {"target": "staging"}
+    )
+    assert verdict.status_code == 202, verdict.text
+    second = await client.post(f"/v1/sessions/{session_id}/hooks/claude-elicitation", json=payload)
+    assert second.status_code == 200, second.text
+    assert second.json() == {
+        "hookSpecificOutput": {
+            "hookEventName": "Elicitation",
+            "action": "accept",
+            "content": {"target": "staging"},
+        }
+    }
+    for task in set(sessions_route._deferred_elicitation_clear_tasks):
+        await asyncio.wait_for(task, timeout=5.0)
+    pending_elicitations.reset_for_tests()
 
 
 async def test_claude_elicitation_hook_leaves_an_unwatched_session_to_the_terminal(

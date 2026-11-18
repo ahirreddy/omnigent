@@ -3838,7 +3838,12 @@ async def test_elicitation_choice_handler_declines_without_a_turn() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "bridge",
-    ["_elicitation_choice_handler", "_form_elicitation_handler", "_ask_question_handler"],
+    [
+        "_elicitation_choice_handler",
+        "_form_elicitation_handler",
+        "_ask_question_handler",
+        "_permission_suggestions_handler",
+    ],
 )
 @pytest.mark.parametrize("supported", [False, True])
 async def test_run_turn_installs_optional_bridges_only_where_supported(
@@ -4331,6 +4336,63 @@ async def test_mcp_elicitation_roundtrip_real_executor_hook_through_adapter_brid
     # A request the card cannot show gets no answer, leaving the SDK's own decline.
     assert await hook_cb({"message": "No server named"}, None, {}) == {}
     assert len(ctx.seen) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "content", "applied", "cancelled"),
+    [
+        ("accept", {"apply_suggestions": True}, True, False),
+        ("accept", None, False, False),
+        ("decline", None, None, True),
+    ],
+    ids=["always-allow", "once", "declined"],
+)
+async def test_permission_suggestions_roundtrip_real_executor_through_adapter_bridge(
+    action: str, content: dict[str, Any] | None, applied: bool | None, cancelled: bool
+) -> None:
+    """A real ClaudeSDKExecutor's ``can_use_tool`` offers Claude's suggested updates on
+    the adapter's card, and applies them only when the user chose them."""
+    from claude_agent_sdk.types import (
+        PermissionResultAllow,
+        PermissionResultDeny,
+        PermissionRuleValue,
+        PermissionUpdate,
+        ToolPermissionContext,
+    )
+
+    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.server.schemas import ElicitationResult
+
+    executor = ClaudeSDKExecutor()
+    adapter = ExecutorAdapter(executor_factory=lambda: executor)
+    executor._elicitation_handler = adapter._stable_elicitation_handler  # type: ignore[attr-defined]
+    assert hasattr(executor, "_permission_suggestions_handler")
+    executor._permission_suggestions_handler = adapter._stable_permission_suggestions_handler  # type: ignore[attr-defined]
+    ctx = _ElicitingTurnContext(ElicitationResult(action=action, content=content))
+    adapter._current_ctx = ctx  # type: ignore[assignment]
+    rule = PermissionUpdate(
+        type="addRules",
+        rules=[PermissionRuleValue(tool_name="mcp__omnigent__sys_os_shell")],
+        behavior="allow",
+        destination="localSettings",
+    )
+
+    result = await executor._can_use_tool_for_permission(
+        "mcp__omnigent__sys_os_shell",
+        {"command": "npm test"},
+        ToolPermissionContext(suggestions=[rule], tool_use_id="tool_1"),
+    )
+
+    [(_, params)] = ctx.seen
+    assert params.permission_suggestions == [rule.to_dict()]
+    if applied is None:
+        assert isinstance(result, PermissionResultDeny)
+    else:
+        assert isinstance(result, PermissionResultAllow)
+        assert result.updated_permissions == ([rule] if applied else None)
+    assert ctx.cancelled.was_set is cancelled
 
 
 class _FakeHookMatcher:

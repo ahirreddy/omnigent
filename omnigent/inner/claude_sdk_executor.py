@@ -233,6 +233,34 @@ AskQuestionHandler: TypeAlias = Callable[
 # card's ``ElicitationRequestParams`` in, the ``ElicitationResult`` out.
 FormElicitationHandler: TypeAlias = Callable[[str, Any], Awaitable[Any]]
 
+# Adapter bridge for a permission request carrying Claude's suggested updates (as
+# control-protocol dicts): ``None`` denies, else the updates to apply with the allow.
+PermissionSuggestionsHandler: TypeAlias = Callable[
+    [str, ToolArgs, list[dict[str, Any]]],
+    Awaitable[list[dict[str, Any]] | None],
+]
+
+
+def _permission_suggestion_dicts(perm_ctx: object) -> list[dict[str, Any]]:
+    """
+    Claude's suggested updates on a permission request, as control-protocol dicts.
+
+    :param perm_ctx: The SDK's ``ToolPermissionContext``; its ``suggestions`` are
+        ``PermissionUpdate`` objects (raw dicts on older SDKs).
+    :returns: Every suggestion, or none when any cannot be sent, so the card
+        never offers less than Claude would apply.
+    """
+    suggestions = getattr(perm_ctx, "suggestions", None) or []
+    try:
+        return [
+            update.to_dict() if hasattr(update, "to_dict") else dict(update)
+            for update in suggestions
+        ]
+    except (TypeError, ValueError):
+        logger.warning("permission suggestions the SDK cannot send; offering none")
+        return []
+
+
 # Opaque SDK artifacts whose concrete shape we don't touch directly:
 # - ``SdkMcpTool``: returned by ``sdk.tool(...)`` decorator and passed back
 #   to ``sdk.create_sdk_mcp_server(tools=...)`` without field access.
@@ -2393,6 +2421,8 @@ class ClaudeSDKExecutor(Executor):
         self._ask_question_handler: AskQuestionHandler | None = None
         # MCP elicitation bridge installed by ExecutorAdapter; None until wired.
         self._form_elicitation_handler: FormElicitationHandler | None = None
+        # Permission card offering Claude's suggestions; installed by ExecutorAdapter.
+        self._permission_suggestions_handler: PermissionSuggestionsHandler | None = None
         # Live Claude SDK clients keyed by Omnigent session id.
         self._clients: dict[str, _ClaudeClientState] = {}
         self._pending_framework_context: dict[str, str] = {}
@@ -3453,6 +3483,19 @@ class ClaudeSDKExecutor(Executor):
             # is included for safety if the SDK ever calls the callback
             # after the handler was cleared.
             return PermissionResultAllow()
+        suggestions = _permission_suggestion_dicts(perm_ctx)
+        if suggestions and self._permission_suggestions_handler is not None:
+            # Claude's "don't ask again" offer rides on the card; the grant says
+            # which updates to apply, if any.
+            from claude_agent_sdk import PermissionUpdate
+
+            grant = await self._permission_suggestions_handler(tool_name, tool_input, suggestions)
+            if grant is None:
+                return PermissionResultDeny(message="Denied via Omnigent elicitation")
+            return PermissionResultAllow(
+                updated_permissions=[PermissionUpdate.from_dict(update) for update in grant]
+                or None
+            )
         allowed = await self._elicitation_handler(tool_name, tool_input)
         if allowed:
             return PermissionResultAllow()

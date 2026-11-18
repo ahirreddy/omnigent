@@ -1441,8 +1441,13 @@ def register_hooks_routes(
             )
         params = claude_mcp_elicitation_params(payload)
         elicitation_id = _client_supplied_hook_elicitation_id(payload, session_id)
+        # A retried request whose card is up, or was answered between polls, keeps its card.
+        known = elicitation_id is not None and (
+            _harness_elicitation_owners.get(elicitation_id) is not None
+            or _harness_pre_resolved_elicitations.get(elicitation_id) is not None
+        )
         ancestors = await asyncio.to_thread(_ancestor_session_ids, conversation_store, session_id)
-        if not any(
+        if not known and not any(
             session_stream.has_subscribers(watched) for watched in (session_id, *ancestors)
         ):
             return Response(status_code=status.HTTP_200_OK)

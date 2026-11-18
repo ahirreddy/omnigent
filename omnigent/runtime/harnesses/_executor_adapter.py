@@ -63,6 +63,7 @@ from omnigent.server.ask_user_question import (
     answered_ask_user_question_input,
     structured_ask_user_question,
 )
+from omnigent.server.claude_permission_updates import claude_permission_suggestions
 from omnigent.server.schemas import (
     CreateResponseRequest,
     ElicitationRequestParams,
@@ -300,6 +301,15 @@ class ExecutorAdapter(HarnessApp):
         ):
             executor._form_elicitation_handler = (  # type: ignore[attr-defined]
                 self._stable_form_elicitation_handler
+            )
+        # The claude-sdk executor also offers Claude's suggested permission
+        # updates on its card; other executors don't define the attribute.
+        if (
+            hasattr(executor, "_permission_suggestions_handler")
+            and executor._permission_suggestions_handler is None  # type: ignore[attr-defined]
+        ):
+            executor._permission_suggestions_handler = (  # type: ignore[attr-defined]
+                self._stable_permission_suggestions_handler
             )
         # The claude-sdk executor also accepts an AskUserQuestion bridge that
         # renders the question as a clickable form and feeds selections back;
@@ -999,6 +1009,38 @@ class ExecutorAdapter(HarnessApp):
             ctx.cancelled.set()
         return result.action == "accept"
 
+    async def _stable_permission_suggestions_handler(
+        self,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        suggestions: list[dict[str, Any]],
+    ) -> list[dict[str, Any]] | None:
+        """Stable bridge for a permission request that carries Claude's suggestions.
+
+        The binary card of :meth:`_stable_elicitation_handler`, also offering the
+        suggested updates as one "don't ask again" choice. A decline cancels the
+        turn, as there.
+
+        :returns: ``None`` to deny; else the updates to apply with the allow: the
+            checked suggestions when the user chose them, otherwise none.
+        """
+        ctx = self._current_ctx
+        if ctx is None:
+            _logger.error(
+                "permission callback fired with no active turn context (tool=%s); denying",
+                tool_name,
+            )
+            return None
+        offered = claude_permission_suggestions(suggestions)
+        params = self._permission_card(tool_name, tool_input, permission_suggestions=offered)
+        result = await ctx.elicit(f"elicit_{secrets.token_hex(16)}", params)
+        if result.action == "decline":
+            ctx.cancelled.set()
+        if result.action != "accept":
+            return None
+        content = result.content if isinstance(result.content, dict) else {}
+        return offered if offered and content.get("apply_suggestions") is True else []
+
     def _permission_card(
         self,
         tool_name: str,
@@ -1006,13 +1048,15 @@ class ExecutorAdapter(HarnessApp):
         *,
         requested_schema: dict[str, Any] | None = None,
         ask_user_question: dict[str, Any] | None = None,
+        permission_suggestions: list[dict[str, Any]] | None = None,
         phase: str = "tool_call",
     ) -> ElicitationRequestParams:
         """Build the approval-card params for a tool-permission elicitation.
 
         With *requested_schema* the card renders one button per choice instead of
         Approve/Reject; with *ask_user_question* it renders that question form;
-        without either, the usual binary card.
+        without either, the usual binary card, which also offers
+        *permission_suggestions* when given.
         """
         # Build a concise preview: truncate long args so the UI widget
         # stays readable. 300 chars matches AP's policy-engine preview.
@@ -1023,10 +1067,12 @@ class ExecutorAdapter(HarnessApp):
         preview = preview[:300]
 
         label = self._harness_label
-        # Extra field, stamped only when present so other cards serialize unchanged.
+        # Extra fields, stamped only when present so other cards serialize unchanged.
         extras: dict[str, Any] = (
             {"ask_user_question": ask_user_question} if ask_user_question else {}
         )
+        if permission_suggestions:
+            extras["permission_suggestions"] = permission_suggestions
         return ElicitationRequestParams(
             mode="form",
             message=f"{label} wants to use **{tool_name}**",
