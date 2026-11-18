@@ -127,9 +127,6 @@ public struct ConnectedServerView: View {
     .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
     .modifier(NestedDraftRetirement(connection: connection))
-    .task(id: connection.connectedServer?.baseUrl) {
-      if connection.connectedServer != nil { await connection.loadOfferedPages() }
-    }
     .modifier(
       WindowTabOverview(
         tabs: tabs, isPresented: $showsTabOverview, renameSession: renameSessionOfTab)
@@ -171,6 +168,7 @@ public struct ConnectedServerView: View {
     state.showsUsage = connection.pages?.offered?.usage == true
     state.showsCanvas = connection.pages?.offered?.canvas == true
     state.showsSharedScope = connection.pages?.offered?.sharing ?? true
+    state.pagesFailure = SidebarAdapter.pagesFailure(connection)
     state.projectSort = connection.sessionList.projectSortMode.map {
       $0 == .manual ? .manual : .alphabetical
     }

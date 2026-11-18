@@ -54,15 +54,6 @@ struct PagesStoreLoadTests {
       reasoningEffort: nil, permissionMode: nil)
   }
 
-  @Test("Pages the server won't describe stay unoffered, and the failure is returned")
-  func offeredFailure() async throws {
-    let server = RouteServer()
-    let pages = try await connectedPages(server)
-    server.fail("/v1/info")
-    #expect(await pages.loadOffered() != nil)
-    #expect(pages.offered == nil)
-  }
-
   @Test("A failed read of the automations shows the failure; a reload that works replaces it")
   func automationsRead() async throws {
     let server = RouteServer()

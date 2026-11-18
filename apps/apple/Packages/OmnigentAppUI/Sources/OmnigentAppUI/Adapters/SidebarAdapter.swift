@@ -228,6 +228,15 @@ enum SidebarAdapter {
     connection.isOffline ? offlineText : nil
   }
 
+  /// Why the sidebar has no Automations, Usage or Canvas rows when the reason is a failed read
+  /// rather than the server: `nil` once pages were read, or before any read finished.
+  /// - Parameter connection: The connection.
+  /// - Returns: The failure, for the quiet row's help.
+  static func pagesFailure(_ connection: ConnectionStore) -> String? {
+    guard connection.isSignedIn else { return nil }
+    return connection.pages?.offeredReadFailure?.message
+  }
+
   /// The web page of a session, as the core builds it (`<server>/c/<id>`, keeping any mount).
   static func webURL(server: ConnectedServer?, sessionID: String) -> URL? {
     guard let server else { return nil }

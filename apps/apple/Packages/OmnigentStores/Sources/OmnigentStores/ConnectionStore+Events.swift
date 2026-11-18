@@ -71,6 +71,7 @@ extension ConnectionStore {
       sessionList.viewerID = server.userId
       markSavedDrafts()
       loadServerLists(server)
+      reloadOfferedPages()
     }
   }
 
@@ -109,6 +110,7 @@ extension ConnectionStore {
     case .credentialRotated(let expiresAt):
       credentialExpiresAtMs = expiresAt
       credentialRotations += 1
+      reloadOfferedPages()
     case .unreadChanged(let ids):
       let unread = Set(ids)
       if unread != sessionList.unreadIDs { sessionList.unreadIDs = unread }

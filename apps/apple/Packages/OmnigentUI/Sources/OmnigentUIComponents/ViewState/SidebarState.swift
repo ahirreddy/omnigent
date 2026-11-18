@@ -242,6 +242,9 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var nestedDrafts: [String: String] = [:]
   /// The server cannot be reached and the list is what this device saved: the line under it.
   public var offlineNotice: String?
+  /// Why the pages the server offers could not be read, when none were: Automations, Usage and
+  /// Canvas are missing because of it, and a quiet row says so where they would be.
+  public var pagesFailure: String?
 
   /// Creates sidebar state.
   /// - Parameters:
@@ -354,6 +357,8 @@ public struct SidebarActions {
   /// Collapse (`true`) or expand a family by its key in ``SidebarViewState/collapsedFamilies``;
   /// `nil` shows no family chevrons.
   public var setFamilyCollapsed: (@MainActor (String, Bool) -> Void)?
+  /// Read the pages the server offers again, after ``SidebarViewState/pagesFailure``.
+  public var retryPages: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:
