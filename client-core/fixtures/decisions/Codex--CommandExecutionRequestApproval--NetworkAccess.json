@@ -46,6 +46,7 @@
       "policy_name": "codex_native_command_approval",
       "codex_method": "item/commandExecution/requestApproval",
       "codex_request_id": 32,
+      "approval_request_fingerprint": "b794bbbfeaf3dd69f42d58fecef9dfd810362efd3a6f73fac2e4c5b54edf8539",
       "command": "curl https://registry.example.com/index.json",
       "cwd": "/workspace/demo",
       "reason": "Fetch the package index",

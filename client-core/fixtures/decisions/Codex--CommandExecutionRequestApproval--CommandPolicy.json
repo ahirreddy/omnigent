@@ -41,6 +41,7 @@
       "policy_name": "codex_native_command_approval",
       "codex_method": "item/commandExecution/requestApproval",
       "codex_request_id": 31,
+      "approval_request_fingerprint": "8af5d75b037afa2c23f252e56f4bb2ed1b05ea370813d41fae7caea8618348ec",
       "command": "cargo test -p demo",
       "cwd": "/workspace/demo",
       "reason": "Run the test suite",
@@ -53,7 +54,8 @@
   "answer": {
     "action": "accept",
     "content": {
-      "execpolicy_amendment": ["cargo", "test"]
+      "remember": true,
+      "request_fingerprint": "8af5d75b037afa2c23f252e56f4bb2ed1b05ea370813d41fae7caea8618348ec"
     }
   },
   "codex_result": {

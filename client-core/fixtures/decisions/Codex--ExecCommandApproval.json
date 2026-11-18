@@ -26,6 +26,7 @@
       "policy_name": "codex_native_command_approval",
       "codex_method": "execCommandApproval",
       "codex_request_id": 35,
+      "approval_request_fingerprint": "e6002e25eb16b66f87691d0c0b730c244fd2bd7e638e488f55f64961ccfbfc06",
       "command": "git status --short",
       "cwd": "/workspace/demo",
       "thread_id": "thread_fixture",
