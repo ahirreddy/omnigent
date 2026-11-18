@@ -83,6 +83,9 @@ struct ConversationContainer: View {
   // The liveness row's open sheet; a send can open Resume on a Machine.
   // swiftlint:disable:next private_swiftui_state
   @State var livenessSheets = SessionLivenessSheets()
+  // One object for the chat's task markers, so the environment holding it stays the same.
+  // swiftlint:disable:next private_swiftui_state
+  @State var markerLinks = TaskMarkerLinks()
 
   var body: some View {
     let composer = conversation.composer
@@ -105,10 +108,7 @@ struct ConversationContainer: View {
     }
     .modifier(MessageMediaEnvironment(fileLinks: fileLinks, conversation: conversation))
     .environment(\.taskMarkerLinks, taskMarkerLinks)
-    .task(id: conversation.sessionID) {
-      await panel?.loadFeatures()
-      await tasks?.load(supported: tasksSupported)
-    }
+    .task(id: conversation.sessionID) { await tasks?.load() }
     .task(id: (linkedWorkspace ?? workspace).map(ObjectIdentifier.init)) {
       fileLinks = (linkedWorkspace ?? workspace).map(MarkdownLinksAdapter.links)
     }

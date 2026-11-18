@@ -8,7 +8,7 @@ public import OmnigentCoreFFI
 public final class SessionTasksStore {
   /// Where the journal read stands.
   public enum Journal: Equatable {
-    /// Not read yet.
+    /// Not read yet, nor whether the server keeps journals.
     case idle
     /// The server keeps no journals; only the agent's own list shows.
     case unsupported
@@ -42,22 +42,35 @@ public final class SessionTasksStore {
     return []
   }
 
-  /// Reads the journal when the server keeps one and it was not read yet.
-  /// - Parameter supported: The server keeps journals (`PanelFeatures.sessionJournal`).
-  public func load(supported: Bool) async {
-    guard supported else {
-      if journal != .unsupported { journal = .unsupported }
-      return
-    }
-    switch journal {
-    case .idle, .unsupported: await read()
-    case .loading, .loaded, .failed: break
-    }
+  /// Learns whether the server keeps journals, then reads this one; once, until a failure.
+  public func load() async {
+    guard journal == .idle else { return }
+    await start()
   }
 
   /// Reads the journal again, after a failure.
   public func retry() async {
-    await read()
+    await start()
+  }
+
+  /// Asks the server whether it keeps journals (`PanelFeatures.sessionJournal`) and reads this
+  /// one when it does. The journal stays idle meanwhile, so a server without them shows no tab.
+  private func start() async {
+    generation += 1
+    let current = generation
+    let features: PanelFeatures
+    do {
+      features = try await core.panelFeatures()
+    } catch {
+      if current == generation { journal = .failed(coreError(error)) }
+      return
+    }
+    guard current == generation else { return }
+    if features.sessionJournal {
+      await read()
+    } else if journal != .unsupported {
+      journal = .unsupported
+    }
   }
 
   /// The stream pushed an entry: it joins the journal read; one the core could not read, or one

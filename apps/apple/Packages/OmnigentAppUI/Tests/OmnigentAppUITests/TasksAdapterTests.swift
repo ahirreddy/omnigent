@@ -86,6 +86,34 @@ struct TasksAdapterTests {
     #expect(TasksAdapter.state(none, tasks: nil, supported: true, rows: [:]) == .empty)
   }
 
+  @MainActor
+  @Test("The tab and the markers' links follow the agent's tasks, and a link opens the tab")
+  func tabAndMarkerLinks() async throws {
+    final class Opened { var count = 0 }
+    let todos = OmnigentCoreFFI.EventSection(
+      id: "todos", title: "Tasks", summary: "",
+      details: [detail("task-1", "In progress: Fix it", "Fixing")], sessionId: nil)
+    let conversation = try await ConversationFixtures.store(
+      sections: [todos], rows: [marker("r1", task: "task-1", marker: "todo-task-1-started")])
+    #expect(!TasksAdapter.keepsJournal(nil), "no store, no journal")
+    #expect(TasksAdapter.showsTab(tasks: nil, conversation: conversation))
+    let opened = Opened()
+    let links = TasksAdapter.point(TaskMarkerLinks(), tasks: nil, conversation: conversation) {
+      opened.count += 1
+    }
+    #expect(links.listed() == .shown(["task-1"]))
+    links.open("task-1")
+    #expect(opened.count == 1)
+
+    let empty = try await ConversationFixtures.store()
+    #expect(!TasksAdapter.showsTab(tasks: nil, conversation: empty))
+    #expect(TasksAdapter.listedTasks(tasks: nil, conversation: empty) == .hidden)
+    let content = TasksAdapter.content(
+      tasks: nil, conversation: empty, summary: nil,
+      routes: TasksAdapter.Routes(showRow: { _ in }, report: { _ in }))
+    #expect(content.state == .empty, "a tab that no longer shows draws nothing")
+  }
+
   @Test("Menu actions map both ways")
   func actions() {
     for action in [TaskMenuAction.run, .resume, .proceed, .retry, .stop] {

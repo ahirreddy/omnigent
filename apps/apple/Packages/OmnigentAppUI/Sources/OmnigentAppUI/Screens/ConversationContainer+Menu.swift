@@ -203,28 +203,27 @@ extension ConversationContainer {
       canEdit: !(conversation.header?.readOnly ?? false),
       newSideChat: SessionToolsAdapter.sideChat(conversation, routes: routes),
       agents: AgentTreeAdapter.panel(conversation, open: routes.openSession),
-      tasks: tasksContent(report: routes.report),
+      tasks: tasksSlot(report: routes.report),
       composer: conversation.composer, report: routes.report
     ).slots
   }
 
-  /// The server keeps session journals, so the Tasks tab shows plans too.
-  var tasksSupported: Bool { panel?.features?.sessionJournal == true }
-
-  /// The Tasks tab; `nil` hides it.
-  func tasksContent(report: @escaping @MainActor (String) -> Void) -> TasksPanelContent? {
+  /// The Tasks tab, read when the panel draws, so the tasks do not redraw the chat.
+  func tasksSlot(report: @escaping @MainActor (String) -> Void) -> TasksSlot {
+    let (tasks, conversation, summary) = (tasks, conversation, summary)
     let (focus, sessionID) = (transcriptFocus, conversation.sessionID)
-    return TasksAdapter.content(
-      tasks: tasks, supported: tasksSupported, conversation: conversation, summary: summary,
-      routes: TasksAdapter.Routes(
-        showRow: { focus?.focus($0, in: sessionID) }, report: report))
+    let routes = TasksAdapter.Routes(showRow: { focus?.focus($0, in: sessionID) }, report: report)
+    return TasksSlot(
+      isShown: { TasksAdapter.showsTab(tasks: tasks, conversation: conversation) },
+      content: {
+        TasksAdapter.content(
+          tasks: tasks, conversation: conversation, summary: summary, routes: routes)
+      })
   }
 
-  /// How the chat's task markers open the Tasks tab.
-  var taskMarkerLinks: TaskMarkerLinks? {
-    TasksAdapter.markerLinks(
-      tasks: tasks, supported: tasksSupported, conversation: conversation, summary: summary,
-      showTasks: showTasks)
+  /// The chat's task marker links, pointed at this session; its markers read the tasks.
+  var taskMarkerLinks: TaskMarkerLinks {
+    TasksAdapter.point(markerLinks, tasks: tasks, conversation: conversation, showTasks: showTasks)
   }
 
   /// The window loads what its panel shows of this chat's session, so the chat does not.

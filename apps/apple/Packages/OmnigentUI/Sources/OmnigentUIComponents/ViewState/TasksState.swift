@@ -248,16 +248,60 @@ public struct TasksPanelContent {
   }
 }
 
+/// The Tasks tab in the right panel, read when the panel draws, so the tasks redraw only it.
+public struct TasksSlot {
+  /// Whether the tab shows.
+  public var isShown: @MainActor () -> Bool
+  /// What it shows.
+  public var content: @MainActor () -> TasksPanelContent
+
+  /// A slot.
+  public init(
+    isShown: @escaping @MainActor () -> Bool = { true },
+    content: @escaping @MainActor () -> TasksPanelContent
+  ) {
+    self.isShown = isShown
+    self.content = content
+  }
+}
+
+/// What the Tasks tab lists, for the chat's task markers.
+nonisolated public enum ListedTasks: Hashable, Sendable {
+  /// The tab does not show, so markers link nowhere.
+  case hidden
+  /// The tab shows these tasks.
+  case shown(Set<String>)
+
+  /// Whether the tab shows.
+  public var isShown: Bool { self != .hidden }
+
+  /// Whether the tab lists `task`.
+  public func contains(_ task: String) -> Bool {
+    if case .shown(let tasks) = self { return tasks.contains(task) }
+    return false
+  }
+}
+
 /// How the transcript's task markers link to the Tasks tab (the web's `TaskMarkersProvider`).
-public struct TaskMarkerLinks {
-  /// The tasks the tab lists now; a marker of another links nowhere.
-  public var taskIDs: Set<String>
+/// A chat keeps one, so the environment holding it stays the same as the tasks change; a marker
+/// reads them as it draws.
+public final class TaskMarkerLinks {
+  /// What the tab lists now; a marker of another task links nowhere.
+  public var listed: @MainActor () -> ListedTasks
   /// Opens the Tasks tab, at a task when given one.
   public var open: @MainActor (String?) -> Void
 
-  /// Links.
-  public init(taskIDs: Set<String>, open: @escaping @MainActor (String?) -> Void) {
-    self.taskIDs = taskIDs
+  /// Links that read the tasks through `listed`.
+  public init(
+    listed: @escaping @MainActor () -> ListedTasks = { .hidden },
+    open: @escaping @MainActor (String?) -> Void = { _ in }
+  ) {
+    self.listed = listed
     self.open = open
+  }
+
+  /// Links to a fixed list of tasks.
+  public convenience init(taskIDs: Set<String>, open: @escaping @MainActor (String?) -> Void) {
+    self.init(listed: { .shown(taskIDs) }, open: open)
   }
 }

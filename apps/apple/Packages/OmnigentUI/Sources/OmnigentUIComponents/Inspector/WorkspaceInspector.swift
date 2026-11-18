@@ -152,7 +152,7 @@ public struct WorkspaceInspector: View {
         }
       case .tasks:
         if let tasks = slots.tasks {
-          TasksPanel(content: tasks)
+          TasksTab(slot: tasks)
         }
       case .agents:
         if let agents = slots.agents {
@@ -164,6 +164,15 @@ public struct WorkspaceInspector: View {
         SessionInspectorView(state: state, actions: actions)
       }
     }
+  }
+}
+
+/// The Tasks tab, reading its content as it draws.
+private struct TasksTab: View {
+  let slot: TasksSlot
+
+  var body: some View {
+    TasksPanel(content: slot.content())
   }
 }
 

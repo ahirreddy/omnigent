@@ -50,8 +50,10 @@ nonisolated enum TranscriptMarker {
     -> CLIAction?
   {
     guard let links else { return nil }
+    let listed = links.listed()
+    guard listed.isShown else { return nil }
     let task = Self.task(activity)
-    guard isPlanLine(activity) || task.map(links.taskIDs.contains) == true else { return nil }
+    guard isPlanLine(activity) || task.map(listed.contains) == true else { return nil }
     return CLIAction(
       title: "Show in Tasks", systemImage: "checklist",
       identifier: "task-marker-open-\(rowID)", perform: { links.open(task) })
@@ -143,12 +145,13 @@ struct ActivityMarkerRowView: View {
   @Environment(\.taskMarkerLinks) private var taskLinks
 
   var body: some View {
+    let listed = taskLinks?.listed() ?? .hidden
     HStack(spacing: Theme.Spacing.small) {
       DashedRule()
       HStack(spacing: Theme.Spacing.small) {
         Image(systemName: activity.kind.systemImage)
           .accessibilityHidden(true)
-        line
+        line(listed)
           .multilineTextAlignment(.center)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -161,36 +164,35 @@ struct ActivityMarkerRowView: View {
     }
     .padding(.vertical, Theme.Spacing.extraSmall)
     // A row with a link keeps the button its own element, which combining would fold away.
-    .accessibilityElement(children: hasLink ? .contain : .combine)
+    .accessibilityElement(children: hasLink(listed) ? .contain : .combine)
     .accessibilityLabel(row.text)
     .accessibilityIdentifier(
       activity.kind == .subagentMarker ? "subagent-marker-\(row.id)" : "task-marker-\(row.id)")
   }
 
-  /// Whether `line` shows a button: the Tasks tab's, or the sub-agent's session.
-  private var hasLink: Bool {
-    if TranscriptMarker.isPlanLine(activity), taskLinks != nil { return true }
-    if let task = TranscriptMarker.task(activity), let taskLinks {
-      return taskLinks.taskIDs.contains(task)
-    }
+  /// Whether the line shows a button: the Tasks tab's, or the sub-agent's session.
+  private func hasLink(_ listed: ListedTasks) -> Bool {
+    if TranscriptMarker.isPlanLine(activity), listed.isShown { return true }
+    if let task = TranscriptMarker.task(activity), listed.isShown { return listed.contains(task) }
     return !activity.summary.isEmpty && TranscriptMarker.childSession(activity) != nil
       && (actions.openChild ?? actions.openSession) != nil
   }
 
-  @ViewBuilder private var line: some View {
+  /// The label and subject, linked to the Tasks tab while it lists them.
+  @ViewBuilder private func line(_ listed: ListedTasks) -> some View {
     let tint = TranscriptMarker.waitsForReader(activity) ? Theme.brandAccent : Theme.secondary
     let label = Text(activity.title).foregroundStyle(tint)
-    if TranscriptMarker.isPlanLine(activity), let taskLinks {
+    if TranscriptMarker.isPlanLine(activity), listed.isShown {
       // A plan line opens the Tasks tab, as on the web.
-      Button(activity.title) { taskLinks.open(nil) }
+      Button(activity.title) { taskLinks?.open(nil) }
         .buttonStyle(.plain)
         .help("Show the tasks")
         .accessibilityIdentifier("task-marker-open-\(row.id)")
-    } else if let task = TranscriptMarker.task(activity), let taskLinks {
+    } else if let task = TranscriptMarker.task(activity), listed.isShown {
       HStack(spacing: Theme.Spacing.tiny) {
         label
-        if taskLinks.taskIDs.contains(task) {
-          Button(activity.summary) { taskLinks.open(task) }
+        if listed.contains(task) {
+          Button(activity.summary) { taskLinks?.open(task) }
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
             .help("Show \(activity.summary) in Tasks")

@@ -74,35 +74,33 @@ enum TasksAdapter {
 
   /// The core's view of the tab, or `nil` when the tab does not show.
   static func view(
-    tasks: SessionTasksStore?, supported: Bool, conversation: ConversationStore,
+    tasks: SessionTasksStore?, conversation: ConversationStore,
     summary: OmnigentCoreFFI.SessionSummary?
   ) -> TasksView? {
     let native = nativeTasks(conversation.sections)
+    let supported = keepsJournal(tasks)
     guard supported || !native.isEmpty else { return nil }
     let markers = markerRows(conversation.rows).keys.filter { $0.hasPrefix("todo-") }
-    var journalRead = true
-    if case .failed? = tasks?.journal { journalRead = false }
     let context = TasksContext(
       sessionWorking: isWorking(conversation, summary: summary),
       awaitingUser: awaitsUser(conversation),
-      canSend: !ComposerAdapter.isReadOnly(conversation), journalRead: journalRead)
+      canSend: !ComposerAdapter.isReadOnly(conversation), journalRead: journalRead(tasks))
     return tasksView(
       entries: supported ? tasks?.entries ?? [] : [], nativeTasks: native,
       nativeMarkers: Array(markers), context: context)
   }
 
-  /// The tab's content, or `nil` to hide it.
+  /// The tab's content; empty once it no longer shows.
   static func content(
-    tasks: SessionTasksStore?, supported: Bool, conversation: ConversationStore,
+    tasks: SessionTasksStore?, conversation: ConversationStore,
     summary: OmnigentCoreFFI.SessionSummary?, routes: Routes
-  ) -> TasksPanelContent? {
-    guard
-      let view = view(
-        tasks: tasks, supported: supported, conversation: conversation, summary: summary)
-    else { return nil }
+  ) -> TasksPanelContent {
+    guard let view = view(tasks: tasks, conversation: conversation, summary: summary) else {
+      return TasksPanelContent(state: .empty)
+    }
     let rowsByMarker = markerRows(conversation.rows)
     var content = TasksPanelContent(
-      state: state(view, tasks: tasks, supported: supported, rows: rowsByMarker))
+      state: state(view, tasks: tasks, supported: keepsJournal(tasks), rows: rowsByMarker))
     content.taskToShow = tasks?.taskToShow
     content.shown = { tasks?.taskToShow = nil }
     content.retry = { Task { await tasks?.retry() } }
@@ -126,21 +124,6 @@ enum TasksAdapter {
     content.stop = { send(stopPlanMessage(planName: nil)) }
     content.continuePlan = { send(continuePlanMessage(planName: view.planName)) }
     return content
-  }
-
-  /// How the transcript's task markers link to the tab, while it shows.
-  static func markerLinks(
-    tasks: SessionTasksStore?, supported: Bool, conversation: ConversationStore,
-    summary: OmnigentCoreFFI.SessionSummary?, showTasks: @escaping @MainActor () -> Void
-  ) -> TaskMarkerLinks? {
-    guard
-      let view = view(
-        tasks: tasks, supported: supported, conversation: conversation, summary: summary)
-    else { return nil }
-    return TaskMarkerLinks(taskIDs: Set(view.rows.map(\.id))) { task in
-      tasks?.taskToShow = task
-      showTasks()
-    }
   }
 
   /// Why a task message cannot go out now (web `blockedReasonFor`).
@@ -249,5 +232,60 @@ enum TasksAdapter {
     case .retry: .retry
     case .stop: .stop
     }
+  }
+}
+
+/// Whether the tab shows, and the links from the chat's task markers to it.
+extension TasksAdapter {
+  /// Whether the server keeps the session's journal, as far as its store has learned.
+  static func keepsJournal(_ tasks: SessionTasksStore?) -> Bool {
+    guard let journal = tasks?.journal else { return false }
+    switch journal {
+    case .loading, .loaded, .failed: return true
+    case .idle, .unsupported: return false
+    }
+  }
+
+  /// Whether the tab shows: the agent keeps its own tasks, or the server keeps journals.
+  static func showsTab(tasks: SessionTasksStore?, conversation: ConversationStore) -> Bool {
+    keepsJournal(tasks) || !nativeTasks(conversation.sections).isEmpty
+  }
+
+  /// What the tab lists. It reads no rows or turn state, which change only where the tasks
+  /// stand, so a marker does not redraw as the chat streams.
+  static func listedTasks(tasks: SessionTasksStore?, conversation: ConversationStore)
+    -> ListedTasks
+  {
+    let native = nativeTasks(conversation.sections)
+    let supported = keepsJournal(tasks)
+    guard supported || !native.isEmpty else { return .hidden }
+    let context = TasksContext(
+      sessionWorking: false, awaitingUser: false, canSend: false,
+      journalRead: journalRead(tasks))
+    let view = tasksView(
+      entries: supported ? tasks?.entries ?? [] : [], nativeTasks: native, nativeMarkers: [],
+      context: context)
+    return .shown(Set(view.rows.map(\.id)))
+  }
+
+  /// Points the chat's marker `links` at a session: they list its tasks while the tab shows and
+  /// open the tab at one.
+  @discardableResult
+  static func point(
+    _ links: TaskMarkerLinks, tasks: SessionTasksStore?, conversation: ConversationStore,
+    showTasks: @escaping @MainActor () -> Void
+  ) -> TaskMarkerLinks {
+    links.listed = { listedTasks(tasks: tasks, conversation: conversation) }
+    links.open = { task in
+      tasks?.taskToShow = task
+      showTasks()
+    }
+    return links
+  }
+
+  /// Whether the journal read did not fail.
+  static func journalRead(_ tasks: SessionTasksStore?) -> Bool {
+    if case .failed? = tasks?.journal { return false }
+    return true
   }
 }

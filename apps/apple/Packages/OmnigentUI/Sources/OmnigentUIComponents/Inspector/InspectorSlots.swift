@@ -35,7 +35,7 @@ nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, 
   /// The tabs `slots` shows, in order.
   @MainActor
   static func shown(_ slots: WorkspaceSlots) -> [Self] {
-    shown(hasSearch: slots.search != nil, hasTasks: slots.tasks != nil)
+    shown(hasSearch: slots.search != nil, hasTasks: slots.tasks?.isShown() == true)
   }
 
   /// The label.
@@ -222,7 +222,7 @@ public struct WorkspaceSlots {
   /// The Agents tab; `nil` lists the conversation's own sub-agents.
   public var agents: AnyView?
   /// The Tasks tab; `nil` hides it.
-  public var tasks: TasksPanelContent?
+  public var tasks: TasksSlot?
   /// The "Open new" menu, read when the panel draws so its sources are observed there; `nil`
   /// or empty hides it.
   public var openNew: (@MainActor () -> [InspectorMenuSection])?

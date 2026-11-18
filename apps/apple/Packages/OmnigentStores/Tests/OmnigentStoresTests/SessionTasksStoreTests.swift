@@ -10,6 +10,15 @@ import Testing
 @Suite("Session tasks", .timeLimit(.minutes(1)))
 struct SessionTasksStoreTests {
   private let path = "/v1/sessions/conv_a/journal"
+  private let info = "/v1/info"
+
+  /// A server whose `/v1/info` says it keeps journals, or not.
+  private func infoServer(journals: Bool) -> RouteServer {
+    let server = RouteServer()
+    let features = journals ? #","session_journal":true,"features":{"workflows":true}"# : ""
+    server.route(info, .json(#"{"single_user":true,"accounts_enabled":false\#(features)}"#))
+    return server
+  }
 
   private func entry(_ id: String, _ position: Int, kind: String, step: String?, content: String)
     -> String
@@ -32,31 +41,55 @@ struct SessionTasksStoreTests {
       content: #"{"version":1,"name":"Ship","steps":[{"id":"a","name":"A","depends_on":[]}]}"#)
   }
 
-  @Test("Without journals nothing is read; with them the journal is read once")
+  @Test("A server without journals has none read; one with them has it read once")
   func loadsWhenSupported() async throws {
-    let server = RouteServer()
+    let old = infoServer(journals: false)
+    old.route(path, page([plan], last: "p"))
+    let oldConnection = try await connectedStore(old)
+    let unsupported = try #require(oldConnection.tasks("conv_a"))
+    await unsupported.load()
+    #expect(unsupported.journal == .unsupported)
+    #expect(old.requests(to: path).isEmpty)
+
+    let server = infoServer(journals: true)
     server.route(path, page([plan], last: "p"))
     let connection = try await connectedStore(server)
     let tasks = try #require(connection.tasks("conv_a"))
     #expect(connection.tasks("conv_a") === tasks, "one store per session")
-    await tasks.load(supported: false)
-    #expect(tasks.journal == .unsupported)
-    #expect(server.requests(to: path).isEmpty)
-    await tasks.load(supported: true)
+    #expect(tasks.journal == .idle)
+    await tasks.load()
     #expect(tasks.entries.map(\.id) == ["p"])
     #expect(tasks.entries.first?.steps.map(\.id) == ["a"])
     let reads = server.requests(to: path).count
-    await tasks.load(supported: true)
+    await tasks.load()
     #expect(server.requests(to: path).count == reads, "a read journal is not read again")
+  }
+
+  @Test("When the server's features do not read, the tab says so, and Retry reads both")
+  func featuresFailure() async throws {
+    let server = infoServer(journals: true)
+    server.route(path, page([plan], last: "p"))
+    let connection = try await connectedStore(server)
+    let tasks = try #require(connection.tasks("conv_a"))
+    server.fail(info, status: 500, detail: "info broke")
+    await tasks.load()
+    guard case .failed = tasks.journal else {
+      Issue.record("not failed: \(tasks.journal)")
+      return
+    }
+    #expect(server.requests(to: path).isEmpty)
+    server.route(info, .json(#"{"session_journal":true,"features":{"workflows":true}}"#))
+    await tasks.retry()
+    #expect(tasks.entries.map(\.id) == ["p"])
   }
 
   @Test("A pushed entry joins the journal; one the core could not read has the missed read")
   func pushedEntries() async throws {
-    let server = RouteServer()
+    let server = infoServer(journals: true)
     server.route(path, page([plan], last: "p"))
     let connection = try await connectedStore(server)
     let tasks = try #require(connection.tasks("conv_a"))
-    await tasks.load(supported: true)
+    await tasks.load()
     let pushed = JournalEntry(
       id: "s", position: 1, createdAt: 1_795_080_001, scheduledTaskRunId: nil, step: "a",
       kind: "status", workflowId: nil, status: .started, text: nil, name: nil, steps: [],
@@ -77,11 +110,11 @@ struct SessionTasksStoreTests {
 
   @Test("A failed read says why and is read again on Retry")
   func failureAndRetry() async throws {
-    let server = RouteServer()
+    let server = infoServer(journals: true)
     server.fail(path, status: 500, detail: "journal broke")
     let connection = try await connectedStore(server)
     let tasks = try #require(connection.tasks("conv_a"))
-    await tasks.load(supported: true)
+    await tasks.load()
     guard case .failed = tasks.journal else {
       Issue.record("not failed: \(tasks.journal)")
       return

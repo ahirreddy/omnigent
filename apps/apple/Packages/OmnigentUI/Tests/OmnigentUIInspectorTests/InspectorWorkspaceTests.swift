@@ -260,7 +260,11 @@
       #expect(InspectorTab.shown(hasSearch: true).last == .search)
       #expect(!InspectorTab.shown(hasSearch: true).contains(.tasks), "no tasks, no tab")
       var withTasks = WorkspaceSlots()
-      withTasks.tasks = TasksPanelContent(state: .empty)
+      withTasks.tasks = TasksSlot { TasksPanelContent(state: .empty) }
+      #expect(InspectorTab.shown(withTasks).contains(.tasks))
+      withTasks.tasks?.isShown = { false }
+      #expect(!InspectorTab.shown(withTasks).contains(.tasks), "read when the panel draws")
+      withTasks.tasks?.isShown = { true }
       #expect(InspectorTab.shown(withTasks).firstIndex(of: .tasks) == 3, "after Pull Requests")
     }
   }
