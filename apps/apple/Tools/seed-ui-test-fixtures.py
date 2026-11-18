@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Seed the session the iOS UI tests tap through: a short exchange with a tool call and a web
 link, bound to the online host and a small workspace (folders for `@` mentions, files to edit,
-`notes.md` and `notes.pdf` to preview).
+`notes.md` and `notes.pdf` to preview, and `media/demo.mp4` with its chapters to play).
 
 Stored test data, no model call; the host launches the session's runner so its file APIs work.
 Reruns keep the session (fixed id) and restore the workspace files, so a test that edited one
@@ -11,17 +11,48 @@ workspace path.
 
 Also seeds a second session with a few pages of short history (its id is `fixed_id("ui-test",
 "paged")`, which the Mac flows know): enough to page, small enough for UI automation to read.
+And a third with the agent's own task list and two of its task markers (`fixed_id("ui-test",
+"tasks")`), for the Tasks tab.
 """
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 TITLE = "UI test fixture"
 PAGED_TITLE = "UI test paged history"
+TASKS_TITLE = "UI test tasks"
+# The agent's own task list, as a native forwarder reports it (Claude's task ids).
+TASK_TODOS = [
+    {
+        "id": "task-read",
+        "content": "Read the workspace",
+        "status": "completed",
+        "activeForm": "Reading the workspace",
+    },
+    {
+        "id": "task-fix",
+        "content": "Fix the greeting",
+        "status": "in_progress",
+        "activeForm": "Fixing the greeting",
+    },
+    {
+        "id": "task-test",
+        "content": "Write a test",
+        "status": "pending",
+        "activeForm": "Writing a test",
+    },
+]
+# The chapters of `media/demo.mp4`, which its player lists.
+DEMO_CHAPTERS = (
+    "WEBVTT\n\n00:00.000 --> 00:01.000\nSay hello\n\n00:01.000 --> 00:02.000\nSay goodbye\n"
+)
 # The server pages history 50 items at a time; a turn here is two items.
 PAGED_TURNS = 60
 WORKSPACE_FILES = {
@@ -62,6 +93,26 @@ def write_workspace(root: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
     (root / "notes.pdf").write_bytes(NOTES_PDF)
+    write_demo_video(root / "media")
+
+
+def write_demo_video(folder: Path) -> None:
+    """A two-second spoken MPEG-4 recording and its chapters, made with macOS's `say`."""
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "demo.mp4.chapters.vtt").write_text(DEMO_CHAPTERS)
+    command = [
+        "say",
+        "-o",
+        str(folder / "demo.mp4"),
+        "--file-format=mp4f",
+        "--data-format=aac",
+        "Hello. Goodbye.",
+    ]
+    try:
+        subprocess.run(command, check=True, capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as error:
+        # The workspace stays usable without it; the video flow then fails on the missing file.
+        print(f"Could not record media/demo.mp4: {error}", file=sys.stderr)
 
 
 def items(session_id: str, agent: str, fixed_id) -> list[tuple[str, str, dict, str]]:
@@ -139,6 +190,56 @@ def seed_paged(large, conversations, permissions, agent: dict) -> None:
     permissions.grant("local", session_id, 4)
 
 
+def seed_tasks(large, conversations, permissions, agent: dict) -> None:
+    """Seeds a session with the agent's own task list and its first two task markers, once."""
+    from omnigent.entities import MessageData, NewConversationItem, ResourceEventData
+
+    session_id = large.fixed_id("ui-test", "tasks")
+    existing = conversations.get_conversation(session_id)
+    if existing is not None:
+        if existing.title != TASKS_TITLE:
+            raise SystemExit(f"Refusing to modify an unexpected session: {session_id}")
+        return
+    conversations.create_conversation(
+        conversation_id=session_id, title=TASKS_TITLE, agent_id=agent["id"]
+    )
+    question = "Fix the greeting and test it."
+    items = [
+        NewConversationItem(
+            type="message",
+            response_id=f"turn_{large.fixed_id(session_id, 'user')}",
+            data=MessageData(role="user", content=[{"type": "input_text", "text": question}]),
+            stable_id=large.fixed_id(session_id, "user"),
+        )
+    ]
+    # The markers the server writes as the tasks start and finish (`record_todo_markers`).
+    for todo, status in ((TASK_TODOS[0], "done"), (TASK_TODOS[1], "started")):
+        key = f"todo:{todo['id']}:{status}:seed"
+        stable = hashlib.sha256(f"{session_id}:{key}".encode()).hexdigest()[:32]
+        items.append(
+            NewConversationItem(
+                type="resource_event",
+                response_id=f"journal_{stable}",
+                stable_id=stable,
+                data=ResourceEventData(
+                    event_type="session.journal.task",
+                    resource_id=todo["id"],
+                    resource_type="journal",
+                    resource={
+                        "name": todo["content"],
+                        "status": status,
+                        "text": None,
+                        "entry_id": None,
+                        "native": True,
+                    },
+                ),
+            )
+        )
+    conversations.append(session_id, items)
+    conversations.set_session_todos(session_id, TASK_TODOS)
+    permissions.grant("local", session_id, 4)
+
+
 def has_grown(large, server: str, session_id: str, seeded: int) -> bool:
     """Whether the session's history holds more than its `seeded` items."""
     path = f"/v1/sessions/{session_id}/items?limit={seeded + 1}"
@@ -188,6 +289,7 @@ def seed(args: argparse.Namespace) -> None:
     permissions = SqlAlchemyPermissionStore(uri)
     agent = large.mock_agent(args.server)
     seed_paged(large, conversations, permissions, agent)
+    seed_tasks(large, conversations, permissions, agent)
     existing = conversations.get_conversation(session_id)
     if existing is not None:
         if existing.title != TITLE:

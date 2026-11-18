@@ -172,6 +172,7 @@ public struct WorkspaceVideoView: View {
       case .loading, .ready:
         if let player = playback.player {
           VideoPlayer(player: player)
+            .accessibilityElement(children: .contain)
             .accessibilityLabel(title)
             .accessibilityIdentifier("workspace.video.player")
         }

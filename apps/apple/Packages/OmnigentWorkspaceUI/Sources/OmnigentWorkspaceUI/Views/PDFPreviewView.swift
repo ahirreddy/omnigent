@@ -30,7 +30,9 @@ struct PDFPreviewView: View {
         if let document = parsed.document {
           toolbar(pages: document.pageCount)
           Divider()
+          // A group, so the pages keep PDFKit's own accessibility under the identifier.
           PDFPages(document: document, scale: scale)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("workspace.pdf")
         } else {
           note(Self.unreadableMessage)
