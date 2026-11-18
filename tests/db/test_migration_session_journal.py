@@ -132,9 +132,13 @@ def test_upgrade_matches_models_and_downgrade_drops_tables(tmp_path: Path) -> No
     assert not {_ENTRIES, _HEADS} & tables
     assert {"inbox_items", "scheduled_task_shares"} <= tables
     assert "kind" in {column["name"] for column in rolled_back.get_columns("scheduled_tasks")}
+    # The scheduled-task side stays applied, up to the session turn-count column after it.
+    assert "turns_started" in {
+        column["name"] for column in rolled_back.get_columns("omnigent_conversation_metadata")
+    }
     with engine.connect() as connection:
         assert connection.execute(
             sa.text("SELECT version_num FROM alembic_version")
-        ).scalars().all() == ["27d16059fab9"]
+        ).scalars().all() == ["a1fc08d02b91"]
     engine.dispose()
     clear_engine_cache()
