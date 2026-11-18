@@ -30,6 +30,16 @@ extension ConversationStore {
     }
   }
 
+  /// Stops the session where it runs now, as a switch away from an online host does first.
+  /// - Throws: The core's error; nothing else changed.
+  public func stopForHostSwitch() async throws(CoreError) {
+    do {
+      try await core.stopSession(sessionId: sessionID)
+    } catch {
+      throw coreError(error)
+    }
+  }
+
   /// Moves the session to `hostID`, starting its runner in `workspace` there.
   /// - Parameters:
   ///   - hostID: An online host.

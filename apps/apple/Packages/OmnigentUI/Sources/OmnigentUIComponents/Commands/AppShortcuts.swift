@@ -38,6 +38,8 @@ public enum AppShortcuts {
   public static let stopAgent = KeyboardShortcut(".", modifiers: .command)
   /// Rename the session.
   public static let renameSession = KeyboardShortcut("r", modifiers: [.command, .option])
+  /// Mark the open session unread, or read again.
+  public static let toggleUnread = KeyboardShortcut("u", modifiers: [.command, .option])
   /// Add a nested agent beside the session.
   public static let addNestedAgent = KeyboardShortcut("a", modifiers: [.command, .option])
   /// Focus the composer.

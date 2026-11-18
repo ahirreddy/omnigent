@@ -21,8 +21,19 @@ extension ConnectedServerView {
     actions.renameProject = { project, name, icon in
       Task { await list.editProject(ProjectSummary(project), name: name, icon: icon) }
     }
+    let model = sidebarModel
     actions.deleteProject = { project in
-      Task { await list.deleteProject(ProjectSummary(project)) }
+      // As the web, a project whose agents are working asks again before it is deleted.
+      Task {
+        let summary = ProjectSummary(project)
+        guard let working = await list.workingSessions(in: summary) else { return }
+        if working > 0 {
+          model.projectDeleteRunning = ProjectDeleteRunningRequest(
+            project: project, runningCount: working)
+        } else {
+          await list.deleteProject(summary)
+        }
+      }
     }
     actions.reorderProjects = { projects in
       Task { await list.saveProjectOrder(projects.map(ProjectSummary.init)) }

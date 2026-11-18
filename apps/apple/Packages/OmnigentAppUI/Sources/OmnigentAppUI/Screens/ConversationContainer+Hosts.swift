@@ -6,8 +6,9 @@ import OmnigentUIComponents
 /// The reconnect sheet's ways out (Switch Host, Resume on a Machine) and the error card's
 /// sign-in link and recovery fork.
 extension ConversationContainer {
-  /// Adds Switch Host for an owned session whose host is offline, Resume on a Machine for an
-  /// owned session bound to no host, and the conversation's sheet state.
+  /// Adds Switch Host for an owned session on a host, Resume on a Machine for an owned session
+  /// bound to no host, and the conversation's sheet state. As the web, a switch away from a host
+  /// that may still run the session stops it there first.
   func addHostMoves(to actions: inout SessionLivenessActions, sheets: SessionLivenessSheets) {
     actions.sheets = sheets
     guard let header = conversation.header else { return }
@@ -16,7 +17,11 @@ extension ConversationContainer {
     if case .hostOffline(isOwner: true) = liveness {
       actions.switchHost = HostMoveRoute(
         kind: .switchHost(currentHostID: header.settings?.hostId),
-        actions: hostMoveActions(submit: switchHost))
+        actions: hostMoveActions { await switchHost($0, stoppingFirst: false) })
+    } else if Self.switchesOnlineHost(header), !hasSandbox {
+      actions.switchHost = HostMoveRoute(
+        kind: .switchHost(currentHostID: header.settings?.hostId),
+        actions: hostMoveActions { await switchHost($0, stoppingFirst: true) })
     }
     if LivenessAdapter.resumesOnMachine(header) {
       let workspace = summary?.workspace
@@ -25,6 +30,18 @@ extension ConversationContainer {
           preferredHostID: nil, workspace: workspace?.hasPrefix("/") == true ? workspace : nil),
         actions: hostMoveActions { await resumeOnHost($0, sheets: sheets) })
     }
+  }
+
+  /// An owned, editable session bound to a host can move to another one (the web's host badge
+  /// offers it whether the host is online or not).
+  static func switchesOnlineHost(_ header: OmnigentCoreFFI.SessionHeader) -> Bool {
+    let isOwner = header.permissionLevel.map { $0 >= 4 } ?? true
+    return isOwner && !header.readOnly && !header.archived && header.settings?.hostId != nil
+  }
+
+  /// The session runs in a managed sandbox, which can't switch hosts yet.
+  private var hasSandbox: Bool {
+    SandboxAdapter.state(conversation, environment: hostEnvironment) != nil
   }
 
   /// A send into a session bound to no host opens Resume on a Machine first, as the web's
@@ -75,14 +92,25 @@ extension ConversationContainer {
       submit: submit)
   }
 
-  private func switchHost(_ choice: HostMoveChoice) async -> HostMoveOutcome {
+  private func switchHost(_ choice: HostMoveChoice, stoppingFirst: Bool) async -> HostMoveOutcome {
+    if stoppingFirst {
+      do throws(CoreError) {
+        try await conversation.stopForHostSwitch()
+      } catch {
+        return .failed(
+          "\(error.message) Check the current host and stop the session there, then try again.")
+      }
+    }
     do throws(CoreError) {
       let launch = try await conversation.switchHost(
         to: choice.hostID, workspace: choice.workspace)
       if case .failed(let error) = launch { return .stranded(error.message) }
       return .moved
     } catch {
-      return .failed(error.message)
+      guard stoppingFirst else { return .failed(error.message) }
+      return .stranded(
+        "The session stopped, but the move didn't finish. Pick a host \u{2014} including the one "
+          + "it came from \u{2014} and try again.\n\(error.message)")
     }
   }
 

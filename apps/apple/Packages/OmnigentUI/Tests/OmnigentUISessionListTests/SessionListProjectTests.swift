@@ -72,7 +72,7 @@
       let menu = try #require(try screen.menu(ofRow: workRow))
       SystemSideEffects.answer(alert: .alertSecondButtonReturn)
       try screen.choose("Delete project\u{2026}", in: menu)
-      #expect(SystemSideEffects.record.alertMessages.contains("Delete this project?"))
+      #expect(SystemSideEffects.record.alertMessages.contains("Delete project?"))
       #expect(spy.calls.isEmpty)
 
       SystemSideEffects.answer(alert: .alertFirstButtonReturn)

@@ -40,16 +40,16 @@ struct ProjectDialogs: ViewModifier {
         }
       }
       .confirmationDialog(
-        "Delete this project?",
+        "Delete project?",
         isPresented: Binding(
           get: { confirmingDelete != nil }, set: { if !$0 { confirmingDelete = nil } }),
         presenting: confirmingDelete
       ) { project in
         Button("Delete Project", role: .destructive) { actions.deleteProject?(project) }
-      } message: { _ in
+      } message: { project in
         Text(
-          "Its sessions are archived and removed from the project; their history is kept. You "
-            + "can find and restore them anytime from Settings.")
+          "This deletes the project \(project.name) and archives all of its sessions. Their "
+            + "history is kept. You can find and restore them anytime from Settings.")
       }
   }
 

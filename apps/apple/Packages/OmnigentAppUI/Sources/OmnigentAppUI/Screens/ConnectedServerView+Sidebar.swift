@@ -119,6 +119,10 @@ final class SidebarModel {
   var share: ShareStore?
   /// An archive waiting on whether to delete worktrees.
   var archiveRequest: ArchiveWorktreeRequest?
+  /// An archive waiting on a confirmation that working agents stop.
+  var archiveRunningRequest: ArchiveRunningRequest?
+  /// A project delete waiting on a confirmation that working agents stop.
+  var projectDeleteRunning: ProjectDeleteRunningRequest?
   /// The session a chat tab's menu is renaming.
   var renamingFromTab: OmnigentUIComponents.SessionSummary?
   var renameText = ""
@@ -234,6 +238,7 @@ extension ConnectedServerView {
     actions.deleteWithBranch = { summary, deleteBranch in
       removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
     }
+    actions.isUnread = { list.isUnread($0) }
     if NestedAgentGate.offered(connection) {
       actions.addNestedAgent = { addNestedAgent(beside: $0.id) }
     }

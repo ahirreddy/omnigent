@@ -78,6 +78,9 @@ struct ConversationContainer: View {
   // swiftlint:disable:next private_swiftui_state
   @State var livenessSheets = SessionLivenessSheets()
 
+  /// The session's grants once read, for author badges.
+  var loadedGrants: [OmnigentCoreFFI.SessionGrant] { shareStore?.grants.value ?? [] }
+
   var body: some View {
     let composer = conversation.composer
     let screen = state
@@ -114,6 +117,10 @@ struct ConversationContainer: View {
     )
     .task {
       if shareStore == nil { shareStore = makeShareStore?() }
+      // As the web, an owner's grants say whether others write here, for author badges.
+      if offersShare, let shareStore, ConversationAdapter.ownedByViewer(summary, server: server) {
+        await shareStore.load()
+      }
       composer.searchMentions = workspace.map(Self.mentionSearch)
       // A queued `/side` asks for its fork's tab when it goes out after the turn.
       SessionToolsAdapter.watchForks(conversation, routes: toolRoutes)

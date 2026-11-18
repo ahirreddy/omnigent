@@ -27,6 +27,18 @@ extension SessionSummary {
 }
 
 extension SessionListStore {
+  /// How many of `project`'s sessions, archived included, have an agent still working, which
+  /// deleting the project stops.
+  /// - Parameter project: The project.
+  /// - Returns: The count, or `nil` when it could not be read (see ``editError``).
+  public func workingSessions(in project: ProjectSummary) async -> Int? {
+    var count: UInt32?
+    let read = await perform { core in
+      count = try await core.projectWorkingSessions(project: project)
+    }
+    return read ? count.map(Int.init) : nil
+  }
+
   /// The summary of `sessionID`, if known.
   /// - Parameter sessionID: The session.
   /// - Returns: Its summary.

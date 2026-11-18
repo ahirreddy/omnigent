@@ -155,6 +155,52 @@ struct ShareAdapterStoreTests {
     }
   }
 
+  @Test("A read-only server offers Read alone; without public links only Restricted shows")
+  func readOnlySharing() async throws {
+    let fake = server()
+    fake.route(
+      "/v1/info",
+      .json(
+        #"{"single_user":true,"accounts_enabled":false,"sharing_mode":"read_only","public_sharing_enabled":false}"#
+      ))
+    let connection = try await signedInStore(fake)
+    _ = await connection.pages?.loadOffered()
+    let store = try #require(connection.share(sessionID: "conv_a"))
+    await store.load()
+    store.policy = connection.pages?.offered
+    let state = ShareAdapter.state(store, link: nil)
+    #expect(state.roles == [.read])
+    #expect(state.isReadOnlySharing)
+    // The existing public link can still be turned off.
+    #expect(state.generalAccessOptions == [ShareAdapter.restricted, ShareAdapter.anyoneWithLink])
+    #expect(state.blockedReason == nil)
+
+    fake.route(
+      "/v1/sessions/conv_a/permissions", method: "GET",
+      .json(#"{"permissions":[{"user_id":"local","level":4}],"next_cursor":null}"#))
+    await store.load()
+    #expect(ShareAdapter.state(store, link: nil).generalAccessOptions == [ShareAdapter.restricted])
+  }
+
+  @Test("A restricted server blocks a home folder's session, and only that")
+  func restrictedWorkspace() async throws {
+    let fake = server()
+    fake.route(
+      "/v1/info",
+      .json(#"{"single_user":true,"accounts_enabled":false,"sharing_mode":"restricted_read_only"}"#)
+    )
+    let connection = try await signedInStore(fake)
+    _ = await connection.pages?.loadOffered()
+    let store = try #require(connection.share(sessionID: "conv_a"))
+    store.policy = connection.pages?.offered
+    store.workspace = "/Users/bob"
+    let blocked = ShareAdapter.state(store, link: nil)
+    #expect(blocked.blockedReason?.hasPrefix("This session's working directory") == true)
+    #expect(blocked.generalAccessOptions == [ShareAdapter.restricted])
+    store.workspace = "/Users/bob/project"
+    #expect(ShareAdapter.state(store, link: nil).blockedReason == nil)
+  }
+
   @Test("A list that can't be read says why")
   func failure() async throws {
     let fake = AppServer()
