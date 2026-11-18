@@ -4,11 +4,14 @@ use futures::executor::block_on;
 use serde_json::json;
 
 use super::super::SessionError;
-use super::super::test_support::{Reply, RouteTransport, body_json, connected, path_of};
+use super::super::test_support::{
+    Reply, RouteTransport, body_json, connected, path_of, query_value,
+};
 use super::{
-    Automation, AutomationDraft, AutomationFilter, AutomationRunStatus, AutomationState,
-    ServerPages, arrange_automations, automation_from, describe_run_failure, draft_body,
-    format_run_duration,
+    Automation, AutomationDraft, AutomationFilter, AutomationGrant, AutomationRunStatus,
+    AutomationState, RunPullRequestStatus, ServerPages, arrange_automations, automation_from,
+    describe_run_failure, draft_body, format_cost_usd, format_run_duration, parse_cost_limit,
+    run_from, run_pull_requests_summary,
 };
 
 const TASK: &str = r#"{"id":"t1","name":"Standup","prompt":"Summarize","rrule":"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=8;BYMINUTE=0","agent_id":"a1","timezone":"America/New_York","session_mode":"continue","state":"active","last_run_at":1793800000,"last_run_status":"succeeded","last_run_conversation_id":"c9","next_run_at":"2026-11-05T08:00:00+00:00","updated_at":1793700000.5}"#;
@@ -37,6 +40,12 @@ fn automation(id: &str, name: &str, state: AutomationState, next: Option<i64>) -
         workspace: None,
         runs_in_sandbox: false,
         project_id: None,
+        is_trigger: false,
+        mcp_services: Vec::new(),
+        max_cost_usd: None,
+        source_session_id: None,
+        shared_with_me: false,
+        owner_name: "another user".into(),
     }
 }
 
@@ -165,10 +174,10 @@ fn creates_edits_pauses_runs_and_deletes() {
         body_json(&writes[0]),
         json!({"name":"Standup","prompt":"Summarize","rrule":"FREQ=DAILY;BYHOUR=9;BYMINUTE=0","agent_id":"a1","timezone":"UTC","session_mode":"continue","host_id":"h1"})
     );
-    // The edit leaves out the unchanged agent and session mode.
+    // The edit leaves out the unchanged agent, session mode and prompt.
     assert_eq!(
         body_json(&writes[1]),
-        json!({"name":"Standup","prompt":"Summarize","rrule":"FREQ=DAILY;BYHOUR=9;BYMINUTE=0","timezone":"UTC","host_id":"h1"})
+        json!({"name":"Standup","rrule":"FREQ=DAILY;BYHOUR=9;BYMINUTE=0","timezone":"UTC","host_id":"h1"})
     );
     assert_eq!(body_json(&writes[2]), json!({"state":"paused"}));
 }
@@ -342,6 +351,7 @@ fn pages_follow_what_the_server_advertises() {
             archive_worktree_cleanup: true,
             sharing: true,
             canvas: true,
+            automation_trigger_poll_minutes: 10,
             ..ServerPages::default()
         })
     );
@@ -361,7 +371,10 @@ fn pages_follow_what_the_server_advertises() {
     // An older server that names none of them offers none; a single-user one has no sharing.
     assert_eq!(
         ServerPages::from_value(&json!({"single_user": true})),
-        Ok(ServerPages::default())
+        Ok(ServerPages {
+            automation_trigger_poll_minutes: 10,
+            ..ServerPages::default()
+        })
     );
     // Sharing is on unless the server turns it off.
     assert!(ServerPages::from_value(&json!({})).is_ok_and(|pages| pages.sharing));
@@ -484,7 +497,7 @@ fn run_failures_name_where_they_stopped() {
         (
             "owner_identity_unavailable",
             "Owner",
-            "Couldn't act as the owner. The next run tries again.",
+            "Couldn't act as the owner. A recurring automation tries again at its next run.",
         ),
         (
             "reauthorization_required",
@@ -560,4 +573,284 @@ fn an_active_automation_with_no_next_run_sorts_after_a_scheduled_one_either_way(
             .collect();
         assert_eq!(ids, ["a", "b"]);
     }
+}
+
+#[test]
+fn pages_read_mains_automation_fields() {
+    let info = json!({"scheduled_task_subhour": true, "scheduled_task_trigger_headers": true,
+        "automation_trigger_poll_minutes": 15, "session_message_max_chars": 32000,
+        "scheduled_task_mcp_services": true, "enabled_connections": ["github", "mcp"],
+        "scheduled_task_source_sessions": true, "scheduled_task_sharing": true,
+        "scheduled_task_shared_with_me": true, "scheduled_task_run_pull_requests": true,
+        "scheduled_task_harness_settings": true, "scheduled_task_approval_skipping_modes": true,
+        "session_create_permission_modes": true, "single_user": false});
+    let pages = ServerPages::from_value(&info).unwrap();
+    assert!(pages.automation_subhour && pages.automation_trigger_headers);
+    assert_eq!(pages.automation_trigger_poll_minutes, 15);
+    assert_eq!(pages.session_message_max_chars, 32_000);
+    assert!(pages.automation_mcp_services && pages.automation_source_sessions);
+    assert!(pages.automation_sharing && pages.automation_shared_with_me);
+    assert!(pages.automation_run_pull_requests && pages.automation_harness_settings);
+    assert!(pages.automation_approval_skipping_modes && pages.session_create_permission_modes);
+    // No MCP registry, no services to pick; one user, nobody to share with.
+    let lone = json!({"scheduled_task_mcp_services": true, "enabled_connections": [],
+        "scheduled_task_sharing": true, "scheduled_task_shared_with_me": true,
+        "single_user": true});
+    let lone = ServerPages::from_value(&lone).unwrap();
+    assert!(!lone.automation_mcp_services && !lone.automation_sharing);
+    assert!(!lone.automation_shared_with_me);
+    // An older server: hourly polling at the default, the older message limit.
+    let older = ServerPages::from_value(&json!({})).unwrap();
+    assert_eq!(older.automation_trigger_poll_minutes, 10);
+    assert_eq!(older.session_message_max_chars, 0);
+    assert!(!older.automation_subhour);
+}
+
+#[test]
+fn decodes_mains_task_fields() {
+    let trigger = automation_from(&json!({"id": "t", "name": "Jira", "rrule": "FREQ=MINUTELY;INTERVAL=10",
+        "state": "active", "session_mode": "continue",
+        "prompt": "This automation watches Jira and starts one Omnigent session for each newly created ticket that matches.",
+        "mcp_services": ["jira"], "max_cost_usd": 2.5, "source_session_id": "copy1",
+        "viewer_role": "viewer", "owner_display_name": "", "owner_user_id": "ana@example.com"}))
+    .unwrap();
+    assert!(trigger.is_trigger);
+    assert_eq!(trigger.schedule_text, "Every 10 minutes");
+    assert_eq!(trigger.mcp_services, ["jira"]);
+    assert_eq!(trigger.max_cost_usd.as_deref(), Some("2.5"));
+    assert_eq!(trigger.source_session_id.as_deref(), Some("copy1"));
+    assert!(trigger.shared_with_me);
+    assert_eq!(trigger.owner_name, "ana@example.com");
+    // A rendered prompt on a new-session automation runs on its schedule.
+    let scheduled = automation_from(&json!({"id": "t", "name": "Jira", "rrule": "x", "state": "active",
+        "prompt": trigger.prompt, "max_cost_usd": 5, "owner_display_name": "Ana"}))
+    .unwrap();
+    assert!(!scheduled.is_trigger && !scheduled.shared_with_me);
+    assert_eq!(scheduled.max_cost_usd.as_deref(), Some("5"));
+    assert_eq!(scheduled.owner_name, "Ana");
+    assert!(
+        automation_from(&json!({"id": "t", "name": "J", "rrule": "x", "state": "active",
+        "mcp_services": [3]}))
+        .is_err()
+    );
+}
+
+#[test]
+fn run_rows_carry_cost_approvals_and_failure_detail() {
+    let run = |extra: serde_json::Value| {
+        let mut row = json!({"id": "r1", "status": "failed", "conversation_id": "c1",
+            "error_code": "sandbox_create_failed", "error_detail": "Quota exceeded. Retry later.",
+            "session_cost_usd": 1.234, "conversation_pending_approvals": 2});
+        if let (Some(row), Some(extra)) = (row.as_object_mut(), extra.as_object()) {
+            row.extend(extra.clone());
+        }
+        run_from(&row).unwrap()
+    };
+    let failed = run(json!({}));
+    assert_eq!(failed.session_cost.as_deref(), Some("Session cost $1.23"));
+    assert!(failed.needs_approval);
+    assert_eq!(
+        failed.error_detail.as_deref(),
+        Some("Quota exceeded. Retry later.")
+    );
+    assert_eq!(failed.failure_stage.as_deref(), Some("Sandbox"));
+    // A run that succeeded says nothing of an old error; one without a session waits on none.
+    let ok = run(json!({"status": "succeeded", "conversation_status": "running"}));
+    assert_eq!(ok.error_detail, None);
+    assert!(ok.session_running);
+    let sessionless = run(json!({"conversation_id": null, "session_cost_usd": 0.004}));
+    assert!(!sessionless.needs_approval);
+    assert_eq!(sessionless.session_cost.as_deref(), Some("Session cost <$0.01"));
+    assert_eq!(format_cost_usd(0.0), "$0.00");
+    assert_eq!(format_cost_usd(12.5), "$12.50");
+    assert_eq!(
+        describe_run_failure(
+            Some("permission_mode_unsupported"),
+            &AutomationRunStatus::Failed
+        )
+        .0,
+        Some("Permissions")
+    );
+}
+
+#[test]
+fn drafts_send_mains_new_fields_only_when_they_change() {
+    assert_eq!(parse_cost_limit(" "), Ok(None));
+    assert_eq!(parse_cost_limit("2.50"), Ok(Some(2.5)));
+    for bad in ["0", "-1", "abc", "NaN", "inf"] {
+        assert_eq!(
+            parse_cost_limit(bad),
+            Err("Enter a cost limit greater than zero, or leave it blank.".to_owned()),
+            "{bad}"
+        );
+    }
+    let created = draft_body(
+        &AutomationDraft {
+            max_cost_usd: "3".into(),
+            mcp_services: Some(vec!["github".into()]),
+            source_session_id: Some("s1".into()),
+            prompt: String::new(),
+            host_id: Some("h1".into()),
+            ..draft()
+        },
+        None,
+    )
+    .unwrap();
+    assert_eq!(created["max_cost_usd"], json!(3.0));
+    assert_eq!(created["mcp_services"], json!(["github"]));
+    assert_eq!(created["source_session_id"], "s1");
+    // Without a session copy, a prompt is required.
+    assert!(
+        draft_body(
+            &AutomationDraft {
+                prompt: " ".into(),
+                host_id: Some("h1".into()),
+                ..draft()
+            },
+            None
+        )
+        .is_err()
+    );
+    let mut saved = automation("t1", "Triage", AutomationState::Active, None);
+    saved.prompt = "  Look \n".into();
+    saved.agent_id = "claude".into();
+    saved.max_cost_usd = Some("3".into());
+    saved.mcp_services = vec!["github".into(), "jira".into()];
+    let edit = |change: fn(&mut AutomationDraft)| {
+        let mut edited = AutomationDraft {
+            prompt: "  Look \n".into(),
+            max_cost_usd: "3".into(),
+            mcp_services: Some(vec!["jira".into(), "github".into()]),
+            ..draft()
+        };
+        change(&mut edited);
+        draft_body(&edited, Some(&saved)).unwrap()
+    };
+    // Unchanged, the prompt, limit and services stay out of the edit.
+    let unchanged = edit(|_| {});
+    for key in ["prompt", "max_cost_usd", "mcp_services"] {
+        assert!(unchanged.get(key).is_none(), "{key}");
+    }
+    let cleared = edit(|draft| {
+        draft.max_cost_usd = String::new();
+        draft.mcp_services = Some(Vec::new());
+        draft.prompt = "Look harder".into();
+    });
+    assert_eq!(cleared["max_cost_usd"], json!(null));
+    assert_eq!(cleared["mcp_services"], json!([]));
+    assert_eq!(cleared["prompt"], "Look harder");
+    assert!(
+        draft_body(
+            &AutomationDraft {
+                max_cost_usd: "free".into(),
+                ..draft()
+            },
+            Some(&saved)
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn a_rendered_trigger_prompt_is_sent_as_it_is() {
+    let rendered = "This automation watches Jira and starts one Omnigent session for each newly created ticket that matches.\n";
+    let body = draft_body(
+        &AutomationDraft {
+            prompt: rendered.into(),
+            host_id: Some("h1".into()),
+            ..draft()
+        },
+        None,
+    )
+    .unwrap();
+    assert_eq!(body["prompt"], rendered);
+}
+
+#[test]
+fn reads_shared_automations_run_pull_requests_and_grants() {
+    let transport = RouteTransport::local();
+    transport.ok(
+        "/v1/scheduled-tasks/shared",
+        format!(r#"{{"scheduled_tasks":[{TASK}],"next_cursor":"c2"}}"#),
+    );
+    transport.ok(
+        "/v1/scheduled-tasks/t1/run-pull-requests",
+        r#"{"runs":[{"run_id":"r1","pull_requests":[
+            {"url":"https://git.example.com/acme/app/pull/7","provider":"github","repository":"acme/app","number":7,"title":"Fix","relationship":"created","state":"MERGED"},
+            {"url":"https://git.example.com/acme/app/pull/8","provider":"gitlab","provider_display":{"number_prefix":"!"},"repository":"acme/app","number":8,"relationship":"worked_on","state":"OPEN","is_draft":true}]}],
+            "refresh_pending":false,"next_cursor":null}"#,
+    );
+    transport.ok(
+        "/v1/scheduled-tasks/t1/permissions",
+        r#"{"permissions":[{"user_id":"owner@example.com","level":4,"display_name":"Owner"},
+            {"user_id":"ana@example.com","level":1,"display_name":"Ana"},
+            {"user_id":"eng-team","level":1,"display_name":""}],"next_cursor":null}"#,
+    );
+    transport.respond(
+        Some("PUT"),
+        "/v1/scheduled-tasks/t1/permissions",
+        None,
+        Reply::json(200, r#"{"user_id":"bob@example.com","level":1}"#),
+    );
+    transport.respond(
+        Some("DELETE"),
+        "/v1/scheduled-tasks/t1/permissions/bob@example.com",
+        None,
+        Reply::json(204, ""),
+    );
+    let core = connected(transport);
+    let page = block_on(core.shared_automations(Some("c1"))).unwrap();
+    assert_eq!(page.next_cursor.as_deref(), Some("c2"));
+    assert!(page.automations.iter().all(|automation| automation.shared_with_me));
+    let runs = block_on(core.automation_run_pull_requests("t1")).unwrap();
+    let [run] = runs.as_slice() else {
+        unreachable!("one run's pull requests: {runs:?}")
+    };
+    assert_eq!(run.run_id, "r1");
+    let numbers: Vec<&str> = run.pull_requests.iter().map(|pr| pr.number.as_str()).collect();
+    assert_eq!(numbers, ["#7", "!8"]);
+    assert_eq!(
+        run.pull_requests.iter().map(|pr| pr.status).collect::<Vec<_>>(),
+        [RunPullRequestStatus::Merged, RunPullRequestStatus::Draft]
+    );
+    assert!(run.pull_requests[0].created_by_run && !run.pull_requests[1].created_by_run);
+    assert_eq!(run_pull_requests_summary(&run.pull_requests), "PRs: 1 draft, 1 merged");
+    assert_eq!(
+        run_pull_requests_summary(&run.pull_requests[..1]),
+        "PR #7 merged"
+    );
+    assert_eq!(
+        block_on(core.automation_grants("t1")).unwrap(),
+        [
+            AutomationGrant {
+                user_id: "ana@example.com".into(),
+                display_name: "Ana".into()
+            },
+            AutomationGrant {
+                user_id: "eng-team".into(),
+                display_name: "eng-team".into()
+            }
+        ]
+    );
+    block_on(core.grant_automation_access("t1", " bob@example.com ")).unwrap();
+    block_on(core.revoke_automation_access("t1", "bob@example.com")).unwrap();
+    let writes = core.transport().writes();
+    assert_eq!(
+        body_json(&writes[0]),
+        json!({"user_id": "bob@example.com", "level": 1})
+    );
+    assert_eq!(writes.len(), 2);
+    let shared_read = core
+        .transport()
+        .taken()
+        .into_iter()
+        .find(|request| path_of(request) == "/v1/scheduled-tasks/shared");
+    assert!(shared_read.as_ref().is_some_and(|request| {
+        query_value(request, "limit").as_deref() == Some("50")
+            && query_value(request, "after").as_deref() == Some("c1")
+    }));
+    assert!(matches!(
+        block_on(core.grant_automation_access("t1", "a/b")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
 }

@@ -26,8 +26,7 @@ final class MacPagesFlowUITests: XCTestCase {
     let intro = app.sheets.buttons["Maybe later"].firstMatch
     if intro.appears(within: 5) { intro.click() }
     XCTAssertTrue(intro.disappears(within: 10), "the intro stayed")
-    live.click(live.element("automations-new", in: app), "New automation", timeout: 20)
-    live.clickMenuItem("Create manually", in: app)
+    live.click(live.element("automations-new", in: app), "New", timeout: 20)
 
     let nameField = live.element("automation-name", in: app)
     live.click(nameField, "the name field", timeout: 15)
@@ -35,6 +34,82 @@ final class MacPagesFlowUITests: XCTestCase {
     let prompt = live.element("automation-prompt", in: app)
     live.click(prompt, "the prompt field")
     prompt.typeText("Say hello from the flow.")
+    // Every ten minutes, as the web's Interval schedule.
+    live.click(live.element("automation-schedule-preset", in: app), "the schedule picker")
+    live.clickMenuItem("Interval", in: app)
+    pickHostAndSave(live, app, workspace: workspace)
+
+    let listed = live.text(containing: name, in: app)
+    XCTAssertTrue(listed.appears(within: 20), "the new automation is not listed")
+    XCTAssertTrue(
+      live.text(containing: "Every 10 minutes", in: app).appears(within: 10),
+      "the minute rule shows raw\n\(app.debugDescription)")
+    live.contextMenu(listed, choose: "Delete", in: app)
+    live.clickDialogButton("Delete", in: app)
+    XCTAssertTrue(listed.disappears(within: 15), "the automation stayed")
+  }
+
+  /// A trigger from a template card lists as running when items match, and its page shows
+  /// only its instructions, not the saved header or the manager prompt. Edit reopens its form.
+  @MainActor
+  func testATriggerShowsItsInstructions() throws {
+    let live = MacLiveUITestSupport(self)
+    let workspace = try live.fixtureWorkspace()
+    let app = live.launch()
+    defer { app.terminate() }
+    let instructions = "Triage \(UUID().uuidString.prefix(6)) and report back."
+
+    live.click(live.element("sidebar-automations", in: app), "Automations", timeout: 30)
+    let intro = app.sheets.buttons["Maybe later"].firstMatch
+    if intro.appears(within: 5) { intro.click() }
+    XCTAssertTrue(intro.disappears(within: 10), "the intro stayed")
+    live.click(live.element("automations-trigger-jira", in: app), "the Jira template", timeout: 20)
+
+    let scope = live.element("automation-trigger-scope", in: app)
+    live.click(scope, "the project field", timeout: 15)
+    scope.typeText("ES")
+    let field = live.element("automation-trigger-instructions", in: app)
+    live.click(field, "the instructions field")
+    field.typeText(instructions)
+    XCTAssertFalse(
+      live.element("automation-schedule-preset", in: app).exists,
+      "a trigger polls, so its schedule stays out of the form")
+    pickHostAndSave(live, app, workspace: workspace)
+
+    let rule = live.text(containing: "Runs when new items match", in: app)
+    XCTAssertTrue(
+      rule.appears(within: 20), "the trigger row shows a schedule\n\(app.debugDescription)")
+    live.click(rule, "the trigger's row")
+    let shown = live.element("automation-detail-prompt", in: app)
+    XCTAssertTrue(shown.appears(within: 15), "no prompt on the page")
+    XCTAssertTrue(
+      live.text(containing: instructions, in: app).appears(within: 10),
+      "the instructions are missing")
+    XCTAssertFalse(
+      live.text(containing: "omnigent-trigger", in: app).exists, "the saved header shows")
+    XCTAssertFalse(
+      live.text(containing: "This automation watches Jira", in: app).exists,
+      "the manager prompt shows")
+    XCTAssertFalse(
+      live.element("automation-detail-run-now", in: app).exists, "a trigger has Run now")
+
+    live.click(live.element("automation-detail-edit", in: app), "Edit")
+    let reopened = live.element("automation-trigger-scope", in: app)
+    XCTAssertTrue(reopened.appears(within: 15), "Edit didn't reopen the trigger form")
+    XCTAssertEqual(reopened.value as? String, "ES")
+    app.typeKey(.escape, modifierFlags: [])
+    XCTAssertTrue(reopened.disappears(within: 10), "the editor stayed")
+
+    live.click(live.element("automation-detail-delete", in: app), "Delete")
+    live.clickDialogButton("Delete", in: app)
+    XCTAssertTrue(rule.disappears(within: 15), "the trigger stayed")
+  }
+
+  /// Picks the first host, pins the fixture folder when offered, and saves.
+  @MainActor
+  private func pickHostAndSave(
+    _ live: MacLiveUITestSupport, _ app: XCUIApplication, workspace: URL
+  ) {
     live.click(live.element("automation-host", in: app), "the host picker")
     guard let host = live.hittable(app.menuItems) else {
       XCTFail("no hosts to pick\n\(app.debugDescription)")
@@ -51,12 +126,6 @@ final class MacPagesFlowUITests: XCTestCase {
     let save = live.element("automation-save", in: app)
     XCTAssertTrue(live.waitUntil(timeout: 15) { save.isEnabled }, "the form cannot be saved")
     save.click()
-
-    let listed = live.text(containing: name, in: app)
-    XCTAssertTrue(listed.appears(within: 20), "the new automation is not listed")
-    live.contextMenu(listed, choose: "Delete", in: app)
-    live.clickDialogButton("Delete", in: app)
-    XCTAssertTrue(listed.disappears(within: 15), "the automation stayed")
   }
 
   /// The pages are read again with each connection: after two Reconnects back to back, as a

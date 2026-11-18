@@ -35,10 +35,11 @@ public struct AutomationEditorSheet: View {
           if context.supportsSessionModes { sessionMode }
         }
         promptFields
-        Section("Schedule") { schedule }
+        if !isTrigger { Section("Schedule") { schedule } }
+        if isTrigger, context.triggerScheduleUnsupported { triggerScheduleReplacement }
         Section("Runs on") { placement }
         Section("Harness") { harness }
-        if let overrides = context.overrides { advanced(overrides) }
+        advanced
         if let message = context.error ?? context.blocker {
           Section {
             Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
@@ -63,8 +64,30 @@ public struct AutomationEditorSheet: View {
   }
 
   private var canSave: Bool {
-    draft.canSave && !context.isSaving && context.blocker == nil && context.scheduleProblem == nil
+    draft.canSave && !context.isSaving && context.blocker == nil
+      && (isTrigger || context.scheduleProblem == nil)
+      && !(isTrigger && context.triggerScheduleUnsupported)
+      && context.costLimitProblem == nil && context.mcpProblem == nil
       && (draft.trigger == nil || !context.triggerPrompt.isEmpty)
+  }
+
+  /// A trigger polls on the server's interval, so its schedule stays out of the form.
+  private var isTrigger: Bool { draft.trigger != nil || draft.isTrigger }
+
+  private var triggerScheduleReplacement: some View {
+    Section {
+      HStack {
+        Text(
+          "This automation\u{2019}s saved schedule isn\u{2019}t supported by the current run setup."
+        )
+        Spacer()
+        if let replace = context.useSupportedTriggerSchedule {
+          Button("Use supported schedule", action: replace)
+            .accessibilityIdentifier("automation-trigger-schedule-replacement")
+        }
+      }
+      .font(.callout)
+    }
   }
 
   @ViewBuilder private var sessionMode: some View {
@@ -72,7 +95,7 @@ public struct AutomationEditorSheet: View {
       Text("New session each run").tag(false)
       Text("Continue in the same session").tag(true)
     }
-    .disabled(draft.trigger != nil)
+    .disabled(isTrigger || draft.sourceSessionID != nil)
     .accessibilityIdentifier("automation-session-mode")
     Text(sessionNote).font(.callout).foregroundStyle(.secondary)
     if context.isEditing, draft.continuesSession, context.hasContinuingSession {
@@ -82,9 +105,12 @@ public struct AutomationEditorSheet: View {
   }
 
   private var sessionNote: String {
-    if draft.trigger != nil {
+    if isTrigger {
       return
         "Trigger automations keep one session, which remembers its last check and the sessions it already started."
+    }
+    if draft.sourceSessionID != nil {
+      return "Each run starts a new session from a copy of the source session."
     }
     return draft.continuesSession
       ? "The first run starts a session, and later runs send their prompt to it so the agent keeps its context, even while an earlier run is still working."
@@ -98,21 +124,47 @@ public struct AutomationEditorSheet: View {
           get: { draft.trigger ?? AutomationTriggerDraft(source: "", event: "") },
           set: { draft.trigger = $0 }),
         template: template, renderedPrompt: context.triggerPrompt,
+        mcp: context.triggerMcp,
+        usesMcp: Binding(
+          get: { context.triggerMcp.map { draft.mcpServices.contains($0.id) } ?? false },
+          set: { uses in
+            guard let id = context.triggerMcp?.id else { return }
+            draft.mcpServices.removeAll { $0 == id }
+            if uses { draft.mcpServices.append(id) }
+          }),
+        switchEvent: context.switchTriggerEvent,
         editAsPrompt: {
           draft.prompt = context.triggerPrompt
           draft.trigger = nil
         })
     } else {
-      Section("Prompt") {
+      if let title = draft.sourceSessionTitle, draft.sourceSessionID != nil {
+        Section("Starts from") {
+          Text(title).accessibilityIdentifier("automation-source-session")
+          Text("Each run starts with a copy of this session\u{2019}s history.")
+            .font(.callout).foregroundStyle(.secondary)
+        }
+      }
+      Section(promptTitle) {
         TextField(
-          "Prompt", text: $draft.prompt, prompt: Text("What should the agent do each run?"),
-          axis: .vertical
+          promptTitle, text: $draft.prompt, prompt: Text(promptPlaceholder), axis: .vertical
         )
         .lineLimit(4...10)
         .labelsHidden()
         .accessibilityIdentifier("automation-prompt")
       }
     }
+  }
+
+  private var promptTitle: String {
+    if draft.sourceSessionID != nil { return "Additional instructions" }
+    return draft.systemPrompt == nil ? "Prompt" : "Instructions"
+  }
+
+  private var promptPlaceholder: String {
+    draft.sourceSessionID != nil
+      ? "Optional: what else each run should do"
+      : "What should the agent do each run?"
   }
 
   @ViewBuilder private var schedule: some View {
@@ -124,7 +176,9 @@ public struct AutomationEditorSheet: View {
       .font(.callout).foregroundStyle(.secondary)
       Button("Choose a new schedule") { draft.schedule = ScheduleChoice() }
     } else {
-      ScheduleFields(choice: scheduleBinding, anchoredScheduling: context.anchoredScheduling)
+      ScheduleFields(
+        choice: scheduleBinding, anchoredScheduling: context.anchoredScheduling,
+        minuteRange: context.minuteRange, offersMinutes: context.offersMinutes)
       Text(context.describe(scheduleBinding.wrappedValue))
         .font(.callout).foregroundStyle(.secondary)
         .accessibilityIdentifier("automation-schedule-summary")
@@ -141,6 +195,10 @@ public struct AutomationEditorSheet: View {
       set: { draft.schedule = $0 })
   }
 
+}
+
+/// Where it runs, its agent, and the Advanced section.
+extension AutomationEditorSheet {
   /// The sandbox option's tag in the host picker.
   private static let sandboxTag = "\u{0}sandbox"
 
@@ -226,20 +284,72 @@ public struct AutomationEditorSheet: View {
     }
   }
 
-  private func advanced(_ options: AutomationOverrideOptions) -> some View {
+  private var advanced: some View {
     Section("Advanced") {
-      overridePicker("Model", selection: $draft.model, options: options.models)
-        .accessibilityIdentifier("automation-model")
-      overridePicker("Effort", selection: $draft.effort, options: options.efforts)
-        .accessibilityIdentifier("automation-effort")
-      overridePicker(
-        "Permission mode", selection: $draft.permissionMode, options: options.permissionModes
-      )
-      .accessibilityIdentifier("automation-permission-mode")
+      if let options = context.overrides {
+        if options.takesModel || !options.models.isEmpty || !draft.model.isEmpty {
+          overridePicker("Model", selection: $draft.model, options: options.models)
+            .accessibilityIdentifier("automation-model")
+          if let message = options.catalogMessage {
+            Text(message).font(.callout).foregroundStyle(.secondary)
+          }
+        }
+        if !options.efforts.isEmpty || !draft.effort.isEmpty {
+          overridePicker("Effort", selection: $draft.effort, options: options.efforts)
+            .accessibilityIdentifier("automation-effort")
+        }
+        if !options.permissionModes.isEmpty || !draft.permissionMode.isEmpty {
+          overridePicker(
+            "Permission mode", selection: $draft.permissionMode, options: options.permissionModes
+          )
+          .accessibilityIdentifier("automation-permission-mode")
+        }
+        Text(
+          "Leave on Default to use the agent\u{2019}s configured model, effort, and permission mode. Automations run unattended, so a prompting mode (Manual or Plan) will wait for approval that never comes."
+        )
+        .font(.callout).foregroundStyle(.secondary)
+      }
+      if !context.mcpServices.isEmpty {
+        mcpServices(context.mcpServices)
+      }
+      TextField("Cost limit per run (USD)", text: $draft.maxCost, prompt: Text("No limit"))
+        .accessibilityIdentifier("automation-cost-limit")
       Text(
-        "Leave on Default to use the agent\u{2019}s configured model, effort, and permission mode. Automations run unattended, so a prompting mode (Manual or Plan) will wait for approval that never comes."
+        "Each run gets a fresh budget, including when continuing an existing session: its recorded spend at the start of the run plus this amount. Reaching that threshold blocks further model requests and tool calls, but an in-progress response can overshoot it. Leave blank for no automation cost limit. Changes apply to future runs."
       )
       .font(.callout).foregroundStyle(.secondary)
+      if let problem = context.costLimitProblem {
+        Text(problem).font(.callout).foregroundStyle(.red)
+          .accessibilityIdentifier("automation-cost-limit-problem")
+      }
+    }
+  }
+
+  @ViewBuilder private func mcpServices(_ services: [AutomationMcpOption]) -> some View {
+    LabeledContent("MCP services") {
+      Text(draft.mcpServices.isEmpty ? "No MCPs" : "MCPs \u{00B7} \(draft.mcpServices.count)")
+        .foregroundStyle(.secondary)
+    }
+    ForEach(services) { service in
+      Toggle(
+        isOn: Binding(
+          get: { draft.mcpServices.contains(service.id) },
+          set: { isOn in
+            draft.mcpServices.removeAll { $0 == service.id }
+            if isOn { draft.mcpServices.append(service.id) }
+          })
+      ) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+          Text(service.title)
+          if !service.isConnected {
+            Text("Not signed in").font(.caption).foregroundStyle(.secondary)
+          }
+        }
+      }
+      .accessibilityIdentifier("automation-mcp-\(service.id)")
+    }
+    if let problem = context.mcpProblem {
+      Text(problem).font(.callout).foregroundStyle(.red)
     }
   }
 

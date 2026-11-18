@@ -10,27 +10,58 @@ enum AutomationsMapping {
   {
     let all = pages.automations.value ?? []
     let arranged = arrangeAutomations(automations: all, filter: filter.core, search: search)
-    let seconds = Int64(now.timeIntervalSince1970)
-    let rows = arranged.map { automation in
-      var row = AutomationRow(
-        id: automation.id, name: automation.name, scheduleText: automation.scheduleText,
-        nextRunText: automation.nextRunAt.map { formatNextRun(nextRunAt: $0, now: seconds) },
-        isPaused: automation.state == .paused)
-      if case .unknown(let value) = automation.state {
-        row.scheduleText += " \u{00B7} \(value.capitalized)"
-      }
-      row.isBusy = pages.busyAutomationIDs.contains(automation.id)
-      row.lastRunSessionID = automation.lastRunSessionId
-      return row
-    }
+    let rows = arranged.map { row($0, pages: pages, now: now) }
     let isLoading = if case .loading = pages.automations { true } else { false }
     var state = AutomationsViewState(
       rows: rows, hasAny: !all.isEmpty, isLoading: isLoading,
       loadError: pages.automations.error?.message, actionError: pages.automationError?.message)
     if pages.offered?.automationTriggers == true {
-      state.triggers = AutomationTriggerMapping.chips
+      state.templates = AutomationTriggerMapping.cards
+    }
+    if pages.offered?.automationSharedWithMe == true {
+      state.shared = shared(pages: pages, filter: filter, search: search, now: now)
     }
     return state
+  }
+
+  /// The Shared with me tab, read-only rows a page at a time.
+  static func shared(pages: PagesStore, filter: AutomationsFilter, search: String, now: Date)
+    -> SharedAutomationsState
+  {
+    let all = pages.sharedAutomations.value ?? []
+    var shared = SharedAutomationsState()
+    shared.rows = arrangeAutomations(automations: all, filter: filter.core, search: search).map {
+      row($0, pages: pages, now: now)
+    }
+    shared.hasAny = !all.isEmpty
+    shared.isLoading = pages.sharedAutomations == .loading || pages.sharedAutomations == .idle
+    shared.loadError = pages.sharedAutomations.error?.message
+    shared.hasMore = pages.sharedAutomationsCursor != nil
+    shared.isLoadingMore = pages.isLoadingMoreSharedAutomations
+    return shared
+  }
+
+  /// One card: its schedule or trigger line, last-run warning, owner, and whether it shares.
+  static func row(_ automation: Automation, pages: PagesStore, now: Date) -> AutomationRow {
+    let seconds = Int64(now.timeIntervalSince1970)
+    var row = AutomationRow(
+      id: automation.id, name: automation.name, scheduleText: automation.scheduleText,
+      nextRunText: automation.nextRunAt.map { formatNextRun(nextRunAt: $0, now: seconds) },
+      isPaused: automation.state == .paused)
+    if case .unknown(let value) = automation.state {
+      row.scheduleText += " \u{00B7} \(value.capitalized)"
+    }
+    row.isBusy = pages.busyAutomationIDs.contains(automation.id)
+    row.lastRunSessionID = automation.lastRunSessionId
+    row.lastRunFailed = automation.lastRunStatus == "failed"
+    row.isTrigger = automation.isTrigger
+    if automation.sharedWithMe {
+      row.sharedBy = automation.ownerName
+    } else if pages.offered?.automationSharing == true {
+      row.canShare = true
+      row.shareDisabledReason = ShareAdapter.unavailableReason(pages.offered)
+    }
+    return row
   }
 
   /// The agents the editor offers: those this app can start sessions for and the user has not
@@ -44,21 +75,37 @@ enum AutomationsMapping {
     }
   }
 
-  /// A new automation: a suggestion's fields, the first agent that can start sessions, and the
-  /// first online host, as the web's dialog starts.
-  static func newDraft(
-    _ suggestion: AutomationSuggestion?, catalog: OmnigentCoreFFI.CreationCatalog?
-  )
-    -> AutomationDraftState
-  {
-    var draft = AutomationDraftState(
-      name: suggestion?.title ?? "", prompt: suggestion?.prompt ?? "",
-      agentID: catalog?.agents.first(where: \.supportsCreation)?.id ?? "",
-      schedule: suggestion?.schedule ?? ScheduleChoice())
+  /// A new automation: the first agent that can start sessions, in the mode an unattended run
+  /// starts in, and the first online host, as the web's dialog starts.
+  static func newDraft(catalog: OmnigentCoreFFI.CreationCatalog?) -> AutomationDraftState {
+    let agent = catalog?.agents.first(where: \.supportsCreation)
+    var draft = AutomationDraftState(agentID: agent?.id ?? "")
     draft.hostID = catalog?.hosts.first { $0.status == "online" }?.hostId ?? ""
+    draft.permissionMode = AutomationEditorMapping.newAutomationPermission(agent)
     return draft
   }
 
+  /// A new trigger's schedule: the server's polling interval where the scheduler runs minute
+  /// rules there, else hourly.
+  static func triggerSchedule(_ offered: ServerPages?, continuesSession: Bool, inSandbox: Bool)
+    -> ScheduleChoice
+  {
+    let hourly = ScheduleChoice(preset: .hourly)
+    guard let offered, offered.automationsV2 else { return hourly }
+    let minutes = Int(offered.automationTriggerPollMinutes)
+    guard offered.automationSubhour || minutes >= 60 else { return hourly }
+    let interval = ScheduleChoice(preset: .interval, frequency: .minutely, interval: minutes)
+    let limits = ScheduleLimits(
+      subhourSupported: offered.automationSubhour, continuesSession: continuesSession,
+      onConnectedHost: !inSandbox)
+    let problem = validateSchedule(
+      model: model(interval), now: 0, allowPastEnd: true, limits: limits)
+    return problem == nil ? interval : hourly
+  }
+
+  /// The editor's fields for `automation`. A trigger whose header reads back reopens in its
+  /// form; an older one shows its instructions, keeping the text around them; a header edited
+  /// outside the form opens the prompt the model runs.
   static func draft(_ automation: Automation) -> AutomationDraftState {
     let schedule = parseScheduleRrule(rrule: automation.rrule).map(choice)
     var draft = AutomationDraftState(
@@ -69,7 +116,23 @@ enum AutomationsMapping {
     draft.workspace = automation.workspace ?? ""
     draft.runsInSandbox = automation.runsInSandbox
     draft.projectID = automation.projectId ?? ""
+    draft.maxCost = automation.maxCostUsd ?? ""
+    draft.mcpServices = automation.mcpServices
+    draft.sourceSessionID = automation.sourceSessionId
+    draft.isTrigger = automation.isTrigger
     restoreOverrides(&draft, from: automation)
+    if automation.isTrigger, let config = decodeTriggerPrompt(prompt: automation.prompt) {
+      return AutomationTriggerMapping.editDraft(config, base: draft)
+    }
+    let withoutHeader = stripTriggerHeader(prompt: automation.prompt)
+    if withoutHeader != automation.prompt {
+      // A header that no longer matches its body: its rendered prompt is what runs.
+      draft.prompt = withoutHeader
+    } else {
+      let parts = splitTriggerPrompt(prompt: automation.prompt)
+      draft.prompt = parts.userPrompt
+      draft.systemPrompt = parts.systemPrompt
+    }
     return draft
   }
 
@@ -80,6 +143,13 @@ enum AutomationsMapping {
     draft.permissionMode = automation?.permissionMode ?? ""
   }
 
+  /// The prompt to save: a trigger's, the instructions put back into an older trigger's text,
+  /// or the typed one.
+  static func prompt(_ draft: AutomationDraftState, triggerPrompt: String) -> String {
+    if draft.trigger != nil { return triggerPrompt }
+    return combineTriggerPrompt(userPrompt: draft.prompt, systemPrompt: draft.systemPrompt)
+  }
+
   /// What to save. Without an editable schedule the edited automation's rule is kept as it is.
   /// - Parameters:
   ///   - draft: The editor's fields.
@@ -87,10 +157,11 @@ enum AutomationsMapping {
   ///   - saved: The automation being edited.
   ///   - sessionModes: Whether the server takes a session mode.
   ///   - sendsOverrides: Whether the agent takes a model, effort and permission mode.
+  ///   - sendsMcpServices: Whether the server takes the runs' MCP services.
   /// - Returns: The draft the core saves.
   static func request(
     _ draft: AutomationDraftState, prompt: String, saved: Automation?, sessionModes: Bool,
-    sendsOverrides: Bool
+    sendsOverrides: Bool, sendsMcpServices: Bool = false
   ) -> AutomationDraft {
     let filled = { (text: String) -> String? in
       let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -105,7 +176,16 @@ enum AutomationsMapping {
       runsInSandbox: draft.runsInSandbox, projectId: filled(draft.projectID),
       sendsOverrides: sendsOverrides, modelOverride: filled(draft.model),
       reasoningEffort: filled(draft.effort), permissionMode: filled(draft.permissionMode),
-      startNewSession: draft.startNewSession)
+      startNewSession: draft.startNewSession,
+      mcpServices: sendsMcpServices ? draft.mcpServices : nil, maxCostUsd: draft.maxCost,
+      sourceSessionId: saved == nil ? draft.sourceSessionID : nil)
+  }
+
+  /// What bounds a minute schedule for `draft` on this server.
+  static func limits(_ draft: AutomationDraftState, offered: ServerPages?) -> ScheduleLimits {
+    ScheduleLimits(
+      subhourSupported: offered?.automationSubhour == true,
+      continuesSession: draft.continuesSession, onConnectedHost: !draft.runsInSandbox)
   }
 
   /// Why the draft's schedule can't be saved, in the web's words.
@@ -114,9 +194,12 @@ enum AutomationsMapping {
   ///   - saved: The automation being edited, whose unchanged rule may keep a past end.
   ///   - anchored: The server runs custom schedules and run-count endings.
   ///   - now: The current time.
+  ///   - limits: What bounds a minute schedule here.
   /// - Returns: The problem, or `nil`.
   static func scheduleProblem(
-    _ schedule: ScheduleChoice?, saved: Automation?, anchored: Bool, now: Date
+    _ schedule: ScheduleChoice?, saved: Automation?, anchored: Bool, now: Date,
+    limits: ScheduleLimits = ScheduleLimits(
+      subhourSupported: true, continuesSession: true, onConnectedHost: true)
   ) -> String? {
     guard let schedule else { return nil }
     let rule = model(schedule)
@@ -126,7 +209,7 @@ enum AutomationsMapping {
     }
     let unchanged = saved.map { $0.rrule == buildScheduleRrule(model: rule) } ?? false
     return validateSchedule(
-      model: rule, now: Int64(now.timeIntervalSince1970), allowPastEnd: unchanged)
+      model: rule, now: Int64(now.timeIntervalSince1970), allowPastEnd: unchanged, limits: limits)
   }
 
   static func describe(_ choice: ScheduleChoice) -> String {
@@ -134,21 +217,25 @@ enum AutomationsMapping {
   }
 
   static func model(_ choice: ScheduleChoice) -> ScheduleModel {
-    ScheduleModel(
-      preset: preset(choice.preset), hour: UInt8(clamping: choice.hour),
+    let interval = choice.preset == .interval
+    return ScheduleModel(
+      preset: interval ? .custom : preset(choice.preset), hour: UInt8(clamping: choice.hour),
       minute: UInt8(clamping: choice.minute),
       weekdays: choice.weekdays.sorted().compactMap { Weekday(index: $0) },
-      frequency: frequency(choice.frequency), interval: UInt16(clamping: choice.interval),
+      frequency: interval ? .minutely : frequency(choice.frequency),
+      interval: UInt16(clamping: choice.interval),
       monthDays: choice.monthDays.map { UInt16(clamping: $0) },
       month: UInt8(clamping: choice.month), end: end(choice.end))
   }
 
+  /// The editor's choice for a rule; a saved minute rule reopens as Interval, as the web's.
   static func choice(_ model: ScheduleModel) -> ScheduleChoice {
-    ScheduleChoice(
-      preset: preset(model.preset), hour: Int(model.hour), minute: Int(model.minute),
-      weekdays: Set(model.weekdays.map(\.index)), frequency: frequency(model.frequency),
-      interval: Int(model.interval), monthDays: model.monthDays.map(Int.init),
-      month: Int(model.month), end: end(model.end))
+    let minutes = model.preset == .custom && model.frequency == .minutely
+    return ScheduleChoice(
+      preset: minutes ? .interval : preset(model.preset), hour: Int(model.hour),
+      minute: Int(model.minute), weekdays: Set(model.weekdays.map(\.index)),
+      frequency: frequency(model.frequency), interval: Int(model.interval),
+      monthDays: model.monthDays.map(Int.init), month: Int(model.month), end: end(model.end))
   }
 
   private static func end(_ end: ScheduleChoice.End) -> ScheduleEnd {
@@ -174,7 +261,7 @@ enum AutomationsMapping {
     case .daily: .daily
     case .weekdays: .weekdays
     case .weekly: .weekly
-    case .custom: .custom
+    case .custom, .interval: .custom
     }
   }
 
@@ -190,6 +277,7 @@ enum AutomationsMapping {
 
   private static func frequency(_ frequency: ScheduleChoice.Frequency) -> ScheduleFrequency {
     switch frequency {
+    case .minutely: .minutely
     case .hourly: .hourly
     case .daily: .daily
     case .weekly: .weekly
@@ -200,6 +288,7 @@ enum AutomationsMapping {
 
   private static func frequency(_ frequency: ScheduleFrequency) -> ScheduleChoice.Frequency {
     switch frequency {
+    case .minutely: .minutely
     case .hourly: .hourly
     case .daily: .daily
     case .weekly: .weekly
