@@ -13,12 +13,28 @@ public enum ReplyState: Equatable, Sendable {
   case failed(CoreError)
 }
 
+/// How a read of the offered pages ended.
+enum OfferedPagesRead: Equatable {
+  /// The pages were read.
+  case read
+  /// The read failed; the pages last read stay.
+  case failed(CoreError)
+  /// A newer read started, or the connection moved to another server or account, before it
+  /// landed; it changed nothing.
+  case superseded
+}
+
 /// The top-level pages beside the sessions: which ones the server offers, Automations, Usage,
 /// and the Inbox's file comments and replies. Each failure stays with what it failed to load.
 @Observable
 public final class PagesStore {
-  /// The pages the server offers; `nil` until read.
+  /// The pages the server offers; `nil` until read. A failed read keeps the pages last read.
   public private(set) var offered: ServerPages?
+  /// Why the last read of ``offered`` failed; `nil` once one succeeds.
+  public private(set) var offeredError: CoreError?
+  /// Why no pages show: the read failed and none were read before. Automations, Usage and
+  /// Canvas are then missing because of the failure, not because the server turned them off.
+  public var offeredReadFailure: CoreError? { offered == nil ? offeredError : nil }
   /// The caller's automations.
   public private(set) var automations: CreationLoad<[Automation]> = .idle
   /// Automations with a write in flight.
@@ -59,22 +75,54 @@ public final class PagesStore {
   private var commentCounts: [String: UInt64] = [:]
   /// The activity each session's latest output was read at.
   private var outputStamps: [String: Int64] = [:]
+  /// The server and account ``offered`` belongs to.
+  private var offeredOwner: String?
+  /// Reads of ``offered`` started so far; only the latest one lands.
+  private var offeredReads = 0
 
   init(core: ClientCore, defaults: UserDefaults = .standard) {
     self.core = core
     self.defaults = defaults
   }
 
-  /// Reads which pages the server offers. A failure leaves them unoffered.
-  /// - Returns: The failure, if any.
+  /// Reads which pages the server offers. A failure keeps the pages last read; with none, they
+  /// stay unoffered.
+  /// - Returns: The failure, if any; `nil` also when a newer read replaced this one.
   @discardableResult
   public func loadOffered() async -> CoreError? {
+    if case .failed(let error) = await readOffered() { return error }
+    return nil
+  }
+
+  /// Reads which pages the server offers. A failure keeps the pages last read, and a read that
+  /// a newer one replaced changes nothing.
+  /// - Returns: How the read ended.
+  func readOffered() async -> OfferedPagesRead {
+    offeredReads += 1
+    let read = offeredReads
     do {
-      offered = try await core.serverPages()
-      return nil
+      let pages = try await core.serverPages()
+      guard read == offeredReads else { return .superseded }
+      offered = pages
+      offeredError = nil
+      return .read
     } catch {
-      return coreError(error)
+      guard read == offeredReads else { return .superseded }
+      let error = coreError(error)
+      offeredError = error
+      return .failed(error)
     }
+  }
+
+  /// Ties the offered pages to `owner`, one server and account. Another one's pages are
+  /// forgotten, and a read still in flight for them is dropped.
+  /// - Parameter owner: The server and account connected to.
+  func offeredBelong(to owner: String) {
+    guard owner != offeredOwner else { return }
+    offeredOwner = owner
+    offeredReads += 1
+    offered = nil
+    offeredError = nil
   }
 
   // MARK: Automations

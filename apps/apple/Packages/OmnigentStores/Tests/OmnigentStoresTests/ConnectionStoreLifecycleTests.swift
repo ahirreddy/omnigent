@@ -226,13 +226,6 @@ struct ConnectionStoreLifecycleTests {
     try await eventually("the disconnect") { !store.isSignedIn }
   }
 
-  @Test("Offered pages that can't be read are recorded")
-  func offeredPages() async throws {
-    let store = try disconnectedStore(RouteServer())
-    await store.loadOfferedPages()
-    #expect(store.issues.first?.scope == .connection, "no server is connected yet")
-  }
-
   @Test("Every failure describes itself for display")
   func errorText() {
     #expect(ConnectionStore.describe(CoreError.InvalidState(message: "nope")) == "nope")

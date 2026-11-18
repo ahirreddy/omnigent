@@ -108,6 +108,8 @@ struct ChromeWindow {
     server.route(
       "/v1/info",
       .json(#"{"single_user":false,"sharing_mode":"enabled","session_pull_requests":true}"#))
+    // The connect read the single-user pages; Share needs the multi-user ones.
+    _ = await connection.pages?.loadOffered()
     let session = ServerSession(
       connection: connection, opener: ExternalURLOpener { _ in true },
       remoteBrowser: FixtureRemoteBrowser(latency: .milliseconds(1)))

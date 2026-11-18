@@ -127,9 +127,6 @@ public struct ConnectedServerView: View {
     .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
     .modifier(NestedDraftRetirement(connection: connection))
-    .task(id: connection.connectedServer?.baseUrl) {
-      if connection.connectedServer != nil { await connection.loadOfferedPages() }
-    }
     .modifier(
       WindowTabOverview(
         tabs: tabs, isPresented: $showsTabOverview, renameSession: renameSessionOfTab)

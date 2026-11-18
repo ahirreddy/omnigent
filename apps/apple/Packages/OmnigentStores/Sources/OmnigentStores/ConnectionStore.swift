@@ -87,6 +87,13 @@ public final class ConnectionStore {
   var eventWaiters: [(target: Int, resume: CheckedContinuation<Void, Never>)] = []
   private var pump: Task<Void, Never>?
   private var preferenceWatch: Task<Void, Never>?
+  /// The offered pages' read and its retries, while they run.
+  @ObservationIgnored var offeredPagesReload: Task<Void, Never>?
+  /// The issue a failed read of the offered pages recorded, until a read succeeds.
+  @ObservationIgnored var offeredPagesIssueID: Int?
+  /// How long to wait before reading the offered pages again after `failures` failed reads.
+  @ObservationIgnored var offeredPagesRetryDelay: (Int) -> Duration = ConnectionStore
+    .offeredPagesBackoff
   private var attempt = 0
   private var nextIssueID = 0
   /// Who connected last; open conversations belong to them.
@@ -146,6 +153,7 @@ public final class ConnectionStore {
   isolated deinit {
     pump?.cancel()
     preferenceWatch?.cancel()
+    offeredPagesReload?.cancel()
     relay.finish()
     core?.shutdown()
   }
@@ -372,9 +380,13 @@ public final class ConnectionStore {
     }
   }
 
-  func record(scope: ErrorScope, _ error: CoreError) {
+  /// Records a failure in ``issues``.
+  /// - Returns: The issue's id.
+  @discardableResult
+  func record(scope: ErrorScope, _ error: CoreError) -> Int {
     nextIssueID += 1
     issues.append(CoreIssue(id: nextIssueID, scope: scope, error: error))
     if issues.count > 50 { issues.removeFirst(issues.count - 50) }
+    return nextIssueID
   }
 }
