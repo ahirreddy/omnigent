@@ -1,0 +1,36 @@
+{
+  "claude": {
+    "session_id": "claude_session_fixture",
+    "transcript_path": "/workspace/.claude/projects/app/transcript.jsonl",
+    "cwd": "/workspace/app",
+    "permission_mode": "default",
+    "hook_event_name": "Elicitation",
+    "mcp_server_name": "accounts",
+    "message": "Sign in to connect your account.",
+    "mode": "url",
+    "url": "https://accounts.example.com/device?code=FIXTURE",
+    "elicitation_id": "sign-in-fixture",
+    "_omnigent_elicitation_id": "elicit_claude_0000000000000000000000000000000f"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_claude_0000000000000000000000000000000f",
+    "params": {
+      "mode": "url",
+      "message": "Sign in to connect your account.",
+      "url": "https://accounts.example.com/device?code=FIXTURE",
+      "phase": "claude_mcp_elicitation",
+      "policy_name": "claude_native_mcp_elicitation",
+      "server_name": "accounts",
+      "mcp_elicitation_id": "sign-in-fixture"
+    }
+  },
+  "answer": {
+    "action": "accept"
+  },
+  "claude_result": {
+    "hookSpecificOutput": {
+      "hookEventName": "Elicitation",
+      "action": "accept"
+    }
+  }
+}

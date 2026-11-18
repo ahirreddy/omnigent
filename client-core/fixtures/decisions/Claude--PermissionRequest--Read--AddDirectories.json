@@ -1,0 +1,63 @@
+{
+  "claude": {
+    "session_id": "claude_session_fixture",
+    "transcript_path": "/workspace/.claude/projects/app/transcript.jsonl",
+    "cwd": "/workspace/app",
+    "permission_mode": "default",
+    "hook_event_name": "PermissionRequest",
+    "tool_name": "Read",
+    "tool_input": {
+      "file_path": "/workspace/shared/notes.md"
+    },
+    "permission_suggestions": [
+      {
+        "type": "addDirectories",
+        "directories": ["/workspace/shared"],
+        "destination": "session"
+      }
+    ],
+    "_omnigent_elicitation_id": "elicit_claude_00000000000000000000000000000008"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_claude_00000000000000000000000000000008",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **Read**",
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "Read({\"file_path\": \"/workspace/shared/notes.md\"})",
+      "tool_name": "Read",
+      "cwd": "/workspace/app",
+      "permission_mode": "default",
+      "permission_directories": ["/workspace/shared"],
+      "permission_suggestions": [
+        {
+          "type": "addDirectories",
+          "directories": ["/workspace/shared"],
+          "destination": "session"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "allow_directories": true
+    }
+  },
+  "claude_result": {
+    "hookSpecificOutput": {
+      "hookEventName": "PermissionRequest",
+      "decision": {
+        "behavior": "allow",
+        "updatedPermissions": [
+          {
+            "type": "addDirectories",
+            "directories": ["/workspace/shared"],
+            "destination": "session"
+          }
+        ]
+      }
+    }
+  }
+}

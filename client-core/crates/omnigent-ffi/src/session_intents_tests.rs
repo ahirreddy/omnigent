@@ -440,7 +440,11 @@ fn a_pin_or_project_edit_answers_after_the_rows_it_changed_are_published() {
     let rows = published_at_the_answer(&mut harness, async move {
         core.delete_project(project).await.unwrap();
     });
-    assert_eq!(rows.last(), Some(&Some((FIRST.to_owned(), true))), "{rows:?}");
+    assert_eq!(
+        rows.last(),
+        Some(&Some((FIRST.to_owned(), true))),
+        "{rows:?}"
+    );
 }
 
 #[test]

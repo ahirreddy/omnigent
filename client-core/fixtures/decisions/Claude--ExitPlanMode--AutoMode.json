@@ -1,0 +1,56 @@
+{
+  "claude": {
+    "session_id": "claude_session_fixture",
+    "transcript_path": "/workspace/.claude/projects/app/transcript.jsonl",
+    "cwd": "/workspace/app",
+    "permission_mode": "plan",
+    "hook_event_name": "PermissionRequest",
+    "tool_name": "ExitPlanMode",
+    "tool_input": {
+      "plan": "## Plan\n\n1. Parse dates with Luxon.\n2. Add tests for time zones.\n3. Update the docs."
+    },
+    "_omnigent_elicitation_id": "elicit_claude_0000000000000000000000000000000a"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_claude_0000000000000000000000000000000a",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **ExitPlanMode**",
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "ExitPlanMode({\"plan\": \"## Plan\\n\\n1. Parse dates with Luxon.\\n2. Add tests for time zones.\\n3. Update the docs.\"})",
+      "tool_name": "ExitPlanMode",
+      "cwd": "/workspace/app",
+      "permission_mode": "plan",
+      "allow_all_edits": true,
+      "exit_plan_mode": {
+        "plan": "## Plan\n\n1. Parse dates with Luxon.\n2. Add tests for time zones.\n3. Update the docs."
+      },
+      "plan_modes": ["auto", "acceptEdits"]
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "plan_mode": "auto"
+    }
+  },
+  "claude_result": {
+    "hookSpecificOutput": {
+      "hookEventName": "PermissionRequest",
+      "decision": {
+        "behavior": "allow",
+        "updatedInput": {
+          "plan": "## Plan\n\n1. Parse dates with Luxon.\n2. Add tests for time zones.\n3. Update the docs."
+        },
+        "updatedPermissions": [
+          {
+            "type": "setMode",
+            "mode": "auto",
+            "destination": "session"
+          }
+        ]
+      }
+    }
+  }
+}

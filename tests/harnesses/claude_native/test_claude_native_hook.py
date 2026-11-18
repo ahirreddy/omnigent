@@ -1254,6 +1254,57 @@ def test_permission_request_hook_does_not_retry_rejections(
     assert "rejected" in captured.err
 
 
+@pytest.mark.parametrize(
+    ("response", "output"),
+    [
+        (
+            httpx.Response(
+                200,
+                json={"hookSpecificOutput": {"hookEventName": "Elicitation", "action": "decline"}},
+            ),
+            {"hookSpecificOutput": {"hookEventName": "Elicitation", "action": "decline"}},
+        ),
+        (httpx.Response(200), None),
+        (None, None),
+    ],
+    ids=["answered", "unanswered", "unreachable"],
+)
+def test_elicitation_hook_forwards_to_the_active_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    response: httpx.Response | None,
+    output: dict[str, object] | None,
+) -> None:
+    """
+    An MCP server's request goes to the active session's elicitation route; the
+    app's answer is the hook's output, and without one Claude shows its dialog.
+    """
+    monkeypatch.setattr("omnigent.harnesses.claude_native.bridge._TRUSTED_PARENT", tmp_path)
+    monkeypatch.setattr("omnigent.harnesses.claude_native.bridge._BRIDGE_ROOT", tmp_path / "root")
+    posts: list[tuple[str, dict[str, object]]] = []
+
+    def _post(
+        url: str, _headers: object, body: dict[str, object], *_args: object, **_kwargs: object
+    ) -> httpx.Response | None:
+        posts.append((url, body))
+        return response
+
+    monkeypatch.setattr(claude_native_hook, "_post_hook_with_reattach", _post)
+    bridge_dir = _prepare_permission_bridge(tmp_path, "conv_mcp")
+    payload = {"hook_event_name": "Elicitation", "mcp_server_name": "deploy", "message": "Where?"}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+
+    exit_code = claude_native_hook.main(["elicitation", "--bridge-dir", str(bridge_dir)])
+
+    assert exit_code == 0
+    assert posts == [
+        ("http://127.0.0.1:8787/v1/sessions/conv_mcp/hooks/claude-elicitation", payload)
+    ]
+    stdout = capsys.readouterr().out
+    assert (json.loads(stdout) if stdout else None) == output
+
+
 @pytest.mark.parametrize("empty_response", [False, True], ids=["transport-failed", "timed-out"])
 def test_permission_request_hook_moves_unforwarded_question_to_chat_text(
     tmp_path: Path,

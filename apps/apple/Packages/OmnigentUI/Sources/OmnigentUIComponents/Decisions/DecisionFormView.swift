@@ -9,6 +9,8 @@ struct FormDraft: Hashable {
   var selected: [String: [String]] = [:]
   var custom: [String: String] = [:]
   var booleans: [String: Bool] = [:]
+  /// Notes on answers, for fields that take one.
+  var notes: [String: String] = [:]
   /// The reply for "Tell the agent instead".
   var feedback = ""
   /// The reply field is open.
@@ -216,8 +218,28 @@ struct DecisionFormFields: View {
           .accessibilityLabel("Other answer for \(field.title)")
         }
         if let hint = FormFieldHint.choices(field) { FormFieldHint.text(hint) }
+        if let option = draft.previewedOption(for: field) {
+          OptionPreview(option: option)
+            .padding(.top, Theme.Spacing.extraSmall)
+            .accessibilityIdentifier("\(idPrefix)request-field-preview-\(cardID)-\(field.key)")
+        }
+        if field.acceptsNotes { notesControl(field) }
       }
     }
+  }
+
+  private func notesControl(_ field: FormField) -> some View {
+    TextField(
+      "Notes (optional)",
+      text: Binding(
+        get: { draft.notes[field.key, default: ""] }, set: { draft.notes[field.key] = $0 }),
+      axis: .vertical
+    )
+    .lineLimit(1...4)
+    .textFieldStyle(.roundedBorder)
+    .padding(.top, Theme.Spacing.extraSmall)
+    .accessibilityLabel("Notes for \(field.title)")
+    .accessibilityIdentifier("\(idPrefix)request-field-notes-\(cardID)-\(field.key)")
   }
 
   @ViewBuilder

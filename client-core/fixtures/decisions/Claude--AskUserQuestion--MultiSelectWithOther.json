@@ -1,0 +1,110 @@
+{
+  "claude": {
+    "session_id": "claude_session_fixture",
+    "transcript_path": "/workspace/.claude/projects/app/transcript.jsonl",
+    "cwd": "/workspace/app",
+    "permission_mode": "default",
+    "hook_event_name": "PermissionRequest",
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Which features should the first release include?",
+          "header": "Features",
+          "options": [
+            {
+              "label": "Dark mode",
+              "description": "Follows the system appearance."
+            },
+            {
+              "label": "Offline sync",
+              "description": "Edits made offline sync later."
+            },
+            {
+              "label": "Export",
+              "description": "Download notes as Markdown."
+            }
+          ],
+          "multiSelect": true
+        }
+      ]
+    },
+    "_omnigent_elicitation_id": "elicit_claude_00000000000000000000000000000002"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_claude_00000000000000000000000000000002",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **AskUserQuestion**",
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "AskUserQuestion({\"questions\": [{\"question\": \"Which features should the first release include?\", \"header\": \"Features\", \"options\": [{\"label\": \"Dark mode\", \"description\": \"Follows the system appearance.\"}, {\"label\": \"Offline sync\", \"description\": \"Edits made offline sync later.\"}, {\"label\": \"Export\", \"description\": \"Download notes as Markdown.\"}], \"multiSelect\": true}]})",
+      "tool_name": "AskUserQuestion",
+      "cwd": "/workspace/app",
+      "permission_mode": "default",
+      "ask_user_question": {
+        "questions": [
+          {
+            "question": "Which features should the first release include?",
+            "options": [
+              {
+                "label": "Dark mode",
+                "description": "Follows the system appearance."
+              },
+              {
+                "label": "Offline sync",
+                "description": "Edits made offline sync later."
+              },
+              {
+                "label": "Export",
+                "description": "Download notes as Markdown."
+              }
+            ],
+            "multiSelect": true,
+            "header": "Features"
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "Which features should the first release include?": ["Dark mode", "Offline sync", "Keyboard shortcuts"]
+    }
+  },
+  "claude_result": {
+    "hookSpecificOutput": {
+      "hookEventName": "PermissionRequest",
+      "decision": {
+        "behavior": "allow",
+        "updatedInput": {
+          "questions": [
+            {
+              "question": "Which features should the first release include?",
+              "header": "Features",
+              "options": [
+                {
+                  "label": "Dark mode",
+                  "description": "Follows the system appearance."
+                },
+                {
+                  "label": "Offline sync",
+                  "description": "Edits made offline sync later."
+                },
+                {
+                  "label": "Export",
+                  "description": "Download notes as Markdown."
+                }
+              ],
+              "multiSelect": true
+            }
+          ],
+          "answers": {
+            "Which features should the first release include?": "Dark mode, Offline sync, Keyboard shortcuts"
+          }
+        }
+      }
+    }
+  }
+}

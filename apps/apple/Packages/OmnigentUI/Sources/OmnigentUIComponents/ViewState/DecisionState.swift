@@ -22,6 +22,39 @@ nonisolated public enum DecisionKind: Hashable, Sendable {
   case unsupported(reason: String, externalUrl: String?)
 }
 
+/// A permission mode an approval can switch the agent to (Claude's modes).
+nonisolated public enum PermissionMode: String, Hashable, Sendable, CaseIterable {
+  /// Asks before edits and commands.
+  case `default`
+  /// Edits run without asking.
+  case acceptEdits
+  /// Plans without changing anything.
+  case plan
+  /// Nothing asks.
+  case bypassPermissions
+  /// Denies what would ask.
+  case dontAsk
+  /// A classifier decides.
+  case auto
+}
+
+/// One update a request offers to apply with an approval: a rule, a mode switch, directories.
+nonisolated public struct PermissionSuggestion: Hashable, Sendable {
+  /// What it does, in one sentence: "Allow Bash(npm test:*) in this project".
+  public var label: String
+  /// It outlives this session (it is saved to settings).
+  public var persists: Bool
+
+  /// Creates a suggestion.
+  /// - Parameters:
+  ///   - label: What it does.
+  ///   - persists: It outlives this session.
+  public init(label: String, persists: Bool = false) {
+    self.label = label
+    self.persists = persists
+  }
+}
+
 /// Codex and Antigravity persistence scopes.
 nonisolated public enum PersistMode: String, Hashable, Sendable, CaseIterable {
   /// For the rest of this session.
@@ -131,6 +164,11 @@ nonisolated public struct PermissionOptions: Hashable, Sendable {
   public var antigravity: AntigravityPermission?
   /// The files an edit would change, when the core provides them.
   public var files: [DecisionFileChange]
+  /// The updates the request suggests, offered together as one choice
+  /// (``DecisionResponse/approveSuggestions``).
+  public var suggestions: [PermissionSuggestion]
+  /// The modes approving the plan may switch to (``DecisionResponse/approvePlanMode(mode:)``).
+  public var planModes: [PermissionMode]
   /// A native terminal confirms the verdict.
   public var nativeDelivery: NativeDelivery?
 
@@ -146,13 +184,16 @@ nonisolated public struct PermissionOptions: Hashable, Sendable {
   ///   - persistModes: Offered persistence modes.
   ///   - antigravity: Antigravity details.
   ///   - files: Files an edit would change.
+  ///   - suggestions: Suggested updates.
+  ///   - planModes: Modes a plan approval may switch to.
   ///   - nativeDelivery: A native terminal confirms the verdict.
   public init(
     allowAllEdits: Bool = false, allowAutoMode: Bool = false,
     permissionDirectories: [String] = [], rememberLabel: String? = nil, plan: String? = nil,
     command: CommandApproval? = nil, execPolicyAmendment: [String]? = nil,
     persistModes: [PersistMode] = [], antigravity: AntigravityPermission? = nil,
-    files: [DecisionFileChange] = [], nativeDelivery: NativeDelivery? = nil
+    files: [DecisionFileChange] = [], suggestions: [PermissionSuggestion] = [],
+    planModes: [PermissionMode] = [], nativeDelivery: NativeDelivery? = nil
   ) {
     self.allowAllEdits = allowAllEdits
     self.allowAutoMode = allowAutoMode
@@ -164,6 +205,8 @@ nonisolated public struct PermissionOptions: Hashable, Sendable {
     self.persistModes = persistModes
     self.antigravity = antigravity
     self.files = files
+    self.suggestions = suggestions
+    self.planModes = planModes
     self.nativeDelivery = nativeDelivery
   }
 
@@ -273,6 +316,8 @@ nonisolated public enum DecisionResponse: Hashable, Sendable {
   case answer(value: String)
   /// Values for a form, keyed by field key.
   case form(values: [String: ElicitationValue])
+  /// Values for a form plus notes on fields that ``FormField/acceptsNotes``, keyed by field key.
+  case formWithNotes(values: [String: ElicitationValue], notes: [String: String])
   /// Accept and allow all edits.
   case approveAllEdits
   /// Accept and switch to auto mode.
@@ -285,6 +330,10 @@ nonisolated public enum DecisionResponse: Hashable, Sendable {
   case approveCommandPolicy(policy: [String])
   /// Accept with persistence.
   case approvePersist(mode: PersistMode)
+  /// Accept and apply every suggested update (``PermissionOptions/suggestions``).
+  case approveSuggestions
+  /// Approve the plan and switch to one of its ``PermissionOptions/planModes``.
+  case approvePlanMode(mode: PermissionMode)
   /// Decline with feedback the agent receives, on a card that ``DecisionCard/acceptsFeedback``.
   /// Must not be blank.
   case declineWithFeedback(feedback: String)
@@ -296,7 +345,7 @@ nonisolated public enum DecisionResponse: Hashable, Sendable {
     case .decline: "Rejected"
     case .cancel: "Dismissed"
     case .answer(let value): "Answered: \(value)"
-    case .form: "Answers submitted"
+    case .form, .formWithNotes: "Answers submitted"
     case .approveAllEdits: "Approved · all edits allowed"
     case .approveAutoMode: "Approved · auto mode"
     case .approveDirectories: "Approved for these directories"
@@ -304,6 +353,14 @@ nonisolated public enum DecisionResponse: Hashable, Sendable {
     case .approveCommandPolicy: "Approved with the command policy"
     case .approvePersist(let mode):
       mode == .always ? "Always allowed" : "Approved for this session"
+    case .approveSuggestions: "Approved with the suggested permissions"
+    case .approvePlanMode(let mode):
+      switch mode {
+      case .auto: "Plan approved \u{00B7} auto mode"
+      case .acceptEdits: "Plan approved \u{00B7} edits accepted"
+      case .bypassPermissions: "Plan approved \u{00B7} permissions bypassed"
+      case .default, .plan, .dontAsk: "Plan approved"
+      }
     case .declineWithFeedback: "Rejected · reply sent to the agent"
     }
   }
@@ -312,9 +369,12 @@ nonisolated public enum DecisionResponse: Hashable, Sendable {
   public var changesStandingPermissions: Bool {
     switch self {
     case .approveAllEdits, .approveAutoMode, .approveDirectories, .approveRemembering,
-      .approveCommandPolicy, .approvePersist:
+      .approveCommandPolicy, .approvePersist, .approveSuggestions:
       true
-    case .approve, .decline, .cancel, .answer, .form, .declineWithFeedback:
+    // Leaving plan mode for a mode that still asks before edits changes nothing standing.
+    case .approvePlanMode(let mode):
+      mode != .default && mode != .plan
+    case .approve, .decline, .cancel, .answer, .form, .formWithNotes, .declineWithFeedback:
       false
     }
   }

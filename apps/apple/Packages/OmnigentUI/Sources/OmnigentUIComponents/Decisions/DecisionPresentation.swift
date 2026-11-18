@@ -11,11 +11,13 @@ struct PermissionChoice: Hashable {
   let label: String
   let systemImage: String
 
-  /// The widening choices `card` advertises, in the web's order. A plan review offers only
-  /// auto mode; a directory scope replaces the mode and "don't ask again" choices, as on the web.
+  /// The widening choices `card` advertises, in the web's order. A plan review offers the modes
+  /// it may switch to; a directory scope replaces the mode and "don't ask again" choices, as on
+  /// the web. The request's own suggestions come after the choices they do not duplicate.
   static func choices(for card: DecisionCard) -> [Self] {
     let permissions = card.permissions
     if permissions.plan != nil {
+      if !permissions.planModes.isEmpty { return permissions.planModes.compactMap(planChoice) }
       // The server switches a plan approved with `allow_all_edits` to auto mode, so both flags
       // mean the same thing here; offer one.
       let response: DecisionResponse? =
@@ -29,6 +31,7 @@ struct PermissionChoice: Hashable {
       } ?? []
     }
     return scopeChoices(permissions) + commandChoices(permissions)
+      + suggestionChoices(permissions)
   }
 
   /// Session modes, "don't ask again" and the directory scope.

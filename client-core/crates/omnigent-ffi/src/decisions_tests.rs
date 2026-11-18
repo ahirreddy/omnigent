@@ -9,8 +9,8 @@ use omnigent_protocol::{ElicitationAction, ElicitationValue as CoreValue};
 
 use crate::decisions::{
     DecisionKind, DecisionResponse, DeliveredVerdict, EditKind, ElicitationValue, FieldKind,
-    FormField, FormOption, NativeDelivery, NativeDeliveryState, PermissionOptions, PersistMode,
-    TextFormat, validate_form,
+    FormField, FormOption, NativeDelivery, NativeDeliveryState, PermissionMode, PermissionOptions,
+    PermissionSuggestion, PersistMode, TextFormat, validate_form,
 };
 
 const KINDS: [(core::FieldKind, FieldKind); 6] = [
@@ -27,6 +27,7 @@ fn option_on_core() -> core::FormOption {
         value: "v".into(),
         label: "Label".into(),
         detail: "More".into(),
+        preview: "Shown".into(),
     }
 }
 
@@ -52,6 +53,7 @@ fn every_field_kind_and_a_full_field_map_both_ways() {
     field.max_items = Some(6);
     field.format = Some(core::TextFormat::Email);
     field.default_value = Some(CoreValue::TextList(vec!["v".into()]));
+    field.accepts_notes = true;
 
     let mapped = FormField::from(field.clone());
     assert_eq!(
@@ -66,6 +68,7 @@ fn every_field_kind_and_a_full_field_map_both_ways() {
                 value: "v".into(),
                 label: "Label".into(),
                 detail: "More".into(),
+                preview: "Shown".into(),
             }],
             allows_custom: true,
             is_secret: true,
@@ -80,6 +83,7 @@ fn every_field_kind_and_a_full_field_map_both_ways() {
             default_value: Some(ElicitationValue::TextList {
                 values: vec!["v".into()]
             }),
+            accepts_notes: true,
         }
     );
     assert_eq!(core::FormField::from(mapped), field);
@@ -188,6 +192,13 @@ fn permission_options_keep_every_field() {
             lines_added: Some(1),
             lines_removed: Some(2),
         }],
+        suggestions: vec![core::PermissionUpdate {
+            change: core::UpdateChange::SetMode {
+                mode: core::PermissionMode::Auto,
+            },
+            destination: core::UpdateDestination::UserSettings,
+        }],
+        plan_modes: vec![core::PermissionMode::AcceptEdits],
         native_delivery: Some(core::NativeDelivery {
             state: core::NativeDeliveryState::Unconfirmed,
             attempt: "a1".into(),
@@ -213,6 +224,14 @@ fn permission_options_keep_every_field() {
     assert_eq!(mapped.file_changes[0].lines_added, Some(1));
     assert_eq!(mapped.file_changes[0].lines_removed, Some(2));
     assert_eq!(
+        mapped.suggestions,
+        [PermissionSuggestion {
+            label: "Switch to auto mode in all your projects".into(),
+            persists: true,
+        }]
+    );
+    assert_eq!(mapped.plan_modes, [PermissionMode::AcceptEdits]);
+    assert_eq!(
         mapped.native_delivery,
         Some(NativeDelivery {
             state: NativeDeliveryState::Unconfirmed,
@@ -220,6 +239,27 @@ fn permission_options_keep_every_field() {
             verdict: Some(DeliveredVerdict::Decline),
         })
     );
+}
+
+#[test]
+fn every_permission_mode_maps_both_ways() {
+    for (on_core, on_ffi) in [
+        (core::PermissionMode::Default, PermissionMode::Default),
+        (
+            core::PermissionMode::AcceptEdits,
+            PermissionMode::AcceptEdits,
+        ),
+        (core::PermissionMode::Plan, PermissionMode::Plan),
+        (
+            core::PermissionMode::BypassPermissions,
+            PermissionMode::BypassPermissions,
+        ),
+        (core::PermissionMode::DontAsk, PermissionMode::DontAsk),
+        (core::PermissionMode::Auto, PermissionMode::Auto),
+    ] {
+        assert_eq!(PermissionMode::from(on_core), on_ffi);
+        assert_eq!(core::PermissionMode::from(on_ffi), on_core);
+    }
 }
 
 #[test]
@@ -353,6 +393,29 @@ fn every_value_and_response_maps() {
                 feedback: "no".into(),
             },
             core::DecisionResponse::DeclineWithFeedback("no".into()),
+        ),
+        (
+            DecisionResponse::FormWithNotes {
+                values: HashMap::from([(
+                    "k".to_owned(),
+                    ElicitationValue::Text { value: "a".into() },
+                )]),
+                notes: HashMap::from([("k".to_owned(), "why".to_owned())]),
+            },
+            core::DecisionResponse::FormWithNotes {
+                values: BTreeMap::from([("k".to_owned(), CoreValue::Text("a".into()))]),
+                notes: BTreeMap::from([("k".to_owned(), "why".to_owned())]),
+            },
+        ),
+        (
+            DecisionResponse::ApproveSuggestions,
+            core::DecisionResponse::ApproveSuggestions,
+        ),
+        (
+            DecisionResponse::ApprovePlanMode {
+                mode: PermissionMode::Auto,
+            },
+            core::DecisionResponse::ApprovePlanMode(core::PermissionMode::Auto),
         ),
     ] {
         assert_eq!(core::DecisionResponse::from(on_ffi), on_core);

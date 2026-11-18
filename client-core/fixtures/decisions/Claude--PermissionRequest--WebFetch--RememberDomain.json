@@ -1,0 +1,86 @@
+{
+  "claude": {
+    "session_id": "claude_session_fixture",
+    "transcript_path": "/workspace/.claude/projects/app/transcript.jsonl",
+    "cwd": "/workspace/app",
+    "permission_mode": "default",
+    "hook_event_name": "PermissionRequest",
+    "tool_name": "WebFetch",
+    "tool_input": {
+      "url": "https://docs.example.com/setup",
+      "prompt": "List the setup steps"
+    },
+    "permission_suggestions": [
+      {
+        "type": "addRules",
+        "rules": [
+          {
+            "toolName": "WebFetch",
+            "ruleContent": "domain:docs.example.com"
+          }
+        ],
+        "behavior": "allow",
+        "destination": "localSettings"
+      }
+    ],
+    "_omnigent_elicitation_id": "elicit_claude_00000000000000000000000000000009"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_claude_00000000000000000000000000000009",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **WebFetch**",
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "WebFetch({\"url\": \"https://docs.example.com/setup\", \"prompt\": \"List the setup steps\"})",
+      "tool_name": "WebFetch",
+      "cwd": "/workspace/app",
+      "permission_mode": "default",
+      "allow_auto_mode": true,
+      "remember_scope": {
+        "tool": "WebFetch",
+        "host": "docs.example.com"
+      },
+      "permission_suggestions": [
+        {
+          "type": "addRules",
+          "rules": [
+            {
+              "toolName": "WebFetch",
+              "ruleContent": "domain:docs.example.com"
+            }
+          ],
+          "behavior": "allow",
+          "destination": "localSettings"
+        }
+      ]
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "remember": true
+    }
+  },
+  "claude_result": {
+    "hookSpecificOutput": {
+      "hookEventName": "PermissionRequest",
+      "decision": {
+        "behavior": "allow",
+        "updatedPermissions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "WebFetch",
+                "ruleContent": "domain:docs.example.com"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "session"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -17,6 +17,7 @@ mod changes;
 pub mod form;
 pub mod ledger;
 mod partial_json;
+pub mod permission_updates;
 pub mod resolve;
 mod text_format;
 
@@ -31,6 +32,9 @@ pub use form::{
 pub use ledger::{
     DecisionEntry, DecisionEventOutcome, DecisionState, MAX_RETIRED_IDS, RequestOutcome,
     ResolvedOutcome, SessionDecisions,
+};
+pub use permission_updates::{
+    PermissionMode, PermissionRule, PermissionUpdate, RuleBehavior, UpdateChange, UpdateDestination,
 };
 pub use resolve::{
     DecisionError, DecisionResponse, ResolveAcknowledgement, ResolveError, ResolveRequest,
@@ -258,6 +262,12 @@ pub struct PermissionOptions {
     /// The files the gated edit would change (see [`FileChange`]); empty when the request is not
     /// an edit or does not say.
     pub file_changes: Vec<FileChange>,
+    /// `permission_suggestions`: the updates Claude offers to apply with an approval, offered as
+    /// one choice. Empty when none were sent, when any cannot be described, or when the choices
+    /// above already cover every one.
+    pub suggestions: Vec<PermissionUpdate>,
+    /// `plan_modes`: the modes approving the plan may switch to (plan reviews only).
+    pub plan_modes: Vec<PermissionMode>,
     /// A native terminal confirms the verdict (Kiro).
     pub native_delivery: Option<NativeDelivery>,
 }
@@ -284,7 +294,12 @@ impl PermissionOptions {
                 host: scope.get("host").and_then(Value::as_str).map(str::to_owned),
             })
         });
-        Self {
+        let plan_modes = if plan.is_some() {
+            permission_updates::plan_modes(extra.get("plan_modes"))
+        } else {
+            Vec::new()
+        };
+        let mut options = Self {
             allow_all_edits: extra.get("allow_all_edits") == Some(&Value::Bool(true))
                 || plan.is_some(),
             allow_auto_mode: extra.get("allow_auto_mode") == Some(&Value::Bool(true)),
@@ -305,7 +320,36 @@ impl PermissionOptions {
                 always_allow_pattern: text("always_allow_pattern"),
             }),
             file_changes: changes::file_changes(phase, preview, extra),
+            suggestions: permission_updates::permission_updates(
+                extra.get("permission_suggestions"),
+            ),
+            plan_modes,
             native_delivery: NativeDelivery::parse(extra.get("native_delivery")),
+        };
+        if options
+            .suggestions
+            .iter()
+            .all(|update| options.covers(update))
+        {
+            options.suggestions.clear();
+        }
+        options
+    }
+
+    /// Whether another choice on the card applies `update` already: "accept all edits" for the
+    /// session, or the offered session directories.
+    fn covers(&self, update: &PermissionUpdate) -> bool {
+        if update.destination != UpdateDestination::Session {
+            return false;
+        }
+        match &update.change {
+            UpdateChange::SetMode {
+                mode: PermissionMode::AcceptEdits,
+            } => self.allow_all_edits && self.plan.is_none(),
+            UpdateChange::AddDirectories { directories } => directories
+                .iter()
+                .all(|directory| self.permission_directories.contains(directory)),
+            _ => false,
         }
     }
 
@@ -716,6 +760,8 @@ fn detail_text(
 
 #[cfg(test)]
 mod changes_tests;
+#[cfg(test)]
+mod claude_tests;
 #[cfg(test)]
 mod codex_tests;
 #[cfg(test)]
