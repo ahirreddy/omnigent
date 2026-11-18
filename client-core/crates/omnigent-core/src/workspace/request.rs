@@ -13,6 +13,7 @@
 //! | [`WorkspaceOperation::GetEnvironment`] | `GET environments/{env}` |
 //! | [`WorkspaceOperation::ListDirectory`] | `GET environments/{env}/filesystem[/{path}]?limit&order=asc[&after]` |
 //! | [`WorkspaceOperation::ReadFile`] | `GET environments/{env}/filesystem/{path}` |
+//! | [`WorkspaceOperation::DownloadFile`] | `GET environments/{env}/filesystem/{path}?download=true`, with `Range: bytes=a-b` for a part |
 //! | [`WorkspaceOperation::WriteFile`] | `PUT environments/{env}/filesystem/{path}` with `{content, encoding}` |
 //! | [`WorkspaceOperation::SearchPaths`] | `GET environments/{env}/search[/{path}]?q&limit[&include][&exclude]` |
 //! | [`WorkspaceOperation::SearchContent`] | `GET environments/{env}/content-search?q&case_sensitive&regex&include&exclude&limit` |
@@ -27,6 +28,7 @@ use serde_json::{Value, json};
 use url::Url;
 
 use super::content::{FileContent, file_content};
+use super::download::{ByteRange, FileDownload, file_download};
 use super::error::{NotFoundMeaning, WorkspaceError, check};
 use super::model::{
     ChangesList, DirectoryPage, FileDiffContent, FileWritten, PathSearchResult, SessionFilesPage,
@@ -90,6 +92,15 @@ pub struct FileWrite {
     pub content: String,
 }
 
+/// A file's raw bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileDownloadQuery {
+    /// The file.
+    pub path: WorkspacePath,
+    /// The bytes wanted; `None` for the whole file.
+    pub range: Option<ByteRange>,
+}
+
 /// What to ask for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceOperation {
@@ -111,6 +122,8 @@ pub enum WorkspaceOperation {
     ListChanges,
     /// A changed file's before and after text.
     FileDiff(WorkspacePath),
+    /// A file's raw bytes, whole or one range, without the read cap.
+    DownloadFile(FileDownloadQuery),
     /// Files uploaded to the session. The environment is not used.
     ListSessionFiles(SessionFilesQuery),
 }
@@ -138,6 +151,8 @@ pub enum WorkspaceResponse {
     FileDiff(FileDiffContent),
     /// [`WorkspaceOperation::ListSessionFiles`].
     SessionFiles(SessionFilesPage),
+    /// [`WorkspaceOperation::DownloadFile`].
+    Download(FileDownload),
 }
 
 /// A validated workspace request.
@@ -156,6 +171,16 @@ pub(super) struct Route {
     pub(super) path: String,
     pub(super) segments: Vec<String>,
     pub(super) query: Vec<(&'static str, String)>,
+    /// Headers beyond the connection's own, such as a download's `Range`.
+    pub(super) headers: Vec<HttpHeader>,
+}
+
+impl Route {
+    /// `request` with this route's extra headers.
+    pub(super) fn with_headers(&self, mut request: HttpRequest) -> HttpRequest {
+        request.headers.extend(self.headers.iter().cloned());
+        request
+    }
 }
 
 fn identifier(value: &str) -> Result<(), WorkspaceError> {
@@ -215,9 +240,17 @@ impl WorkspaceRequest {
             WorkspaceOperation::ReadFile(path)
             | WorkspaceOperation::FileDiff(path)
             | WorkspaceOperation::WriteFile(FileWrite { path, .. })
+            | WorkspaceOperation::DownloadFile(FileDownloadQuery { path, .. })
                 if path.is_root() =>
             {
                 return Err(super::path::PathError::Root.into());
+            }
+            WorkspaceOperation::DownloadFile(FileDownloadQuery {
+                range: Some(range), ..
+            }) if range.length == 0 || range.offset.checked_add(range.length).is_none() => {
+                return Err(WorkspaceError::InvalidQuery {
+                    reason: "Request at least one byte, within the file.".to_owned(),
+                });
             }
             WorkspaceOperation::SearchPaths(query) => query.validate()?,
             WorkspaceOperation::SearchContent(query) => query.validate()?,
@@ -262,6 +295,7 @@ impl WorkspaceRequest {
             path,
             segments,
             query,
+            headers: vec![],
         };
         Ok(match &self.operation {
             WorkspaceOperation::ListEnvironments => {
@@ -282,6 +316,18 @@ impl WorkspaceRequest {
             WorkspaceOperation::ReadFile(path) => {
                 route(format!("{environment}/filesystem"), segments(path), vec![])
             }
+            WorkspaceOperation::DownloadFile(query) => Route {
+                headers: query
+                    .range
+                    .map(|range| HttpHeader::new("Range", range.header_value()))
+                    .into_iter()
+                    .collect(),
+                ..route(
+                    format!("{environment}/filesystem"),
+                    segments(&query.path),
+                    vec![("download", "true".into())],
+                )
+            },
             WorkspaceOperation::WriteFile(write) => Route {
                 method: "PUT",
                 body: Some(json!({"content": write.content, "encoding": "utf-8"})),
@@ -355,7 +401,7 @@ impl WorkspaceRequest {
             .request(route.method, &route.path, &pairs, "application/json")
             .map_err(SessionError::from)?;
         with_body(
-            with_segments(request, &route.segments)?,
+            with_segments(route.with_headers(request), &route.segments)?,
             route.body.as_ref(),
         )
     }
@@ -386,7 +432,7 @@ impl WorkspaceRequest {
             )
             .map_err(SessionError::from)?;
         with_body(
-            with_segments(request, &route.segments)?,
+            with_segments(route.with_headers(request), &route.segments)?,
             route.body.as_ref(),
         )
     }
@@ -396,6 +442,7 @@ impl WorkspaceRequest {
             WorkspaceOperation::ListDirectory(_)
             | WorkspaceOperation::ReadFile(_)
             | WorkspaceOperation::WriteFile(_)
+            | WorkspaceOperation::DownloadFile(_)
             | WorkspaceOperation::SearchPaths(_) => NotFoundMeaning::Path,
             WorkspaceOperation::FileDiff(_) => NotFoundMeaning::Diff,
             WorkspaceOperation::SearchContent(_) => NotFoundMeaning::ContentSearch,
@@ -409,6 +456,7 @@ impl WorkspaceRequest {
             | WorkspaceOperation::ReadFile(path)
             | WorkspaceOperation::WriteFile(FileWrite { path, .. })
             | WorkspaceOperation::FileDiff(path)
+            | WorkspaceOperation::DownloadFile(FileDownloadQuery { path, .. })
             | WorkspaceOperation::SearchPaths(PathSearchQuery { under: path, .. }) => {
                 path.to_string()
             }
@@ -423,6 +471,10 @@ impl WorkspaceRequest {
     /// See [`WorkspaceError`]. A `401` yields `WorkspaceError::Session(Unauthorized)`; the caller
     /// must end the connection ([`WorkspaceError::ends_connection`]).
     pub fn decode(&self, response: &HttpResponse) -> Result<WorkspaceResponse, WorkspaceError> {
+        // A download's body is the file, not JSON.
+        if let WorkspaceOperation::DownloadFile(query) = &self.operation {
+            return file_download(response, &query.path).map(WorkspaceResponse::Download);
+        }
         let subject = self.subject();
         let context = self.context();
         let value = check(response, self.not_found_meaning(), &subject, context)?;
@@ -455,6 +507,12 @@ impl WorkspaceRequest {
             WorkspaceOperation::ListSessionFiles(query) => {
                 WorkspaceResponse::SessionFiles(session_files(&value, query.after.as_deref())?)
             }
+            WorkspaceOperation::DownloadFile(_) => {
+                return Err(WorkspaceError::malformed(
+                    context,
+                    "a download decoded as JSON",
+                ));
+            }
         })
     }
 
@@ -470,6 +528,7 @@ impl WorkspaceRequest {
             WorkspaceOperation::ListChanges => "the changed files",
             WorkspaceOperation::FileDiff(_) => "the file diff",
             WorkspaceOperation::ListSessionFiles(_) => "the session files",
+            WorkspaceOperation::DownloadFile(_) => "the file download",
         }
     }
 }

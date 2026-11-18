@@ -151,6 +151,46 @@ fn every_preview_shape_maps() {
             }
         );
     }
+    assert_eq!(
+        preview(core::FilePreview::Pdf {
+            bytes: b"%PDF".to_vec(),
+            truncated: true,
+        }),
+        FilePreview::Pdf {
+            data: b"%PDF".to_vec(),
+            truncated: true,
+        }
+    );
+    assert_eq!(preview(core::FilePreview::Video), FilePreview::Video);
+}
+
+#[test]
+fn video_types_follow_the_web() {
+    assert_eq!(
+        workspace_video_type(None, "rec/demo.mov".into()).as_deref(),
+        Some("video/quicktime")
+    );
+    assert_eq!(
+        workspace_video_type(Some("video/x-matroska".into()), "a.mp4".into()),
+        None
+    );
+    assert!(is_workspace_video("a.webm".into(), None));
+    assert!(!is_workspace_video(
+        "main.ts".into(),
+        Some("video/mp2t".into())
+    ));
+    assert_eq!(
+        video_chapters_path("rec/demo.mp4".into()),
+        "rec/demo.mp4.chapters.vtt"
+    );
+    assert_eq!(
+        parse_video_chapters("WEBVTT\n\n00:01.500 --> 00:03.000\nOpen the page\n".into()),
+        [VideoChapter {
+            time: 1.5,
+            end: 3.0,
+            title: "Open the page".into(),
+        }]
+    );
 }
 
 #[test]

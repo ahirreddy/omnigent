@@ -442,6 +442,132 @@ fn workspace_reads_decode_preview_and_diff_in_the_core() {
     );
 }
 
+/// The runner's `_fs_download` answer: the bytes with `Content-Disposition`, and for a range
+/// `206` with `Content-Range`.
+fn download(status: u16, content_range: Option<&str>, body: &[u8]) -> crate::http::HttpResponse {
+    let header = |name: &str, value: &str| crate::http::HttpHeader {
+        name: name.into(),
+        value: value.into(),
+    };
+    let mut headers = vec![
+        header("Content-Type", "video/mp4"),
+        header("Content-Disposition", "attachment; filename=\"demo.mp4\""),
+        header("Accept-Ranges", "bytes"),
+    ];
+    if let Some(range) = content_range {
+        headers.push(header("Content-Range", range));
+    }
+    crate::http::HttpResponse {
+        status,
+        headers,
+        body: body.to_vec(),
+    }
+}
+
+#[test]
+fn a_video_streams_by_range_and_a_download_reads_the_whole_file() {
+    let mut harness = connected();
+    let path = format!(
+        "/v1/sessions/{WORKSPACE_SESSION}/resources/environments/default/filesystem/rec/demo.mp4"
+    );
+    let core = Arc::clone(&harness.core);
+    let file = harness
+        .run(async move {
+            core.read_workspace_file(
+                WORKSPACE_SESSION.into(),
+                "default".into(),
+                "rec/demo.mp4".into(),
+            )
+            .await
+        })
+        .unwrap();
+    assert_eq!(file.preview, FilePreview::Video);
+    assert_eq!(
+        harness.http.count(&path),
+        0,
+        "a video is not read through the envelope"
+    );
+
+    harness
+        .http
+        .route(&path, download(206, Some("bytes 2-4/10"), b"cde"));
+    let core = Arc::clone(&harness.core);
+    let part = harness
+        .run(async move {
+            core.download_workspace_file(
+                WORKSPACE_SESSION.into(),
+                "default".into(),
+                "rec/demo.mp4".into(),
+                Some(2),
+                Some(3),
+            )
+            .await
+        })
+        .unwrap();
+    assert_eq!(
+        (part.offset, part.total_length, part.bytes.as_slice()),
+        (2, Some(10), &b"cde"[..])
+    );
+    assert_eq!(part.content_type.as_deref(), Some("video/mp4"));
+    let sent = lock(&harness.http.requests).last().cloned().unwrap();
+    assert!(
+        sent.url.ends_with("/rec/demo.mp4?download=true"),
+        "{}",
+        sent.url
+    );
+    assert!(
+        sent.headers
+            .iter()
+            .any(|header| header.name == "Range" && header.value == "bytes=2-4"),
+        "{:?}",
+        sent.headers
+    );
+
+    harness
+        .http
+        .route(&path, download(200, None, b"0123456789"));
+    let core = Arc::clone(&harness.core);
+    let whole = harness
+        .run(async move {
+            core.download_workspace_file(
+                WORKSPACE_SESSION.into(),
+                "default".into(),
+                "rec/demo.mp4".into(),
+                None,
+                None,
+            )
+            .await
+        })
+        .unwrap();
+    assert_eq!((whole.offset, whole.total_length), (0, Some(10)));
+    let sent = lock(&harness.http.requests).last().cloned().unwrap();
+    assert!(!sent.headers.iter().any(|header| header.name == "Range"));
+
+    let core = Arc::clone(&harness.core);
+    let half = harness
+        .run(async move {
+            core.download_workspace_file(
+                WORKSPACE_SESSION.into(),
+                "default".into(),
+                "rec/demo.mp4".into(),
+                Some(2),
+                None,
+            )
+            .await
+        })
+        .unwrap_err();
+    assert!(
+        matches!(
+            half,
+            CoreError::Workspace {
+                kind: WorkspaceErrorKind::InvalidInput,
+                ..
+            }
+        ),
+        "{half:?}"
+    );
+}
+
 #[test]
 fn changed_files_invalidation_is_reported_as_an_event() {
     let mut harness = connected();

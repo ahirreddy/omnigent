@@ -9,6 +9,7 @@
 //! host-sharded server is re-addressed like any other session request.
 
 use super::content::{FileBody, FileContent};
+use super::download::{ByteRange, FileDownload};
 use super::error::WorkspaceError;
 use super::model::{
     ChangesList, DirectoryPage, FileDiffContent, FileSave, FileWritten, PathSearchResult,
@@ -16,8 +17,8 @@ use super::model::{
 };
 use super::path::WorkspacePath;
 use super::request::{
-    DirectoryQuery, FileWrite, SessionFilesQuery, WorkspaceOperation, WorkspaceRequest,
-    WorkspaceResponse, with_segments,
+    DirectoryQuery, FileDownloadQuery, FileWrite, SessionFilesQuery, WorkspaceOperation,
+    WorkspaceRequest, WorkspaceResponse, with_segments,
 };
 use super::search::{ContentSearchQuery, ContentSearchResult, PathSearchQuery};
 use crate::client::{ClientCore, SessionError};
@@ -53,7 +54,7 @@ impl<T: HttpTransport> ClientCore<T> {
         let route = request.route()?;
         let prepared =
             self.prepare(route.method, &route.path, &route.query, route.body.as_ref())?;
-        let http = with_segments(prepared.request, &route.segments)?;
+        let http = with_segments(route.with_headers(prepared.request), &route.segments)?;
         let identity = self.connected_server();
         let response = self
             .send_routed(http, prepared.addressing)
@@ -161,6 +162,32 @@ impl<T: HttpTransport> ClientCore<T> {
             WorkspaceOperation::ReadFile(path),
         )?;
         expect!(self.workspace(&request).await?, File)
+    }
+
+    /// A file's raw bytes without the read cap: all of it, or `range` (the web's
+    /// `downloadWorkspaceFile` and its video player's ranged reads).
+    ///
+    /// # Errors
+    ///
+    /// See [`ClientCore::workspace`]; `InvalidQuery` for an empty range, `Rejected` (416) for a
+    /// range past the end, `RunnerOffline` when the runner cannot serve downloads.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport"
+    )]
+    pub async fn download_workspace_file(
+        &self,
+        session_id: &str,
+        environment_id: &str,
+        path: WorkspacePath,
+        range: Option<ByteRange>,
+    ) -> Result<FileDownload, WorkspaceError> {
+        let request = WorkspaceRequest::new(
+            session_id,
+            environment_id,
+            WorkspaceOperation::DownloadFile(FileDownloadQuery { path, range }),
+        )?;
+        expect!(self.workspace(&request).await?, Download)
     }
 
     /// Replaces the file's content with `content`.

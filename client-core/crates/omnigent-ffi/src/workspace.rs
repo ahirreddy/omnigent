@@ -319,6 +319,15 @@ pub enum FilePreview {
         /// The bytes.
         data: Vec<u8>,
     },
+    /// A PDF, as the server returned it.
+    Pdf {
+        /// The bytes returned.
+        data: Vec<u8>,
+        /// The server returned only part of it, which a PDF reader cannot open.
+        truncated: bool,
+    },
+    /// A video, streamed with [`ClientCore::download_workspace_file`] once asked to play.
+    Video,
     /// Not shown.
     Binary {
         /// Why.
@@ -353,6 +362,22 @@ pub struct WorkspaceFileBytes {
     /// The server returned only part of the file.
     pub truncated: bool,
     /// The content: UTF-8 text re-encoded, or the bytes of a binary file.
+    pub bytes: Vec<u8>,
+}
+
+/// A file's raw bytes from a download: all of it, or the part asked for.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct WorkspaceFileDownload {
+    /// Environment-relative path.
+    pub path: String,
+    /// The media type the server reported.
+    pub content_type: Option<String>,
+    /// Where `bytes` start in the file; 0 for the whole file, also when the server ignored the
+    /// range.
+    pub offset: u64,
+    /// The file's size, when the server said.
+    pub total_length: Option<u64>,
+    /// The bytes.
     pub bytes: Vec<u8>,
 }
 
@@ -725,6 +750,11 @@ fn preview(preview: core::FilePreview) -> FilePreview {
             },
             data: bytes,
         },
+        core::FilePreview::Pdf { bytes, truncated } => FilePreview::Pdf {
+            data: bytes,
+            truncated,
+        },
+        core::FilePreview::Video => FilePreview::Video,
         core::FilePreview::Binary { reason, byte_count } => FilePreview::Binary {
             reason: match reason {
                 core::BinaryReason::NotText => BinaryReason::NotText,
@@ -859,6 +889,53 @@ pub fn absolute_location(root: String, path: String) -> Result<String, CoreError
     Ok(core::absolute_location(&root, &parse(&path)?))
 }
 
+/// The type a downloaded video plays as (web `allowedVideoType`), or `None` when the player does
+/// not accept it.
+#[uniffi::export]
+#[must_use]
+pub fn workspace_video_type(content_type: Option<String>, path: String) -> Option<String> {
+    core::allowed_video_type(content_type.as_deref(), &path).map(str::to_owned)
+}
+
+/// Whether `path` plays as a video (web `isVideoFile`), by `content_type` first, else its name.
+#[uniffi::export]
+#[must_use]
+pub fn is_workspace_video(path: String, content_type: Option<String>) -> bool {
+    core::is_video_file(&path, content_type.as_deref())
+}
+
+/// One chapter of a recording.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct VideoChapter {
+    /// Start, in seconds.
+    pub time: f64,
+    /// End, in seconds.
+    pub end: f64,
+    /// The title.
+    pub title: String,
+}
+
+/// The chapters file of the recording at `path` (`<path>.chapters.vtt`).
+#[uniffi::export]
+#[must_use]
+pub fn video_chapters_path(path: String) -> String {
+    format!("{path}{}", core::CHAPTERS_SUFFIX)
+}
+
+/// The chapters a recording's `WebVTT` file lists, by start (web `parseVideoChapters`).
+#[uniffi::export]
+#[must_use]
+pub fn parse_video_chapters(text: String) -> Vec<VideoChapter> {
+    core::parse_video_chapters(&text)
+        .into_iter()
+        .map(|chapter| VideoChapter {
+            time: chapter.time,
+            end: chapter.end,
+            title: chapter.title,
+        })
+        .collect()
+}
+
 /// The globs of a comma- or whitespace-separated filter field.
 #[must_use]
 #[uniffi::export]
@@ -978,9 +1055,20 @@ impl ClientCore {
         environment_id: String,
         path: String,
     ) -> Result<WorkspaceFile, CoreError> {
+        let path = parse_file(&path)?;
+        // A video by its name is never read through the capped envelope; the player streams it.
+        if let Some(shown) = core::FilePreview::before_reading(&path) {
+            return Ok(WorkspaceFile {
+                path: path.as_str().to_owned(),
+                content_type: None,
+                byte_count: 0,
+                truncated: false,
+                preview: preview(shown),
+            });
+        }
         let content = self
             .sessions()
-            .read_workspace_file(&session_id, &environment_id, parse_file(&path)?)
+            .read_workspace_file(&session_id, &environment_id, path)
             .await
             .map_err(workspace_error)?;
         Ok(WorkspaceFile {
@@ -1016,6 +1104,44 @@ impl ClientCore {
                 core::FileBody::Text(text) => text.into_bytes(),
                 core::FileBody::Binary(bytes) => bytes,
             },
+        })
+    }
+
+    /// The file `path`'s raw bytes without the read cap: the whole file, or `length` bytes from
+    /// `offset` when both are given (a video's ranged reads).
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Workspace`]; kind `InvalidInput` for the root, an empty range or one past the
+    /// end, `RunnerOffline` when the runner cannot serve downloads.
+    pub async fn download_workspace_file(
+        &self,
+        session_id: String,
+        environment_id: String,
+        path: String,
+        offset: Option<u64>,
+        length: Option<u64>,
+    ) -> Result<WorkspaceFileDownload, CoreError> {
+        let range = match (offset, length) {
+            (Some(offset), Some(length)) => Some(core::ByteRange { offset, length }),
+            (None, None) => None,
+            _ => {
+                return Err(workspace_error(core::WorkspaceError::InvalidQuery {
+                    reason: "A range needs both its offset and its length.".to_owned(),
+                }));
+            }
+        };
+        let download = self
+            .sessions()
+            .download_workspace_file(&session_id, &environment_id, parse_file(&path)?, range)
+            .await
+            .map_err(workspace_error)?;
+        Ok(WorkspaceFileDownload {
+            path: download.path.as_str().to_owned(),
+            content_type: download.content_type,
+            offset: download.offset,
+            total_length: download.total_length,
+            bytes: download.bytes,
         })
     }
 

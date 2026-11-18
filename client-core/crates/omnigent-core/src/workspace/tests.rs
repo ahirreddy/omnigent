@@ -194,6 +194,146 @@ fn text_binary_and_non_ascii_files() {
 }
 
 #[test]
+fn pdfs_and_videos_preview_as_the_web_shows_them() {
+    let file =
+        |name: &str, content_type: Option<&str>, body: FileBody, truncated: bool| FileContent {
+            path: path(name),
+            content_type: content_type.map(str::to_owned),
+            byte_count: 4,
+            truncated,
+            body,
+        };
+    let limits = PreviewLimits::default();
+    let pdf = file(
+        "docs/report.pdf",
+        Some("application/pdf"),
+        FileBody::Binary(b"%PDF\xff".to_vec()),
+        false,
+    );
+    assert_eq!(
+        pdf.preview(&limits),
+        FilePreview::Pdf {
+            bytes: b"%PDF\xff".to_vec(),
+            truncated: false
+        }
+    );
+    // An ASCII-only PDF arrives as text and still shows as a PDF; a cut one says so.
+    let ascii = file("a.pdf", None, FileBody::Text("%PDF-1.4".into()), true);
+    assert!(matches!(
+        ascii.preview(&limits),
+        FilePreview::Pdf {
+            truncated: true,
+            ..
+        }
+    ));
+    // The server's type wins over the name, both ways.
+    let typed_video = file(
+        "recording",
+        Some("video/webm"),
+        FileBody::Binary(vec![0x1a]),
+        true,
+    );
+    assert_eq!(typed_video.preview(&limits), FilePreview::Video);
+    let not_pdf = file(
+        "notes.pdf",
+        Some("text/plain"),
+        FileBody::Text("hi".into()),
+        false,
+    );
+    assert!(matches!(not_pdf.preview(&limits), FilePreview::Text(_)));
+    // Images are recognized by their bytes before the name.
+    let png = file(
+        "logo.pdf",
+        None,
+        FileBody::Binary(b"\x89PNG\r\n\x1a\n".to_vec()),
+        false,
+    );
+    assert!(matches!(png.preview(&limits), FilePreview::Image { .. }));
+    // A video name decides before any read; nothing else does.
+    assert_eq!(
+        FilePreview::before_reading(&path("rec/demo.MOV")),
+        Some(FilePreview::Video)
+    );
+    assert_eq!(FilePreview::before_reading(&path("docs/report.pdf")), None);
+}
+
+#[test]
+fn a_download_asks_for_the_raw_file_and_one_range() {
+    let endpoint = ServerEndpoint::new(LOCAL).unwrap();
+    let ranged = request(WorkspaceOperation::DownloadFile(FileDownloadQuery {
+        path: path("rec/demo video.mp4"),
+        range: Some(ByteRange {
+            offset: 1_048_576,
+            length: 1_048_576,
+        }),
+    }));
+    let http = ranged.build_for_endpoint(&endpoint, None).unwrap();
+    assert_eq!(
+        http.url,
+        format!(
+            "{LOCAL}/v1/sessions/{SESSION}/resources/environments/default/filesystem/rec/demo%20video.mp4?download=true"
+        )
+    );
+    assert_eq!(header(&http, "Range"), Some("bytes=1048576-2097151"));
+    let whole = request(WorkspaceOperation::DownloadFile(FileDownloadQuery {
+        path: path("rec/demo.mp4"),
+        range: None,
+    }));
+    assert_eq!(
+        header(&whole.build_for_endpoint(&endpoint, None).unwrap(), "Range"),
+        None
+    );
+    for range in [
+        ByteRange {
+            offset: 0,
+            length: 0,
+        },
+        ByteRange {
+            offset: u64::MAX,
+            length: 2,
+        },
+    ] {
+        let invalid = WorkspaceRequest::new(
+            SESSION,
+            DEFAULT_ENVIRONMENT_ID,
+            WorkspaceOperation::DownloadFile(FileDownloadQuery {
+                path: path("a.mp4"),
+                range: Some(range),
+            }),
+        );
+        assert!(
+            matches!(invalid, Err(WorkspaceError::InvalidQuery { .. })),
+            "{range:?}"
+        );
+    }
+    let root = WorkspaceRequest::new(
+        SESSION,
+        DEFAULT_ENVIRONMENT_ID,
+        WorkspaceOperation::DownloadFile(FileDownloadQuery {
+            path: WorkspacePath::root(),
+            range: None,
+        }),
+    );
+    assert!(matches!(root, Err(WorkspaceError::InvalidPath(_))));
+    let answer = HttpResponse {
+        status: 206,
+        headers: vec![
+            HttpHeader::new("Content-Type", "video/mp4"),
+            HttpHeader::new("Content-Range", "bytes 1048576-1048578/5000000"),
+            HttpHeader::new("Content-Disposition", "attachment; filename=\"demo.mp4\""),
+        ],
+        body: b"abc".to_vec(),
+    };
+    let Ok(WorkspaceResponse::Download(part)) = ranged.decode(&answer) else {
+        panic!("not decoded")
+    };
+    assert_eq!(
+        (part.offset, part.total_length),
+        (1_048_576, Some(5_000_000))
+    );
+}
+
+#[test]
 fn missing_and_traversal_paths() {
     assert_eq!(
         exchange(
