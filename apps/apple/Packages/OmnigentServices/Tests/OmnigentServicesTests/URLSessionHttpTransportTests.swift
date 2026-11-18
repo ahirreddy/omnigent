@@ -144,6 +144,27 @@ struct URLSessionHttpTransportTests {
     }
   }
 
+  /// A session event can wait on the user (a policy asking about the message), so it waits for
+  /// its reply as long as the server does; every other request keeps the short timeout.
+  @Test func sessionEventsWaitAsLongAsTheServerHoldsThem() {
+    let request = { (method: String, path: String) in
+      HttpRequest(method: method, url: "http://127.0.0.1:6767\(path)", headers: [], body: nil)
+    }
+    for path in ["/v1/sessions/conv_a/events", "/api/2.0/omnigent/v1/sessions/conv_a/events"] {
+      #expect(URLSessionHttpTransport.isHeldForTheUser(request("POST", path)), "\(path)")
+    }
+    for (method, path) in [
+      ("GET", "/v1/sessions/conv_a/events"), ("POST", "/v1/sessions/conv_a/elicitations/e/resolve"),
+      ("POST", "/v1/sessions"), ("POST", "/v1/sessions/conv_a/events/extra"),
+    ] {
+      #expect(!URLSessionHttpTransport.isHeldForTheUser(request(method, path)), "\(method) \(path)")
+    }
+    #expect(
+      URLSessionHttpTransport.makeHeldSession().configuration.timeoutIntervalForRequest == 86_400)
+    #expect(
+      URLSessionHttpTransport.makeDefaultSession().configuration.timeoutIntervalForRequest == 30)
+  }
+
   @Test func invalidURLIsRejected() async {
     let transport = makeTransport()
     do {
