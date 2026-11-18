@@ -274,6 +274,18 @@ impl MessageData {
             || self.is_interrupt_marker()
     }
 
+    /// True for a user message whose text starts with the summary Claude Code injects after
+    /// `/compact` ("This session is being continued from a previous conversation").
+    #[must_use]
+    pub fn is_continuation_summary(&self) -> bool {
+        self.role == MessageRole::User
+            && self
+                .content
+                .iter()
+                .filter_map(ContentPart::text)
+                .any(|text| text.starts_with(CONTINUED_SESSION_PREFIX))
+    }
+
     /// True for the user-role record of an interrupt rather than something the person typed:
     /// the runner's `[System: interrupted]` marker, or Claude Code's
     /// `[Request interrupted by user]` (and `... for tool use`) record.
