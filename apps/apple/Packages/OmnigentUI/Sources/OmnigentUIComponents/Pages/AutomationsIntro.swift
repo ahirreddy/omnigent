@@ -25,6 +25,7 @@ public struct AutomationsIntro: View {
   private let appName: String
   private let dismiss: () -> Void
   @State private var index = 0
+  @Environment(\.layoutWidth) private var layoutWidth
 
   /// Creates the guide.
   /// - Parameters:
@@ -57,8 +58,9 @@ public struct AutomationsIntro: View {
         Step(
           id: "watch", title: "Watch for new work",
           detail:
-            "Use Jira, Slack, or GitHub templates to check periodically and start sessions for matching items. Your agent needs access to the service.",
-          caption: "Jira \u{00B7} Slack \u{00B7} GitHub", result: "Start work on matching items",
+            "Use Jira, Slack, GitHub, Linear, or PagerDuty templates to check periodically and start sessions for matching items. Your agent needs access to the service.",
+          caption: "Jira \u{00B7} Slack \u{00B7} GitHub \u{00B7} Linear \u{00B7} PagerDuty",
+          result: "Start work on matching items",
           systemImage: "magnifyingglass"))
     }
     if sessionModes {
@@ -87,44 +89,80 @@ public struct AutomationsIntro: View {
   private var active: Step? { steps.indices.contains(index) ? steps[index] : steps.last }
   private var isLast: Bool { index >= steps.count - 1 }
 
-  /// The guide.
+  /// The guide: the steps beside their illustration, or, on a phone, the steps over the active
+  /// step's caption, as the web's narrow dialog.
   public var body: some View {
-    HStack(spacing: 0) {
-      VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-        Text("Introducing Automations").font(.title.weight(.semibold))
-        Text("Put recurring work on autopilot with \(appName).").foregroundStyle(.secondary)
-        VStack(spacing: Theme.Spacing.extraSmall) {
-          ForEach(Array(steps.enumerated()), id: \.element.id) { offset, step in
-            stepRow(step, number: offset + 1, isActive: offset == index) { index = offset }
+    Group {
+      if layoutWidth == .compact {
+        ScrollView {
+          VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+            stepsColumn(showsEveryDetail: false)
+            if let step = active {
+              VStack(spacing: Theme.Spacing.small) {
+                card(step.caption, systemImage: step.systemImage)
+                Text("\(index + 1) of \(steps.count) \u{00B7} \(step.title)")
+                  .font(.caption).foregroundStyle(.secondary)
+              }
+              .frame(maxWidth: .infinity)
+              .padding(.vertical, Theme.Spacing.large)
+              .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 16))
+              .accessibilityHidden(true)
+            }
+            buttons
           }
+          .padding(Theme.Spacing.extraLarge)
         }
-        .padding(.vertical, Theme.Spacing.small)
-        Spacer(minLength: 0)
-        HStack {
-          Spacer()
-          Button("Maybe later", action: dismiss)
-            .accessibilityIdentifier("automations-intro-dismiss")
-          Button(isLast ? "Done" : "Next") {
-            if isLast { dismiss() } else { index += 1 }
+      } else {
+        HStack(spacing: 0) {
+          VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+            stepsColumn(showsEveryDetail: true)
+            Spacer(minLength: 0)
+            buttons
           }
-          .buttonStyle(.borderedProminent)
-          .keyboardShortcut(.defaultAction)
-          .accessibilityIdentifier("automations-intro-next")
+          .padding(Theme.Spacing.extraLarge)
+          .frame(width: 420, alignment: .leading)
+          illustration
+            .frame(width: 380)
+            .frame(maxHeight: .infinity)
+            .background(.quaternary.opacity(0.4))
         }
+        .frame(minHeight: 480)
       }
-      .padding(Theme.Spacing.extraLarge)
-      .frame(width: 420, alignment: .leading)
-      illustration
-        .frame(width: 380)
-        .frame(maxHeight: .infinity)
-        .background(.quaternary.opacity(0.4))
     }
-    .frame(minHeight: 480)
     .accessibilityIdentifier("automations-intro")
   }
 
+  /// The title, what it's for, and the numbered steps.
+  @ViewBuilder private func stepsColumn(showsEveryDetail: Bool) -> some View {
+    Text("Introducing Automations").font(.title.weight(.semibold))
+    Text("Put recurring work on autopilot with \(appName).").foregroundStyle(.secondary)
+    VStack(spacing: Theme.Spacing.extraSmall) {
+      ForEach(Array(steps.enumerated()), id: \.element.id) { offset, step in
+        stepRow(
+          step, number: offset + 1, isActive: offset == index,
+          showsDetail: showsEveryDetail || offset == index
+        ) { index = offset }
+      }
+    }
+    .padding(.vertical, Theme.Spacing.small)
+  }
+
+  private var buttons: some View {
+    HStack {
+      Spacer()
+      Button("Maybe later", action: dismiss)
+        .accessibilityIdentifier("automations-intro-dismiss")
+      Button(isLast ? "Done" : "Next") {
+        if isLast { dismiss() } else { index += 1 }
+      }
+      .buttonStyle(.borderedProminent)
+      .keyboardShortcut(.defaultAction)
+      .accessibilityIdentifier("automations-intro-next")
+    }
+  }
+
   private func stepRow(
-    _ step: Step, number: Int, isActive: Bool, select: @escaping () -> Void
+    _ step: Step, number: Int, isActive: Bool, showsDetail: Bool, select: @escaping () -> Void
   ) -> some View {
     Button(action: select) {
       HStack(alignment: .top, spacing: Theme.Spacing.medium) {
@@ -134,8 +172,10 @@ public struct AutomationsIntro: View {
           .overlay(Circle().strokeBorder(.separator))
         VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
           Text(step.title).font(.callout.weight(.medium))
-          Text(step.detail).font(.callout).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+          if showsDetail {
+            Text(step.detail).font(.callout).foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
         Spacer(minLength: 0)
       }

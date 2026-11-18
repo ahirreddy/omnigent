@@ -9,6 +9,8 @@ import SwiftUI
 struct AutomationsIntroPresenter: ViewModifier {
   let connection: ConnectionStore
   let defaults: UserDefaults
+  /// Bumped by the page's info button, which opens the guide again even once seen.
+  var reopenRequests = 0
   @State private var isPresented = false
 
   /// The seen flag's key, or `nil` until the server and user are known.
@@ -30,6 +32,7 @@ struct AutomationsIntroPresenter: ViewModifier {
         guard isLoaded, let key, !defaults.bool(forKey: key) else { return }
         isPresented = true
       }
+      .onChange(of: reopenRequests) { isPresented = true }
       .sheet(isPresented: $isPresented, onDismiss: markSeen) {
         AutomationsIntro(
           steps: AutomationsIntro.steps(
@@ -47,10 +50,12 @@ struct AutomationsIntroPresenter: ViewModifier {
 }
 
 extension View {
-  /// Shows the Automations guide on the first visit.
-  func automationsIntro(_ connection: ConnectionStore, defaults: UserDefaults = .standard)
-    -> some View
-  {
-    modifier(AutomationsIntroPresenter(connection: connection, defaults: defaults))
+  /// Shows the Automations guide on the first visit, and again with each reopen request.
+  func automationsIntro(
+    _ connection: ConnectionStore, defaults: UserDefaults = .standard, reopenRequests: Int = 0
+  ) -> some View {
+    modifier(
+      AutomationsIntroPresenter(
+        connection: connection, defaults: defaults, reopenRequests: reopenRequests))
   }
 }

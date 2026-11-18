@@ -175,4 +175,29 @@ struct AutomationsPageMappingTests {
           messageMaxChars: nil), withHeader: true
       ).isEmpty)
   }
+
+  @Test("What blocks Save is said in the form")
+  func blockers() {
+    var draft = AutomationDraftState()
+    #expect(
+      AutomationEditorMapping.blocker(draft, isEditing: false)
+        == "Pick the host this automation runs on.")
+    #expect(AutomationEditorMapping.blocker(draft, isEditing: true) == nil)
+    draft.workspace = "/w"
+    #expect(
+      AutomationEditorMapping.blocker(draft, isEditing: true)
+        == "Pick a host before pinning a workspace.")
+    draft.runsInSandbox = true
+    #expect(AutomationEditorMapping.blocker(draft, isEditing: false) == nil)
+  }
+
+  @Test("The editor's Trigger type offers each integration by its service's name")
+  func triggerTypes() {
+    let types = AutomationTriggerMapping.types
+    #expect(types.map(\.id) == ["jira", "slack", "github", "linear", "pagerduty"])
+    #expect(types.map(\.name) == ["Jira", "Slack", "GitHub", "Linear", "PagerDuty"])
+    #expect(AutomationTriggerMapping.defaultName("schedule").isEmpty)
+    #expect(!AutomationTriggerMapping.defaultName("jira").isEmpty)
+    #expect(AutomationTriggerMapping.cards.map(\.systemImage).allSatisfy { $0 != "bolt" })
+  }
 }
