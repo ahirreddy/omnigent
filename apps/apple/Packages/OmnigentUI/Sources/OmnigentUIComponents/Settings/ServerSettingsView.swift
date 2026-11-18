@@ -67,7 +67,10 @@ public struct ServerSettingsView: View {
     private var splitLayout: some View {
       HStack(spacing: 0) {
         List(selection: pane) {
-          paneSections { Label($0.title, systemImage: $0.systemImage).tag($0) }
+          paneSections { pane in
+            Label(pane.title, systemImage: pane.systemImage).tag(pane)
+              .accessibilityIdentifier("server-settings-pane-\(pane.rawValue)")
+          }
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .top, spacing: 0) {

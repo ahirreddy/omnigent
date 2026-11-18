@@ -50,13 +50,12 @@ final class MacSettingsFlowUITests: XCTestCase {
     live.open(session, in: app)
     app.typeKey(",", modifierFlags: .command)
     live.click(category("Servers", live, app), "the Servers category")
-    let agents = live.text(containing: "Custom Agents", in: app)
+    let agents = live.element("server-settings-pane-customAgents", in: app)
     live.click(agents, "the Custom Agents pane", timeout: 20)
     XCTAssertTrue(
       live.element("custom-agent-create", in: app).appears(within: 20),
       "Custom Agents shows no Create")
-    let sessions = app.staticTexts.matching(NSPredicate(format: "label == %@", "Sessions"))
-    live.click(sessions.firstMatch, "the Sessions pane")
+    live.click(live.element("server-settings-pane-sessions", in: app), "the Sessions pane")
     XCTAssertTrue(
       live.element("settings.session-title-instructions", in: app).appears(within: 20),
       "Sessions shows no title instructions")
