@@ -23,9 +23,11 @@ mod activity;
 mod children;
 mod events;
 mod live;
+mod markers;
 mod merge;
 mod ops;
 mod presentation;
+mod reasoning_preview;
 mod state;
 
 #[cfg(test)]

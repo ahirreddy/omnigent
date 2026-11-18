@@ -1019,6 +1019,8 @@ pub(super) fn event_scope(event: &ServerStreamEvent) -> Option<&str> {
     use ServerStreamEvent as E;
     match event {
         E::SessionStatus(e) => e.conversation_id.as_deref(),
+        E::SessionBackgroundTasks(e) => e.conversation_id.as_deref(),
+        E::SessionJournalAppended(e) => e.conversation_id.as_deref(),
         E::SessionUsage(e) => e.conversation_id.as_deref(),
         E::SessionModel(e) => e.conversation_id.as_deref(),
         E::SessionTitle(e) => e.conversation_id.as_deref(),

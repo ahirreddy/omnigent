@@ -1,0 +1,279 @@
+[
+  {
+    "id": "automation",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "Summarise the open issues.\n\n<omnigent-automation-context>\nRun time: 2026-11-18T09:30:00Z (Unix time 1795080600).\nNote: an Omnigent automation sent this message, and no one is watching this run. No one can answer questions, approve requests or give input, so work toward the goal above on your own. Don't ask questions, wait for confirmation or stop to request permission. When something is unclear, make a reasonable assumption only if it is easy to reverse and within the user's authorization. Record each assumption, its basis and how easily it can be changed. For decisions that are hard to reverse, involve significant trade-offs or would likely surprise the user, record the options and your recommendation, and defer the affected work. Continue independent work that does not depend on those decisions. If an action is denied or requires unavailable approval, skip that action and explain the blocker. Continue independent work and permitted alternatives. Do not change permission settings to get past the restriction. If you have the sys_journal tools, start by reading your journal with sys_journal_read; if the session has no plan, write one with sys_journal_write_plan (one step is fine); and before your final reply, write a status for each step you worked on with sys_journal_write_status. Lead your final reply with unresolved decisions and assumptions, prioritizing those the user is most likely to want to change, then summarize what you did and anything you couldn't do.\n</omnigent-automation-context>"
+      }
+    ],
+    "created_by": "owner@example.com"
+  },
+  {
+    "id": "a1",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r1",
+    "created_at": 1795080601,
+    "role": "assistant",
+    "content": [
+      {
+        "type": "output_text",
+        "text": "Three issues are open."
+      }
+    ]
+  },
+  {
+    "id": "delegated",
+    "type": "resource_event",
+    "status": "completed",
+    "response_id": "subagent_d1",
+    "created_at": 1795080602,
+    "event_type": "session.subagent.delegated",
+    "resource_id": "child-1",
+    "resource_type": "session",
+    "resource": {
+      "title": "Explore auth"
+    }
+  },
+  {
+    "id": "returned",
+    "type": "resource_event",
+    "status": "completed",
+    "response_id": "subagent_r1",
+    "created_at": 1795080602,
+    "event_type": "session.subagent.returned",
+    "resource_id": "child-1",
+    "resource_type": "session",
+    "resource": {
+      "title": "Explore auth",
+      "status": "failed"
+    }
+  },
+  {
+    "id": "wake",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[System: sub-agent researcher/auth finished (completed) — 1 result waiting in inbox. Call sys_read_inbox to collect.]"
+      }
+    ]
+  },
+  {
+    "id": "timer",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[System: timer t1 fired]\nnote: 'check the build'"
+      }
+    ]
+  },
+  {
+    "id": "task",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[System: task t_abc (sub_agent) completed]\nfinal answer"
+      }
+    ]
+  },
+  {
+    "id": "terminal",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[System: terminal shell:s1 is idle]"
+      }
+    ]
+  },
+  {
+    "id": "envelope",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "<agent-message from=\"researcher\">Report</agent-message>"
+      }
+    ]
+  },
+  {
+    "id": "notification",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "<task-notification>\n<task-id>b3f9a2c1d</task-id>\n<tool-use-id>toolu_01</tool-use-id>\n<output-file>/tmp/claude/tasks/b3f9a2c1d.output</output-file>\n<status>completed</status>\n<summary>Background command \"make test\" completed (exit code 0)</summary>\n</task-notification>"
+      }
+    ],
+    "is_meta": true
+  },
+  {
+    "id": "origin",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[Message from session sess_peer-1]\nCan you review PR 12?\nIt is small."
+      }
+    ]
+  },
+  {
+    "id": "continued",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "This session is being continued from a previous conversation. Summary."
+      }
+    ]
+  },
+  {
+    "id": "typed-notice",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[System: something brand new]"
+      }
+    ],
+    "created_by": "alice@example.com"
+  },
+  {
+    "id": "typed-continued",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "This session is being continued from a previous conversation, I said."
+      }
+    ],
+    "created_by": "alice@example.com"
+  },
+  {
+    "id": "todo-started",
+    "type": "resource_event",
+    "status": "completed",
+    "response_id": "journal_t1",
+    "created_at": 1795080602,
+    "event_type": "session.journal.task",
+    "resource_id": "task-1",
+    "resource_type": "journal",
+    "resource": {
+      "name": "Write the tests",
+      "status": "started",
+      "text": null,
+      "entry_id": null,
+      "native": true
+    }
+  },
+  {
+    "id": "plan",
+    "type": "resource_event",
+    "status": "completed",
+    "response_id": "journal_p1",
+    "created_at": 1795080602,
+    "event_type": "session.journal.plan",
+    "resource_id": "e1",
+    "resource_type": "journal",
+    "resource": {
+      "change": "made",
+      "name": "Ship it",
+      "tasks": 2,
+      "added": [],
+      "removed": [],
+      "entry_id": "e1"
+    }
+  },
+  {
+    "id": "checkpoint",
+    "type": "resource_event",
+    "status": "completed",
+    "response_id": "journal_c1",
+    "created_at": 1795080602,
+    "event_type": "session.journal.checkpoint",
+    "resource_id": "e2",
+    "resource_type": "journal",
+    "resource": {
+      "entry_id": "e2"
+    }
+  },
+  {
+    "id": "todo-done",
+    "type": "resource_event",
+    "status": "completed",
+    "response_id": "journal_t2",
+    "created_at": 1795080602,
+    "event_type": "session.journal.task",
+    "resource_id": "task-1",
+    "resource_type": "journal",
+    "resource": {
+      "name": "Write the tests",
+      "status": "done",
+      "text": null,
+      "entry_id": null,
+      "native": true
+    }
+  },
+  {
+    "id": "terminal-receipt",
+    "type": "resource_event",
+    "status": "completed",
+    "response_id": "r2",
+    "created_at": 1795080602,
+    "event_type": "session.resource.created",
+    "resource_id": "term-1",
+    "resource_type": "terminal",
+    "resource": {
+      "name": "Build terminal"
+    }
+  }
+]
