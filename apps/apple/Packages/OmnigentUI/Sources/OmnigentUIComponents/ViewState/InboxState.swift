@@ -12,6 +12,10 @@ nonisolated public struct InboxItem: Hashable, Sendable, Identifiable {
     case comment
     /// An unread session.
     case unread
+    /// An item an agent posted for its owner: a follow-up, information or a reminder.
+    case suggestion
+    /// An automation whose latest run failed before it made a session.
+    case automationFailure
 
     /// The label.
     public var title: String {
@@ -20,6 +24,8 @@ nonisolated public struct InboxItem: Hashable, Sendable, Identifiable {
       case .question: "Question"
       case .comment: "Comment"
       case .unread: "Unread"
+      case .suggestion: "Suggestion"
+      case .automationFailure: "Automation failed"
       }
     }
   }
@@ -63,6 +69,10 @@ nonisolated public struct InboxItem: Hashable, Sendable, Identifiable {
   public var reply: InboxReplyPhase = .idle
   /// The agent's whole reply when ``preview`` is cut from it.
   public var fullText: String?
+  /// An agent-posted item's details, for ``Kind/suggestion``.
+  public var suggestion: InboxSuggestion?
+  /// A failed automation's details, for ``Kind/automationFailure``.
+  public var automationFailure: InboxAutomationFailure?
 
   /// A pending request is independent of whether it has been read.
   public var isUnresolved: Bool {
@@ -187,6 +197,24 @@ nonisolated public struct InboxViewState: Hashable, Sendable {
   public var hasMoreSessions = false
   /// A page of them is loading.
   public var isLoadingMoreSessions = false
+  /// Agent-posted items could not be read.
+  public var suggestionsFailed = false
+  /// More agent-posted items are on the server.
+  public var hasMoreSuggestions = false
+  /// A page of them is loading.
+  public var isLoadingMoreSuggestions = false
+  /// The server refused a response to an agent-posted item.
+  public var suggestionWriteFailed = false
+  /// Agent-posted items the caller has not read, as the server counts them.
+  public var unreadSuggestionCount = 0
+  /// The server stopped counting them at its cap.
+  public var unreadSuggestionsCapped = false
+  /// Automation failures could not be read.
+  public var automationsFailed = false
+  /// More automations remain to check.
+  public var hasMoreAutomations = false
+  /// A page of them is loading.
+  public var isLoadingMoreAutomations = false
 
   /// Creates Inbox state.
   /// - Parameters:
@@ -218,6 +246,24 @@ public struct InboxActions {
   public var retry: (@MainActor () -> Void)?
   /// Load the page of sessions after the loaded ones ("Load more sessions").
   public var loadMoreSessions: (@MainActor () -> Void)?
+  /// Take an agent-posted item's action at an index: it opens a new session with its prompt.
+  public var takeSuggestionAction: (@MainActor (InboxItem, Int) -> Void)?
+  /// Dismiss an agent-posted item for a reason.
+  public var dismissSuggestion: (@MainActor (InboxItem, InboxDismissChoice) -> Void)?
+  /// Open a link on an agent-posted item.
+  public var openLink: (@MainActor (InboxLink) -> Void)?
+  /// Open the session an agent-posted item came from.
+  public var openSource: (@MainActor (InboxItem) -> Void)?
+  /// Open a failed automation.
+  public var openAutomation: (@MainActor (InboxItem) -> Void)?
+  /// Read agent-posted items again.
+  public var retrySuggestions: (@MainActor () -> Void)?
+  /// Load more agent-posted items.
+  public var loadMoreSuggestions: (@MainActor () -> Void)?
+  /// Read automation failures again.
+  public var retryAutomations: (@MainActor () -> Void)?
+  /// Check more automations for failures.
+  public var loadMoreAutomations: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:

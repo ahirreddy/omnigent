@@ -34,6 +34,12 @@ struct AutomationsAdapter: View {
           if pages.offered?.automationProjects == true { await pages.loadAutomationProjects() }
         }
         .sheet(item: $editing) { target in editor(pages, target: target) }
+        // The Inbox's Open automation lands on that automation's page.
+        .onChange(of: pages.requestedAutomationID, initial: true) { _, requested in
+          guard let requested else { return }
+          pages.requestedAutomationID = nil
+          detailID = requested
+        }
     } else {
       ContentUnavailableView("Automations are unavailable", systemImage: "clock")
     }

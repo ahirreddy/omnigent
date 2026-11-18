@@ -41,6 +41,7 @@ enum InboxTriageMapping {
       }
     }
     items += comments(connection)
+    let feeds = InboxFeedsMapping.items(connection)
     for index in items.indices {
       let item = items[index]
       if let hostID = connection.sessionList.session(item.sessionId)?.configuration?.hostId {
@@ -51,7 +52,7 @@ enum InboxTriageMapping {
         items[index].isUnread = false
       }
     }
-    return viewState(items, connection: connection)
+    return viewState(items + feeds, connection: connection)
   }
 
   /// The items with the header's counts and the list's loading and paging.
@@ -66,6 +67,7 @@ enum InboxTriageMapping {
     state.isAssembling = isAssembling(connection)
     state.hasMoreSessions = connection.sessionList.paging.hasMore
     state.isLoadingMoreSessions = connection.sessionList.paging.isLoading
+    InboxFeedsMapping.apply(connection, to: &state)
     return state
   }
 

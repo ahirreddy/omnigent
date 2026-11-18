@@ -45,6 +45,7 @@ mod harness_setup;
 pub mod host_switch;
 mod hydration;
 pub mod inbox;
+pub mod inbox_items;
 mod intent_lanes;
 pub mod items;
 pub(crate) mod json;

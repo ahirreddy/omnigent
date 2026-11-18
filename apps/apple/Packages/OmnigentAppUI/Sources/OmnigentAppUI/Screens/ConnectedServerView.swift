@@ -127,6 +127,7 @@ public struct ConnectedServerView: View {
     .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
     .modifier(NestedDraftRetirement(connection: connection))
+    .modifier(InboxFeedsPolling(connection: connection))
     .modifier(
       WindowTabOverview(
         tabs: tabs, isPresented: $showsTabOverview, renameSession: renameSessionOfTab)
@@ -214,6 +215,8 @@ public struct ConnectedServerView: View {
     case .inbox:
       InboxTriageAdapter(
         connection: connection, open: { selection = .session($0) },
+        startSession: { startSession(drafting: $0) }, openAutomation: { openAutomation($0) },
+        openURL: { url in Task { _ = await opener.open(url) } },
         openFile: { session.openFile($0, at: $1, in: $2) })
     case .canvas:
       CanvasAdapter(

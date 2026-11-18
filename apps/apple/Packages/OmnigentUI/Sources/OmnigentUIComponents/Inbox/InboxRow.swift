@@ -16,6 +16,8 @@ struct InboxRow: View {
       Button {
         select()
         withAnimation(reduceMotion ? nil : Theme.Motion.disclosure) { isExpanded.toggle() }
+        // As the web, opening an unread agent item marks it read.
+        if isExpanded, item.kind == .suggestion, item.isUnread { actions.markRead?(item) }
       } label: {
         summary
           .contentShape(Rectangle())
@@ -93,10 +95,12 @@ struct InboxRow: View {
 
   private var kindLabel: String {
     if item.isUnresolved { return "Needs you" }
+    // As the web, an agent's item keeps its kind, read or not.
+    if let suggestion = item.suggestion { return suggestion.kindLabel }
     if !item.isUnread { return "Read" }
     switch item.kind {
     case .unread: return item.isError ? "Error" : "Done"
-    case .approval, .question, .comment: return item.kind.title
+    case .approval, .question, .comment, .suggestion, .automationFailure: return item.kind.title
     }
   }
 
@@ -116,6 +120,9 @@ struct InboxRow: View {
   private func age(at now: Date) -> String {
     if item.isUnresolved, let waiting = item.waitingSince {
       return "Waiting \(RelativeTime.short(waiting, now: now))"
+    }
+    if item.kind == .suggestion || item.kind == .automationFailure {
+      return RelativeTime.short(item.date, now: now)
     }
     return "Last activity \(RelativeTime.short(item.date, now: now))"
   }
@@ -137,10 +144,16 @@ struct InboxRow: View {
         .font(.callout).foregroundStyle(.secondary)
     } else if let comment = item.comment {
       commentDetail(comment)
+    } else if let suggestion = item.suggestion {
+      InboxSuggestionDetail(item: item, suggestion: suggestion, actions: actions)
+    } else if let failure = item.automationFailure {
+      InboxAutomationFailureDetail(item: item, failure: failure, actions: actions)
     } else {
       replyDetail
     }
-    HStack { rowActions }.buttonStyle(.borderless).tint(.secondary)
+    if item.suggestion == nil, item.automationFailure == nil {
+      HStack { rowActions }.buttonStyle(.borderless).tint(.secondary)
+    }
   }
 
   private func commentDetail(_ comment: InboxComment) -> some View {
