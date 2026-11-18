@@ -20,7 +20,10 @@ pub use draft::{
     AttachmentDraft, AttachmentDraftStore, AttachmentSubmission, DraftError, DraftItem,
     DraftItemId, DraftKey, HoldId, UploadAttempt, UploadState,
 };
-pub use policy::{FileProbe, UploadFile, UploadFileReader, byte_limit, resolve_media_type};
+pub use policy::{
+    FileProbe, FilesystemAttachments, UploadFile, UploadFileReader, byte_limit,
+    resolve_media_type, resolve_media_type_under,
+};
 pub use preview::{
     AttachmentPreview, PreviewError, attachment_file_id, preview_extension, preview_from_response,
     preview_request,
@@ -30,9 +33,15 @@ pub use upload::{UploadError, UploadTarget, UploadUncertainty, UploadedAttachmen
 /// Why a file cannot be attached.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AttachmentError {
-    /// Not an image, PDF, or text/code file, or the declared media type is unsafe.
-    #[error("attach an image, PDF, or text/code file")]
-    UnsupportedType,
+    /// Not a type the server takes (an image, PDF, text/code file, or one its filesystem policy
+    /// delivers as a file), or the declared media type is unsafe.
+    #[error("\"{filename}\" can't be attached: only {supported} are supported.")]
+    UnsupportedType {
+        /// The file's name.
+        filename: String,
+        /// The types the server takes ([`policy::FilesystemAttachments::supported_types`]).
+        supported: String,
+    },
     /// Empty, over-long, path-like, or containing control or format characters.
     #[error("this file needs a valid filename before it can be attached")]
     InvalidFilename,

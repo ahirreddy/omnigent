@@ -268,6 +268,9 @@ struct NewSessionContainer: View {
     if offersConnectHost(creation) { actions.connectHost = { isConnectingHost = true } }
     actions.setName = { form.name = $0 }
     guard form.nested == nil else { return actions }
+    actions.mcpServices = McpLaunchActions(
+      toggle: { id, enabled in form.toggleMcpService(id, enabled: enabled) },
+      reload: { Task { await creation.loadMcpServices() } })
     actions.selectProject = { name in
       guard let project = name.flatMap({ name in list.projects.first { $0.name == name } }) else {
         form.project = nil

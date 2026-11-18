@@ -12,7 +12,7 @@ extension EnvironmentValues {
 struct MessageActionItem: Identifiable {
   /// Which action.
   enum Kind: String {
-    case copy, fork, link, reply, askSideChat
+    case copy, edit, fork, link, reply, askSideChat
   }
 
   let kind: Kind
@@ -29,8 +29,9 @@ struct MessageActionItem: Identifiable {
 
   var id: Kind { kind }
 
-  /// Copy (when the message has text), Fork from here (a settled assistant message with a
-  /// response, when the host can fork) and Copy link (when the host has links), in row order.
+  /// Copy (when the message has text), Edit and resend (the viewer's own sent message, when the
+  /// composer can take it), Fork from here (a settled assistant message with a response, when
+  /// the host can fork) and Copy link (when the host has links), in row order.
   static func items(
     for row: Row, actions: ConversationActions, copy: CopyAction = CopyAction(presenter: nil)
   ) -> [Self] {
@@ -41,6 +42,12 @@ struct MessageActionItem: Identifiable {
         Self(
           kind: .copy, title: "Copy", menuTitle: "Copy", systemImage: "doc.on.doc",
           identifier: "message-copy-\(row.id)", perform: { Pasteboard.copy(text) }))
+    }
+    if let edit = actions.editSentMessage, isEditable(row, viewerID: actions.viewerID) {
+      items.append(
+        Self(
+          kind: .edit, title: "Edit and resend", menuTitle: "Edit and Resend",
+          systemImage: "pencil", identifier: "message-edit-\(row.id)", perform: { edit(row) }))
     }
     // A session that can't be forked keeps the action, disabled with the reason (as the web).
     let reason = actions.forkFrom == nil ? actions.forkUnavailableReason : nil
@@ -82,6 +89,14 @@ struct MessageActionItem: Identifiable {
           identifier: "message-side-chat-\(row.id)", perform: { ask(text) }))
     }
     return items
+  }
+
+  /// A message Edit and resend can copy, as on the web: one the server has (not a message still
+  /// being sent), with text, written by the viewer or by no one in particular.
+  static func isEditable(_ row: Row, viewerID: String?) -> Bool {
+    row.role == .user && !row.isEphemeral && !row.isStreaming && row.activity == nil
+      && !row.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && (row.author == nil || row.author == viewerID)
   }
 
   /// A conversation can be forked after a settled assistant message that belongs to a response.

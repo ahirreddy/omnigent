@@ -46,6 +46,11 @@ final class NewSessionForm {
   var attachmentError: String?
   /// The name the user gave the session; empty leaves it to the first message.
   var name = ""
+  /// The MCP services the user turned on, remembered across starts (the web keeps them in the
+  /// browser); ``mcpLaunchServices(_:)`` sends those the registry still offers.
+  var mcpServices: [String] = []
+  /// ``mcpServices`` was read from the preferences.
+  @ObservationIgnored var didReadMcpServices = false
   /// The source of an Add nested agent composer; `nil` for a new session.
   var nested: NestedComposer?
 
@@ -61,6 +66,7 @@ final class NewSessionForm {
     guard let catalog = creation.catalog.value else { return }
     applyDefaults(catalog)
     await reloadChoices(creation, selection)
+    await loadMcpServices(creation)
   }
 
   /// Fills what the user hasn't chosen: an online host, then an agent ready on it. Runs again as
@@ -195,6 +201,7 @@ final class NewSessionForm {
     var selection = startingSelection(creation)
     // A first-class project files the session at creation; a label-only one is moved after.
     selection.projectId = project?.id
+    selection.mcpRegistryServices = mcpLaunchServices(creation)
     let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
     if isSandbox {
       let target = sandbox.target(creation.catalog.value)
@@ -329,14 +336,7 @@ final class NewSessionForm {
     options.project = nested == nil ? project?.name : nil
     options.projects = nested == nil ? projects.map(\.name) : []
     options.name = name
+    options.mcpServices = mcpChip(creation)
     return options
-  }
-
-  /// Files a just-created session in a label-only project, which the create cannot name.
-  func fileInLabelProject(_ sessionID: String, list: SessionListStore) {
-    guard let project, project.id == nil, filedSessionID != sessionID else { return }
-    filedSessionID = sessionID
-    // The move reports its own failure in the list's edit error.
-    Task { _ = await list.move(sessionID, to: project) }
   }
 }

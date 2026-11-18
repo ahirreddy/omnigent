@@ -218,7 +218,7 @@ impl AttachmentSubmission {
 pub enum DraftError {
     /// Adding the file would exceed the per-draft count or byte cap, or the cap across drafts.
     #[error(
-        "keep at most {MAX_FILES_PER_DRAFT} attachments and 25 MB per draft (100 MB across drafts)"
+        "keep at most {MAX_FILES_PER_DRAFT} attachments and 50 MB per draft (100 MB across drafts)"
     )]
     DraftLimit,
     /// No such file in this draft.
@@ -816,8 +816,9 @@ mod tests {
         let big = UploadFile::new("large.pdf", None, vec![0; MAX_PDF_BYTES]).unwrap();
         let other = DraftKey::new(key().scope, "other");
         store.add(big.clone(), &other).unwrap();
+        store.add(big.clone(), &other).unwrap();
         assert_eq!(store.add(big.clone(), &other), Err(DraftError::DraftLimit));
-        for index in 0..3 {
+        for index in 0..2 {
             store
                 .add(
                     big.clone(),

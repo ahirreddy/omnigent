@@ -115,7 +115,8 @@ public struct ConversationScreen<Terminal: View>: View {
         if !showsTerminal {
           TranscriptComposer(
             draft: draft, state: composerState, actions: composerActions,
-            focusRequest: focusRequest
+            // A sent message loaded to edit focuses the editor, as a menu command does.
+            focusRequest: focusRequest + composer.editLoads
           ) { [draftPresence] in draftPresence.report($0) }
         } else if !state.decisions.isEmpty {
           Spacer().frame(height: 10)
@@ -161,6 +162,12 @@ public struct ConversationScreen<Terminal: View>: View {
       }
     }
     .sessionRenamePrompt($renaming, text: $renameText, rename: extras.sessionActions.rename)
+    .modifier(
+      ReplaceDraftPrompt(
+        isAsking: composer.asksToReplaceDraft,
+        replace: composerActions.extras.replaceDraftWithEdit,
+        keep: composerActions.extras.keepDraftOverEdit)
+    )
     // In a split window only the focused pane's conversation drives the menus.
     .modifier(
       ActivePaneCommands(commands: commands, commandReturn: commandReturn, relay: commandRelay))

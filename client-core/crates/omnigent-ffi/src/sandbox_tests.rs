@@ -47,6 +47,7 @@ fn catalog() -> CreationCatalog {
         smart_routing: false,
         sibling_sessions: false,
         sibling_session_destinations: None,
+        mcp_registry: false,
     }
 }
 

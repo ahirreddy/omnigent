@@ -24,13 +24,18 @@ extension ComposerStore {
   /// Sends the draft and the uploaded attachments. A slash command does what the core says: a
   /// skill runs on the server, `/compact` and `/clear` use their controls, `/model` and
   /// `/effort` change the configuration, `/context`, `/mcp` and `/help` show text,
-  /// `/permissions` opens the approval-mode picker, and `/new` and `/side` are left to the
-  /// caller.
+  /// `/permissions` opens the approval-mode picker, `/rewind` opens ``rewindPicker``,
+  /// `/goal <objective>` goes out as a message, and `/new`, `/side`, a bare `/goal` and the
+  /// session a claude-sdk `/clear` continues in are left to the caller.
   /// - Returns: What the caller still has to do.
   @discardableResult
   public func send() async -> ComposerSendOutcome {
     switch slashAction() {
     case nil, .sendText:
+      await deliverMessage()
+    case .sendGoal(let message):
+      // The objective goes out in its canonical `/goal …` form.
+      text = message
       await deliverMessage()
     case .runSkill(let name, let arguments):
       await deliverCommand { core, session, text in
@@ -47,7 +52,7 @@ extension ComposerStore {
       text = ""
       await selectEffort(effort)
     case .clear:
-      await clearContext()
+      if let successor = await clearContext() { return .openSession(successor) }
     case .some(let action):
       return runLocally(action)
     }
@@ -98,7 +103,17 @@ extension ComposerStore {
       openApprovalPicker()
     case .show(let output):
       commandNotice = output
-    case .sendText, .runSkill, .compact, .setModel, .setEffort, .clear:
+    case .goal:
+      text = ""
+      commandNotice = nil
+      return .goal
+    case .rewind:
+      text = ""
+      commandNotice = nil
+      // The picker reads the prompts once it shows (``RewindPicker/load()``).
+      rewindPicker = RewindPicker(sessionID: sessionID, core: core)
+      return .rewind
+    case .sendText, .sendGoal, .runSkill, .compact, .setModel, .setEffort, .clear:
       break
     }
     return .handled
@@ -112,7 +127,14 @@ extension ComposerStore {
     return OmnigentCoreFFI.slashAction(
       text: message, hasAttachments: !attachments.items.isEmpty || !mentions.isEmpty,
       configuration: configuration,
-      skills: skills, options: slashOptions)
+      skills: skills, options: commandOptions)
+  }
+
+  /// The server's command options with this session's own: its Goal control.
+  var commandOptions: SlashOptions {
+    var options = slashOptions
+    options.goal = offersGoal
+    return options
   }
 
   /// Reads which server-backed commands to offer. A failure keeps them hidden and says why in
@@ -151,16 +173,18 @@ extension ComposerStore {
     }
   }
 
-  private func clearContext() async {
-    guard !refusesDuringSend() else { return }
+  /// Runs `/clear`; returns the session a claude-sdk clear continues in.
+  private func clearContext() async -> String? {
+    guard !refusesDuringSend() else { return nil }
     let command = text
     text = ""
     commandNotice = nil
     do {
-      try await core.clearContext(sessionId: sessionID)
+      return try await core.clearContext(sessionId: sessionID)
     } catch {
       if text.isEmpty { text = command }
       lastError = coreError(error)
+      return nil
     }
   }
 

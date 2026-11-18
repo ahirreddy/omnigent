@@ -196,6 +196,87 @@ final class MacComposerFlowUITests: XCTestCase {
       "the chip still says \(chip.label)")
   }
 
+  /// Edit and resend on a sent message puts its text in the composer, asking first when a
+  /// draft is there; sending it is a new message, and the original stays.
+  @MainActor
+  func testEditAndResendASentMessage() {
+    let live = MacLiveUITestSupport(self)
+    let app = live.launchDemo()
+    defer { app.terminate() }
+    live.startIdleDemoSession(in: app)
+    let original = "Original \(UUID().uuidString.prefix(6))"
+    live.send(original, in: app)
+    live.assertShows(original, in: app)
+    XCTAssertTrue(
+      live.element("composer-stop", in: app).disappears(within: 60), "the reply did not end")
+
+    live.focusComposer(in: app)
+    app.typeText("a draft in progress")
+    // The newest prompt's cell (`message-<item id>`; the demo's prompts are `<session>-user-<n>`).
+    let prompts = app.descendants(matching: .any).matching(
+      NSPredicate(
+        format: "identifier BEGINSWITH 'message-demo-session-' AND identifier CONTAINS '-user-'"))
+    let prompt = live.hittable(prompts, timeout: 15)
+    XCTAssertNotNil(prompt, "no prompt cell\n\(app.debugDescription)")
+    prompt?.rightClick()
+    let edit = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH 'Edit and Resend'"))
+    guard let item = live.hittable(edit) else {
+      let titles = app.menuItems.allElementsBoundByIndex.map(\.title)
+      XCTFail("the message menu has no Edit and Resend: \(titles)")
+      return
+    }
+    item.click()
+    live.clickDialogButton("Replace draft", in: app)
+    XCTAssertTrue(
+      live.waitUntil(timeout: 10) { live.composerText(in: app) == original },
+      "the composer holds \(live.composerText(in: app))")
+
+    app.typeText(" edited")
+    app.typeKey(.return, modifierFlags: .command)
+    live.assertShows("\(original) edited", in: app)
+    XCTAssertTrue(
+      live.text(containing: original, in: app).exists, "the original message is gone")
+  }
+
+  /// `/rewind` in a Claude session lists its prompts; choosing one opens a new session holding
+  /// the history before it, with the prompt back in the composer.
+  @MainActor
+  func testRewindContinuesFromAnEarlierPrompt() {
+    let live = MacLiveUITestSupport(self)
+    let app = live.launchDemo()
+    defer { app.terminate() }
+    live.openNewSession(in: app)
+    let chip = live.element("composer-configuration", in: app)
+    if !chip.label.contains("Sample Claude") {
+      live.click(chip, "the agent picker")
+      live.clickMenuItem("Sample Claude", in: app)
+      XCTAssertTrue(
+        live.waitUntil { chip.label.contains("Sample Claude") }, "the form shows \(chip.label)")
+    }
+    let tag = UUID().uuidString.prefix(6)
+    let stop = live.element("composer-stop", in: app)
+    for prompt in ["First \(tag)", "Second \(tag)"] {
+      live.send(prompt, in: app)
+      live.assertShows(prompt, in: app)
+      XCTAssertTrue(stop.disappears(within: 60), "the reply to \(prompt) did not end")
+    }
+
+    live.send("/rewind", in: app)
+    let picker = live.element("rewind-picker", in: app)
+    XCTAssertTrue(picker.appears(within: 15), "/rewind opened no picker")
+    XCTAssertTrue(
+      live.text(containing: "First \(tag)", in: app).appears(within: 15), "no prompts listed")
+    app.typeText("Second")
+    app.typeKey(.return, modifierFlags: [])
+    XCTAssertTrue(picker.disappears(within: 15), "the picker stayed open")
+    XCTAssertTrue(
+      live.waitUntil(timeout: 20) { live.composerText(in: app) == "Second \(tag)" },
+      "the rewound session's composer holds \(live.composerText(in: app))")
+    XCTAssertTrue(
+      live.text(containing: "First \(tag)", in: app).appears(within: 15),
+      "the rewound session lost the earlier history")
+  }
+
   /// Shift-Tab in the composer moves to the next approval mode.
   @MainActor
   func testShiftTabCyclesTheMode() {

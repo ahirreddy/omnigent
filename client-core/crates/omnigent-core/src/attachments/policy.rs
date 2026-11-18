@@ -1,4 +1,8 @@
 //! What may be attached: filename and media-type validation, size caps, and bounded file reads.
+//! Archives, Office documents and databases go to the agent as files under the server's
+//! `filesystem_attachments` policy (the web's `classifyAttachment`).
+
+use serde_json::Value;
 
 use super::AttachmentError;
 
@@ -7,8 +11,8 @@ const MIB: usize = 1024 * 1024;
 
 /// Most files one draft may hold.
 pub const MAX_FILES_PER_DRAFT: usize = 8;
-/// Most bytes one draft may hold.
-pub const MAX_DRAFT_BYTES: usize = 25 * MIB;
+/// Most bytes one draft may hold: one file delivered as a file at its cap.
+pub const MAX_DRAFT_BYTES: usize = 50 * MIB;
 /// Most bytes all drafts together may hold.
 pub const MAX_STORED_BYTES: usize = 100 * MIB;
 /// Cap for `image/*` files.
@@ -17,6 +21,80 @@ pub const MAX_IMAGE_BYTES: usize = 5 * MIB;
 pub const MAX_PDF_BYTES: usize = 20 * MIB;
 /// Cap for text and code files.
 pub const MAX_TEXT_BYTES: usize = 10 * MIB;
+/// Cap for a file the agent opens with its filesystem tools (the server's
+/// `MAX_FILESYSTEM_ATTACHMENT_UPLOAD_BYTES`).
+pub const MAX_FILESYSTEM_BYTES: usize = 50 * MIB;
+/// The media type a file delivered as a file uploads with; the server types it by extension.
+pub const FILESYSTEM_MEDIA_TYPE: &str = "application/octet-stream";
+/// Extensions delivered as files when the server reports no policy (the server's
+/// `DEFAULT_FILESYSTEM_ATTACHMENT_EXTENSIONS`).
+pub const DEFAULT_FILESYSTEM_EXTENSIONS: &[&str] = &[
+    ".zip", ".docx", ".xlsx", ".pptx", ".db", ".sqlite", ".sqlite3",
+];
+
+/// Which uploads the server delivers to the agent as files (`/v1/info.filesystem_attachments`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilesystemAttachments {
+    /// Lowercase extensions with their dot, such as `.zip`, always delivered as files.
+    pub extensions: Vec<String>,
+    /// Every other file that cannot be inlined is delivered as a file too.
+    pub all_types: bool,
+}
+
+impl Default for FilesystemAttachments {
+    fn default() -> Self {
+        Self {
+            extensions: DEFAULT_FILESYSTEM_EXTENSIONS
+                .iter()
+                .map(|extension| (*extension).to_owned())
+                .collect(),
+            all_types: false,
+        }
+    }
+}
+
+impl FilesystemAttachments {
+    /// The policy a `/v1/info` body reports; older servers, which send none (or an unreadable
+    /// one), get the default extensions, as on the web.
+    #[must_use]
+    pub fn from_info(info: &Value) -> Self {
+        let Some(policy) = info.get("filesystem_attachments").and_then(Value::as_object) else {
+            return Self::default();
+        };
+        let Some(extensions) = policy.get("extensions").and_then(Value::as_array) else {
+            return Self::default();
+        };
+        Self {
+            extensions: extensions
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect(),
+            all_types: policy.get("all_types").and_then(Value::as_bool) == Some(true),
+        }
+    }
+
+    fn delivers(&self, extension: &str) -> bool {
+        self.extensions.iter().any(|listed| listed == extension)
+    }
+
+    /// The file types this policy accepts, for the refusal message (the web's
+    /// `supportedAttachmentTypes`).
+    #[must_use]
+    pub fn supported_types(&self) -> String {
+        let mut extensions = self.extensions.clone();
+        extensions.sort();
+        let mut defaults: Vec<&str> = DEFAULT_FILESYSTEM_EXTENSIONS.to_vec();
+        defaults.sort_unstable();
+        if extensions == defaults {
+            "images, PDF, text/code, archives, office documents, and databases".to_owned()
+        } else if extensions.is_empty() {
+            "images, PDF, and text/code files".to_owned()
+        } else {
+            format!("images, PDF, text/code, and {} files", extensions.join(", "))
+        }
+    }
+}
 /// Longest filename, in UTF-8 bytes.
 pub const MAX_FILENAME_BYTES: usize = 255;
 /// Largest chunk [`UploadFileReader::next_read_len`] asks for.
@@ -167,21 +245,36 @@ fn is_safe_media_type_byte(byte: u8) -> bool {
     byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"!#$&^_.+-/".contains(&byte)
 }
 
-/// The media type an upload of `filename` is sent with, from its declared type (any parameters
-/// such as `charset` are dropped) and its extension.
+/// [`resolve_media_type_under`] the default filesystem policy, as for a server that reports none.
 ///
-/// Images keep their declared `image/*` type; a known image extension with no declared type (or
+/// # Errors
+///
+/// As [`resolve_media_type_under`].
+pub fn resolve_media_type(
+    filename: &str,
+    declared: Option<&str>,
+) -> Result<String, AttachmentError> {
+    resolve_media_type_under(filename, declared, &FilesystemAttachments::default())
+}
+
+/// The media type an upload of `filename` is sent with, from its declared type (any parameters
+/// such as `charset` are dropped), its extension and the server's filesystem `policy`.
+///
+/// An extension the policy lists is delivered as a file ([`FILESYSTEM_MEDIA_TYPE`]), whatever
+/// type was declared; a default one it leaves out is refused rather than inlined. Images keep
+/// their declared `image/*` type; a known image extension with no declared type (or
 /// `application/octet-stream`) gets its standard type. PDFs, `text/*` and the JSON/JavaScript/
 /// notebook application types are kept. Anything else with a known text or code extension is sent
-/// as `text/plain`.
+/// as `text/plain`. Any other file is delivered as a file when the policy takes all types.
 ///
 /// # Errors
 ///
 /// [`AttachmentError::InvalidFilename`] for an empty, over-long, path-like or control-character
 /// name; [`AttachmentError::UnsupportedType`] for an unsafe declared type or an unsupported file.
-pub fn resolve_media_type(
+pub fn resolve_media_type_under(
     filename: &str,
     declared: Option<&str>,
+    policy: &FilesystemAttachments,
 ) -> Result<String, AttachmentError> {
     validate_filename(filename)?;
     let extension = filename
@@ -193,8 +286,25 @@ pub fn resolve_media_type(
         .and_then(|value| value.split(';').next())
         .map(|value| value.trim().to_lowercase())
         .unwrap_or_default();
+    let unsupported = || AttachmentError::UnsupportedType {
+        filename: filename.to_owned(),
+        supported: policy.supported_types(),
+    };
     if !mime.bytes().all(is_safe_media_type_byte) {
-        return Err(AttachmentError::UnsupportedType);
+        return Err(unsupported());
+    }
+    // The last extension, as the server matches it (`PurePath.suffix`).
+    let suffix = filename
+        .rfind('.')
+        .filter(|&dot| dot > 0)
+        .map(|dot| filename[dot..].to_lowercase());
+    if let Some(suffix) = &suffix {
+        if policy.delivers(suffix) {
+            return Ok(FILESYSTEM_MEDIA_TYPE.to_owned());
+        }
+        if DEFAULT_FILESYSTEM_EXTENSIONS.contains(&suffix.as_str()) {
+            return Err(unsupported());
+        }
     }
     if mime.starts_with("image/") {
         return Ok(mime);
@@ -215,16 +325,22 @@ pub fn resolve_media_type(
     if TEXT_EXTENSIONS.contains(&extension.as_str()) {
         return Ok("text/plain".to_owned());
     }
-    Err(AttachmentError::UnsupportedType)
+    if policy.all_types {
+        return Ok(FILESYSTEM_MEDIA_TYPE.to_owned());
+    }
+    Err(unsupported())
 }
 
-/// Largest upload accepted for `media_type`: 5 MiB for images, 20 MiB for PDFs, 10 MiB otherwise.
+/// Largest upload accepted for `media_type`: 5 MiB for images, 20 MiB for PDFs, 50 MiB for a
+/// file delivered as a file, 10 MiB otherwise.
 #[must_use]
 pub fn byte_limit(media_type: &str) -> usize {
     if media_type.starts_with("image/") {
         MAX_IMAGE_BYTES
     } else if media_type == "application/pdf" {
         MAX_PDF_BYTES
+    } else if media_type == FILESYSTEM_MEDIA_TYPE {
+        MAX_FILESYSTEM_BYTES
     } else {
         MAX_TEXT_BYTES
     }
@@ -239,17 +355,38 @@ pub struct UploadFile {
 }
 
 impl UploadFile {
-    /// Validates `filename`, resolves its media type and enforces the type's size cap.
+    /// [`Self::under`] the default filesystem policy.
     ///
     /// # Errors
     ///
-    /// See [`resolve_media_type`]; [`AttachmentError::TooLarge`] when `data` exceeds the cap.
+    /// As [`Self::under`].
     pub fn new(
         filename: &str,
         declared_media_type: Option<&str>,
         data: Vec<u8>,
     ) -> Result<Self, AttachmentError> {
-        let media_type = resolve_media_type(filename, declared_media_type)?;
+        Self::under(
+            filename,
+            declared_media_type,
+            data,
+            &FilesystemAttachments::default(),
+        )
+    }
+
+    /// Validates `filename`, resolves its media type under the server's filesystem `policy`
+    /// and enforces the type's size cap.
+    ///
+    /// # Errors
+    ///
+    /// See [`resolve_media_type_under`]; [`AttachmentError::TooLarge`] when `data` exceeds the
+    /// cap.
+    pub fn under(
+        filename: &str,
+        declared_media_type: Option<&str>,
+        data: Vec<u8>,
+        policy: &FilesystemAttachments,
+    ) -> Result<Self, AttachmentError> {
+        let media_type = resolve_media_type_under(filename, declared_media_type, policy)?;
         let limit = byte_limit(&media_type);
         if data.len() > limit {
             return Err(AttachmentError::TooLarge { limit });
@@ -408,11 +545,29 @@ mod tests {
                 "{filename}"
             );
         }
+        let filesystem_limit =
+            usize::try_from(fixture["filesystemLimitMiB"].as_u64().unwrap()).unwrap() * MIB;
+        for name in fixture["filesystemNames"].as_array().unwrap() {
+            let name = name.as_str().unwrap();
+            // A browser or picker may mislabel these; the extension decides.
+            let file = UploadFile::new(name, Some("text/plain"), vec![1; filesystem_limit]).unwrap();
+            assert_eq!(file.media_type(), FILESYSTEM_MEDIA_TYPE, "{name}");
+            assert!(!file.is_image(), "{name}");
+            assert_eq!(
+                UploadFile::new(name, None, vec![1; filesystem_limit + 1]),
+                Err(AttachmentError::TooLarge {
+                    limit: filesystem_limit
+                }),
+                "{name}"
+            );
+        }
         for name in fixture["unsupportedNames"].as_array().unwrap() {
             let name = name.as_str().unwrap();
-            assert_eq!(
-                UploadFile::new(name, None, Vec::new()),
-                Err(AttachmentError::UnsupportedType),
+            assert!(
+                matches!(
+                    UploadFile::new(name, None, Vec::new()),
+                    Err(AttachmentError::UnsupportedType { filename, .. }) if filename == name
+                ),
                 "{name}"
             );
         }
@@ -425,13 +580,77 @@ mod tests {
             );
         }
         let invalid = &fixture["invalidMediaType"];
-        assert_eq!(
+        assert!(matches!(
             UploadFile::new(
                 invalid["filename"].as_str().unwrap(),
                 Some(invalid["mediaType"].as_str().unwrap()),
                 Vec::new()
             ),
-            Err(AttachmentError::UnsupportedType)
+            Err(AttachmentError::UnsupportedType { .. })
+        ));
+    }
+
+    /// The policy main's server reports: `.gz`, `.har` and `.zip` as files, nothing else.
+    fn main_policy() -> FilesystemAttachments {
+        let envelope = crate::client::test_support::fixture_json(
+            "sessions/ComposerParity--v1-info-main.json",
+        );
+        FilesystemAttachments::from_info(&envelope["response"])
+    }
+
+    fn resolved(name: &str, declared: Option<&str>, policy: &FilesystemAttachments) -> String {
+        resolve_media_type_under(name, declared, policy)
+            .unwrap_or_else(|error| format!("refused: {error}"))
+    }
+
+    #[test]
+    fn the_servers_filesystem_policy_decides_which_files_go_as_files() {
+        let policy = main_policy();
+        assert_eq!(policy.extensions, [".gz", ".har", ".zip"]);
+        assert!(!policy.all_types);
+        assert_eq!(resolved("trace.HAR", None, &policy), FILESYSTEM_MEDIA_TYPE);
+        assert_eq!(
+            resolved("logs.tar.gz", Some("application/gzip"), &policy),
+            FILESYSTEM_MEDIA_TYPE
+        );
+        // A default filesystem type the server leaves out is refused, not inlined.
+        assert_eq!(
+            resolved("report.docx", Some("text/plain"), &policy),
+            "refused: \"report.docx\" can't be attached: only images, PDF, text/code, and .gz, \
+             .har, .zip files are supported."
+        );
+        assert_eq!(resolved("photo.png", None, &policy), "image/png");
+        assert!(resolved("movie.mp4", None, &policy).starts_with("refused"));
+        let everything = FilesystemAttachments {
+            all_types: true,
+            ..policy
+        };
+        assert_eq!(resolved("movie.mp4", None, &everything), FILESYSTEM_MEDIA_TYPE);
+        assert_eq!(resolved("notes.md", None, &everything), "text/plain");
+    }
+
+    #[test]
+    fn an_older_or_odd_info_keeps_the_default_extensions() {
+        for info in [
+            serde_json::json!({}),
+            serde_json::json!({"filesystem_attachments": null}),
+            serde_json::json!({"filesystem_attachments": {"all_types": true}}),
+        ] {
+            assert_eq!(
+                FilesystemAttachments::from_info(&info),
+                FilesystemAttachments::default(),
+                "{info}"
+            );
+        }
+        let none = FilesystemAttachments::from_info(&serde_json::json!({
+            "filesystem_attachments": {"extensions": [], "all_types": false}
+        }));
+        assert!(none.extensions.is_empty());
+        assert_eq!(none.supported_types(), "images, PDF, and text/code files");
+        assert!(resolved("a.zip", None, &none).starts_with("refused"));
+        assert_eq!(
+            FilesystemAttachments::default().supported_types(),
+            "images, PDF, text/code, archives, office documents, and databases"
         );
     }
 

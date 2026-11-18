@@ -181,7 +181,8 @@ fn clear_context_posts_the_clear_control() {
     let transport = RouteTransport::local();
     transport.ok("/v1/sessions/conv_a/events", r#"{"queued":false}"#);
     let core = live(transport);
-    block_on(core.clear_context("conv_a")).unwrap();
+    // A native clear names no new session: the terminal's `session.superseded` does.
+    assert_eq!(block_on(core.clear_context("conv_a")), Ok(None));
     assert_eq!(
         lines_after_connect(&core),
         ["POST /v1/sessions/conv_a/events"]
@@ -190,6 +191,24 @@ fn clear_context_posts_the_clear_control() {
         core.transport().write_bodies(),
         [json!({"type": "clear", "data": {}})]
     );
+}
+
+#[test]
+fn a_claude_sdk_clear_names_the_session_that_continues() {
+    for (body, expected) in [
+        (r#"{"queued":false,"session_id":"conv_b"}"#, Some("conv_b")),
+        (r#"{"queued":false,"session_id":"conv_a"}"#, None),
+        ("", None),
+    ] {
+        let transport = RouteTransport::local();
+        transport.ok("/v1/sessions/conv_a/events", body);
+        let core = live(transport);
+        assert_eq!(
+            block_on(core.clear_context("conv_a")),
+            Ok(expected.map(str::to_owned)),
+            "{body}"
+        );
+    }
 }
 
 #[test]

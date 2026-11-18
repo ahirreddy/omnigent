@@ -36,11 +36,17 @@
       "limitMiB": 10
     }
   ],
-  "unsupportedNames": [
+  "filesystemNames": [
     "a.zip",
     "a.docx",
     "a.xlsx",
     "a.pptx",
+    "a.db",
+    "a.sqlite",
+    "a.sqlite3"
+  ],
+  "filesystemLimitMiB": 50,
+  "unsupportedNames": [
     "a.mp4",
     "a.mp3",
     "unknown"
