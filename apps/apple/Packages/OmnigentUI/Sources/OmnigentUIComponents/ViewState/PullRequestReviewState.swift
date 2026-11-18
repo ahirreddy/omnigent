@@ -81,6 +81,14 @@ nonisolated public struct PullRequestNewThreadState: Hashable, Sendable {
   public var body: String
   /// Why it can't be posted yet.
   public var problem: String?
+  /// Whether it goes to the agent rather than the provider.
+  public var toAgent = false
+  /// The provider takes new threads.
+  public var offersProvider = true
+  /// The server keeps local comments for the agent.
+  public var offersAgent = false
+  /// The PR moved since the lines were chosen.
+  public var isStale = false
 
   /// Creates the state.
   /// - Parameters:
@@ -108,6 +116,8 @@ public struct PullRequestReviewActions {
   public var postNew: (@MainActor () -> Void)?
   /// Drops the new conversation.
   public var cancelNew: (@MainActor () -> Void)?
+  /// Sends the new comment to the agent (`true`) or the provider.
+  public var setNewToAgent: (@MainActor (Bool) -> Void)?
   /// A change is in flight.
   public var isBusy = false
 

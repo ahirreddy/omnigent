@@ -279,7 +279,10 @@ fn a_patch_keeps_its_text_and_why_it_is_unavailable() {
         ),
     );
     let patch = harness
-        .call(|core| async move { core.pull_request_patch("conv_a".into(), None).await })
+        .call(|core| async move {
+            core.pull_request_patch("conv_a".into(), None, None, None)
+                .await
+        })
         .unwrap();
     assert_eq!(patch.patch, "diff --git a b");
     assert_eq!(patch.unavailable, None);
@@ -295,7 +298,7 @@ fn a_patch_keeps_its_text_and_why_it_is_unavailable() {
     );
     let patch = harness
         .call(|core| async move {
-            core.pull_request_patch("conv_a".into(), Some(PR.into()))
+            core.pull_request_patch("conv_a".into(), Some(PR.into()), None, None)
                 .await
         })
         .unwrap();
@@ -549,17 +552,20 @@ fn stored_pull_requests_and_panel_features_map_every_field() {
         features,
         PanelFeatures {
             content_search: false,
-            pull_requests: true
+            pull_requests: true,
+            comment_anchors: false,
         }
     );
     assert_eq!(
         PanelFeatures::from(core_stored::PanelFeatures {
             content_search: true,
-            pull_requests: false
+            pull_requests: false,
+            comment_anchors: true,
         }),
         PanelFeatures {
             content_search: true,
-            pull_requests: false
+            pull_requests: false,
+            comment_anchors: true,
         }
     );
 

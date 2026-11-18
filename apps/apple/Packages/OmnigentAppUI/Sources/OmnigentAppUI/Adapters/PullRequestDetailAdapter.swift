@@ -14,7 +14,13 @@ enum PullRequestDetailAdapter {
   static func content(_ panel: SessionPanelStore, canEdit: Bool) -> PullRequestDetailContent? {
     guard panel.openPullRequest != nil else { return nil }
     if let stored = stored(panel) { return stored }
-    return content(detail: panel.detail, files: panel.files.value, canEdit: canEdit)
+    let content = content(detail: panel.detail, files: panel.files.value, canEdit: canEdit)
+    // The tab counts the provider's list, as the web's does.
+    if case .ready(var state) = content, let listed = panel.changes.value, listed.available {
+      state.fileCount = listed.files.count
+      return .ready(state)
+    }
+    return content
   }
 
   /// The content from the store's values.

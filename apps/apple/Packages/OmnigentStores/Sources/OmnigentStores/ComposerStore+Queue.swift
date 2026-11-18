@@ -17,7 +17,7 @@ extension ComposerStore {
   /// - Returns: The queued message's id, or `nil` when it stayed in the draft with the reason.
   @discardableResult
   func enqueueDraft() -> Int? {
-    let message = draftMessage
+    let message = withReviewComments(draftMessage)
     let extras: MessageQueue.Extras
     do {
       extras = try takeExtras()
@@ -28,6 +28,7 @@ extension ComposerStore {
     do {
       let queued = try queue.enqueue(message, extras: extras)
       clearDraft()
+      reviewComments = []
       lastError = nil
       return queued.id
     } catch {

@@ -1,15 +1,18 @@
-//! File review comments and the Inbox's comment side.
+//! File review comments, local review comments on pull request diffs, and the Inbox's comment
+//! side.
 //!
-//! `GET /v1/sessions/{id}/comments` lists a session's comments; the Inbox shows the open ones
-//! other people left that the caller has not seen, as the web collects them
-//! (`collectCommentInboxItems`).
+//! `GET /v1/sessions/{id}/comments` lists a session's comments on workspace files; with
+//! `include_pr_comments` it pages every comment, those on a pull request's diff carrying
+//! `anchor_metadata`. The Inbox shows the open file comments other people left that the caller
+//! has not seen, as the web collects them (`collectCommentInboxItems`).
 
 use std::collections::BTreeSet;
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use super::events::MessageSent;
-use super::json::{as_object, opt_str, opt_u64, req_str};
+use super::json::{as_object, opt_array, opt_object, opt_str, opt_u64, req_str};
+use super::pull_request_detail::reviews::ReviewSide;
 use super::requests::validate_identifier;
 use super::{ClientCore, SessionError};
 use crate::http::HttpTransport;
@@ -307,7 +310,7 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<FileComment, SessionError> {
         validate_identifier(session_id)?;
         validate_identifier(comment_id)?;
-        let mut body = serde_json::Map::new();
+        let mut body = Map::new();
         if let Some(text) = &update.body {
             if text.trim().is_empty() {
                 return Err(SessionError::InvalidInput {
@@ -419,6 +422,350 @@ impl<T: HttpTransport> ClientCore<T> {
         })
     }
 }
+
+/// The immutable diff coordinates of a session-only review comment on a pull request
+/// (`anchor_metadata`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ReviewCommentAnchor {
+    /// The pull request.
+    pub pr_url: String,
+    /// The side of the diff.
+    pub side: ReviewSide,
+    /// The last line.
+    pub line: u64,
+    /// The first line of a range.
+    pub start_line: Option<u64>,
+    /// The head the comment was written at.
+    pub head_sha: String,
+    /// The base the comment was written at.
+    pub base_sha: String,
+}
+
+impl ReviewCommentAnchor {
+    fn to_json(&self) -> Value {
+        json!({
+            "pr_url": self.pr_url,
+            "side": self.side.wire(),
+            "line": self.line,
+            "start_line": self.start_line,
+            "head_sha": self.head_sha,
+            "base_sha": self.base_sha,
+        })
+    }
+}
+
+/// A comment for the session's agent on lines of a pull request's diff.
+///
+/// It keeps every field the server sends, so the composer attaches the snapshot the web's
+/// `LocalReviewComment` sends.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LocalReviewComment {
+    /// Id.
+    pub id: String,
+    /// The session it belongs to.
+    pub session_id: String,
+    /// The file.
+    pub path: String,
+    /// The server's character range, unused for diff comments.
+    pub start_index: u64,
+    /// The end of that range.
+    pub end_index: u64,
+    /// The comment.
+    pub body: String,
+    /// `draft` (open) or `addressed`.
+    pub status: String,
+    /// Created, Unix seconds.
+    pub created_at: i64,
+    /// Last change, Unix microseconds.
+    pub updated_at: u64,
+    /// The commented text; unused for diff comments.
+    pub anchor_content: Option<String>,
+    /// Who left it; `None` in single-user mode.
+    pub author: Option<String>,
+    /// Where it is on the diff.
+    pub anchor: ReviewCommentAnchor,
+}
+
+impl LocalReviewComment {
+    /// Whether it is open (not yet addressed).
+    #[must_use]
+    pub fn is_open(&self) -> bool {
+        self.status == "draft"
+    }
+}
+
+fn anchor_from(object: &Map<String, Value>) -> Result<ReviewCommentAnchor, String> {
+    let side = opt_str(object, "side")?;
+    let side = ReviewSide::parse(side.as_deref()).ok_or("`side` is not LEFT or RIGHT")?;
+    let line = opt_u64(object, "line")?
+        .filter(|line| *line > 0)
+        .ok_or("`line` is not a positive line")?;
+    let start_line = opt_u64(object, "start_line")?;
+    if start_line.is_some_and(|start| start == 0 || start > line) {
+        return Err("`start_line` is not a line before `line`".to_owned());
+    }
+    Ok(ReviewCommentAnchor {
+        pr_url: req_str(object, "pr_url")?,
+        side,
+        line,
+        start_line,
+        head_sha: req_str(object, "head_sha")?,
+        base_sha: req_str(object, "base_sha")?,
+    })
+}
+
+/// Decodes a comment that carries a diff anchor; `Ok(None)` for a workspace-file comment.
+fn review_comment_from(value: &Value) -> Result<Option<LocalReviewComment>, String> {
+    let object = as_object(value, "a comment")?;
+    let Some(anchor) = opt_object(object, "anchor_metadata")? else {
+        return Ok(None);
+    };
+    Ok(Some(LocalReviewComment {
+        id: req_str(object, "id")?,
+        session_id: req_str(object, "conversation_id")?,
+        path: req_str(object, "path")?,
+        start_index: opt_u64(object, "start_index")?.unwrap_or_default(),
+        end_index: opt_u64(object, "end_index")?.unwrap_or_default(),
+        body: req_str(object, "body")?,
+        status: req_str(object, "status")?,
+        created_at: object
+            .get("created_at")
+            .and_then(Value::as_i64)
+            .ok_or("`created_at` is not an integer")?,
+        updated_at: opt_u64(object, "updated_at")?.unwrap_or_default(),
+        anchor_content: opt_str(object, "anchor_content")?,
+        author: opt_str(object, "created_by")?.filter(|author| !author.is_empty()),
+        anchor: anchor_from(anchor)?,
+    }))
+}
+
+/// One comment as the web's `JSON.stringify(comment, null, 2)` writes it, keys in the
+/// server's order.
+fn snapshot(comment: &LocalReviewComment) -> String {
+    let text = |value: &str| Value::String(value.to_owned()).to_string();
+    let optional = |value: Option<&str>| value.map_or_else(|| "null".to_owned(), text);
+    let anchor = &comment.anchor;
+    let start_line = anchor
+        .start_line
+        .map_or_else(|| "null".to_owned(), |start| start.to_string());
+    let fields = [
+        ("id", text(&comment.id)),
+        ("conversation_id", text(&comment.session_id)),
+        ("path", text(&comment.path)),
+        ("start_index", comment.start_index.to_string()),
+        ("end_index", comment.end_index.to_string()),
+        ("body", text(&comment.body)),
+        ("status", text(&comment.status)),
+        ("created_at", comment.created_at.to_string()),
+        ("updated_at", comment.updated_at.to_string()),
+        (
+            "anchor_content",
+            optional(comment.anchor_content.as_deref()),
+        ),
+        ("created_by", optional(comment.author.as_deref())),
+    ];
+    let anchor_fields = [
+        ("pr_url", text(&anchor.pr_url)),
+        ("side", text(anchor.side.wire())),
+        ("line", anchor.line.to_string()),
+        ("start_line", start_line),
+        ("head_sha", text(&anchor.head_sha)),
+        ("base_sha", text(&anchor.base_sha)),
+    ];
+    let mut lines: Vec<String> = fields
+        .into_iter()
+        .map(|(key, value)| format!("  \"{key}\": {value}"))
+        .collect();
+    let anchor_lines: Vec<String> = anchor_fields
+        .into_iter()
+        .map(|(key, value)| format!("    \"{key}\": {value}"))
+        .collect();
+    lines.push(format!(
+        "  \"anchor_metadata\": {{\n{}\n  }}",
+        anchor_lines.join(",\n")
+    ));
+    format!("{{\n{}\n}}", lines.join(",\n"))
+}
+
+/// The fence language the web marks attached review comments with.
+pub const LOCAL_REVIEW_COMMENT_LANGUAGE: &str = "local-review-comment";
+
+/// The text a message sends for attached review comments (the web's `formatLocalReviewComments`).
+///
+/// An instruction comes first unless the message has its own text, then each comment's snapshot
+/// in a fence, so an agent needs no tool to read them.
+#[must_use]
+pub fn format_local_review_comments(
+    comments: &[LocalReviewComment],
+    include_instruction: bool,
+) -> String {
+    let mut parts = Vec::new();
+    if include_instruction {
+        parts.push("Please address these local review comments:".to_owned());
+    }
+    for comment in comments {
+        // Keeps quoted attachment markers out of the chat's mention-rewriting pass.
+        let body = snapshot(comment).replace("[Attached", "\\u005bAttached");
+        parts.push(format!("```{LOCAL_REVIEW_COMMENT_LANGUAGE}\n{body}\n```"));
+    }
+    parts.join("\n\n")
+}
+
+/// The most pages of comments read before the cursor is taken as stuck.
+const MAX_COMMENT_PAGES: usize = 200;
+
+/// What creating a review comment says when the server did not keep its place.
+const ANCHOR_LOST: &str = "This server did not preserve the review location. Your draft is saved.";
+
+impl<T: HttpTransport> ClientCore<T> {
+    /// The session's review comments on pull request diffs, oldest first. A server that
+    /// predates them answers its workspace-file list, which holds none.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; the read errors; [`SessionError::InvalidPagination`] for a cursor
+    /// that does not advance; [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn session_review_comments(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<LocalReviewComment>, SessionError> {
+        let result = self.review_comment_pages(session_id).await;
+        self.dispatch();
+        let mut comments = result?;
+        comments.sort_by(|left, right| {
+            left.created_at
+                .cmp(&right.created_at)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        Ok(comments)
+    }
+
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn review_comment_pages(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<LocalReviewComment>, SessionError> {
+        validate_identifier(session_id)?;
+        let path = format!("/v1/sessions/{session_id}/comments");
+        let malformed = |detail: String| SessionError::MalformedResponse {
+            detail: format!("{path}: {detail}"),
+        };
+        let mut comments = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_COMMENT_PAGES {
+            let mut query = vec![
+                ("include_pr_comments", "true".to_owned()),
+                ("limit", "100".to_owned()),
+            ];
+            if let Some(after) = &cursor {
+                query.push(("after", after.clone()));
+            }
+            let value = self.get_json(&path, &query).await?;
+            // Older servers ignore the opt-in and answer their workspace-file list.
+            if value.is_array() {
+                return Ok(comments);
+            }
+            let object = as_object(&value, "the page").map_err(malformed)?;
+            for row in opt_array(object, "comments")
+                .map_err(malformed)?
+                .into_iter()
+                .flatten()
+            {
+                if let Some(comment) = review_comment_from(row).map_err(malformed)? {
+                    comments.push(comment);
+                }
+            }
+            let next = opt_str(object, "next_cursor").map_err(malformed)?;
+            if next.is_none() {
+                return Ok(comments);
+            }
+            if next == cursor {
+                return Err(SessionError::InvalidPagination);
+            }
+            cursor = next;
+        }
+        Err(SessionError::InvalidPagination)
+    }
+
+    /// Leaves a comment for the session's agent on lines of a pull request's diff. A server
+    /// that answers without the same place (one that predates diff comments keeps it as a
+    /// workspace-file comment) has the comment deleted again, and the draft stays.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; `InvalidInput` for an empty comment or path; the write errors;
+    /// [`SessionError::Rejected`] when the server lost the place.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn add_review_comment(
+        &self,
+        session_id: &str,
+        path: &str,
+        body: &str,
+        anchor: &ReviewCommentAnchor,
+    ) -> Result<LocalReviewComment, SessionError> {
+        validate_identifier(session_id)?;
+        if body.trim().is_empty() || path.is_empty() {
+            return Err(SessionError::InvalidInput {
+                reason: "Write a comment first.".to_owned(),
+            });
+        }
+        let route = format!("/v1/sessions/{session_id}/comments");
+        let request = json!({
+            "path": path,
+            "body": body,
+            "start_index": 0,
+            "end_index": 0,
+            "anchor_metadata": anchor.to_json(),
+        });
+        let value = self.write_json("POST", &route, &request).await;
+        self.dispatch();
+        let value = value?;
+        let kept = review_comment_from(&value)
+            .ok()
+            .flatten()
+            .filter(|comment| {
+                comment.session_id == session_id
+                    && comment.path == path
+                    && comment.anchor == *anchor
+            });
+        if let Some(comment) = kept {
+            return Ok(comment);
+        }
+        let id = value.get("id").and_then(Value::as_str).map(str::to_owned);
+        let removed = match id {
+            Some(id) => self.delete_session_comment(session_id, &id).await,
+            None => Err(SessionError::MalformedResponse {
+                detail: format!("{route}: the comment has no id"),
+            }),
+        };
+        let message = match removed {
+            Ok(()) | Err(SessionError::Rejected { status: 404, .. }) => {
+                format!("{ANCHOR_LOST} Update the server before retrying.")
+            }
+            Err(_) => {
+                format!("{ANCHOR_LOST} A comment may remain in Files; remove it before retrying.")
+            }
+        };
+        Err(SessionError::Rejected {
+            status: 422,
+            message,
+        })
+    }
+}
+
+#[cfg(test)]
+#[path = "comments_review_tests.rs"]
+mod review_tests;
 
 #[cfg(test)]
 mod tests {

@@ -18,6 +18,7 @@ enum PullRequestPanelSlots {
     var extras = PullRequestPanelExtras()
     extras.detail = PullRequestDetailAdapter.content(panel, canEdit: canEdit)
     if panel.openPullRequest != nil { extras.changes = changes(panel, canEdit: canEdit) }
+    extras.opensChanges = panel.opensChangesTab
     extras.labelChoices = choices(panel.repositoryLabels) {
       $0.labels.map(PullRequestDetailAdapter.label)
     }
@@ -47,6 +48,7 @@ enum PullRequestPanelSlots {
       }
     }
     actions.dismissError = { panel.dismissEditError() }
+    actions.changesOpened = { panel.changesTabOpened() }
     actions.watch = { resumed in await panel.watch(.panel, resumed: resumed) }
     guard canEdit else { return actions }
     actions.link = { url, done in
@@ -112,49 +114,9 @@ enum PullRequestPanelSlots {
     }
   }
 
-  /// The Changes tab: every file in one scroll with its review conversations, or why there is
-  /// none.
+  /// The Changes tab: the file tree beside every file in one scroll, with its review
+  /// conversations and local comments, or the commit list.
   private static func changes(_ panel: SessionPanelStore, canEdit: Bool) -> AnyView {
-    switch panel.files {
-    case .idle, .loading:
-      AnyView(
-        LoadingCaption(title: "Loading changes\u{2026}")
-          .frame(maxWidth: .infinity, maxHeight: .infinity))
-    case .failed(let error):
-      AnyView(
-        ContentUnavailableView(
-          "Couldn't Load the Changes", systemImage: "exclamationmark.triangle",
-          description: Text(error.message)))
-    case .loaded(let files) where files.unavailable != nil || files.files.isEmpty:
-      AnyView(
-        ContentUnavailableView(
-          files.unavailable == nil ? "No Changes" : "Diff Unavailable",
-          systemImage: "plus.forwardslash.minus",
-          description: Text(files.unavailable ?? "This pull request changes no files.")))
-    case .loaded(let files):
-      AnyView(
-        VStack(spacing: 0) {
-          if let error = panel.reviewThreads.error {
-            Text("Couldn\u{2019}t load review conversations: \(error.message)")
-              .font(.callout)
-              .foregroundStyle(.secondary)
-              .padding(8)
-              .frame(maxWidth: .infinity, alignment: .leading)
-            Divider()
-          }
-          StackedDiffView(
-            files: files.files,
-            annotations: ReviewThreadsAdapter.annotations(
-              panel, files: files.files, canEdit: canEdit))
-        }
-        .whileVisible(reviewWatch(panel)))
-    }
-  }
-
-  /// Reads the review threads while the Changes tab shows, when the host has them.
-  private static func reviewWatch(_ panel: SessionPanelStore) -> (@MainActor (Bool) async -> Void)?
-  {
-    guard panel.detail.value?.capabilities.reviewThreads == true else { return nil }
-    return { _ in await panel.watchReviewThreads() }
+    PullRequestChangesAdapter.view(panel, canEdit: canEdit)
   }
 }

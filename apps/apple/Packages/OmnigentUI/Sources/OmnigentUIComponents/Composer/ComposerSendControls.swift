@@ -40,7 +40,7 @@ struct ComposerSendRules {
       return "Waiting for attachments to upload."
     }
     if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, state.attachments.isEmpty,
-      state.mentions.isEmpty, state.quotes.isEmpty
+      state.mentions.isEmpty, state.quotes.isEmpty, state.reviewComments.isEmpty
     {
       return state.purpose == .start ? "Enter a message to get started" : "Type a message."
     }
@@ -57,7 +57,7 @@ struct ComposerSendRules {
   /// The draft has text, files, `@` paths or quotes.
   var hasContent: Bool {
     !draft.isEmpty || !state.attachments.isEmpty || !state.mentions.isEmpty
-      || !state.quotes.isEmpty
+      || !state.quotes.isEmpty || !state.reviewComments.isEmpty
   }
 
   /// The placeholder, in the web's words: what needs the user first, why sending waits, or what
