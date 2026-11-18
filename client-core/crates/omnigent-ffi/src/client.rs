@@ -26,7 +26,7 @@ use omnigent_core::demo::DemoTransport;
 use omnigent_core::http::HttpTransport as _;
 
 use crate::cache_driver::SavedMsg;
-use crate::connection::{self, HostConfig, Resolved};
+use crate::connection::{self, HostConfig, RecentManifest, Resolved};
 use crate::databricks::DatabricksAuth;
 use crate::decisions::{DecisionCard, DecisionResponse};
 use crate::engine::{Bridge, Engine, Link, Listeners, Msg, SignInContext, Transports, View, lock};
@@ -232,6 +232,8 @@ pub(crate) struct AuthState {
     /// The browser ticket whose poller is current; a new ticket or a connection retires it.
     browser_ticket: u64,
     pub(crate) renewal: Option<AbortHandle>,
+    /// The manifest the last discovery read, which the connect after it reuses once.
+    recent_manifest: Option<RecentManifest>,
 }
 
 pub(crate) struct Inner {
@@ -401,9 +403,16 @@ impl Inner {
         self.post(Msg::Phase(ConnectionPhase::Connecting {
             base_url: base_url.clone(),
         }));
+        // The `/v1/info` the mode came from a moment ago also answers the identity check's.
+        let info = resolved.recent_info(self.host.now_ms());
         let result = self
             .sessions
-            .connect(resolved.endpoint.clone(), bearer.clone(), expected_user_id)
+            .connect_knowing(
+                resolved.endpoint.clone(),
+                bearer.clone(),
+                expected_user_id,
+                info,
+            )
             .await;
         self.check_generation(generation)?;
         let server = match result {
@@ -457,9 +466,18 @@ impl Inner {
         if self.demo.is_some() {
             return self.connect_demo(generation).await;
         }
-        let resolved =
-            match connection::resolve(&self.transport, server_url, self.config.url_policy).await {
-                Ok(resolved) => resolved,
+        // The manifest the discovery before this connect read is not read again.
+        let recent = lock(&self.auth).recent_manifest.take();
+        let resolved = match connection::resolve(
+            &self.transport,
+            server_url,
+            self.config.url_policy,
+            recent,
+            self.host.now_ms(),
+        )
+        .await
+        {
+            Ok(resolved) => resolved,
                 Err(error) => {
                     self.check_generation(generation)?;
                     return Err(self.fail(server_url, error));
@@ -558,6 +576,7 @@ impl Inner {
             manifest_auth: None,
             databricks_workspace: None,
             needs_setup: false,
+            info: None,
         };
         lock(&self.auth).resolved = Some(resolved.clone());
         self.establish(generation, &resolved, None, None)
@@ -932,13 +951,18 @@ impl ClientCore {
     /// [`CoreError::InvalidUrl`], [`CoreError::Transport`], [`CoreError::HttpStatus`],
     /// [`CoreError::Decode`].
     pub async fn discover_server(&self, server_url: String) -> Result<ServerDiscovery, CoreError> {
-        connection::discover(
+        let (url, discovery) = connection::discover(
             &self.inner.transport,
             &server_url,
             self.inner.config.url_policy,
         )
-        .await
-        .map(|(_, discovery)| discovery.into())
+        .await?;
+        lock(&self.inner.auth).recent_manifest = Some(RecentManifest {
+            url,
+            discovery: discovery.clone(),
+            read_at_ms: self.inner.host.now_ms(),
+        });
+        Ok(discovery.into())
     }
 
     /// Connects to `server_url`: discovery, then a saved credential if there is one (OIDC grant,
