@@ -6,7 +6,7 @@
 #
 #   bash apps/apple/Tools/perf/scroll-bench.sh [--runs N] [--styles "chat cli"]
 #        [--scenarios a,b] [--scrollers overlay|legacy] [--lists "stack table"]
-#        [--variant NAME=ARGS ...] [--sample [--frames REGEX]] [--skip-build]
+#        [--variant NAME=ARGS ...] [--sample [--frames REGEX]] [--passes] [--skip-build]
 #
 # Scrollers are overlay ones, as on a Mac with a trackpad, unless --scrollers legacy (a mouse's,
 # a VM's default). --lists compares transcript lists in one job: each run launches once per list
@@ -16,7 +16,8 @@
 #   --variant base= --variant "textkit=-omnigent:message-text textkit"
 # With both, every list runs with every variant. --sample also samples both passes of each
 # scenario (and variant) once more and prints where the main thread's time went
-# (sample-breakdown.py); --frames also lists the samples of its frames matching REGEX. The
+# (sample-breakdown.py); --frames also lists the samples of its frames matching REGEX. --passes
+# lists each run-loop pass over 8.3 ms by when it began. The
 # sidebar's toggles: --scenarios sidebar-toggles,sidebar-toggles-mid. In the shared test VMs,
 # as one job:
 #   ~/src/omnigent-vm/vmq submit --priority high --only laptop-w1 --tree "$PWD" \
@@ -28,7 +29,7 @@ die() {
   exit 1
 }
 
-runs=3 styles="chat cli" scenarios="" sample=0 frames="" build=1 scrollers=overlay lists="" variants=()
+runs=3 styles="chat cli" scenarios="" sample=0 passes=0 frames="" build=1 scrollers=overlay lists="" variants=()
 while (($#)); do
   case "$1" in
     --variant) variants+=(--variant "$2"); shift 2 ;;
@@ -38,6 +39,7 @@ while (($#)); do
     --scrollers) scrollers=$2; shift 2 ;;
     --lists) lists=$2; shift 2 ;;
     --sample) sample=1; shift ;;
+    --passes) passes=1; shift ;;
     --frames) frames=$2; shift 2 ;;
     --skip-build) build=0; shift ;;
     *) die "unknown argument $1" ;;
@@ -121,6 +123,7 @@ for style in $styles; do
   [[ -n "$lists" ]] && options+=(--lists "${lists// /,}")
   ((${#variants[@]})) && options+=("${variants[@]}")
   ((sample)) && options+=(--sample 1)
+  ((passes)) && options+=(--passes)
   .venv/bin/python apps/apple/Tools/perf/perf.py scroll "${options[@]}" || status=1
   # What the last run left built: the AppKit views in the transcript, by class.
   .venv/bin/python apps/apple/Tools/perf/perf.py drive --app "$app" count-views || status=1

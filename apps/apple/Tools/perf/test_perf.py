@@ -118,6 +118,11 @@ class BusyTests(unittest.TestCase):
         self.assertEqual(numbers["p50_ms"], 9.0)
         self.assertEqual(numbers["max_ms"], 20.0)
 
+    def test_the_timeline_lists_the_passes_a_120hz_frame_misses(self):
+        passes = perf.busy_passes(BUSY, 1000, 2000)
+        self.assertEqual(passes[1], (1100.0, 9.0))
+        self.assertEqual(perf.pass_timeline(passes, 1000), "+100:9.0 +200:20.0")
+
     def test_an_empty_window_has_no_passes(self):
         numbers = perf.parse_busy(BUSY, 3000, 4000).numbers
         self.assertEqual(numbers["max_ms"], 0.0)
