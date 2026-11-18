@@ -11,8 +11,8 @@ use serde_json::json;
 use crate::errors::CoreError;
 use crate::server_admin::{
     DefaultPolicyRecord, ImportHostRecord, ImportResultRecord, ProviderConnectionRecord,
-    ServerMemberRecord, ServerSettingsInfo, SharingUpdateRecord, import_sources, max_import_limit,
-    min_password_length,
+    ServerMemberRecord, ServerSettingsInfo, SessionTitleInstructionsRecord, SharingUpdateRecord,
+    import_sources, max_import_limit, min_password_length,
 };
 use crate::sessions::SessionListStatus;
 use crate::test_support::{connected, json as reply};
@@ -26,7 +26,8 @@ fn settings_info_maps_each_capability_to_its_own_field() {
             200,
             r#"{"single_user":false,"accounts_enabled":true,"archive_worktree_cleanup":true,
                 "login_url":"/login","enabled_connections":["mcp","github"],
-                "agent_install":true,"agent_detail":false,"agent_config_edit":true}"#,
+                "agent_install":true,"agent_detail":false,"agent_config_edit":true,
+                "session_title_instructions":true}"#,
         ),
     );
     harness
@@ -49,7 +50,9 @@ fn settings_info_maps_each_capability_to_its_own_field() {
             custom_agents: true,
             agent_detail: false,
             agent_config_edit: true,
+            session_title_instructions: true,
         }
+
 
 
     );
@@ -195,7 +198,37 @@ fn policies_are_listed_toggled_and_deleted() {
 }
 
 #[test]
+fn title_instructions_are_read_and_saved_for_the_caller() {
+    let mut harness = connected();
+    let path = "/v1/settings/session-title-instructions";
+    harness.http.route(
+        path,
+        reply(200, r#"{"instructions":"Prefix with OMNI.","max_chars":4000}"#),
+    );
+    let saved = harness
+        .call(|core| async move { core.session_title_instructions().await })
+        .unwrap();
+    assert_eq!(
+        saved,
+        SessionTitleInstructionsRecord {
+            instructions: Some("Prefix with OMNI.".into()),
+            max_chars: 4000,
+        }
+    );
+    harness
+        .call(|core| async move {
+            core.save_session_title_instructions(Some(" Use French. ".into()))
+                .await
+        })
+        .unwrap();
+    let (line, body) = harness.last_request();
+    assert_eq!(line, format!("PUT {path}"));
+    assert_eq!(body, json!({"instructions": "Use French."}));
+}
+
+#[test]
 fn sharing_maps_every_setting_and_sends_only_what_changed() {
+
     let mut harness = connected();
     harness.http.route(
         "/v1/sharing",

@@ -29,7 +29,20 @@ enum ServerSettingsAdapter {
       archived.map { ($0.id, archivedInfo($0, userID: info?.userId)) },
       uniquingKeysWith: { first, _ in first })
     state.archivedProjects = archivedProjects(archived, projects: projects)
+    state.titleInstructions = titleInstructions(store.titleInstructions)
     return state
+  }
+
+  /// The Sessions pane's title instructions: loading until the first read answers.
+  static func titleInstructions(_ load: CreationLoad<SessionTitleInstructionsRecord>)
+    -> TitleInstructionsState
+  {
+    switch load {
+    case .loaded(let saved):
+      .ready(saved: saved.instructions ?? "", maxChars: Int(clamping: saved.maxChars))
+    case .failed: .failed
+    case .idle, .loading: .loading
+    }
   }
 
   private static func baseState(_ store: ServerSettingsStore, servers: [ServerChoice], now: Date)
@@ -103,6 +116,7 @@ enum ServerSettingsAdapter {
     if info.customAgents { panes.append(.customAgents) }
     if info.mcpRegistry { panes.append(.mcp) }
     if !info.connections.isEmpty { panes.append(.integrations) }
+    if info.sessionTitleInstructions { panes.append(.sessions) }
     panes += [.git, .importSessions]
     // Members and Sharing mean nothing without other users.
     if info.isAdmin, !info.singleUser { panes.append(.members) }

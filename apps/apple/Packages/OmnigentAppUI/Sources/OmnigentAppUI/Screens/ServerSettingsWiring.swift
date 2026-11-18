@@ -43,6 +43,7 @@ struct ServerSettingsWiring {
     actions.unarchive = { ids in Task { await store.unarchive(ids) } }
     actions.delete = { ids in Task { await store.delete(ids) } }
     actions.loadMoreArchived = { Task { await store.loadMoreArchived() } }
+    actions.saveTitleInstructions = { await store.saveTitleInstructions($0) }
     if let connection, store.info.value?.hasLoginSession ?? false {
       actions.signOut = { signOut(connection) }
     }
@@ -83,6 +84,7 @@ struct ServerSettingsWiring {
       await store.loadPolicyRegistry()
     case .sharing: await store.loadSharing()
     case .archived: await store.loadArchived()
+    case .sessions: await store.loadTitleInstructions()
     case .account, .harnesses, .customAgents, .git: break
     }
   }

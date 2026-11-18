@@ -53,6 +53,9 @@ pub struct ServerSettingsInfo {
     pub agent_detail: bool,
     /// An agent's configuration can be edited (`agent_config_edit`).
     pub agent_config_edit: bool,
+    /// The caller can save guidance for automatic session titles
+    /// (`session_title_instructions`).
+    pub session_title_instructions: bool,
 }
 
 impl ServerSettingsInfo {
@@ -80,6 +83,8 @@ impl ServerSettingsInfo {
             custom_agents: opt_bool(info, "agent_install")?.unwrap_or(false),
             agent_detail: opt_bool(info, "agent_detail")?.unwrap_or(false),
             agent_config_edit: opt_bool(info, "agent_config_edit")?.unwrap_or(false),
+            session_title_instructions: opt_bool(info, "session_title_instructions")?
+                .unwrap_or(false),
         })
     }
 }

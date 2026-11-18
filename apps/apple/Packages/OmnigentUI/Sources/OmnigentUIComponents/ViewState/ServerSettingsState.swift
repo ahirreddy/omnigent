@@ -12,6 +12,8 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
   case mcp
   /// Sandbox integrations (provider accounts).
   case integrations
+  /// Sessions: the caller's title instructions.
+  case sessions
   /// Git: worktree defaults.
   case git
   /// Import local sessions from a host.
@@ -36,6 +38,7 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
     case .customAgents: "Custom Agents"
     case .mcp: "MCP"
     case .integrations: "Sandbox Integrations"
+    case .sessions: "Sessions"
     case .git: "Git"
     case .importSessions: "Import Sessions"
     case .members: "Members"
@@ -53,6 +56,7 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
     case .customAgents: "person.crop.rectangle.stack"
     case .mcp: "powerplug"
     case .integrations: "square.grid.2x2"
+    case .sessions: "text.bubble"
     case .git: "arrow.triangle.branch"
     case .importSessions: "square.and.arrow.down"
     case .members: "person.2"

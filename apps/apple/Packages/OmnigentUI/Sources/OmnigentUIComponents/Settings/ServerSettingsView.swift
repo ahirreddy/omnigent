@@ -203,14 +203,23 @@ public struct ServerSettingsView: View {
       MCPPane(services: state.mcpServices, actions: actions, errorMessage: state.errorMessage)
     case .integrations: IntegrationsPane(connections: state.connections, actions: actions)
     case .git: GitSettingsPane(archiveWorktreeCleanup: state.archiveWorktreeCleanup)
+    case .some(let other): sessionPane(other)
+    case nil: Text("Sign in to a server to see its settings.").foregroundStyle(.secondary)
+    }
+  }
+
+  /// Sessions, Import Sessions and Archived Sessions; the Admin panes otherwise.
+  @ViewBuilder private func sessionPane(_ pane: ServerSettingsPane) -> some View {
+    switch pane {
+    case .sessions:
+      SessionTitleInstructionsPane(state: state.titleInstructions, actions: actions)
     case .importSessions:
       ImportSessionsPane(hosts: state.importHosts, sources: state.importSources, actions: actions)
     case .archived:
       ArchivedSessionsPane(
         sessions: state.archived, info: state.archivedInfo, projects: state.archivedProjects,
         hasMore: state.hasMoreArchived, actions: actions)
-    case .some(let admin): adminPane(admin)
-    case nil: Text("Sign in to a server to see its settings.").foregroundStyle(.secondary)
+    default: adminPane(pane)
     }
   }
 

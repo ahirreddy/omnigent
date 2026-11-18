@@ -20,7 +20,8 @@ fn info_reads_admin_mode_and_known_connections() {
         "/v1/info",
         r#"{"single_user":false,"accounts_enabled":true,"archive_worktree_cleanup":true,
             "login_url":"/login","enabled_connections":["mcp","github","slack","databricks"],
-            "agent_install":true,"agent_detail":true,"agent_config_edit":true}"#,
+            "agent_install":true,"agent_detail":true,"agent_config_edit":true,
+            "session_title_instructions":true}"#,
     );
     assert_eq!(
         block_on(core.server_settings_info()).unwrap(),
@@ -36,6 +37,7 @@ fn info_reads_admin_mode_and_known_connections() {
             custom_agents: true,
             agent_detail: true,
             agent_config_edit: true,
+            session_title_instructions: true,
         }
     );
 
@@ -45,6 +47,7 @@ fn info_reads_admin_mode_and_known_connections() {
     assert!(info.single_user && !info.mcp_registry && info.connections.is_empty());
     assert!(!info.archive_worktree_cleanup && !info.has_login_session);
     assert!(!info.custom_agents && !info.agent_detail && !info.agent_config_edit);
+    assert!(!info.session_title_instructions);
 
     // The retired `custom_agents_settings_ui` flag no longer matters: `agent_install` alone
     // shows the page, as on the web.
@@ -70,6 +73,7 @@ fn recorded_main_info_shows_custom_agents_without_the_retired_flag() {
         ServerSettingsInfo::from_values(info, &json!({"user_id": "local", "is_admin": true}))
             .unwrap();
     assert!(settings.custom_agents && settings.agent_detail && settings.agent_config_edit);
+    assert!(settings.session_title_instructions);
     let creation = crate::creation::CreationCapabilities::from_value(info).unwrap();
     assert!(creation.custom_agents_settings_enabled());
 }

@@ -59,6 +59,7 @@
         (.customAgents, "Custom agents are not available here."),
         (.mcp, "No MCP services."),
         (.integrations, "No integrations."),
+        (.sessions, "Title instructions"),
         (.git, "Worktrees"),
         (.importSessions, "No machine is online."),
         (.members, "No members."),
@@ -93,6 +94,33 @@
       try await screen.letTasksRun()
       #expect(log.entries == ["load git"])
       #expect(try !screen.shows("Admin"))
+    }
+
+    @Test("title instructions show the saved count and Clear, or the failure with Retry")
+    func titleInstructions() async throws {
+      pane.value = .sessions
+      var state = state(panes: [.sessions])
+      state.titleInstructions = .ready(saved: "Use French.", maxChars: 4000)
+      var actions = actions
+      actions.saveTitleInstructions = { _ in true }
+      let ready = screen(state, actions: actions)
+      try await ready.letTasksRun()
+      #expect(try ready.shows("11 / 4000 characters"))
+      #expect(try ready.shows("Clear"))
+      ready.close()
+
+      state.titleInstructions = .ready(saved: "Too long", maxChars: 3)
+      let long = screen(state, actions: actions)
+      try await long.letTasksRun()
+      #expect(try long.shows("8 / 3 characters \u{2014} shorten to save"))
+      long.close()
+
+      state.titleInstructions = .failed
+      let failed = screen(state)
+      defer { failed.close() }
+      try await failed.letTasksRun()
+      #expect(try failed.shows("Couldn't load your title instructions."))
+      #expect(try failed.shows("Retry"))
     }
 
     @Test("no panes at all asks to sign in, and loads nothing")
