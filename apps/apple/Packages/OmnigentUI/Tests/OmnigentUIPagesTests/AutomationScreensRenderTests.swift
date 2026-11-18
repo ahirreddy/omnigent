@@ -154,7 +154,7 @@
     private static var everyListAction: AutomationsActions {
       var actions = AutomationsActions()
       actions.filter = { _, _ in }
-      actions.create = { _ in }
+      actions.create = {}
       actions.createTrigger = { _ in }
       actions.openDetail = { _ in }
       actions.edit = { _ in }
@@ -190,10 +190,14 @@
             isPaused: index.isMultiple(of: 3))
           row.isBusy = index.isMultiple(of: 5)
           row.lastRunSessionID = HostileData.text(index)
+          row.lastRunFailed = index.isMultiple(of: 4)
+          row.isTrigger = index.isMultiple(of: 6)
+          row.sharedBy = index.isMultiple(of: 7) ? HostileData.text(index + 3) : nil
           return row
         }, hasAny: true, actionError: HostileData.bidirectional)
-      state.triggers = HostileData.samples.enumerated().map { index, text in
-        AutomationTriggerChip(id: "\(index)", title: text, systemImage: text)
+      state.templates = HostileData.samples.enumerated().map { index, text in
+        AutomationTemplateCard(
+          id: "\(index)", title: text, description: text, requirement: text, systemImage: text)
       }
       return state
     }
@@ -352,13 +356,21 @@
       }
     }
 
-    @Test("suggestions have stable, unique ids and default to the web's schedule")
-    func suggestions() {
-      let ids = AutomationSuggestion.all.map(\.id)
-      #expect(Set(ids).count == ids.count)
-      #expect(AutomationSuggestion.all.allSatisfy { !$0.prompt.isEmpty && !$0.title.isEmpty })
+    @Test("the schedule defaults to the web's, and a row's subtitle reads like the web's card")
+    func defaultsAndSubtitles() {
       #expect(ScheduleChoice().preset == .daily)
       #expect(ScheduleChoice().end == .never)
+      #expect(ScheduleChoice.Preset.allCases.first == .interval, "Interval leads, as the web's")
+      var row = AutomationRow(
+        id: "a", name: "A", scheduleText: "Every 10 minutes", nextRunText: "in 3 mins")
+      #expect(row.subtitle == "Every 10 minutes \u{00B7} Next run in 3 mins")
+      row.isTrigger = true
+      #expect(row.subtitle == "Runs when new items match")
+      row.sharedBy = "Ana"
+      #expect(row.subtitle == "Shared by Ana \u{00B7} Runs when new items match")
+      #expect(row.isReadOnly)
+      #expect(
+        AutomationsTab.allCases.map(\.title) == ["Your automations", "Shared with me", "Templates"])
     }
   }
 #endif

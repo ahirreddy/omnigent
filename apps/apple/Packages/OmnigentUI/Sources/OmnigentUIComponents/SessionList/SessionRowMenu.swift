@@ -89,6 +89,12 @@ struct SessionRowMenu {
         unavailableReason: actions.forkUnavailableReason?(session)
       ) { fork(session) }
     }
+    // An automation runs from the owner's own session.
+    if let createAutomation = actions.createAutomation, !isShared, !session.isArchived {
+      Button("Create automation", systemImage: "clock.arrow.circlepath") {
+        createAutomation(session)
+      }
+    }
     if actions.rename != nil, session.canRename {
       Button("Rename\u{2026}", systemImage: "pencil", action: rename)
     }

@@ -213,6 +213,8 @@ public struct SessionListActions {
   public var fork: (@MainActor (SessionSummary) -> Void)?
   /// Why a session cannot be forked; Fork then shows disabled with the reason.
   public var forkUnavailableReason: (@MainActor (SessionSummary) -> String?)?
+  /// Open a new automation whose runs each start from a copy of the session.
+  public var createAutomation: (@MainActor (SessionSummary) -> Void)?
   /// Move to a project (`nil` removes it from its project).
   public var moveToProject: (@MainActor (SessionSummary, SessionProject?) -> Void)?
   /// Stop the running session.

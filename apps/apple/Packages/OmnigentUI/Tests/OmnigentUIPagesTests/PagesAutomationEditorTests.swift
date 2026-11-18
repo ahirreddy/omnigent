@@ -281,5 +281,36 @@
       #expect(try screen.shows("Switching agents starts a new session."))
       #expect(try screen.shows("default model, effort, and permission settings"))
     }
+
+  }
+
+  extension PagesAutomationEditorTests {
+    @Test("the cost limit, MCP services and a session copy write back, with what blocks Save")
+    func costServicesAndSource() throws {
+      var context = context()
+      context.mcpServices = [
+        AutomationMcpOption(id: "github", title: "GitHub", isConnected: true),
+        AutomationMcpOption(id: "jira", title: "Jira", isConnected: false),
+      ]
+      context.costLimitProblem = "Enter a cost limit greater than zero, or leave it blank."
+      context.mcpProblem = "Sign in to each selected MCP service, or turn it off."
+      var seed = AutomationDraftState(name: "Copy", agentID: "a1")
+      seed.sourceSessionID = "s1"
+      seed.sourceSessionTitle = "Release notes"
+      let draft = EditedValue(seed)
+      let screen = sheet(draft, context: context)
+      defer { screen.close() }
+      #expect(try screen.shows("Starts from"))
+      #expect(try screen.shows("Release notes"))
+      #expect(try screen.shows("Additional instructions"))
+      #expect(try screen.shows("Not signed in"))
+      #expect(try screen.shows("Enter a cost limit greater than zero, or leave it blank."))
+      #expect(try screen.shows("Sign in to each selected MCP service, or turn it off."))
+      let cost = try #require(screen.textFields.first { $0.placeholderString == "No limit" })
+      try screen.replaceText(in: cost, with: "2.5")
+      #expect(draft.value.maxCost == "2.5")
+      let session = try #require(screen.popUps.first { $0.title == "New session each run" })
+      #expect(!session.isEnabled, "a session copy starts each run anew")
+    }
   }
 #endif
