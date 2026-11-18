@@ -60,5 +60,9 @@
       "Which profiles should the migration cover?": "Only prod (recommended)",
       "When should it run?": "After the freeze"
     }
-  }
+  },
+  "tool_answers": [
+    { "question": "Which profiles should the migration cover?", "answer": "Only prod" },
+    { "question": "When should it run?", "answer": "After the freeze" }
+  ]
 }
