@@ -79,7 +79,11 @@ public struct PendingMessages: Equatable, Sendable {
     guard !entries.isEmpty else { return }
     let before = entries.count
     let users = transcript.filter { $0.role == .user && !$0.isEphemeral }
-    for row in users where !claimedRowIDs.contains(row.id) {
+    // A message that reads as a runtime notice ("[System: …]") is echoed as one.
+    let echoes = transcript.filter {
+      !$0.isEphemeral && ($0.role == .user || $0.activity?.kind == .systemNotice)
+    }
+    for row in echoes where !claimedRowIDs.contains(row.id) {
       if let index = entries.firstIndex(where: { $0.itemID == row.id }) {
         claimedRowIDs.insert(row.id)
         entries.remove(at: index)

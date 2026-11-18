@@ -39,7 +39,7 @@ nonisolated enum CLILayout {
     }
 
     for segment in segments {
-      if segment.isUserMessage {
+      if segment.isTurnBoundary {
         flush(isLast: false)
         blocks.append(.segment(segment))
       } else {
@@ -72,6 +72,12 @@ nonisolated enum CLILayout {
 extension TurnSegment {
   nonisolated var isUserMessage: Bool {
     if case .item(let item) = self { return item.isUserMessage }
+    return false
+  }
+
+  /// A user message or a notice, where a turn ends.
+  nonisolated var isTurnBoundary: Bool {
+    if case .item(let item) = self { return item.isTurnBoundary }
     return false
   }
 

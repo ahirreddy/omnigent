@@ -165,19 +165,28 @@
       return menu
     }
 
-    /// Show details and Copy, as ``CLIActivityLine`` offers them.
+    /// Show details, a sub-agent's Open and Copy, as ``CLIActivityLine`` offers them.
     private func activityActions(_ row: Row, isOpen: Bool) -> [CLIAction] {
       guard let activity = row.activity else { return [] }
       var actions: [CLIAction] = []
-      let summary = activity.detail("summary") ?? activity.summary
-      if !summary.isEmpty {
+      if CLIWork.detailText(of: activity) != nil {
         let id = row.id
         actions.append(
           CLIAction(
             title: isOpen ? "Hide details" : "Show details",
             systemImage: isOpen ? "chevron.up" : "chevron.down",
-            identifier: "reasoning-toggle-\(row.id)",
+            identifier: activity.kind == .reasoning
+              ? "reasoning-toggle-\(row.id)" : "system-notice-toggle-\(row.id)",
             perform: { [weak self] in self?.toggle(id) }))
+      }
+      let routes = style.environment.values?.conversationActions
+      if let session = TranscriptMarker.childSession(activity),
+        let open = routes?.openChild ?? routes?.openSession
+      {
+        actions.append(
+          CLIAction(
+            title: "Open \(activity.summary)", systemImage: "arrow.up.forward.square",
+            identifier: "subagent-marker-open-\(row.id)", perform: { open(session) }))
       }
       let copyText = row.text.isEmpty ? activity.summary : row.text
       if !copyText.isEmpty {

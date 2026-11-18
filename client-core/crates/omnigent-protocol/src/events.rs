@@ -101,6 +101,43 @@ pub struct SessionStatusEvent {
     pub blocked_on: Option<String>,
 }
 
+/// `session.background_tasks`: a session's background tasks changed between its turns (a
+/// codex-native forwarder's background terminals). The count is authoritative; 0 clears it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionBackgroundTasksEvent {
+    /// The session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
+    /// Background tasks still running.
+    pub background_task_count: u64,
+    /// What each counted task is; it may name fewer tasks than the count.
+    #[serde(default, deserialize_with = "null_as_default")]
+    pub background_tasks: Vec<BackgroundTaskInfo>,
+}
+
+/// `session.journal.appended`: an entry was appended to the session's journal. Transient; the
+/// journal is the source of truth. Only the entry's identity is kept.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionJournalAppendedEvent {
+    /// The session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
+    /// The new entry.
+    pub entry: JournalEntryRef,
+}
+
+/// The identity of a `session.journal.appended` entry (`SessionJournalEntry`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JournalEntryRef {
+    /// Entry id.
+    pub id: String,
+    /// The entry's place in the journal: 0, 1, 2, ...
+    pub position: u64,
+    /// The entry kind, for example `plan` or `status`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+}
+
 /// `session.usage`. Absent and null values leave the known value unchanged.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionUsageEvent {
@@ -915,6 +952,8 @@ macro_rules! stream_events {
 stream_events! {
     /// `session.status`.
     SessionStatus(SessionStatusEvent) = "session.status",
+    /// `session.background_tasks`.
+    SessionBackgroundTasks(SessionBackgroundTasksEvent) = "session.background_tasks",
     /// `session.usage`.
     SessionUsage(SessionUsageEvent) = "session.usage",
     /// `session.model`.
@@ -964,6 +1003,8 @@ stream_events! {
         "session.changed_files.invalidated",
     /// `session.terminal.activity`.
     SessionTerminalActivity(SessionTerminalActivityEvent) = "session.terminal.activity",
+    /// `session.journal.appended`.
+    SessionJournalAppended(SessionJournalAppendedEvent) = "session.journal.appended",
     /// `response.output_text.delta`.
     OutputTextDelta(OutputTextDeltaEvent) = "response.output_text.delta",
     /// `response.function_call_output.delta`.

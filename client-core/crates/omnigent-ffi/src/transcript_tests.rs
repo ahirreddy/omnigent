@@ -25,6 +25,7 @@ fn row(id: &str) -> Row {
         created_at: None,
         is_ephemeral: false,
         is_activity_only: false,
+        origin_session_id: None,
     }
 }
 
@@ -60,6 +61,9 @@ fn every_activity_and_attachment_kind_converts() {
         (K::ClientTask, ActivityKind::ClientTask),
         (K::Browser, ActivityKind::Browser),
         (K::Sidechat, ActivityKind::Sidechat),
+        (K::SystemNotice, ActivityKind::SystemNotice),
+        (K::SubagentMarker, ActivityKind::SubagentMarker),
+        (K::TaskMarker, ActivityKind::TaskMarker),
     ] {
         assert_eq!(ActivityKind::from(theirs), ours);
     }

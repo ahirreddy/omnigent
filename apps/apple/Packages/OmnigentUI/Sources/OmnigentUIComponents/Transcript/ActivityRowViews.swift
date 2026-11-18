@@ -17,6 +17,8 @@ struct ActivityRowView: View, Equatable {
       case .compaction: CompactionRowView(row: row, activity: activity)
       case .sidechat: SidechatRowView(row: row, activity: activity)
       case .unknown: UnknownRowView(row: row, activity: activity)
+      case .systemNotice: SystemNoticeRowView(row: row, activity: activity)
+      case .subagentMarker, .taskMarker: ActivityMarkerRowView(row: row, activity: activity)
       case .routing, .command, .resource, .file, .policy, .clientTask, .browser, .toolCall,
         .toolResult, .nativeTool:
         GenericActivityRowView(row: row, activity: activity)

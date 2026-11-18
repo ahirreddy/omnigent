@@ -1,7 +1,26 @@
 import SwiftUI
 
-/// Reasoning opens while it streams and folds when it settles, unless the reader chose; the
-/// header names how long it thought when this view saw it stream, as the web's.
+/// What a reasoning row shows, in both transcript styles.
+nonisolated enum ReasoningText {
+  /// The thought's text, when it has any to show.
+  static func text(_ activity: Activity) -> String? {
+    guard let text = activity.detail("summary"),
+      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return nil }
+    return text
+  }
+
+  /// The first prose line a settled thought previews, which the core puts in its summary;
+  /// `nil` while it streams or when no line has prose.
+  static func preview(_ activity: Activity, isStreaming: Bool) -> String? {
+    guard !isStreaming, text(activity) != nil, !activity.summary.isEmpty else { return nil }
+    return activity.summary
+  }
+}
+
+/// Reasoning opens while it streams and folds when it settles, unless the reader chose. A
+/// settled thought previews its first line ("Thinking: …"), else the header names how long it
+/// thought when this view saw it stream; one with nothing to show does not open. As the web's.
 struct ReasoningRowView: View {
   let row: Row
   let activity: Activity
@@ -11,7 +30,10 @@ struct ReasoningRowView: View {
   @State private var duration: TimeInterval?
 
   private var disclosureKey: String { "reasoning-\(row.id)" }
-  private var isExpanded: Bool { disclosure.choice(disclosureKey) ?? row.isStreaming }
+  private var isExpanded: Bool {
+    canExpand && (disclosure.choice(disclosureKey) ?? row.isStreaming)
+  }
+  private var canExpand: Bool { row.isStreaming || ReasoningText.text(activity) != nil }
 
   static func title(isStreaming: Bool, duration: TimeInterval?) -> String {
     if isStreaming { return "Thinking\u{2026}" }
@@ -20,13 +42,15 @@ struct ReasoningRowView: View {
   }
 
   var body: some View {
+    let preview = ReasoningText.preview(activity, isStreaming: row.isStreaming)
     VStack(alignment: .leading, spacing: 0) {
       ExpandableHeader(
         isExpanded: Binding(
           get: { isExpanded }, set: { disclosure.choose($0, for: disclosureKey) }),
         systemImage: "brain",
-        title: Self.title(isStreaming: row.isStreaming, duration: duration),
-        subtitle: isExpanded ? nil : activity.summary, identifier: "reasoning-toggle-\(row.id)"
+        title: preview ?? Self.title(isStreaming: row.isStreaming, duration: duration),
+        titleLead: preview == nil ? nil : "Thinking:", titleLineLimit: preview == nil ? 2 : 1,
+        isEnabled: canExpand, identifier: "reasoning-toggle-\(row.id)"
       ) {
         if row.isStreaming { LiveIndicator(color: .secondary) }
       }
@@ -39,7 +63,7 @@ struct ReasoningRowView: View {
         }
       }
       if isExpanded {
-        MarkdownView(activity.detail("summary") ?? activity.summary, isStreaming: row.isStreaming)
+        MarkdownView(ReasoningText.text(activity) ?? "", isStreaming: row.isStreaming)
           .font(.callout)
           .foregroundStyle(.secondary)
           .padding(.leading, Theme.Spacing.section)

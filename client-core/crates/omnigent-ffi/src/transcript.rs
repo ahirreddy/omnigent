@@ -42,6 +42,12 @@ pub enum ActivityKind {
     ClientTask,
     Browser,
     Sidechat,
+    /// A runtime `[System: …]` notice: a muted marker, never the person's message.
+    SystemNotice,
+    /// A sub-agent's start or end; the `session` detail is its session.
+    SubagentMarker,
+    /// A task's start or end, or a plan change.
+    TaskMarker,
 }
 
 /// One titled block of detail text.
@@ -175,6 +181,10 @@ pub struct Row {
     pub is_ephemeral: bool,
     /// Routine bookkeeping that belongs in an activity drawer, not the transcript.
     pub is_activity_only: bool,
+    /// The session that sent this user message with `sys_session_message`; its sender line
+    /// is not in `text`.
+    #[uniffi(default)]
+    pub origin_session_id: Option<String>,
 }
 
 /// One edit to the row list. Apply in order; indexes are positions after every earlier op.
@@ -377,6 +387,9 @@ impl From<core::ActivityKind> for ActivityKind {
             K::ClientTask => Self::ClientTask,
             K::Browser => Self::Browser,
             K::Sidechat => Self::Sidechat,
+            K::SystemNotice => Self::SystemNotice,
+            K::SubagentMarker => Self::SubagentMarker,
+            K::TaskMarker => Self::TaskMarker,
         }
     }
 }
@@ -447,6 +460,7 @@ impl From<core::Row> for Row {
             author: row.author,
             agent: row.agent,
             created_at: row.created_at,
+            origin_session_id: row.origin_session_id,
         }
     }
 }

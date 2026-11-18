@@ -13,6 +13,7 @@ mod ops;
 mod presentation;
 mod reconciliation;
 mod recorded;
+mod transcript_parity;
 
 use std::fmt::Write as _;
 
