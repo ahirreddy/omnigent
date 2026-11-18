@@ -42,6 +42,7 @@ fn every_field_kind_and_a_full_field_map_both_ways() {
     field.options = vec![option_on_core()];
     field.allows_custom = true;
     field.is_secret = true;
+    field.exact_text = true;
     field.minimum = Some(1.5);
     field.maximum = Some(2.5);
     field.min_length = Some(3);
@@ -67,6 +68,7 @@ fn every_field_kind_and_a_full_field_map_both_ways() {
             }],
             allows_custom: true,
             is_secret: true,
+            exact_text: true,
             minimum: Some(1.5),
             maximum: Some(2.5),
             min_length: Some(3),

@@ -72,6 +72,9 @@ pub struct FormField {
     pub allows_custom: bool,
     /// Render as a secure field.
     pub is_secret: bool,
+    /// An editor: the text exactly as typed, empty included, is the answer.
+    #[uniffi(default)]
+    pub exact_text: bool,
     /// Lowest number.
     pub minimum: Option<f64>,
     /// Highest number.
@@ -406,6 +409,7 @@ impl From<FormField> for core::FormField {
             options: field.options.into_iter().map(Into::into).collect(),
             allows_custom: field.allows_custom,
             is_secret: field.is_secret,
+            exact_text: field.exact_text,
             minimum: field.minimum,
             maximum: field.maximum,
             min_length: field.min_length.map(size),
@@ -452,6 +456,7 @@ impl From<core::FormField> for FormField {
             options: field.options.into_iter().map(Into::into).collect(),
             allows_custom: field.allows_custom,
             is_secret: field.is_secret,
+            exact_text: field.exact_text,
             minimum: field.minimum,
             maximum: field.maximum,
             min_length: field.min_length.map(count),

@@ -41,7 +41,8 @@ nonisolated extension OmnigentUIComponents.FormField {
       options: field.options.map {
         OmnigentUIComponents.FormOption(value: $0.value, label: $0.label, detail: $0.detail)
       },
-      allowsCustom: field.allowsCustom, isSecret: field.isSecret, minimum: field.minimum,
+      allowsCustom: field.allowsCustom, isSecret: field.isSecret, exactText: field.exactText,
+      minimum: field.minimum,
       maximum: field.maximum, minLength: field.minLength, maxLength: field.maxLength,
       minItems: field.minItems, maxItems: field.maxItems,
       format: field.format.map(OmnigentUIComponents.TextFormat.init),

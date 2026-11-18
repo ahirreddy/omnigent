@@ -638,4 +638,6 @@ mod changes_tests;
 #[cfg(test)]
 mod codex_tests;
 #[cfg(test)]
+mod harness_tests;
+#[cfg(test)]
 mod tests;

@@ -1,0 +1,46 @@
+{
+  "pi": {
+    "type": "extension_ui_request",
+    "id": "ui_input_1",
+    "method": "input",
+    "title": "Name the release branch",
+    "placeholder": "release/x.y"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_pi_input_1",
+    "params": {
+      "mode": "form",
+      "message": "Name the release branch",
+      "phase": "pi_extension_ui",
+      "policy_name": "pi_native_extension_ui",
+      "pi_extension_ui": {
+        "type": "extension_ui_request",
+        "id": "ui_input_1",
+        "method": "input",
+        "title": "Name the release branch",
+        "placeholder": "release/x.y"
+      },
+      "ask_user_question": {
+        "questions": [
+          {
+            "id": "0",
+            "question": "Name the release branch",
+            "options": [],
+            "multiSelect": false,
+            "isOther": true,
+            "header": "release/x.y"
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": { "0": "release/2.4" }
+  },
+  "pi_response": {
+    "type": "extension_ui_response",
+    "id": "ui_input_1",
+    "value": "release/2.4"
+  }
+}

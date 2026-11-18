@@ -54,7 +54,7 @@ struct FormDraft: Hashable {
     case .number, .integer:
       return numberProblem(for: field)
     case .text:
-      return field.required && text(for: field).isEmpty
+      return field.required && !field.exactText && text(for: field).isEmpty
         ? .missing("Enter \(field.title).") : nil
     case .boolean:
       return field.required && booleanAnswer(for: field) == nil
@@ -98,8 +98,9 @@ struct FormDraft: Hashable {
     let other = custom[field.key, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
     switch field.kind {
     case .text:
+      // An editor's text is the answer even when empty.
       let raw = text(for: field)
-      return raw.isEmpty ? nil : .text(value: raw)
+      return raw.isEmpty && !field.exactText ? nil : .text(value: raw)
     case .integer:
       return Int64(text(for: field).trimmingCharacters(in: .whitespaces))
         .map { .integer(value: $0) }
@@ -231,7 +232,7 @@ struct DecisionFormFields: View {
             .textEntry(for: format)
         } else if field.kind == .text {
           TextField(field.title, text: binding, axis: .vertical)
-            .lineLimit(1...6)
+            .lineLimit(field.exactText ? 4...12 : 1...6)
         } else {
           TextField(field.kind == .integer ? "Whole number" : "Number", text: binding)
             #if os(iOS)

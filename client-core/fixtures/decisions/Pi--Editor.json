@@ -1,0 +1,47 @@
+{
+  "pi": {
+    "type": "extension_ui_request",
+    "id": "ui_editor_1",
+    "method": "editor",
+    "title": "Edit the release notes",
+    "prefill": "Fixes\n\n- Keep the cache warm\n"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_pi_editor_1",
+    "params": {
+      "mode": "form",
+      "message": "Edit the release notes",
+      "phase": "pi_extension_ui",
+      "policy_name": "pi_native_extension_ui",
+      "pi_extension_ui": {
+        "type": "extension_ui_request",
+        "id": "ui_editor_1",
+        "method": "editor",
+        "title": "Edit the release notes",
+        "prefill": "Fixes\n\n- Keep the cache warm\n"
+      },
+      "ask_user_question": {
+        "questions": [
+          {
+            "id": "0",
+            "question": "Edit the release notes",
+            "options": [],
+            "multiSelect": false,
+            "isOther": true,
+            "header": "Editor",
+            "textInput": { "default": "Fixes\n\n- Keep the cache warm\n" }
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": { "0": "" }
+  },
+  "pi_response": {
+    "type": "extension_ui_response",
+    "id": "ui_editor_1",
+    "value": ""
+  }
+}
