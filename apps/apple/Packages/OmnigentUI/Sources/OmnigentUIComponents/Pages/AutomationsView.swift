@@ -7,15 +7,22 @@ public import SwiftUI
 public struct AutomationsView: View {
   private let state: AutomationsViewState
   private let actions: AutomationsActions
-  @State private var tab: AutomationsTab = .yours
+  @State private var tab: AutomationsTab
   @State private var filter: AutomationsFilter = .all
   @State private var search = ""
   @State private var confirmingDelete: AutomationRow?
 
   /// Creates the page.
-  public init(state: AutomationsViewState, actions: AutomationsActions) {
+  /// - Parameters:
+  ///   - state: The lists and templates.
+  ///   - actions: What the page can do.
+  ///   - initialTab: The tab it opens on.
+  public init(
+    state: AutomationsViewState, actions: AutomationsActions, initialTab: AutomationsTab = .yours
+  ) {
     self.state = state
     self.actions = actions
+    _tab = State(initialValue: initialTab)
   }
 
   /// The page.

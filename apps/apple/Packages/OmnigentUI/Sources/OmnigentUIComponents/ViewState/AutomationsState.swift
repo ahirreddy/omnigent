@@ -208,6 +208,8 @@ public struct AutomationsActions {
   public var retry: (@MainActor () -> Void)?
   /// Dismiss the last action error.
   public var dismissError: (@MainActor () -> Void)?
+  /// Open the guide to automations again.
+  public var showIntro: (@MainActor () -> Void)?
 
   /// Creates actions.
   public init() {}
