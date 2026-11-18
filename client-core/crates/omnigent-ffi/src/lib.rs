@@ -57,6 +57,7 @@ pub mod inbox;
 pub mod inbox_items;
 pub mod nested_creation;
 pub mod policy_registry;
+pub mod project_repository;
 pub mod pull_request_detail;
 pub mod pull_requests;
 pub mod queue;

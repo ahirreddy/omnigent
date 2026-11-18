@@ -26,17 +26,24 @@ struct ProjectDialogs: ViewModifier {
   @Binding var name: String
   @Binding var confirmingDelete: SessionProject?
   let actions: SidebarActions
+  /// Where a new project from a repository can run; empty offers none.
+  var runChoices: [ProjectRunChoice] = []
   @State private var icon = ""
+  @State private var repository = ProjectRepositoryDraft()
 
   func body(content: Content) -> some View {
     content
       .sheet(item: $prompt) { prompt in
         ProjectNameSheet(
-          prompt: prompt, name: $name, icon: $icon,
-          submit: { submit(prompt) }, cancel: { self.prompt = nil }
+          prompt: prompt, name: $name, icon: $icon, repository: $repository,
+          runChoices: offersRepository(prompt) ? runChoices : [],
+          creation: actions.repositoryProjects,
+          submit: { submit(prompt) }, createFromRepository: createFromRepository,
+          cancel: { self.prompt = nil }
         )
         .onAppear {
           if case .rename(let project) = prompt { icon = project.icon ?? "" } else { icon = "" }
+          repository = ProjectRepositoryDraft()
         }
       }
       .confirmationDialog(
@@ -51,6 +58,21 @@ struct ProjectDialogs: ViewModifier {
           "This deletes the project \(project.name) and archives all of its sessions. Their "
             + "history is kept. You can find and restore them anytime from Settings.")
       }
+  }
+
+  /// A new project not moving a session in, on a server that clones repositories.
+  private func offersRepository(_ prompt: ProjectPrompt) -> Bool {
+    guard case .create(nil) = prompt else { return false }
+    return actions.repositoryProjects.create != nil
+  }
+
+  /// Creates the project from the repository; the sheet stays open with the reason on failure.
+  private func createFromRepository() async -> String? {
+    guard let create = actions.repositoryProjects.create else { return nil }
+    let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    let failure = await create(name, ProjectNameSheet.icon(icon), repository)
+    if failure == nil { prompt = nil }
+    return failure
   }
 
   private func submit(_ prompt: ProjectPrompt) {
@@ -69,9 +91,16 @@ private struct ProjectNameSheet: View {
   let prompt: ProjectPrompt
   @Binding var name: String
   @Binding var icon: String
+  @Binding var repository: ProjectRepositoryDraft
+  /// Where it can run from a repository; empty shows name and icon only.
+  let runChoices: [ProjectRunChoice]
+  let creation: ProjectCreationActions
   let submit: () -> Void
+  let createFromRepository: () async -> String?
   let cancel: () -> Void
   @FocusState private var iconFocused: Bool
+  @State private var isCreating = false
+  @State private var failure: String?
 
   /// The server's limit.
   private static let maxNameLength = 120
@@ -112,14 +141,22 @@ private struct ProjectNameSheet: View {
             }
           }
         }
+        if !runChoices.isEmpty {
+          ProjectRepositoryFields(choices: runChoices, draft: $repository, actions: creation)
+        }
+        if let failure {
+          Text(failure).foregroundStyle(Theme.failure)
+            .accessibilityIdentifier("project-create-failure")
+        }
       }
       .formStyle(.grouped)
+      .disabled(isCreating)
       .navigationTitle(isRename ? "Rename Project" : "New Project")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
         ToolbarItem(placement: .confirmationAction) {
-          Button(isRename ? "Rename" : "Create", action: submit)
-            .disabled(trimmed.isEmpty || trimmed.count > Self.maxNameLength)
+          Button(isRename ? "Rename" : "Create", action: create)
+            .disabled(trimmed.isEmpty || trimmed.count > Self.maxNameLength || isCreating)
         }
       }
     }
@@ -127,6 +164,29 @@ private struct ProjectNameSheet: View {
       .frame(width: 380)
     #endif
     .accessibilityIdentifier("project-name-sheet")
+  }
+
+  /// Creates as the sheet says: from the repository, which can take minutes to clone, else by
+  /// name and icon.
+  private func create() {
+    guard !runChoices.isEmpty, repository.startsFromRepository(runChoices) else {
+      submit()
+      return
+    }
+    if repository.url.trimmingCharacters(in: .whitespaces).isEmpty {
+      failure = "Add the repository this project starts from."
+      return
+    }
+    if let problem = creation.problem?(repository.url, repository.branch) {
+      failure = problem
+      return
+    }
+    failure = nil
+    isCreating = true
+    Task {
+      failure = await createFromRepository()
+      isCreating = false
+    }
   }
 
   private var isRename: Bool {

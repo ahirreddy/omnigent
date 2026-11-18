@@ -10,6 +10,7 @@ extension ConnectedServerView {
   func withProjectActions(_ actions: SidebarActions) -> SidebarActions {
     var actions = actions
     let list = connection.sessionList
+    actions.repositoryProjects = repositoryProjectActions()
     actions.createProject = { name, icon, moving in
       Task {
         guard let project = await list.createProject(named: name, icon: icon), let moving else {
