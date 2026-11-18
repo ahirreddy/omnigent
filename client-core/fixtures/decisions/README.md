@@ -95,6 +95,41 @@ Expected cards:
 - `FileChangeRequestApproval`, `PermissionsRequestApproval`, `ExecCommandApproval` (legacy) and
   `ApplyPatchApproval` (legacy): binary approvals.
 
+## Claude request kinds
+
+`Claude--<RequestKind>[--<shape>].json`, one per kind of request Claude Code asks the user through
+the claude-native hooks (`PermissionRequest` and `Elicitation`). Each file holds four entries,
+shared by `claude_tests.rs` and `test_claude_fixture_round_trip` in
+`tests/server/integration/test_sessions_permission_request_hook.py`:
+
+- `claude`: the hook input Claude Code sends, with the hook client's `_omnigent_elicitation_id`.
+- `elicitation`: the elicitation the server publishes for it, with `null` fields left out.
+- `answer`: the `ElicitationResult` the app posts.
+- `claude_result`: the hook output Claude Code receives for that answer.
+
+Expected cards:
+
+- `AskUserQuestion--SingleSelect`: one question; the header labels it, each option shows its
+  description, and a typed ("Other") answer is allowed.
+- `AskUserQuestion--MultiSelectWithOther`: several choices plus a typed one; Claude receives them
+  joined by `", "`.
+- `AskUserQuestion--FourQuestions`: four questions in one card, in order.
+- `AskUserQuestion--PreviewWithNotes`: options with previews, shown apart from the descriptions;
+  the question takes a note (`acceptsNotes`), posted in `_meta.notes`, which Claude receives with
+  the chosen preview in `annotations`.
+- `PermissionRequest--Bash--AlwaysAllowSuggestion`: Claude's `permission_suggestions` offered as
+  one choice (`apply_suggestions`); the server applies its own copy.
+- `PermissionRequest--Bash--DenyWithFeedback`: a decline whose reply reaches Claude.
+- `PermissionRequest--Edit--AcceptEdits`: the accept-edits suggestion is the existing "accept all
+  edits" choice, not offered twice.
+- `PermissionRequest--Read--AddDirectories`: the directory suggestion is the directory choice.
+- `PermissionRequest--WebFetch--RememberDomain`: the session domain rule and Claude's project rule.
+- `ExitPlanMode--AutoMode`, `--AcceptEdits`: a plan approved into one of its `plan_modes`.
+- `ExitPlanMode--ManualApproval`: a plain approval keeps asking before edits (`default`).
+- `ExitPlanMode--KeepPlanning`: a decline whose reply says what to change.
+- `Elicitation--Form`: an MCP server's form, as a native form.
+- `Elicitation--Url`: an MCP server's URL-mode request, as a page card.
+
 ## Hand-built from the server's request shapes
 
 - `FileChanges--ServerApprovalShapes.json`: elicitation requests keyed by label, each built with the

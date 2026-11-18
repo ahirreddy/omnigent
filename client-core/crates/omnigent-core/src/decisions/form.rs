@@ -57,8 +57,11 @@ pub struct FormOption {
     pub value: String,
     /// What to show; the value unless the schema named it.
     pub label: String,
-    /// Extra description (question option `description` and `preview`).
+    /// Extra description (a question option's `description`).
     pub detail: String,
+    /// What choosing it would look like (a question option's `preview`: a mockup, code or a
+    /// diagram, shown as written); empty when none.
+    pub preview: String,
 }
 
 impl FormOption {
@@ -67,6 +70,7 @@ impl FormOption {
             label: value.clone(),
             value,
             detail: String::new(),
+            preview: String::new(),
         }
     }
 }
@@ -90,6 +94,10 @@ pub enum FieldKind {
 
 /// One field of a [`DecisionForm`].
 #[derive(Debug, Clone, PartialEq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent per-field flags, mirrored from the schema or question"
+)]
 pub struct FormField {
     /// The `content` key the answer is posted under.
     pub key: String,
@@ -107,6 +115,9 @@ pub struct FormField {
     pub allows_custom: bool,
     /// The answer should be masked while typed.
     pub is_secret: bool,
+    /// The user may add a note to the answer (a question with `acceptsNotes`), sent with
+    /// [`DecisionResponse::FormWithNotes`](super::DecisionResponse::FormWithNotes).
+    pub accepts_notes: bool,
     /// Inclusive lower bound (number kinds).
     pub minimum: Option<f64>,
     /// Inclusive upper bound (number kinds).
@@ -139,6 +150,7 @@ impl FormField {
             options: Vec::new(),
             allows_custom: false,
             is_secret: false,
+            accepts_notes: false,
             minimum: None,
             maximum: None,
             min_length: None,
@@ -728,6 +740,7 @@ fn labelled_options(key: &str, schema: &Map<String, Value>) -> Result<Vec<FormOp
                     label,
                     value,
                     detail: String::new(),
+                    preview: String::new(),
                 },
                 None => FormOption::plain(value),
             },
@@ -776,6 +789,7 @@ fn const_options(
                 value: value.to_owned(),
                 label: text("title")?.unwrap_or_else(|| value.to_owned()),
                 detail: text("description")?.unwrap_or_default(),
+                preview: String::new(),
             })
         })
         .collect::<Result<Vec<_>, FormError>>()?;
@@ -809,10 +823,9 @@ fn array_options(key: &str, property: &Map<String, Value>) -> Result<Vec<FormOpt
         (None, Some(options)) => Some(("oneOf", options)),
         (None, None) => None,
     };
-    let string_items = items.get("type").map_or_else(
-        || titled.is_some(),
-        |kind| kind.as_str() == Some("string"),
-    );
+    let string_items = items
+        .get("type")
+        .map_or_else(|| titled.is_some(), |kind| kind.as_str() == Some("string"));
     if !string_items {
         return Err(FormError::UnsupportedType {
             field: key.to_owned(),
@@ -971,6 +984,7 @@ fn parse_property(
         options,
         allows_custom: false,
         is_secret: false,
+        accepts_notes: false,
         minimum,
         maximum,
         min_length,
@@ -1099,15 +1113,18 @@ fn question_options(
                 .and_then(Value::as_str)
                 .filter(|label| !label.is_empty())
                 .ok_or_else(malformed_options)?;
-            let detail: Vec<&str> = ["description", "preview"]
-                .iter()
-                .filter_map(|key| option.get(*key).and_then(Value::as_str))
-                .filter(|detail| !detail.is_empty())
-                .collect();
+            let text = |key: &str| {
+                option
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()
+            };
             Ok(FormOption {
                 value: label.to_owned(),
                 label: label.to_owned(),
-                detail: detail.join("\n\n"),
+                detail: text("description"),
+                preview: text("preview"),
             })
         })
         .collect::<Result<Vec<_>, FormError>>()?;
@@ -1121,7 +1138,8 @@ fn question_options(
 /// One question, always required. With options it takes one of them (several with
 /// `multiSelect`), plus a typed answer unless `isOther` is `false`. A single-select question with
 /// no options and `isOther: true` takes free text, prefilled from `textInput.default` when sent;
-/// without `isOther: true` it has nothing to answer with and is malformed.
+/// without `isOther: true` it has nothing to answer with and is malformed. `acceptsNotes: true`
+/// lets the answer carry a note.
 fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError> {
     let malformed = || FormError::MalformedQuestion { index };
     let object = question.as_object().ok_or_else(malformed)?;
@@ -1149,6 +1167,7 @@ fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError
             .unwrap_or_default()
             .to_owned(),
         is_secret: flag("isSecret") == Some(true),
+        accepts_notes: flag("acceptsNotes") == Some(true),
         ..FormField::new(String::new(), String::new(), FieldKind::Text)
     };
     if has_no_options(raw_options) {

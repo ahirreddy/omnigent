@@ -1423,6 +1423,7 @@ fn answers_are_checked_against_each_kind() {
             value: "a".to_owned(),
             label: "A".to_owned(),
             detail: String::new(),
+            preview: String::new(),
         }],
         ..FormField::new("k", "Title", FieldKind::SingleChoice)
     };

@@ -1,0 +1,47 @@
+{
+  "claude": {
+    "session_id": "claude_session_fixture",
+    "transcript_path": "/workspace/.claude/projects/app/transcript.jsonl",
+    "cwd": "/workspace/app",
+    "permission_mode": "default",
+    "hook_event_name": "PermissionRequest",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "rm -rf build",
+      "description": "Remove the build output"
+    },
+    "_omnigent_elicitation_id": "elicit_claude_00000000000000000000000000000006"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_claude_00000000000000000000000000000006",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **Bash**",
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "Bash({\"command\": \"rm -rf build\", \"description\": \"Remove the build output\"})",
+      "tool_name": "Bash",
+      "cwd": "/workspace/app",
+      "permission_mode": "default",
+      "allow_auto_mode": true,
+      "remember_scope": {
+        "tool": "Bash"
+      }
+    }
+  },
+  "answer": {
+    "action": "decline",
+    "content": {
+      "feedback": "Delete only build/cache."
+    }
+  },
+  "claude_result": {
+    "hookSpecificOutput": {
+      "hookEventName": "PermissionRequest",
+      "decision": {
+        "behavior": "deny",
+        "message": "Delete only build/cache."
+      }
+    }
+  }
+}
