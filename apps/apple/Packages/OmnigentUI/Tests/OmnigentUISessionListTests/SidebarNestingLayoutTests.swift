@@ -71,6 +71,35 @@
       }
     }
 
+    @Test("The top rows line up: New session, Inbox, Canvas and the filters share icon and title x")
+    func navigationRowsLineUp() throws {
+      // Each new window's first drawing, before any hover or accessibility read. The first rows
+      // of a new window could keep the outline's old indent, 9 points in, now and then; so
+      // several windows. Rows 0 to 4 are New session, Inbox, Canvas, Running and Needs you.
+      for window in 0..<8 {
+        let screen = OffscreenWindow(
+          SidebarHarness(spy: SidebarSpy(Fixture.state)), width: 320, height: 1040)
+        defer { screen.close() }
+        let picture = try Snapshot(screen)
+        let rows = try (0..<5).map { try screen.drawnRow($0, in: picture) }
+        // A symbol can draw in parts (Canvas's squares); the title starts past its 16 points.
+        let starts = rows.map { row -> (icon: CGFloat, title: CGFloat?)? in
+          guard let icon = row.marks.first?.lowerBound else { return nil }
+          return (icon, row.marks.first { $0.lowerBound >= icon + 18 }?.lowerBound)
+        }
+        let drawn = try starts.map { try #require($0, "window \(window): a top row draws") }
+        let icon = drawn.map(\.icon).sorted()[2]
+        let title = try #require(drawn.compactMap(\.title).sorted().dropFirst(2).first)
+        for (index, row) in drawn.enumerated() {
+          // A symbol's own margin moves its first ink a little (Needs you's hand).
+          #expect(abs(row.icon - icon) <= 3, "window \(window), row \(index): \(drawn)")
+          #expect(
+            row.title.map { abs($0 - title) <= 1.5 } == true,
+            "window \(window), row \(index): \(drawn)")
+        }
+      }
+    }
+
     @Test("A head's chevron fills its gutter, a step before its icon; the rest leave it empty")
     func chevronsFillTheGutter() throws {
       let screen = try sidebar()
