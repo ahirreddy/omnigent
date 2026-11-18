@@ -166,6 +166,19 @@ nonisolated public struct AutomationTemplateCard: Hashable, Sendable, Identifiab
   /// SF Symbol.
   public var systemImage: String
 
+  /// The SF Symbol standing in for a source's mark (`jira`, `slack`, `github`, `linear`,
+  /// `pagerduty`).
+  public static func symbol(forSource source: String) -> String {
+    switch source {
+    case "jira": "ticket"
+    case "slack": "number"
+    case "github": "smallcircle.filled.circle"
+    case "linear": "line.3.horizontal.decrease.circle"
+    case "pagerduty": "bell.badge"
+    default: "bolt"
+    }
+  }
+
   /// Creates a card.
   public init(
     id: String, title: String, description: String, requirement: String, systemImage: String
