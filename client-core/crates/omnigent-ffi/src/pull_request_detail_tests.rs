@@ -549,17 +549,20 @@ fn stored_pull_requests_and_panel_features_map_every_field() {
         features,
         PanelFeatures {
             content_search: false,
-            pull_requests: true
+            pull_requests: true,
+            session_journal: false,
         }
     );
     assert_eq!(
         PanelFeatures::from(core_stored::PanelFeatures {
             content_search: true,
-            pull_requests: false
+            pull_requests: false,
+            session_journal: true,
         }),
         PanelFeatures {
             content_search: true,
-            pull_requests: false
+            pull_requests: false,
+            session_journal: true,
         }
     );
 

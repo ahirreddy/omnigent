@@ -129,6 +129,11 @@ fn background_tasks_and_journal_entries_decode_typed() {
     };
     assert_eq!(appended.entry.position, 2);
     assert_eq!(appended.entry.kind.as_deref(), Some("status"));
+    // The whole entry is kept for the Tasks tab.
+    let whole = appended.entry.to_value();
+    assert_eq!(whole["content"]["text"], "PR merged");
+    assert_eq!(whole["step"], "propose");
+    assert_eq!(whole["id"], "0f3c2a9d8e7b6a5f4e3d2c1b0a998877");
     assert!(
         ServerStreamEvent::from_value(json!({"type": "session.journal.appended", "entry": {}}))
             .is_err()
@@ -377,6 +382,25 @@ fn todos_with_an_unknown_status_are_skipped() {
         panic!("{event:?}");
     };
     assert_eq!(todos.valid_todos().len(), 1);
+}
+
+// The server keys a task's markers by its id, else `task-<n>` by its place (`todo_transitions`).
+#[test]
+fn todos_are_keyed_as_their_task_markers_name_them() {
+    let event = decode(json!({"type": "session.todos", "todos": [
+        {"content": "a", "status": "brand_new"},
+        {"id": "toolu_1", "content": "b", "status": "pending"},
+        {"id": "", "content": "c", "status": "completed"},
+    ]}));
+    let ServerStreamEvent::SessionTodos(todos) = &event else {
+        panic!("{event:?}");
+    };
+    let keys: Vec<String> = todos
+        .valid_todos()
+        .into_iter()
+        .map(|todo| todo.key)
+        .collect();
+    assert_eq!(keys, ["toolu_1", "task-3"]);
 }
 
 #[test]

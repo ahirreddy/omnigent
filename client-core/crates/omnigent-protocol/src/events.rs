@@ -116,7 +116,7 @@ pub struct SessionBackgroundTasksEvent {
 }
 
 /// `session.journal.appended`: an entry was appended to the session's journal. Transient; the
-/// journal is the source of truth. Only the entry's identity is kept.
+/// journal is the source of truth.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionJournalAppendedEvent {
     /// The session.
@@ -136,6 +136,23 @@ pub struct JournalEntryRef {
     /// The entry kind, for example `plan` or `status`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    /// The entry's other fields as sent (`created_at`, `step`, `content`, ...).
+    #[serde(flatten)]
+    pub fields: Map<String, Value>,
+}
+
+impl JournalEntryRef {
+    /// The whole entry, as the server sent it.
+    #[must_use]
+    pub fn to_value(&self) -> Value {
+        let mut entry = self.fields.clone();
+        entry.insert("id".to_owned(), Value::from(self.id.clone()));
+        entry.insert("position".to_owned(), Value::from(self.position));
+        if let Some(kind) = &self.kind {
+            entry.insert("kind".to_owned(), Value::from(kind.clone()));
+        }
+        Value::Object(entry)
+    }
 }
 
 /// `session.usage`. Absent and null values leave the known value unchanged.
@@ -235,6 +252,9 @@ pub struct SessionAgentChangedEvent {
 /// A native plan item.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Todo {
+    /// The task's own id (Claude's task ids), else `task-<n>` by its place in the list, as the
+    /// server keys its task markers and the web's Tasks tab names it.
+    pub key: String,
     /// The task text.
     pub content: String,
     /// The task status.
@@ -259,7 +279,8 @@ impl SessionTodosEvent {
     pub fn valid_todos(&self) -> Vec<Todo> {
         self.todos
             .iter()
-            .filter_map(|todo| {
+            .enumerate()
+            .filter_map(|(index, todo)| {
                 let content = todo.get("content")?.as_str()?.to_owned();
                 let status = TodoStatus::parse(todo.get("status")?.as_str()?);
                 if status.is_unknown() {
@@ -269,7 +290,13 @@ impl SessionTodosEvent {
                     .get("activeForm")
                     .and_then(Value::as_str)
                     .map(str::to_owned);
+                let key = todo
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                    .map_or_else(|| format!("task-{}", index + 1), str::to_owned);
                 Some(Todo {
+                    key,
                     content,
                     status,
                     active_form,

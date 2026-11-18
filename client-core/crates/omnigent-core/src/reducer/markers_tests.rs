@@ -116,7 +116,19 @@ fn task_markers_lead_with_their_status() {
             .iter()
             .map(|detail| detail.text.as_str())
             .collect::<Vec<_>>(),
-        ["propose", "PR merged", "The plan"]
+        ["propose", "PR merged", "The plan", "journal-e7"]
+    );
+    // The agent's own tasks have no entry: the marker answers to the task and its status.
+    let todo = receipt(
+        "session.journal.task",
+        "journal",
+        "task-2",
+        json!({"name": "Ship", "status": "started", "entry_id": null, "native": true}),
+    );
+    let todo = marker(&todo).expect("a task's marker");
+    assert_eq!(
+        todo.details.last().map(|detail| detail.text.as_str()),
+        Some("todo-task-2-started")
     );
     for broken in [
         receipt(
@@ -146,8 +158,7 @@ fn task_markers_lead_with_their_status() {
 #[test]
 fn plan_lines_read_as_the_web_writes_them() {
     let plan = |resource: Value| {
-        line(&receipt("session.journal.plan", "journal", "e1", resource))
-            .map(|(title, _, _)| title)
+        line(&receipt("session.journal.plan", "journal", "e1", resource)).map(|(title, _, _)| title)
     };
     let cases = [
         (

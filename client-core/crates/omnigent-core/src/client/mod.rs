@@ -47,6 +47,7 @@ mod hydration;
 pub mod inbox;
 mod intent_lanes;
 pub mod items;
+mod journal;
 pub(crate) mod json;
 pub mod pin_order;
 pub mod policy_registry;
@@ -694,3 +695,7 @@ mod pull_requests_tests;
 #[cfg(test)]
 #[path = "pull_request_detail_tests.rs"]
 mod pull_request_detail_tests;
+
+#[cfg(test)]
+#[path = "journal_tests.rs"]
+mod journal_tests;

@@ -625,6 +625,82 @@ fn changed_files_invalidation_is_reported_as_an_event() {
     assert_eq!(files[0].path, "src/a.rs");
 }
 
+#[test]
+fn a_pushed_journal_entry_reaches_the_tasks_tab_and_its_view() {
+    let mut harness = connected();
+    let session = "facbcc05b00f4321b98b1929d217abc5";
+    harness.http.route(
+        &format!("/v1/sessions/{session}"),
+        json(
+            200,
+            &envelope_response("sessions/recorded-session-get-no-items.json"),
+        ),
+    );
+    harness.http.route(
+        &format!("/v1/sessions/{session}/items"),
+        json(200, r#"{"object":"list","data":[],"has_more":false}"#),
+    );
+    harness.core.open_session(session.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(
+        200,
+        vec![crate::http::HttpHeader {
+            name: "Content-Type".into(),
+            value: "text/event-stream".into(),
+        }],
+    );
+    sink.chunk(b"event: session.heartbeat\ndata: {\"type\":\"session.heartbeat\"}\n\n".to_vec());
+    harness.pump();
+    // `SessionJournalAppendedEvent` as main's server sends it.
+    let frame = format!(
+        "event: session.journal.appended\ndata: {{\"type\":\"session.journal.appended\",\"conversation_id\":\"{session}\",\"entry\":{{\"id\":\"p1\",\"position\":0,\"created_at\":1795080000,\"scheduled_task_run_id\":null,\"step\":null,\"author\":{{\"type\":\"agent\"}},\"kind\":\"plan\",\"content\":{{\"version\":1,\"name\":\"Ship\",\"steps\":[{{\"id\":\"a\",\"name\":\"A\",\"goal\":null,\"depends_on\":[]}}],\"graph_revision\":\"r1\"}},\"workflow_id\":null}}}}\n\n"
+    );
+    sink.chunk(frame.into_bytes());
+    harness.pump();
+    let entry = harness
+        .events
+        .all()
+        .into_iter()
+        .find_map(|event| match event {
+            CoreEvent::SessionJournalAppended { session_id, entry } if session_id == session => {
+                Some(entry)
+            }
+            _ => None,
+        })
+        .expect("the entry was reported")
+        .expect("the entry was read");
+    assert_eq!(entry.kind, "plan");
+    assert_eq!(entry.steps[0].id, "a");
+    assert_eq!(
+        entry.graph_revision,
+        Some(crate::session_journal::GraphRevision::Text { value: "r1".into() })
+    );
+    let merged = crate::session_journal::merge_journal_entries(vec![], vec![entry]);
+    let view = crate::session_journal::tasks_view(
+        merged,
+        vec![],
+        vec![],
+        crate::session_journal::TasksContext {
+            session_working: false,
+            awaiting_user: false,
+            can_send: true,
+            journal_read: true,
+        },
+    );
+    assert_eq!(view.plan_name.as_deref(), Some("Ship"));
+    assert_eq!(view.rows[0].state_label, "Ready");
+    assert_eq!(view.rows[0].action_title.as_deref(), Some("Run"));
+    assert_eq!(view.paused.as_deref(), Some("Stopped"));
+    assert!(
+        crate::session_journal::task_action_message(
+            crate::session_journal::TaskAction::Run,
+            "A".into()
+        )
+        .is_some_and(|message| message.starts_with("Run the task \"A\""))
+    );
+}
+
 /// The domain the core classifies as a Databricks workspace.
 const WORKSPACE_DOMAIN: &str = "databricks.com";
 

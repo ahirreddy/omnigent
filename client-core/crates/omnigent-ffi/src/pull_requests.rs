@@ -14,6 +14,10 @@ pub struct PanelFeatures {
     pub content_search: bool,
     /// The server stores each session's linked pull requests.
     pub pull_requests: bool,
+    /// The server keeps session journals, whose plans the Tasks tab shows (`features.workflows`
+    /// and `session_journal`).
+    #[uniffi(default = false)]
+    pub session_journal: bool,
 }
 
 impl From<core::PanelFeatures> for PanelFeatures {
@@ -21,6 +25,7 @@ impl From<core::PanelFeatures> for PanelFeatures {
         Self {
             content_search: features.content_search,
             pull_requests: features.pull_requests,
+            session_journal: features.session_journal,
         }
     }
 }
