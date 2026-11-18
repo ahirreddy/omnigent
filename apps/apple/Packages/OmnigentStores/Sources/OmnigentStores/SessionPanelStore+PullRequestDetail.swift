@@ -1,21 +1,59 @@
 import OmnigentCoreFFI
 public import OmnigentWorkspaceUI
 
-/// The open pull request's changed files, parsed from its patch.
+/// A patch of the open pull request, parsed: the whole PR, one commit, or the changes since one.
 nonisolated public struct PullRequestFiles: Equatable, Sendable {
   /// Each file's diff, in patch order.
   public var files: [OmnigentWorkspaceUI.FileDiff]
   /// Why the host cannot diff the PR.
   public var unavailable: String?
+  /// The head the patch was read at, when the host names it.
+  public var headSha: String?
+  /// The base the patch was read at, when the host names it.
+  public var baseSha: String?
 
   /// Creates the files.
   /// - Parameters:
   ///   - files: The diffs.
   ///   - unavailable: Why there are none.
-  public init(files: [OmnigentWorkspaceUI.FileDiff], unavailable: String? = nil) {
+  ///   - headSha: The head it was read at.
+  ///   - baseSha: The base it was read at.
+  public init(
+    files: [OmnigentWorkspaceUI.FileDiff], unavailable: String? = nil, headSha: String? = nil,
+    baseSha: String? = nil
+  ) {
     self.files = files
     self.unavailable = unavailable
+    self.headSha = headSha
+    self.baseSha = baseSha
   }
+
+  /// The diff of `path`, by its current or old path.
+  /// - Parameter path: The path.
+  /// - Returns: The diff.
+  public func diff(for path: String) -> OmnigentWorkspaceUI.FileDiff? {
+    files.first { $0.path == path } ?? files.first { $0.oldPath == path }
+  }
+
+  /// A patch, parsed, or `failure` when it cannot be read.
+  static func parsing(_ patch: PullRequestPatch, failure: String) -> CreationLoad<Self> {
+    do {
+      let diffs = try parseUnifiedDiff(patch: patch.patch).map(WorkspaceMapping.fileDiff)
+      return .loaded(
+        Self(
+          files: diffs, unavailable: patch.unavailable, headSha: patch.headSha,
+          baseSha: patch.baseSha))
+    } catch {
+      return .failed(.InvalidState(message: failure))
+    }
+  }
+
+  /// What a PR patch that cannot be parsed says.
+  static let unreadablePatch =
+    "Couldn\u{2019}t read the PR diff. Refresh or open the PR on its provider."
+  /// What a commit's patch that cannot be parsed says.
+  static let unreadableCommit =
+    "Couldn\u{2019}t read this commit\u{2019}s diff. Refresh or open it on its provider."
 }
 
 /// A change to a pull request the panel makes.
@@ -52,7 +90,7 @@ extension SessionPanelStore {
       reviewCandidates = .idle
       mergeOptions = .idle
       editError = nil
-      filesHead = nil
+      clearChanges()
       clearReviewThreads()
       restartPolling()
     }
@@ -64,11 +102,21 @@ extension SessionPanelStore {
     guard openPullRequest != nil else { return }
     openPullRequest = nil
     detail = .idle
-    files = .idle
-    filesHead = nil
     editError = nil
+    clearChanges()
     clearReviewThreads()
     restartPolling()
+  }
+
+  /// Forgets what the Changes tab read for the PR shown before.
+  private func clearChanges() {
+    files = .idle
+    changes = .idle
+    filesHead = nil
+    fileContext = [:]
+    commits = .idle
+    commitPatch = .idle
+    commitPatchKey = nil
   }
 
   private func clearReviewThreads() {
@@ -102,24 +150,58 @@ extension SessionPanelStore {
       setLiveCondition(pullRequest.condition, for: url)
       let moved = files == .idle || filesHead != pullRequest.headSha
       if refreshingFiles || moved {
-        await reloadFiles(url: url, head: pullRequest.headSha, generation: current)
+        await reloadFiles(url: url, pullRequest: pullRequest, generation: current)
       }
     }
   }
 
-  private func reloadFiles(url: String, head: String?, generation current: Int) async {
+  /// Reads the changed-file list and the patch pinned to the revision the detail shows, as the
+  /// web's Changes tab reads both at `base:head`.
+  private func reloadFiles(url: String, pullRequest: PullRequestDetail, generation current: Int)
+    async
+  {
     if files.value == nil { files = .loading }
-    let result: CreationLoad<PullRequestFiles>
-    do {
-      let patch = try await core.pullRequestPatch(sessionId: sessionID, prUrl: url)
-      let diffs = try parseUnifiedDiff(patch: patch.patch).map(WorkspaceMapping.fileDiff)
-      result = .loaded(PullRequestFiles(files: diffs, unavailable: patch.unavailable))
-    } catch {
-      result = .failed(coreError(error))
-    }
+    if changes.value == nil { changes = .loading }
+    let base = pullRequest.baseSha
+    let head = pullRequest.headSha
+    async let patchRead = readPatch(url: url, base: base, head: head)
+    async let listRead = readChanges(url: url, base: base, head: head)
+    let patch = await patchRead
+    let list = await listRead
     guard current == detailGeneration, openPullRequest == url else { return }
+    let moved = filesHead != head
+    if moved { fileContext = [:] }
     filesHead = head
-    if files != result { files = result }
+    if files != patch { files = patch }
+    if changes != list { changes = list }
+    seedViewedCollapses()
+    revealLocalCommentIfReady()
+    // The commit list follows the listed head, as the web's query keyed by it.
+    if moved, commits.value != nil || changesMode != .changes { await loadCommits() }
+  }
+
+  private func readPatch(url: String, base: String?, head: String?) async
+    -> CreationLoad<PullRequestFiles>
+  {
+    do {
+      let patch = try await core.pullRequestPatch(
+        sessionId: sessionID, prUrl: url, baseSha: base, headSha: head)
+      return PullRequestFiles.parsing(patch, failure: PullRequestFiles.unreadablePatch)
+    } catch {
+      return .failed(coreError(error))
+    }
+  }
+
+  private func readChanges(url: String, base: String?, head: String?) async
+    -> CreationLoad<PullRequestChanges>
+  {
+    do {
+      return .loaded(
+        try await core.pullRequestChanges(
+          sessionId: sessionID, prUrl: url, baseSha: base, headSha: head))
+    } catch {
+      return .failed(coreError(error))
+    }
   }
 
   /// Reads each open linked PR's live condition (checks, conflicts) for the composer's chip.

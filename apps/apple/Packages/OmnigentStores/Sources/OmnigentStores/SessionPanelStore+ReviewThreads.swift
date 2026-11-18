@@ -1,4 +1,13 @@
+import Foundation
 public import OmnigentCoreFFI
+
+/// Where a new comment on the diff goes.
+nonisolated public enum ReviewCommentDestination: String, Equatable, Sendable {
+  /// A review thread on the provider's pull request.
+  case github
+  /// A local comment for the session's agent.
+  case agent
+}
 
 /// A new review thread being written: the lines it goes on and its text.
 nonisolated public struct ReviewThreadDraft: Equatable, Sendable {
@@ -14,6 +23,12 @@ nonisolated public struct ReviewThreadDraft: Equatable, Sendable {
   public var hunk: Int
   /// The comment.
   public var body: String
+  /// Where it goes.
+  public var destination = ReviewCommentDestination.github
+  /// The head the lines were chosen at.
+  public var headSha: String?
+  /// The base the lines were chosen at.
+  public var baseSha: String?
 
   /// Creates a draft.
   /// - Parameters:
@@ -137,12 +152,52 @@ extension SessionPanelStore {
     return true
   }
 
-  /// Starts writing a thread on lines of one side; a draft's text stays when the lines change.
-  /// - Parameter lines: The lines.
-  public func selectReviewLines(_ lines: ReviewThreadDraft) {
+  /// Starts writing a thread on lines of one side at the revision on screen; a draft's text
+  /// and destination stay when the lines change. A first draft goes where the last one went,
+  /// or wherever `destination` says when only one place takes comments.
+  /// - Parameters:
+  ///   - lines: The lines.
+  ///   - destination: Where it must go.
+  public func selectReviewLines(
+    _ lines: ReviewThreadDraft, destination: ReviewCommentDestination? = nil
+  ) {
+    guard pendingEdit != .reviewComment else { return }
     var draft = lines
     draft.body = newReviewThread?.body ?? lines.body
+    let remembered =
+      preferences.string(forKey: Self.commentDestinationKey)
+      .flatMap(ReviewCommentDestination.init) ?? .github
+    draft.destination =
+      destination ?? newReviewThread?.destination
+      ?? (features?.commentAnchors == true ? remembered : .github)
+    draft.headSha = reviewRevision.head
+    draft.baseSha = reviewRevision.base
     if newReviewThread != draft { newReviewThread = draft }
+  }
+
+  /// Sends the new comment to the provider or to the agent, and remembers the choice.
+  /// - Parameter destination: Where it goes.
+  public func setNewReviewThreadDestination(_ destination: ReviewCommentDestination) {
+    guard pendingEdit != .reviewComment, newReviewThread != nil else { return }
+    newReviewThread?.destination = destination
+    preferences.set(destination.rawValue, forKey: Self.commentDestinationKey)
+  }
+
+  /// The revision new comments go on: the one the patch on screen was read at.
+  public var reviewRevision: (head: String?, base: String?) {
+    let pullRequest = detail.value?.pullRequest
+    return (
+      files.value?.headSha ?? pullRequest?.headSha, files.value?.baseSha ?? pullRequest?.baseSha
+    )
+  }
+
+  /// Whether the draft's lines were chosen at another revision than the one on screen.
+  public var newReviewThreadIsStale: Bool {
+    guard let draft = newReviewThread, draft.headSha != nil || draft.baseSha != nil else {
+      return false
+    }
+    let revision = reviewRevision
+    return draft.headSha != revision.head || draft.baseSha != revision.base
   }
 
   /// Keeps the new thread's text while it is written.
@@ -153,13 +208,21 @@ extension SessionPanelStore {
 
   /// Drops the new thread.
   public func cancelNewReviewThread() {
+    guard pendingEdit != .reviewComment else { return }
     if newReviewThread != nil { newReviewThread = nil }
   }
 
-  /// Posts the new thread at the revision on screen.
+  /// Posts the new thread at the revision on screen, to the provider or as a local comment for
+  /// the agent.
   /// - Returns: Whether it was posted.
   @discardableResult
   public func startReviewThread() async -> Bool {
+    if newReviewThreadIsStale {
+      editError = .InvalidState(
+        message: "The pull request changed. Reselect the lines before posting.")
+      return false
+    }
+    if newReviewThread?.destination == .agent { return await startLocalComment() }
     guard let url = openPullRequest, let draft = newReviewThread,
       let pullRequest = detail.value?.pullRequest, let head = pullRequest.headSha,
       let base = pullRequest.baseSha

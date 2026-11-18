@@ -110,7 +110,8 @@ extension ComposerStore {
     let trimmed = message.drop { $0.isWhitespace }
     guard trimmed.hasPrefix("/") || trimmed.hasPrefix("$"), let configuration else { return nil }
     return OmnigentCoreFFI.slashAction(
-      text: message, hasAttachments: !attachments.items.isEmpty || !mentions.isEmpty,
+      text: message,
+      hasAttachments: !attachments.items.isEmpty || !mentions.isEmpty || !reviewComments.isEmpty,
       configuration: configuration,
       skills: skills, options: slashOptions)
   }
