@@ -178,6 +178,7 @@ fn permission_options_keep_every_field() {
             reason: Some("look".into()),
         }),
         exec_policy_amendment: Some(vec!["ls".into()]),
+        approval_request_fingerprint: Some("digest".into()),
         persist_modes: vec![core::PersistMode::Always],
         antigravity: Some(core::AntigravityPermission {
             action_description: Some("act".into()),

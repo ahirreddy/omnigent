@@ -112,6 +112,8 @@ checklist rows give the exact parameters.
   `params.target_session_id`, not the stream's own session.
 - **`content`:** it is flat. Question ids map directly to answers, with lists for multi-select.
   Permission cards use `allow_all_edits`, `remember`, `feedback` and `execpolicy_amendment`.
+  A Codex command card that carries `approval_request_fingerprint` remembers its offered policy
+  with `{remember: true, request_fingerprint}`; that server rejects `execpolicy_amendment`.
 
 ### 2.3 Not on the server
 

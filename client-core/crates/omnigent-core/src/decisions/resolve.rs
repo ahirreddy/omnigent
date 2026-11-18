@@ -140,6 +140,27 @@ fn one(key: &str, value: ElicitationValue) -> BTreeMap<String, ElicitationValue>
     BTreeMap::from([(key.to_owned(), value)])
 }
 
+/// The content that remembers an offered Codex command policy. A server that fingerprints the
+/// request rejects a client-supplied policy and remembers the one it offered.
+fn command_policy_content(
+    amendment: &[String],
+    fingerprint: Option<&str>,
+) -> BTreeMap<String, ElicitationValue> {
+    let Some(fingerprint) = fingerprint else {
+        return one(
+            "execpolicy_amendment",
+            ElicitationValue::TextList(amendment.to_vec()),
+        );
+    };
+    BTreeMap::from([
+        ("remember".to_owned(), ElicitationValue::Bool(true)),
+        (
+            "request_fingerprint".to_owned(),
+            ElicitationValue::Text(fingerprint.to_owned()),
+        ),
+    ])
+}
+
 const fn require(offered: bool) -> Result<(), DecisionError> {
     if offered {
         Ok(())
@@ -238,9 +259,9 @@ impl Decision {
                     !amendment.is_empty()
                         && permissions.exec_policy_amendment.as_ref() == Some(amendment),
                 )?;
-                Ok(accept(one(
-                    "execpolicy_amendment",
-                    ElicitationValue::TextList(amendment.clone()),
+                Ok(accept(command_policy_content(
+                    amendment,
+                    permissions.approval_request_fingerprint.as_deref(),
                 )))
             }
             DecisionResponse::ApprovePersist(mode) => {
