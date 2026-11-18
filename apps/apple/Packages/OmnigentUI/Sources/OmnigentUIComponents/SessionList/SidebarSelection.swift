@@ -128,10 +128,24 @@ struct SidebarSelectionBackground: View {
         while let view = ancestor, !(view is NSTableView) { ancestor = unsafe view.superview }
         guard let table = ancestor as? NSTableView else { return }
         if table.selectionHighlightStyle != .none { table.selectionHighlightStyle = .none }
+        guard let outline = table as? NSOutlineView else { return }
         // The rows draw their own indent, one step per level (`SessionFamilyMetrics`).
-        if let outline = table as? NSOutlineView, outline.indentationPerLevel != 0 {
-          outline.indentationPerLevel = 0
+        if outline.indentationPerLevel != 0 { outline.indentationPerLevel = 0 }
+        Self.placeMisplacedRows(of: outline)
+      }
+
+      /// A row laid out while the list still had SwiftUI's indent keeps it, 9 points in: a new
+      /// window's first rows, now and then. A column width change places every row's cells again.
+      private static func placeMisplacedRows(of outline: NSOutlineView) {
+        var misplaced = false
+        outline.enumerateAvailableRowViews { rowView, row in
+          guard let cell = rowView.view(atColumn: 0) as? NSView else { return }
+          let place = rowView.convert(outline.frameOfCell(atColumn: 0, row: row), from: outline)
+          if abs(cell.frame.minX - place.minX) > 0.5 { misplaced = true }
         }
+        guard misplaced, let column = outline.tableColumns.first else { return }
+        column.width -= 1
+        column.width += 1
       }
     }
   }

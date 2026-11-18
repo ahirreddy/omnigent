@@ -128,12 +128,21 @@
       for (identifier, element) in frames {
         let index = list.row(
           at: list.convert(CGPoint(x: element.midX, y: element.midY), from: host))
-        let frame = list.convert(list.rect(ofRow: try #require(index >= 0 ? index : nil)), to: host)
-        let marks = picture.inkRuns(
-          from: start, to: end, band: (frame.midY - 8)...(frame.midY + 8))
-        rows[identifier] = DrawnRow(frame: frame, marks: marks)
+        rows[identifier] = try drawnRow(
+          try #require(index >= 0 ? index : nil), in: picture, from: start, to: end)
       }
       return rows
+    }
+
+    /// The list's row `index` as `picture` draws it from `start` to `end`, found without the
+    /// accessibility tree, so a window's first drawing can be read before anything else runs.
+    func drawnRow(
+      _ index: Int, in picture: Snapshot, from start: CGFloat = 14, to end: CGFloat = 160
+    ) throws -> DrawnRow {
+      let list = try #require(list)
+      let frame = list.convert(list.rect(ofRow: index), to: host)
+      let marks = picture.inkRuns(from: start, to: end, band: (frame.midY - 8)...(frame.midY + 8))
+      return DrawnRow(frame: frame, marks: marks)
     }
   }
 #endif
