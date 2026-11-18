@@ -22,6 +22,9 @@ pub struct PanelFeatures {
     pub content_search: bool,
     /// `session_pull_requests`: the server stores each session's linked pull requests.
     pub pull_requests: bool,
+    /// `comment_anchor_metadata`: session comments can carry a pull request's diff
+    /// coordinates, so the Changes tab can leave local review comments for the agent.
+    pub comment_anchors: bool,
 }
 
 impl PanelFeatures {
@@ -39,6 +42,7 @@ impl PanelFeatures {
         Ok(Self {
             content_search,
             pull_requests: opt_bool(object, "session_pull_requests")?.unwrap_or(false),
+            comment_anchors: opt_bool(object, "comment_anchor_metadata")?.unwrap_or(false),
         })
     }
 }
@@ -93,6 +97,8 @@ pub struct SessionPullRequest {
     pub status: PullRequestStatus,
     /// Epoch seconds of the fetch that read the state.
     pub state_checked_at: Option<f64>,
+    /// The git provider's id; a server that predates providers serves GitHub.
+    pub provider: String,
 }
 
 impl SessionPullRequest {
@@ -120,6 +126,7 @@ impl SessionPullRequest {
             provider_name,
             status: PullRequestStatus::of(state.as_deref(), is_draft),
             state_checked_at: opt_f64(object, "state_checked_at")?,
+            provider: opt_str(object, "provider")?.unwrap_or_else(|| "github".to_owned()),
         })
     }
 }

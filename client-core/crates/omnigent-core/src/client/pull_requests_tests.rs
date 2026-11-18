@@ -17,7 +17,8 @@ fn panel_features_read_info_and_default_to_unsupported() {
         vec![
             Reply::json(
                 200,
-                r#"{"session_pull_requests":true,"features":{"workspace_content_search":true}}"#,
+                r#"{"session_pull_requests":true,"comment_anchor_metadata":true,
+                    "features":{"workspace_content_search":true}}"#,
             ),
             Reply::json(200, r#"{"single_user":true}"#),
             Reply::json(200, r#"{"features":"on"}"#),
@@ -27,7 +28,8 @@ fn panel_features_read_info_and_default_to_unsupported() {
         block_on(core.panel_features()),
         Ok(PanelFeatures {
             content_search: true,
-            pull_requests: true
+            pull_requests: true,
+            comment_anchors: true,
         })
     );
     assert_eq!(

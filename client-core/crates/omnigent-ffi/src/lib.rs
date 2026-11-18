@@ -60,6 +60,7 @@ pub mod pull_request_detail;
 pub mod pull_requests;
 pub mod queue;
 pub mod remote_browser;
+pub mod review_comments;
 pub mod sandbox;
 pub mod sandbox_state;
 pub mod server_admin;
@@ -102,6 +103,8 @@ mod harness_setup_tests;
 mod inbox_tests;
 #[cfg(test)]
 mod nested_creation_tests;
+#[cfg(test)]
+mod pull_request_changes_tests;
 #[cfg(test)]
 mod pull_request_detail_tests;
 #[cfg(test)]

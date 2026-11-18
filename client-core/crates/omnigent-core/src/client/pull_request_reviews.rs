@@ -27,14 +27,14 @@ pub enum ReviewSide {
 }
 
 impl ReviewSide {
-    const fn wire(self) -> &'static str {
+    pub(crate) const fn wire(self) -> &'static str {
         match self {
             Self::Left => "LEFT",
             Self::Right => "RIGHT",
         }
     }
 
-    fn parse(value: Option<&str>) -> Option<Self> {
+    pub(crate) fn parse(value: Option<&str>) -> Option<Self> {
         match value {
             Some("LEFT") => Some(Self::Left),
             Some("RIGHT") => Some(Self::Right),
