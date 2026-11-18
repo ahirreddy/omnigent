@@ -38,7 +38,7 @@ nonisolated private let hostOffline =
 
 /// A poll timer the test fires by hand: each wait records its duration and blocks until
 /// ``fire()``, or until its task is cancelled.
-nonisolated private final class ManualPollTimer: PullRequestPollTimer {
+nonisolated final class ManualPollTimer: PullRequestPollTimer {
   private struct Waiter {
     let id: Int
     let duration: Duration
@@ -98,6 +98,10 @@ private func panel(_ server: RouteServer, timer: ManualPollTimer) async throws -
   server.route(stored, .json(linked("OPEN")))
   server.route("\(github)/diff", .json(#"{"object":"session.github.pr_diff","patch":""}"#))
   let connection = try await connectedStore(server)
+  // The connection's own `/v1/info` read lands first, outside the counts below.
+  let pages = try #require(connection.pages)
+  try await eventually("the connection's offered pages") { pages.offered != nil }
+  await connection.offeredPagesReload?.value
   let core = try #require(connection.core)
   return SessionPanelStore(sessionID: "conv_a", core: core, pollTimer: timer)
 }
@@ -197,12 +201,14 @@ struct PullRequestPollingTests {
     let watching = Task { await store.watch(.composer) }
     try await waits(timer, .seconds(30))
     let (before, live) = (reads(server, stored), reads(server))
+    let features = reads(server, "/v1/info")
 
     server.route(github, .json(info(state: "MERGED", pending: 0)))
     timer.fire()
     try await rests(store, timer)
     #expect(reads(server, stored) == before + 1)
     #expect(reads(server) == live + 1)
+    #expect(reads(server, "/v1/info") == features, "a poll doesn't read the features again")
     #expect(store.liveConditions[prURL] == .merged, "every linked PR is merged")
     watching.cancel()
   }

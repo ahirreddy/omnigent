@@ -47,6 +47,11 @@ private func connectedPanelStore(_ server: PanelServer) async throws -> SessionP
   let connection = ConnectionStore(core: core)
   await connection.connect(serverURL: "http://127.0.0.1:6767")
   #expect(connection.isSignedIn, "phase: \(connection.phase)")
+  // The connection reads `/v1/info` for its offered pages after each connect; wait for that
+  // read so a count of the panel's own reads leaves it out.
+  let pages = try #require(connection.pages)
+  try await eventually("the connection's offered pages") { pages.offered != nil }
+  await connection.offeredPagesReload?.value
   return try #require(connection.makePanelStore("conv_a"))
 }
 
@@ -76,7 +81,7 @@ struct SessionPanelStoreTests {
     #expect(list.synced)
     #expect(list.pullRequests.map(\.number) == [7])
     #expect(list.pullRequests.first?.status == .merged)
-    #expect(server.count("/v1/info") == infoReads + 1, "the features are read once")
+    #expect(server.count("/v1/info") == infoReads + 1, "the panel reads its features once")
     #expect(server.count(pullRequestsPath) == 2)
   }
 
