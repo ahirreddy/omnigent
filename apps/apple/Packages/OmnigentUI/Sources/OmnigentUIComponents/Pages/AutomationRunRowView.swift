@@ -8,6 +8,7 @@ struct AutomationRunRowView: View {
   let open: (@MainActor () -> Void)?
   var openPullRequest: (@MainActor (URL) -> Void)?
   @State private var isHovered = false
+  @Environment(\.layoutWidth) private var layoutWidth
 
   var body: some View {
     let row = HStack(
@@ -15,7 +16,8 @@ struct AutomationRunRowView: View {
     ) {
       indicator.frame(width: 20, height: 20)
       VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
+        // Wraps a whole item at a time on a narrow screen, as the web's line does.
+        FlowLayout(spacing: Theme.Spacing.small) {
           Text(run.timestamp)
           if let duration = run.duration {
             Text(duration).foregroundStyle(.secondary)
@@ -51,14 +53,22 @@ struct AutomationRunRowView: View {
     )
     .contentShape(Rectangle())
     .accessibilityIdentifier("automation-run-\(run.id)")
-    HStack(alignment: .top, spacing: Theme.Spacing.small) {
+    let summary = run.pullRequestSummary.flatMap { run.pullRequests.isEmpty ? nil : $0 }
+    // On a phone the PR line goes under the run, which it would otherwise squeeze.
+    let layout =
+      layoutWidth == .compact
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+      : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.small))
+    layout {
       if let open {
         Button(action: open) { row }.buttonStyle(.plain).onHover { isHovered = $0 }
       } else {
         row
       }
-      if let summary = run.pullRequestSummary, !run.pullRequests.isEmpty {
-        pullRequests(summary).padding(.top, Theme.Spacing.small)
+      if let summary {
+        pullRequests(summary)
+          .padding(.top, layoutWidth == .compact ? 0 : Theme.Spacing.small)
+          .padding(.leading, layoutWidth == .compact ? 40 : 0)
       }
     }
   }

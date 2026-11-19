@@ -69,54 +69,71 @@ public struct AutomationDetailView: View {
     }
   }
 
-  private var header: some View {
-    HStack(alignment: .top, spacing: Theme.Spacing.large) {
-      VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-        Text(state.name).font(AutomationStyle.pageTitle.weight(.semibold))
-          .fixedSize(horizontal: false, vertical: true)
-          .accessibilityAddTraits(.isHeader)
-          .accessibilityIdentifier("automation-detail-title")
-        if let owner = state.sharedBy {
-          Text("Shared by \(owner)").font(.callout).foregroundStyle(.secondary)
-            .accessibilityIdentifier("automation-detail-owner")
-        }
+  /// The name with its actions beside it; on a phone the actions go under the name, which
+  /// they would otherwise squeeze a letter at a time.
+  @ViewBuilder private var header: some View {
+    if layoutWidth == .compact {
+      VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+        titleBlock
+        headerActions
       }
-      Spacer(minLength: 0)
-      HStack(spacing: Theme.Spacing.small) {
-        shareButton
-        if let edit = actions.edit {
-          ownerOnly(OwnerOnlyReason.edit) {
-            iconButton("Edit automation", systemImage: "pencil", action: edit)
-              .disabled(state.isBusy || state.isReadOnly)
-          }
-          .accessibilityIdentifier("automation-detail-edit")
-        }
-        if actions.delete != nil {
-          ownerOnly(OwnerOnlyReason.delete) {
-            iconButton("Delete automation", systemImage: "trash") { confirmingDelete = true }
-              .disabled(state.isBusy || state.isReadOnly)
-          }
-          .accessibilityIdentifier("automation-detail-delete")
-        }
-        if let runNow = actions.runNow, !state.isTrigger {
-          ownerOnly(OwnerOnlyReason.runNow) {
-            Button(action: runNow) {
-              if state.isBusy {
-                Label {
-                  Text("In progress")
-                } icon: {
-                  ProgressView().controlSize(.small)
-                }
-              } else {
-                Label("Run now", systemImage: "play.fill")
-              }
-            }
-            .buttonStyle(.borderedProminent)
-            .fixedSize()
+    } else {
+      HStack(alignment: .top, spacing: Theme.Spacing.large) {
+        titleBlock
+        Spacer(minLength: 0)
+        headerActions
+      }
+    }
+  }
+
+  private var titleBlock: some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
+      Text(state.name).font(AutomationStyle.pageTitle.weight(.semibold))
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("automation-detail-title")
+      if let owner = state.sharedBy {
+        Text("Shared by \(owner)").font(.callout).foregroundStyle(.secondary)
+          .accessibilityIdentifier("automation-detail-owner")
+      }
+    }
+  }
+
+  private var headerActions: some View {
+    HStack(spacing: Theme.Spacing.small) {
+      shareButton
+      if let edit = actions.edit {
+        ownerOnly(OwnerOnlyReason.edit) {
+          iconButton("Edit automation", systemImage: "pencil", action: edit)
             .disabled(state.isBusy || state.isReadOnly)
-          }
-          .accessibilityIdentifier("automation-detail-run-now")
         }
+        .accessibilityIdentifier("automation-detail-edit")
+      }
+      if actions.delete != nil {
+        ownerOnly(OwnerOnlyReason.delete) {
+          iconButton("Delete automation", systemImage: "trash") { confirmingDelete = true }
+            .disabled(state.isBusy || state.isReadOnly)
+        }
+        .accessibilityIdentifier("automation-detail-delete")
+      }
+      if let runNow = actions.runNow, !state.isTrigger {
+        ownerOnly(OwnerOnlyReason.runNow) {
+          Button(action: runNow) {
+            if state.isBusy {
+              Label {
+                Text("In progress")
+              } icon: {
+                ProgressView().controlSize(.small)
+              }
+            } else {
+              Label("Run now", systemImage: "play.fill")
+            }
+          }
+          .buttonStyle(.borderedProminent)
+          .fixedSize()
+          .disabled(state.isBusy || state.isReadOnly)
+        }
+        .accessibilityIdentifier("automation-detail-run-now")
       }
     }
   }
@@ -127,6 +144,7 @@ public struct AutomationDetailView: View {
   ) -> some View {
     Button(action: action) {
       Image(systemName: systemImage)
+        .foregroundStyle(.primary)
         .frame(width: Theme.Control.target, height: Theme.Control.target)
         .contentShape(Rectangle())
     }
