@@ -200,7 +200,7 @@ extension AutomationDetailView {
   private func startsFromSection(_ title: String) -> some View {
     section("Starts from") {
       if let id = state.startsFromSessionID, let open = actions.openSession {
-        Button(title) { open(id) }.buttonStyle(.link)
+        Button(title) { open(id) }.automationLinkStyle()
           .accessibilityIdentifier("automation-detail-starts-from")
         Text("Each run starts with a copy of this session\u{2019}s history.")
           .font(.callout).foregroundStyle(.secondary)

@@ -42,6 +42,18 @@ enum AutomationStyle {
   }
 }
 
+extension View {
+  /// A button that reads as a link: the link style on a Mac; iOS has none, so a borderless
+  /// button in the link color.
+  @ViewBuilder func automationLinkStyle() -> some View {
+    #if os(macOS)
+      buttonStyle(.link)
+    #else
+      buttonStyle(.borderless).foregroundStyle(Theme.link)
+    #endif
+  }
+}
+
 /// The web's search box: a magnifying glass inside a bordered field.
 struct AutomationSearchField: View {
   @Binding var text: String

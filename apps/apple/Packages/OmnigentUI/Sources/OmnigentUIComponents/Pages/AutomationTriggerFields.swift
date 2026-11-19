@@ -348,7 +348,7 @@ extension AutomationTriggerBuilder {
         .font(.callout)
         .accessibilityIdentifier("automation-trigger-prompt-preview")
         Button("Edit as a prompt", action: editAsPrompt)
-          .buttonStyle(.link)
+          .automationLinkStyle()
           .accessibilityIdentifier("automation-trigger-edit-prompt")
       }
     }
