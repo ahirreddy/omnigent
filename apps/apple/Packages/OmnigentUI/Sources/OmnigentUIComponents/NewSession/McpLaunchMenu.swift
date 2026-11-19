@@ -16,6 +16,9 @@ public struct McpLaunchActions {
   public var toggle: @MainActor (String, Bool) -> Void
   /// Reads the services again after a failure.
   public var reload: @MainActor () -> Void
+  /// Opens the server's MCP settings on the web, where OAuth and provider sign-ins finish with
+  /// the browser's own session; `nil` offers none.
+  public var signIn: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:
@@ -74,6 +77,9 @@ nonisolated public struct McpLaunchServices: Hashable, Sendable {
 
     /// Turning it on is allowed: only a connected service; one already on can always go off.
     public var canToggle: Bool { isSelected || connection == .connected }
+
+    /// The viewer still has to connect an account before it can be turned on.
+    public var needsAccount: Bool { connection != .connected }
   }
 
   /// Reading the registry.
@@ -155,6 +161,12 @@ struct McpLaunchMenu: View {
           .disabled(!service.canToggle)
           .help(service.description ?? service.title)
           .accessibilityIdentifier("new-session-mcp-\(service.id)")
+        }
+        if let signIn = actions.signIn, state.services.contains(where: \.needsAccount) {
+          Section {
+            Button("Sign In on the Web\u{2026}", systemImage: "safari", action: signIn)
+              .accessibilityIdentifier("new-session-mcp-sign-in")
+          }
         }
       }
     } label: {

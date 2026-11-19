@@ -51,6 +51,8 @@ struct NewSessionMcpServicesTests {
         "Connected", "Connect your account in settings", "Needs sign-in",
       ])
     #expect(chip.services.map(\.canToggle) == [true, false, false])
+    // The two waiting on an account offer Sign In on the Web.
+    #expect(chip.services.map(\.needsAccount) == [false, true, true])
     #expect(chip.chipTitle == "MCPs", "a remembered service the registry dropped is not counted")
 
     form.toggleMcpService("docs", enabled: true)

@@ -38,6 +38,9 @@ struct NewSessionContainer: View {
   @Environment(\.useThisMachine) private var useThisMachine
   @Environment(\.openURL) private var openURL
   @Environment(\.openSettingsAt) private var openSettingsAt
+  @Environment(\.scenePhase) private var scenePhase
+  /// MCP sign-in went to the browser: the services are read again on the way back.
+  @State private var awaitsMcpSignIn = false
 
   init(
     connection: ConnectionStore, form: NewSessionForm = NewSessionForm(),
@@ -84,6 +87,11 @@ struct NewSessionContainer: View {
       launch = connection.launchCompletions()
       form.sandboxes = connection.sandboxes()
       await begin(creation)
+    }
+    .onChange(of: scenePhase) { _, phase in
+      guard phase == .active, awaitsMcpSignIn else { return }
+      awaitsMcpSignIn = false
+      Task { await creation?.loadMcpServices() }
     }
   }
 
@@ -238,7 +246,10 @@ struct NewSessionContainer: View {
     guard let useThisMachine, let url = URL(string: serverURLText) else { return nil }
     return { await useThisMachine(url) }
   }
+}
 
+/// The options under the composer: folder, worktree, sandbox, harness setup, MCPs and project.
+extension NewSessionContainer {
   func optionActions(_ creation: CreationStore) -> NewSessionOptionActions {
     let form = form
     let list = connection.sessionList
@@ -271,6 +282,13 @@ struct NewSessionContainer: View {
     actions.mcpServices = McpLaunchActions(
       toggle: { id, enabled in form.toggleMcpService(id, enabled: enabled) },
       reload: { Task { await creation.loadMcpServices() } })
+    if let server = connection.connectedServer, var url = URL(string: server.baseUrl) {
+      url.append(path: "settings/mcp")
+      actions.mcpServices?.signIn = {
+        awaitsMcpSignIn = true
+        openURL(url)
+      }
+    }
     actions.selectProject = { name in
       guard let project = name.flatMap({ name in list.projects.first { $0.name == name } }) else {
         form.project = nil
