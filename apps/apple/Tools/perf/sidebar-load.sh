@@ -6,15 +6,18 @@
 # it, then launches the app on the proxy a few times and prints each launch's requests and the
 # app's sidebar signposts from the launch, with when the first rows and the whole list showed.
 # The first launch has no saved list; the last one also loses the network for three seconds.
-#   sidebar-load.sh [--rtt-ms 150] [--seconds 20] [--runs 2] [--no-build] [--sample] [--release]
+#   sidebar-load.sh [--rtt-ms 150] [--seconds 20] [--runs 2] [--no-build] [--sample] [--trace]
+#     [--release]
 # --sample also samples each launch's first four seconds and breaks the main thread's time down.
+# --trace records every process with Instruments' Time Profiler through each launch and exports
+# the timed samples (time-profile XML) and the trace beside the report.
 # --release times the optimized app (install-local.sh --release) instead of the Debug one.
 set -euo pipefail
 export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:$PATH"
 cd "$(dirname "$0")/../../../.."
 # The app's processes carry the physical path (a VM's ~/w links elsewhere).
 repo=$(pwd -P)
-rtt=150 seconds=20 runs=2 build=1 sample=0 release=0
+rtt=150 seconds=20 runs=2 build=1 sample=0 trace=0 release=0
 while (($#)); do
   case "$1" in
     --rtt-ms) rtt=$2; shift 2 ;;
@@ -22,6 +25,7 @@ while (($#)); do
     --runs) runs=$2; shift 2 ;;
     --no-build) build=0; shift ;;
     --sample) sample=1; shift ;;
+    --trace) trace=1; shift ;;
     --release) release=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 64 ;;
   esac
@@ -140,12 +144,25 @@ for run in $(seq 1 "$runs"); do
     > "$signposts" 2> "$runtime/signposts-$run.err" &
   stream_pid=$!
   sleep 1
+  arguments=(-desktop.defaultServerURL "http://127.0.0.1:$proxy"
+    -OmnigentTabsDirectory "$runtime/tabs-$run" -ApplePersistenceIgnoreState YES
+    -OmnigentNoNotificationPrompt YES -omnigent:default-workspace-panel collapsed
+    -omnigent:sidebar-view "<7b7d>" -omnigent:sidebar-expanded-projects "$expanded"
+    -desktop.localServer.cliPath /var/empty/no-cli -desktop.localServer.dataDirectory /var/empty/no-data)
+  if ((trace)); then
+    # Every process, from before the launch: Instruments takes seconds to start, and launching
+    # through it opens whichever build Launch Services has for the bundle.
+    xcrun xctrace record --template 'Time Profiler' --all-processes --time-limit 12s \
+      --output "$runtime/trace-$run.trace" > "$runtime/trace-$run.log" 2>&1 &
+    trace_pid=$!
+    for _ in $(seq 1 100); do
+      grep -q "Ctrl-C to stop" "$runtime/trace-$run.log" && break
+      sleep 0.1
+    done
+    sleep 1
+  fi
   launched=$(python3 -c 'import time; print(time.time())')
-  open -n "$app" --args -desktop.defaultServerURL "http://127.0.0.1:$proxy" \
-    -OmnigentTabsDirectory "$runtime/tabs-$run" -ApplePersistenceIgnoreState YES \
-    -OmnigentNoNotificationPrompt YES -omnigent:default-workspace-panel collapsed \
-    -omnigent:sidebar-view "<7b7d>" -omnigent:sidebar-expanded-projects "$expanded" \
-    -desktop.localServer.cliPath /var/empty/no-cli -desktop.localServer.dataDirectory /var/empty/no-data
+  open -n "$app" --args "${arguments[@]}"
   if ((sample)); then
     # The main thread's stacks through the load; sampling pauses the app, so times stretch.
     for _ in $(seq 1 50); do
@@ -155,7 +172,11 @@ for run in $(seq 1 "$runs"); do
     done
     sample "$pid" 4 1 -mayDie -file "$runtime/sample-$run.txt" > /dev/null 2>&1 &
   fi
-  sleep "$seconds"
+  if ((trace)); then
+    wait "$trace_pid" || tail -5 "$runtime/trace-$run.log"
+  else
+    sleep "$seconds"
+  fi
   if ((run == runs)); then
     # A dropped network on the last launch: the proxy goes for three seconds, then comes back.
     kill "$proxy_pid" 2> /dev/null || true
@@ -169,6 +190,19 @@ for run in $(seq 1 "$runs"); do
   sleep 1
   kill "$proxy_pid" "$stream_pid" 2> /dev/null || true
   report "launch $run" "$log" "$launched" "$signposts"
+  if ((trace)); then
+    profile="$runtime/time-profile-$run.xml"
+    xcrun xctrace export --input "$runtime/trace-$run.trace" \
+      --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' \
+      > "$profile" 2> "$runtime/trace-export-$run.log" || tail -5 "$runtime/trace-export-$run.log"
+    # A test VM's shared results folder, where the host can open the trace in Instruments.
+    shared="/Volumes/My Shared Files/results"
+    if [[ -d "$shared" ]]; then
+      rm -rf "$shared/sidebar-load-$run.trace"
+      cp -R "$runtime/trace-$run.trace" "$shared/sidebar-load-$run.trace"
+      cp "$profile" "$shared/sidebar-load-time-profile-$run.xml"
+    fi
+  fi
   if ((sample)) && [[ -s "$runtime/sample-$run.txt" ]]; then
     # A test VM's shared results folder, where the host can read the whole call tree.
     shared="/Volumes/My Shared Files/results"
