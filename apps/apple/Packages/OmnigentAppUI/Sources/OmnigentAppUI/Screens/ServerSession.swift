@@ -272,12 +272,13 @@ public final class ServerSession {
   /// this device's saved copy of them.
   public var showsSessions: Bool { connection.showsSessions }
 
-  /// Reconnect: reopens the streams when signed in, and connects again when offline.
+  /// Reconnect: reopens the streams when signed in, and connects again when offline or when the
+  /// last connect could not reach the server.
   public func reconnect() {
-    if connection.isOffline, !isSignedIn {
-      signIn.reconnect()
-    } else {
+    if isSignedIn {
       connection.foreground()
+    } else if connection.isOffline || connection.health.reachability.isDisrupted {
+      signIn.reconnect()
     }
   }
 

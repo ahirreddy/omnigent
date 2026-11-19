@@ -24,7 +24,7 @@ struct ConnectionRecoveryTests {
 
   /// Applies each step in order: which ended a disruption, and the warning left.
   private func observe(_ steps: [(server: String?, signal: ReachabilitySignal)]) -> (
-    returns: [Bool], left: ServerReachability
+    returns: [Bool], left: ConnectionReachability
   ) {
     var recovery = ConnectionRecovery()
     let returns = steps.map { recovery.observe(server: $0.server, signal: $0.signal) }
