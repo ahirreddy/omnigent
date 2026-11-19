@@ -22,6 +22,7 @@ enum PullRequestPanelSlots {
     extras.labelChoices = choices(panel.repositoryLabels) {
       $0.labels.map(PullRequestDetailAdapter.label)
     }
+    extras.labelsTruncated = panel.repositoryLabels.value?.hasMore == true
     extras.reviewerChoices = choices(panel.reviewCandidates) { candidates in
       candidates.candidates.map {
         PullRequestChip(

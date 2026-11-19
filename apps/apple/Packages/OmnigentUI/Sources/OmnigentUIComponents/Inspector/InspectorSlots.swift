@@ -266,6 +266,8 @@ public struct PullRequestPanelExtras {
   public var opensChanges = false
   /// Labels the repository offers.
   public var labelChoices: PullRequestChoices = .idle
+  /// The repository has more labels than were read.
+  public var labelsTruncated = false
   /// Who a review can be requested from.
   public var reviewerChoices: PullRequestChoices = .idle
   /// Merge methods, the default first.
