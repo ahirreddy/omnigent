@@ -86,6 +86,17 @@ nonisolated enum SidebarMarker: Hashable {
     if requests > 0 { return .needsYou(requests: requests) }
     return [Self.working, .failed, .disconnected, .unread].first(where: found.contains)
   }
+
+  /// What the marker says to VoiceOver.
+  var accessibilityText: String {
+    switch self {
+    case .needsYou(let requests): requests > 1 ? "Needs you, \(requests) requests" : "Needs you"
+    case .working: "Running"
+    case .failed: "Failed"
+    case .disconnected: "Disconnected"
+    case .unread: "Unread"
+    }
+  }
 }
 
 /// The marker of a collapsed section's or folder's hidden rows. It reads those rows as they are
@@ -94,12 +105,19 @@ struct SidebarHiddenMarker: View {
   let sessions: [SessionSummary]
   let state: SidebarViewState
   let live: SidebarLive?
-  /// Shows its own tooltip; inside a button, the button shows ``help`` instead.
-  var showsHelp = true
+  /// Drawn only, inside a button that takes its clicks and shows ``help`` and
+  /// ``accessibilityText`` itself.
+  var isInButton = false
 
   var body: some View {
     if let marker {
-      SidebarMarkerView(marker: marker, showsHelp: showsHelp)
+      if isInButton {
+        SidebarMarkerView(marker: marker, isInButton: true)
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
+      } else {
+        SidebarMarkerView(marker: marker)
+      }
     }
   }
 
@@ -109,10 +127,13 @@ struct SidebarHiddenMarker: View {
     return NeedsYouCapsule.help(requests: requests)
   }
 
-  /// The same marker, its tooltip left to the button it sits in.
+  /// What the marker says to VoiceOver, for a button the marker sits in.
+  var accessibilityText: String? { marker?.accessibilityText }
+
+  /// The same marker, drawn only, for a button it sits in.
   func inButton() -> Self {
     var marker = self
-    marker.showsHelp = false
+    marker.isInButton = true
     return marker
   }
 
@@ -145,28 +166,40 @@ struct SidebarLiveRow<Content: View>: View {
 /// A ``SidebarMarker`` drawn as a row draws the same state.
 struct SidebarMarkerView: View {
   let marker: SidebarMarker
-  /// Shows its own tooltip (``NeedsYouCapsule/showsHelp``).
-  var showsHelp = true
+  /// Inside a button: no tooltip of its own, and running drawn as a symbol, since a progress
+  /// control would stand in for the button in accessibility.
+  var isInButton = false
+
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
+    let label = marker.accessibilityText
     switch marker {
     case .needsYou(let requests):
-      NeedsYouCapsule(requests: requests, showsHelp: showsHelp)
+      NeedsYouCapsule(requests: requests, showsHelp: !isInButton)
     case .working:
-      ProgressView().controlSize(.mini)
-        .accessibilityLabel("Running")
+      if isInButton {
+        Image(systemName: "progress.indicator")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .symbolEffect(.variableColor.iterative, options: .repeating, isActive: !reduceMotion)
+          .accessibilityLabel(label)
+      } else {
+        ProgressView().controlSize(.mini)
+          .accessibilityLabel(label)
+      }
     case .failed:
       Image(systemName: "exclamationmark.circle")
         .foregroundStyle(Theme.failure)
-        .accessibilityLabel("Failed")
+        .accessibilityLabel(label)
     case .disconnected:
       Image(systemName: "bolt.horizontal.circle")
         .font(.caption)
         .foregroundStyle(.secondary)
-        .accessibilityLabel("Disconnected")
+        .accessibilityLabel(label)
     case .unread:
       Circle().fill(Theme.unread).frame(width: 6, height: 6)
-        .accessibilityLabel("Unread")
+        .accessibilityLabel(label)
     }
   }
 }

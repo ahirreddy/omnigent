@@ -147,8 +147,13 @@
       let showMore = try screen.withAccessibilityTree {
         try screen.listElementFrame("project-show-more-gateway")
       }
+      // Show more's button spans its row; its text starts where the sessions' icons do.
       let sessions = try icon(rows["spokes"], "spokes")
-      #expect(abs(showMore.minX - sessions.lowerBound) <= 1.5, "Show more at \(showMore.minX)")
+      let text = try #require(
+        try Snapshot(screen).firstInk(
+          from: sessions.lowerBound - 8, to: showMore.midX, along: showMore.midY,
+          against: CGPoint(x: sessions.lowerBound - 4, y: showMore.midY)))
+      #expect(abs(text - sessions.lowerBound) <= 1.5, "Show more at \(text)")
     }
 
     @Test("A head's chevron sits on the grid of the folders' disclosure triangles")

@@ -61,6 +61,7 @@ struct ProjectFolder<Row: View>: View {
   let listed: [SessionSummary]
 
   @State private var isHovered = false
+  @Environment(\.defaultMinListRowHeight) private var rowHeight
 
   var body: some View {
     DisclosureGroup(isExpanded: $isExpanded) {
@@ -79,8 +80,7 @@ struct ProjectFolder<Row: View>: View {
         row(session, session.id == listed.last?.id && !showsMore ? .bottom : .middle)
       }
       if showsMore {
-        showMore.padding(.leading, SessionFamilyMetrics.folderNoteIndent)
-          .listRowBackground(SidebarProjectBox(part: .bottom))
+        showMore.listRowBackground(SidebarProjectBox(part: .bottom))
       }
     } label: {
       HStack(spacing: Theme.Spacing.tiny) {
@@ -137,20 +137,29 @@ struct ProjectFolder<Row: View>: View {
   private var showMore: some View {
     // Waiting on the next server page, with no loaded rows left to reveal.
     let isWaiting = pages.isLoading && pages.visibleCount >= sessions.count
+    let title = isWaiting ? "Loading\u{2026}" : "Show more"
+    // The click area reaches the row's edges above and below the text; the rows beside it
+    // clip what reaches past.
+    let reach = rowHeight / 2
     return Button(action: pages.showMore) {
       HStack {
-        Text(isWaiting ? "Loading\u{2026}" : "Show more")
+        Text(title)
         Spacer(minLength: 4)
-        // Drawn only: a click on the marker (a tooltip's pill, or a spinner) is the button's,
-        // which shows the marker's tooltip itself.
-        moreMarker?.inButton().allowsHitTesting(false)
+        // Drawn only: the button takes its clicks and says its state.
+        moreMarker?.inButton()
       }
+      .padding(.leading, SessionFamilyMetrics.folderNoteIndent)
+      .padding(.vertical, reach)
       .contentShape(Rectangle())
     }
+    .padding(.vertical, -reach)
     .help(moreMarker?.help ?? "")
     .buttonStyle(.borderless)
     .foregroundStyle(.secondary)
     .disabled(isWaiting)
+    .accessibilityLabel(
+      [title, moreMarker?.accessibilityText].compactMap(\.self).joined(separator: ", ")
+    )
     .accessibilityIdentifier("project-show-more-\(project.id)")
   }
 
