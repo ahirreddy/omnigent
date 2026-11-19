@@ -37,16 +37,14 @@ struct SessionRow: View {
   @Environment(\.defaultMinListRowHeight) private var rowHeight
 
   var body: some View {
-    let row = HStack(spacing: SessionFamilyMetrics.gutterSpacing) {
+    // One view of one type, whatever the family: a body that chooses between views makes the
+    // list build every row to count them, on screen or not.
+    HStack(spacing: SessionFamilyMetrics.gutterSpacing) {
       gutter
       content
     }
     .padding(.leading, family.indent)
-    if case .nested(let continues) = family {
-      row.sessionFamilyConnector(rowHeight: rowHeight, continues: continues)
-    } else {
-      row
-    }
+    .sessionFamilyConnector(rowHeight: rowHeight, family: family)
   }
 
   /// The family chevron's place, empty on a row without one, so every row's icon and title line
