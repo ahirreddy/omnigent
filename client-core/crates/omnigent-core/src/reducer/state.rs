@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use omnigent_protocol::ElicitationRequest;
 use omnigent_protocol::events::{PresenceViewer, Todo};
+use omnigent_protocol::question_reply::QuestionReply;
 use omnigent_protocol::sessions::{
     BackgroundTaskInfo, McpServerStartup, ModelUsage, NativeModelOption, SandboxStage,
     SandboxStatus,
@@ -287,6 +288,9 @@ pub struct Row {
     /// The session that sent a user message with `sys_session_message`; its sender line is not
     /// in `text`.
     pub origin_session_id: Option<String>,
+    /// A user message that is only a reply to Codex async questions: each answered question, in
+    /// order. `text` shows them as the web does; empty for any other row.
+    pub question_replies: Vec<QuestionReply>,
 }
 
 impl Row {
@@ -307,6 +311,7 @@ impl Row {
             agent: None,
             created_at: None,
             origin_session_id: None,
+            question_replies: Vec::new(),
         }
     }
 
