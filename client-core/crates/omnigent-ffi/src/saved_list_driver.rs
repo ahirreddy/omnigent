@@ -13,7 +13,7 @@ use omnigent_core::sessions::SessionSummary;
 use omnigent_protocol::SessionListItem;
 
 use crate::engine::Engine;
-use crate::events::{CoreEvent, ErrorScope};
+use crate::events::{ConnectionPhase, CoreEvent, ErrorScope};
 use crate::message_cache::{CacheFailureScope, MessageCache};
 use crate::sessions::SessionListChange;
 
@@ -46,6 +46,7 @@ impl Engine {
         self.saved.early = Some(server_url.to_owned());
         self.emit(CoreEvent::SavedListShown {
             server_url: Some(server_url.to_owned()),
+            viewer_id: list.viewer_id.clone(),
         });
         self.show_saved(scope, list, &summaries);
     }
@@ -101,7 +102,10 @@ impl Engine {
     /// connect ended without it.
     pub(crate) fn leave_early(&mut self) {
         if self.saved.early.take().is_some() {
-            self.emit(CoreEvent::SavedListShown { server_url: None });
+            self.emit(CoreEvent::SavedListShown {
+                server_url: None,
+                viewer_id: None,
+            });
         }
     }
 
@@ -133,10 +137,15 @@ impl Engine {
             .cloned()
             .collect();
         rows.extend(folders);
+        let viewer_id = match &self.phase {
+            ConnectionPhase::Connected { server } => Some(server.user_id.clone()),
+            _ => None,
+        };
         let list = SavedSessionList {
             saved_at_ms: self.host.unix_ms(),
             rows,
             projects: self.saved.projects.clone(),
+            viewer_id,
         };
         cache.save_list(&scope, list.clone());
         self.saved.list = Some(list);

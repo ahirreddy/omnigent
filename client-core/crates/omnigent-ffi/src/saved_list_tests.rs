@@ -83,6 +83,21 @@ fn sent(harness: &Harness) -> Vec<String> {
         .collect()
 }
 
+/// The saved list of the local account showing while the app connects.
+fn saved_list_shown() -> CoreEvent {
+    CoreEvent::SavedListShown {
+        server_url: Some(SERVER.into()),
+        viewer_id: Some("local".into()),
+    }
+}
+
+fn saved_list_ended() -> CoreEvent {
+    CoreEvent::SavedListShown {
+        server_url: None,
+        viewer_id: None,
+    }
+}
+
 fn resets(events: &[CoreEvent]) -> Vec<Vec<String>> {
     events
         .iter()
@@ -112,9 +127,8 @@ fn a_launch_shows_the_saved_list_and_folders_before_any_read_answers() {
     let connected = second.start(async move { core.connect(SERVER.into(), None).await });
     let shown = second.events.take();
     assert_eq!(sent(&second), ["/.well-known/omnigent.json"]);
-    assert!(shown.contains(&CoreEvent::SavedListShown {
-        server_url: Some(SERVER.into())
-    }));
+    // With the account it was read for, so its own rows file into their folders at once.
+    assert!(shown.contains(&saved_list_shown()));
     let projects = shown.iter().find_map(|event| match event {
         CoreEvent::ProjectsLoaded { projects, .. } => Some(projects.clone()),
         _ => None,
@@ -143,9 +157,7 @@ fn a_launch_shows_the_saved_list_and_folders_before_any_read_answers() {
             }
         )
     });
-    let replaced = position(&events, |event| {
-        *event == CoreEvent::SavedListShown { server_url: None }
-    });
+    let replaced = position(&events, |event| *event == saved_list_ended());
     assert!(reset < replaced);
     assert!(!events.iter().any(|event| matches!(
         event,
@@ -216,21 +228,14 @@ fn an_unreachable_server_keeps_the_saved_list_as_offline() {
     let result = offline.call(|core| async move { core.connect(SERVER.into(), None).await });
     assert!(result.is_err());
     let events = offline.events.take();
-    let shown = position(&events, |event| {
-        *event
-            == CoreEvent::SavedListShown {
-                server_url: Some(SERVER.into()),
-            }
-    });
+    let shown = position(&events, |event| *event == saved_list_shown());
     let offline_at = position(&events, |event| {
         *event
             == CoreEvent::OfflineChanged {
                 server_url: Some(SERVER.into()),
             }
     });
-    let ended = position(&events, |event| {
-        *event == CoreEvent::SavedListShown { server_url: None }
-    });
+    let ended = position(&events, |event| *event == saved_list_ended());
     assert!(shown < offline_at && offline_at < ended);
     assert_eq!(resets(&events).len(), 1, "the saved list shows once");
 }
@@ -246,12 +251,7 @@ fn a_disconnect_ends_the_saved_list() {
     second.events.take();
     second.core.disconnect();
     second.pump();
-    assert!(
-        second
-            .events
-            .take()
-            .contains(&CoreEvent::SavedListShown { server_url: None })
-    );
+    assert!(second.events.take().contains(&saved_list_ended()));
     drop(manifest);
     second.pump();
 }

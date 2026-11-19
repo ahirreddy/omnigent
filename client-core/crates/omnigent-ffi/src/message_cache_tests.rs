@@ -98,6 +98,7 @@ fn a_write_lands_whole_and_reads_back() {
                 .unwrap(),
         ],
         projects: None,
+        viewer_id: None,
     };
     store.save_list(&account, list.clone());
     store.save_last_account(&account, 8);

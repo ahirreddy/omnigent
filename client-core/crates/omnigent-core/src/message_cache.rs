@@ -262,6 +262,9 @@ pub struct SavedSessionList {
     pub rows: Vec<SessionListItem>,
     /// The projects as last read; `None` before a read landed (and in older files).
     pub projects: Option<SavedProjects>,
+    /// The account the rows were read for, which decides the ones it owns (its folders' rows)
+    /// before a connection confirms it; `None` in older files.
+    pub viewer_id: Option<String>,
 }
 
 /// The caller's projects as saved, in their display order, and how they sort.
@@ -453,6 +456,9 @@ pub fn encode_list(list: &SavedSessionList) -> Result<Vec<u8>, CacheError> {
     let mut fields = envelope(list.saved_at_ms);
     let rows = serde_json::to_value(&list.rows).map_err(|error| encode_error(what, &error))?;
     fields.insert("rows".to_owned(), rows);
+    if let Some(viewer) = &list.viewer_id {
+        fields.insert("viewer_id".to_owned(), Value::String(viewer.clone()));
+    }
     if let Some(saved) = &list.projects {
         let projects = saved
             .projects
@@ -481,10 +487,16 @@ pub fn decode_list(bytes: &[u8]) -> Result<SavedSessionList, CacheError> {
     let (mut fields, saved_at_ms) = open_envelope(what, bytes)?;
     let rows = decode_list_of(what, &mut fields, "rows")?;
     let projects = decode_projects(&mut fields)?;
+    let viewer_id = match fields.remove("viewer_id") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(viewer)) => Some(viewer),
+        Some(_) => return Err(corrupt(what, "`viewer_id` is not a string")),
+    };
     Ok(SavedSessionList {
         saved_at_ms,
         rows,
         projects,
+        viewer_id,
     })
 }
 

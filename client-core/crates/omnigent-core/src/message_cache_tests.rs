@@ -115,8 +115,10 @@ fn a_saved_session_list_comes_back_and_shows_as_the_list_shows_it() {
         saved_at_ms: 3,
         rows: rows.clone(),
         projects: None,
+        viewer_id: None,
     };
     assert_eq!(decode_list(&encode_list(&list).unwrap()).unwrap(), list);
+    list.viewer_id = Some("viewer@example.com".into());
     list.projects = Some(SavedProjects {
         projects: vec![
             ProjectSummary {
@@ -157,6 +159,7 @@ fn saved_list_rows_take_later_pages_and_removals() {
         saved_at_ms: 1,
         rows: vec![row("a", "A"), row("b", "B")],
         projects: None,
+        viewer_id: None,
     };
     list.upsert(&[row("b", "B2"), row("c", "C")]);
     let titles: Vec<_> = list

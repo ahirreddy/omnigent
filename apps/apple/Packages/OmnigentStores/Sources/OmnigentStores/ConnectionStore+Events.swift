@@ -27,8 +27,8 @@ extension ConnectionStore {
     case .offlineChanged(let serverURL):
       offlineChanged(serverURL)
       observeReachability()
-    case .savedListShown(let serverURL):
-      savedListShown(serverURL)
+    case .savedListShown(let serverURL, let viewerID):
+      savedListShown(serverURL, viewerID: viewerID)
     case .sessionOfflineChanged(let id, let offline):
       conversations[id]?.offlineChanged(offline)
     default:

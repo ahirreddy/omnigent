@@ -70,22 +70,27 @@ struct OfflineStateTests {
     let connection = try await ConversationFixtures.connection()
     let session = ServerSession(connection: connection)
     let server = "http://127.0.0.1:6767"
+    // A launch: nothing signed in yet, then a connect begins.
+    connection.apply(.connectionChanged(phase: .disconnected))
     connection.apply(.connectionChanged(phase: .discovering(serverUrl: server)))
     #expect(!session.showsSessions)
-    connection.apply(.savedListShown(serverUrl: server))
+    connection.apply(.savedListShown(serverUrl: server, viewerId: "viewer"))
     let saved = ConversationFixtures.summary("saved")
     connection.apply(.sessionListChanged(change: .reset(sessions: [saved])))
     connection.apply(.sessionListLoaded)
     #expect(session.showsSessions)
     #expect(!session.isSignedIn)
+    // Its folders hold the saved account's own rows before the connect confirms it.
+    #expect(connection.sessionList.viewerID == "viewer")
     #expect(
       SidebarAdapter.savedListNotice(connection) == .refreshing(SidebarAdapter.refreshingText))
     #expect(connection.sessionList.visible.map(\.id) == ["saved"])
 
     // The connect ends at a sign-in screen: the saved list goes with the mark.
     connection.apply(.connectionChanged(phase: .disconnected))
-    connection.apply(.savedListShown(serverUrl: nil))
+    connection.apply(.savedListShown(serverUrl: nil, viewerId: nil))
     #expect(!session.showsSessions)
+    #expect(connection.sessionList.viewerID == nil)
     #expect(SidebarAdapter.savedListNotice(connection) == nil)
     #expect(connection.sessionList.visible.isEmpty)
   }

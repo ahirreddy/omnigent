@@ -498,6 +498,9 @@ pub enum CoreEvent {
     SavedListShown {
         /// The server whose saved list shows while the app connects.
         server_url: Option<String>,
+        /// The account the saved list was read for, which owns its folders' rows; `None` when
+        /// the list did not save it (or once it no longer shows).
+        viewer_id: Option<String>,
     },
     /// An open session shows what this device saved of it (or nothing, when nothing was saved)
     /// because the server cannot be reached, or it no longer does. Sent after `TranscriptReset`

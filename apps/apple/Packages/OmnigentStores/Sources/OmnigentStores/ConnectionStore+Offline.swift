@@ -28,8 +28,12 @@ extension ConnectionStore {
     if serverURL == nil, !showsSessions { sessionList.clear() }
   }
 
-  func savedListShown(_ serverURL: String?) {
+  func savedListShown(_ serverURL: String?, viewerID: String?) {
     if serverURL != savedListServerURL { savedListServerURL = serverURL }
+    // The account the list was saved for owns its folders' rows until a connect confirms one.
+    if serverURL != nil, let viewerID, !isSignedIn, sessionList.viewerID != viewerID {
+      sessionList.viewerID = viewerID
+    }
     // A connect that ended in a sign-in screen or a disconnect starts it without the list.
     if serverURL == nil, !showsSessions { sessionList.clear() }
   }
