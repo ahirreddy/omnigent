@@ -209,7 +209,13 @@ enum ComposerAdapter {
     if store.isOffline {
       return .unavailable(reason: "Offline \u{2014} you can send once the server is back.")
     }
-    if !store.isHydrated { return .unavailable(reason: "Waiting for the session to load\u{2026}") }
+    if !store.isHydrated {
+      // A stream retrying after a failure is reconnecting, not loading for the first time.
+      if case .reconnecting(_, let failures, _) = store.link, failures > 0 {
+        return .unavailable(reason: "Reconnecting\u{2026}")
+      }
+      return .unavailable(reason: "Waiting for the session to load\u{2026}")
+    }
     return .available
   }
 
