@@ -20,8 +20,7 @@ struct DeleteSessionsSheet: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-      Text(sessions.count == 1 ? "Delete this session?" : "Delete \(sessions.count) sessions?")
-        .font(.headline)
+      Text(title).font(.headline)
       Text(
         "This permanently deletes the \(sessions.count == 1 ? "session" : "sessions") and all "
           + "\(sessions.count == 1 ? "its" : "their") history. This cannot be undone."
@@ -46,6 +45,11 @@ struct DeleteSessionsSheet: View {
     .padding(Theme.Spacing.large)
     .frame(width: 460)
     .accessibilityIdentifier("delete-sessions-sheet")
+  }
+
+  private var title: String {
+    guard sessions.count == 1 else { return "Delete \(sessions.count) sessions?" }
+    return automationNotice == nil ? "Delete this session?" : "Delete session and automation?"
   }
 
   /// The web's warning that deleting sessions an automation runs from deletes the automations:
