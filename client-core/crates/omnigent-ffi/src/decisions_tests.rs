@@ -313,6 +313,25 @@ fn every_native_delivery_state_and_verdict_maps() {
 }
 
 #[test]
+fn a_non_blocking_question_reaches_the_card() {
+    use omnigent_protocol::FromWire;
+
+    let card = |params: serde_json::Value| {
+        let request = omnigent_protocol::ElicitationRequest::from_value(
+            serde_json::json!({"elicitation_id": "e1", "params": params}),
+        )
+        .unwrap();
+        crate::decisions::DecisionCard::from_core(
+            core::Decision::from_request(&request, "s"),
+            false,
+        )
+    };
+    assert!(card(serde_json::json!({"is_blocking": false})).agent_keeps_working);
+    assert!(!card(serde_json::json!({"is_blocking": true})).agent_keeps_working);
+    assert!(!card(serde_json::json!({})).agent_keeps_working);
+}
+
+#[test]
 fn every_value_and_response_maps() {
     for (on_ffi, on_core) in [
         (ElicitationValue::Null, CoreValue::Null),

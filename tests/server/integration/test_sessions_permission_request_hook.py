@@ -1656,6 +1656,53 @@ async def test_claude_fixture_round_trip(client: httpx.AsyncClient, path: Path) 
     assert resp.json() == fixture["claude_result"]
 
 
+# Each native harness's tool approval, as its runner-side mirror posts it; shared with
+# ``client-core/crates/omnigent-core/src/decisions/harness_tests.rs``.
+_NATIVE_PERMISSION_FIXTURES = json.loads(
+    (
+        Path(__file__).resolve().parents[3]
+        / "client-core/fixtures/decisions/NativePermission--Harnesses.json"
+    ).read_text(encoding="utf-8")
+)
+
+
+@pytest.mark.parametrize("harness", sorted(_NATIVE_PERMISSION_FIXTURES))
+async def test_native_permission_fixture_round_trip(
+    client: httpx.AsyncClient, harness: str
+) -> None:
+    """
+    Each harness's approval request publishes the fixture card, and the app's
+    answer is what the harness's mirror receives.
+    """
+    fixture = _NATIVE_PERMISSION_FIXTURES[harness]
+    # The Claude-shaped hook checks the session's harness; the generic ones do not.
+    executor = (
+        {"type": "omnigent", "config": {"harness": fixture["harness"]}}
+        if fixture["route"] == "permission-request"
+        else None
+    )
+    agent = await create_test_agent(client, f"test-native-permission-{harness}", executor=executor)
+    session_id = await _create_session(client, agent["id"])
+    drain_task = asyncio.create_task(_drain_until_elicitation(session_id))
+    await poll_until_async(lambda: session_stream.has_subscribers(session_id), timeout_s=5)
+    hook_task = asyncio.create_task(
+        client.post(f"/v1/sessions/{session_id}/hooks/{fixture['route']}", json=fixture["request"])
+    )
+
+    event = await drain_task
+    assert event["elicitation_id"] == fixture["elicitation"]["elicitation_id"]
+    published = {key: value for key, value in event["params"].items() if value is not None}
+    assert published == fixture["elicitation"]["params"]
+    answer = fixture["answer"]
+    verdict = await _post_approval(
+        client, session_id, event["elicitation_id"], answer["action"], answer.get("content")
+    )
+    assert verdict.status_code == 202, verdict.text
+    resp = await hook_task
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == fixture["harness_result"]
+
+
 _NPM_TEST_RULE = {
     "type": "addRules",
     "rules": [{"toolName": "Bash", "ruleContent": "npm test:*"}],

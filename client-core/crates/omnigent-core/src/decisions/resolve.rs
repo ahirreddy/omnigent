@@ -26,10 +26,10 @@ use crate::http::{HttpHeader, HttpRequest, HttpResponse, TransportError};
 pub enum DecisionResponse {
     /// Accept a binary approval, or say a page card's page is done.
     Approve,
-    /// Decline a binary approval or a page card.
+    /// Decline any answerable card. A choice or form closed without an answer declines, as the
+    /// web's Cancel does, so the agent stops waiting for it.
     Decline,
-    /// Dismiss any answerable card without an explicit choice (MCP `cancel`). The way to close a
-    /// choice or form without answering it.
+    /// Dismiss any answerable card without an explicit choice (MCP `cancel`).
     Cancel,
     /// One of a [`DecisionKind::Choice`]'s options.
     Answer(String),
@@ -214,7 +214,8 @@ impl Decision {
         if let DecisionKind::Unsupported { reason, .. } = &self.kind {
             return Err(DecisionError::Unsupported(reason.clone()));
         }
-        // A page card answers like a binary approval once the user is done with the page.
+        // A page card answers like a binary approval once the user is done with the page. A
+        // choice or form has no bare accept: it is accepted only with its answers.
         let is_binary = matches!(
             self.kind,
             DecisionKind::Approval | DecisionKind::ExternalPage { .. }
@@ -224,10 +225,7 @@ impl Decision {
                 require(is_binary)?;
                 Ok(bare(ElicitationAction::Accept))
             }
-            DecisionResponse::Decline => {
-                require(is_binary)?;
-                Ok(bare(ElicitationAction::Decline))
-            }
+            DecisionResponse::Decline => Ok(bare(ElicitationAction::Decline)),
             DecisionResponse::Cancel => Ok(bare(ElicitationAction::Cancel)),
             DecisionResponse::Answer(answer) => match &self.kind {
                 DecisionKind::Choice {

@@ -1,0 +1,147 @@
+{
+  "cursor": {
+    "harness": "cursor-native",
+    "route": "cursor-permission-request",
+    "request": {
+      "elicitation_id": "elicit_cursor_fixture",
+      "operation_type": "shell",
+      "message": "Cursor wants to run Shell",
+      "content_preview": "{\"command\": \"npm test\"}"
+    },
+    "elicitation": {
+      "elicitation_id": "elicit_cursor_fixture",
+      "params": {
+        "mode": "form",
+        "message": "Cursor wants to run Shell",
+        "phase": "pre_tool_use",
+        "policy_name": "cursor_native_permission",
+        "content_preview": "{\"command\": \"npm test\"}"
+      }
+    },
+    "answer": { "action": "accept" },
+    "harness_result": { "action": "accept" }
+  },
+  "goose": {
+    "harness": "goose-native",
+    "route": "native-permission-request",
+    "request": {
+      "elicitation_id": "elicit_goose_fixture",
+      "agent": "Goose",
+      "policy_name": "goose_native_permission",
+      "operation_type": "tool",
+      "message": "Goose wants to call a tool. Allow?",
+      "content_preview": "developer__shell: cargo build --release"
+    },
+    "elicitation": {
+      "elicitation_id": "elicit_goose_fixture",
+      "params": {
+        "mode": "form",
+        "message": "Goose wants to call a tool. Allow?",
+        "phase": "pre_tool_use",
+        "policy_name": "goose_native_permission",
+        "content_preview": "developer__shell: cargo build --release"
+      }
+    },
+    "answer": { "action": "accept" },
+    "harness_result": { "action": "accept" }
+  },
+  "hermes": {
+    "harness": "hermes-native",
+    "route": "native-permission-request",
+    "request": {
+      "elicitation_id": "elicit_hermes_fixture",
+      "agent": "Hermes",
+      "policy_name": "hermes_native_permission",
+      "operation_type": "shell",
+      "message": "Hermes flagged a dangerous command. Run it?",
+      "content_preview": "rm -rf build/cache"
+    },
+    "elicitation": {
+      "elicitation_id": "elicit_hermes_fixture",
+      "params": {
+        "mode": "form",
+        "message": "Hermes flagged a dangerous command. Run it?",
+        "phase": "pre_tool_use",
+        "policy_name": "hermes_native_permission",
+        "content_preview": "rm -rf build/cache"
+      }
+    },
+    "answer": { "action": "accept" },
+    "harness_result": { "action": "accept" }
+  },
+  "qwen": {
+    "harness": "qwen-native",
+    "route": "native-permission-request",
+    "request": {
+      "elicitation_id": "elicit_qwen_fixture",
+      "agent": "qwen",
+      "policy_name": "qwen_native_permission",
+      "operation_type": "run_shell_command",
+      "message": "qwen wants to run run_shell_command",
+      "content_preview": "git push origin main"
+    },
+    "elicitation": {
+      "elicitation_id": "elicit_qwen_fixture",
+      "params": {
+        "mode": "form",
+        "message": "qwen wants to run run_shell_command",
+        "phase": "pre_tool_use",
+        "policy_name": "qwen_native_permission",
+        "content_preview": "git push origin main"
+      }
+    },
+    "answer": { "action": "accept" },
+    "harness_result": { "action": "accept" }
+  },
+  "kimi": {
+    "harness": "kimi-native",
+    "route": "permission-request",
+    "request": {
+      "tool_name": "Shell",
+      "_omnigent_elicitation_id": "elicit_kimi_00000000000000000000000000000001",
+      "tool_input": { "command": "make release" }
+    },
+    "elicitation": {
+      "elicitation_id": "elicit_kimi_00000000000000000000000000000001",
+      "params": {
+        "mode": "form",
+        "message": "Kimi wants to call **Shell**",
+        "phase": "pre_tool_use",
+        "policy_name": "kimi_native_permission",
+        "content_preview": "Shell({\"command\": \"make release\"})",
+        "tool_name": "Shell"
+      }
+    },
+    "answer": { "action": "accept" },
+    "harness_result": { "hookSpecificOutput": { "decision": { "behavior": "allow" } } }
+  },
+  "devin": {
+    "harness": "devin-native",
+    "route": "permission-request",
+    "request": {
+      "hook_event_name": "PermissionRequest",
+      "cwd": "/workspace/app",
+      "tool_name": "exec",
+      "tool_input": { "command": "rm -rf dist" },
+      "_omnigent_elicitation_id": "elicit_devin_00000000000000000000000000000001"
+    },
+    "elicitation": {
+      "elicitation_id": "elicit_devin_00000000000000000000000000000001",
+      "params": {
+        "mode": "form",
+        "message": "Devin wants to call **exec**",
+        "phase": "pre_tool_use",
+        "policy_name": "devin_native_permission",
+        "content_preview": "exec({\"command\": \"rm -rf dist\"})",
+        "tool_name": "exec",
+        "cwd": "/workspace/app"
+      }
+    },
+    "answer": { "action": "decline", "content": { "feedback": "Keep dist; clean build/ only." } },
+    "harness_result": {
+      "hookSpecificOutput": {
+        "decision": { "behavior": "deny", "message": "Keep dist; clean build/ only." }
+      }
+    }
+  }
+}

@@ -100,6 +100,72 @@ fn an_mcp_form_request_is_a_typed_form() {
 }
 
 #[test]
+fn a_python_mcp_servers_optional_fields_are_optional_native_fields() {
+    let (card, answer) = omni("Omni--McpElicitation--OptionalFields");
+    let form = card.form().unwrap_or_else(|| panic!("{:?}", card.kind));
+    let shapes: Vec<(&str, FieldKind, bool, Option<ElicitationValue>)> = form
+        .fields
+        .iter()
+        .map(|field| {
+            (
+                field.key.as_str(),
+                field.kind,
+                field.required,
+                field.default_value.clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        shapes,
+        [
+            ("attempts", FieldKind::Integer, false, None),
+            (
+                "channel",
+                FieldKind::SingleChoice,
+                false,
+                Some(ElicitationValue::Text("beta".to_owned()))
+            ),
+            (
+                "hotfix",
+                FieldKind::Boolean,
+                false,
+                Some(ElicitationValue::Bool(false))
+            ),
+            ("notes", FieldKind::Text, false, None),
+            ("version", FieldKind::Text, true, None),
+        ]
+    );
+    let attempts = &form.fields[0];
+    assert_eq!(
+        (attempts.title.as_str(), attempts.minimum),
+        ("Attempts", Some(1.0))
+    );
+    assert_eq!(
+        form.fields[1]
+            .options
+            .iter()
+            .map(|option| option.value.as_str())
+            .collect::<Vec<_>>(),
+        ["beta"]
+    );
+    assert_eq!(posted(&card, &form_response(&answer)), answer);
+    // The `anyOf` branch's own constraint still holds.
+    let below = DecisionResponse::Form(BTreeMap::from([
+        (
+            "version".to_owned(),
+            ElicitationValue::Text("2.4.0".to_owned()),
+        ),
+        ("attempts".to_owned(), ElicitationValue::Integer(0)),
+    ]));
+    assert!(matches!(
+        card.result_for(&below),
+        Err(DecisionError::InvalidAnswer(
+            AnswerError::BelowMinimum { .. }
+        ))
+    ));
+}
+
+#[test]
 fn an_mcp_url_request_is_a_page_to_complete() {
     let (card, answer) = omni("Omni--McpElicitation--Url");
     assert_eq!(

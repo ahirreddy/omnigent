@@ -35,9 +35,9 @@ Swift string interpolation was resolved to the concrete values each test uses, a
 - `DecisionForm--DecisionValuesEncodeAsFlatMCPScalars.json`: Flat MCP wire form of a decision form value set: string, number, boolean, string array. Expect encoding to plain JSON scalars/arrays and decode back to the same values.
 - `DecisionForm--ExternalRequestOnlyExposesSafeExplicitHandoff.jsonl`: Two URL-mode requests: https URL (a page card: the link is offered explicitly, Done accepts and Decline declines) and javascript: URL (externalURL nil, unsupportedReason set). Expect only the https link exposed as a handoff.
 - `DecisionForm--MalformedConstraintsFailClosed.jsonl`: Five independent malformed schemas (required as string, fractional minLength, negative minLength, string minimum, minimum greater than maximum). Each must fail closed with unsupportedReason.
-- `DecisionForm--MalformedQuestionCannotBecomeApproval.json`: AskUserQuestion question with no options. Expect unsupportedReason non-nil and form nil.
+- `DecisionForm--MalformedQuestionCannotBecomeApproval.json`: AskUserQuestion question with no options. Expect a required text field (the typed answer the web offers), never a binary approval.
 - `DecisionForm--PlanAndRememberCapabilitiesAreExplicit.jsonl`: Plan review (isPlanReview true, allowAllEdits true) and remember-scope request (rememberLabel 'example.invalid'). Expect both capabilities explicit.
-- `DecisionForm--QuestionPreviewFallbackProducesForm.json`: No structured question, only a content_preview string containing an AskUserQuestion call. Expect a form whose first field key is 'Continue?'.
+- `DecisionForm--QuestionPreviewFallbackProducesForm.json`: No structured question, only a content_preview string containing an AskUserQuestion call. Expect a form whose first field key is 'Continue?'. A cut preview spells out no question and is the tool's approval, as on the web.
 - `DecisionForm--SchemaWithoutPropertiesAndMissingURLNeverBecomeApproval.jsonl`: Four independent cases (array schema, oneOf schema, url mode without URL, non-object schema). Each must have a non-nil unsupportedReason.
 - `DecisionForm--TypedSchemaHasNativeFieldsAndValidatesWithoutCoercion.json`: Typed object schema with string(minLength 2), integer(1-5), boolean; all required. Expect a form (no unsupportedReason). Validation: empty values invalid; name 'Omni', count 2, ready false valid; name 'O' invalid; count 2.5 invalid; count '2' (string) invalid.
 - `DecisionForm--UnsupportedNestedSchemaNeverBecomesApproval.json`: Nested object property. Expect unsupportedReason non-nil and form nil.
@@ -54,7 +54,7 @@ Swift string interpolation was resolved to the concrete values each test uses, a
 - `LocalServerSessionClient--InvalidStructuredFormDoesNotPostOrBecomeApproval.jsonl`: 1 HTTP exchange(s) in order: GET /v1/sessions/conv_a; used by LocalServerSessionClientTests.swift::testInvalidStructuredFormDoesNotPostOrBecomeApproval; expected: invalid typed forms (out-of-range, string for int, empty, approve) fail invalidDecision and never POST.
 - `LocalServerSessionClient--QuestionResolutionUsesRequestedAnswerKey.jsonl`: 2 HTTP exchange(s) in order: GET /v1/sessions/conv_a; POST /v1/sessions/conv_a/elicitations/ask1/resolve; used by LocalServerSessionClientTests.swift::testQuestionResolutionUsesRequestedAnswerKey; expected: a single-select question resolves as accept with content keyed by the requested field name.
 - `LocalServerSessionClient--StructuredFormPostsTypedContentWithoutCoercion.jsonl`: 2 HTTP exchange(s) in order: GET /v1/sessions/conv_a; POST /v1/sessions/conv_a/elicitations/form1/resolve; used by LocalServerSessionClientTests.swift::testStructuredFormPostsTypedContentWithoutCoercion; expected: typed form values resolve as accept with exact JSON types (string, number, bool, string array).
-- `LocalServerSessionClient--TypedQuestionNeverPostsBinaryApproval.jsonl`: 1 HTTP exchange(s) in order: GET /v1/sessions/conv_a; used by LocalServerSessionClientTests.swift::testTypedQuestionNeverPostsBinaryApproval; expected: a typed question cannot be answered with a binary approve; no POST is made.
+- `LocalServerSessionClient--TypedQuestionNeverPostsBinaryApproval.jsonl`: 1 HTTP exchange(s) in order: GET /v1/sessions/conv_a; used by LocalServerSessionClientTests.swift::testTypedQuestionNeverPostsBinaryApproval; expected: a typed question cannot be answered with a binary approve; no POST is made. Closing it declines, as the web's Cancel does.
 - `LocalServerSessionClient--UnadvertisedPermissionOptionsNeverPost.jsonl`: 1 HTTP exchange(s) in order: GET /v1/sessions/conv_a; used by LocalServerSessionClientTests.swift::testUnadvertisedPermissionOptionsNeverPost; expected: permission options absent from requestedSchema are rejected invalidDecision before any POST.
 
 ## Codex request kinds
@@ -79,7 +79,11 @@ Expected cards:
 - `ToolRequestUserInput--SecretAndMultipleQuestions`: three questions in one card: a choice, a
   masked text field (`isSecret`, no `options` key) and free text (`options: []`).
 - `RequestUserInputAsync--FreeText`: the forwarder's card for a `request_user_input_async`
-  question without options (`isBlocking` false): a text field.
+  question without options (`isBlocking` false): a text field. Codex keeps working while it waits.
+- `ToolRequestUserInput--DefaultModeRepeatedOption`: a question outside Plan mode, which Codex
+  sends with `isBlocking: false` (`core/src/tools/handlers/request_user_input.rs`), listing one
+  label twice, which the server passes through: the label is offered once, and Codex keeps
+  working.
 - `McpServerElicitationRequest--FormEveryField`: every MCP 2025-11-25 field shape: the four
   string formats, number and integer ranges (integers as floats, as Codex 0.142 sends them),
   boolean, legacy `enumNames`, untitled and titled (`oneOf`) single select, untitled and titled
@@ -88,6 +92,9 @@ Expected cards:
 - `McpServerElicitationRequest--ToolCallApproval`: `_meta.codex_approval_kind: mcp_tool_call`
   with an empty schema: an approval offering session and always persistence.
 - `McpServerElicitationRequest--Url`: URL mode: a page card; Done accepts.
+- `McpServerElicitationRequest--ConfirmWithEmptyRequired`: a confirmation whose schema has no
+  properties and `required: []`, which Codex forwards whenever the MCP server sends it
+  (`app-server-protocol/src/protocol/v2/mcp.rs`): a plain approval.
 - `CommandExecutionRequestApproval--CommandPolicy`: a command with `availableDecisions` offering
   an execpolicy amendment.
 - `CommandExecutionRequestApproval--NetworkAccess`: a managed-network prompt: the message names
@@ -129,6 +136,9 @@ Expected cards:
 - `ExitPlanMode--KeepPlanning`: a decline whose reply says what to change.
 - `Elicitation--Form`: an MCP server's form, as a native form.
 - `Elicitation--Url`: an MCP server's URL-mode request, as a page card.
+- `AskUserQuestion--NoUsableQuestion`: a question without options, for which the server sends no
+  `ask_user_question`, only the preview: as on the web, the tool's approval; Claude then asks in
+  its terminal.
 
 ## Omnigent's own agents, sub-agents and the other harnesses
 
@@ -145,6 +155,11 @@ request it came from (`pi`, `opencode`, `agy`, `devin`, `cursor`, `kiro`, `acp`,
   harness tool and (`request_phase`) for a user message: approvals.
 - `Omni--McpElicitation--Form` / `--Url`: an MCP server's `elicitation/create`: a typed form, and a
   page card (Done accepts).
+- `Omni--McpElicitation--OptionalFields`: the schema a Python MCP server's Pydantic model
+  produces: optional fields as `anyOf: [T, {"type": "null"}]` with `default: null`, and a
+  `Literal` as `const`, the shapes the runner's own check accepts
+  (`omnigent/tools/_elicitation_schema.py`). Optional native fields, a one-option choice, and an
+  answer that check passes.
 - `Omni--WorkflowRequestInput`: `sys_workflow_request_input` (on main): answers keyed by question
   text, the recommendation first and labelled, typed answers allowed.
 - `Subagent--MirroredRequests`: `requests` from one child (`conv_child`), each mirrored into the
@@ -161,6 +176,15 @@ request it came from (`pi`, `opencode`, `agy`, `devin`, `cursor`, `kiro`, `acp`,
   (Devin) and by id (Cursor).
 - `Copilot--PermissionRequest--Shell`, `Acp--RequestPermission--Choice`: SDK permission cards: a
   binary approval, and ACP's permission options as a choice.
+- `SdkPermission--Harnesses.json`: the same binary card from Cursor, Goose and Qwen (keyed by
+  harness: `label`, the gated `tool_name` and `tool_input`, the `elicitation`, the `answer`),
+  built by `_executor_adapter.py` `_permission_card`; server:
+  `test_sdk_permission_card_is_the_shared_fixture`.
+- `NativePermission--Harnesses.json`: each native harness's tool approval (keyed by harness: the
+  `route` and `request` its runner-side mirror posts, the `elicitation`, the `answer` and the
+  `harness_result` the mirror reads): Cursor, Goose, Hermes and qwen through their hooks, Kimi
+  and Devin through the `PermissionRequest` route; Devin's decline carries a reply. Server:
+  `test_native_permission_fixture_round_trip`.
 - `Kiro--NativePermission--Ready` / `--Unconfirmed`: a verdict Kiro's terminal confirms. Every
   answer names `_meta.native_delivery_attempt`; while `sending` nothing can be sent, and an
   `unconfirmed` verdict can only be sent again as it was.

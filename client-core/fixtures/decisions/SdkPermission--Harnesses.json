@@ -1,0 +1,50 @@
+{
+  "cursor": {
+    "label": "Cursor",
+    "tool_name": "shell",
+    "tool_input": { "command": "npm run lint" },
+    "elicitation": {
+      "elicitation_id": "elicit_00000000000000000000000000000c01",
+      "params": {
+        "mode": "form",
+        "message": "Cursor wants to use **shell**",
+        "phase": "tool_call",
+        "policy_name": "cursor_sdk_permission",
+        "content_preview": "shell({\"command\": \"npm run lint\"})"
+      }
+    },
+    "answer": { "action": "accept" }
+  },
+  "goose": {
+    "label": "Goose",
+    "tool_name": "developer__shell",
+    "tool_input": { "command": "cargo test --workspace" },
+    "elicitation": {
+      "elicitation_id": "elicit_00000000000000000000000000000c02",
+      "params": {
+        "mode": "form",
+        "message": "Goose wants to use **developer__shell**",
+        "phase": "tool_call",
+        "policy_name": "goose_sdk_permission",
+        "content_preview": "developer__shell({\"command\": \"cargo test --workspace\"})"
+      }
+    },
+    "answer": { "action": "decline" }
+  },
+  "qwen": {
+    "label": "Qwen",
+    "tool_name": "run_shell_command",
+    "tool_input": { "command": "pytest -q", "description": "Run the tests" },
+    "elicitation": {
+      "elicitation_id": "elicit_00000000000000000000000000000c03",
+      "params": {
+        "mode": "form",
+        "message": "Qwen wants to use **run_shell_command**",
+        "phase": "tool_call",
+        "policy_name": "qwen_sdk_permission",
+        "content_preview": "run_shell_command({\"command\": \"pytest -q\", \"description\": \"Run the tests\"})"
+      }
+    },
+    "answer": { "action": "accept" }
+  }
+}

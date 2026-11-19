@@ -86,6 +86,27 @@ fn pi_select_takes_only_its_labels() {
 }
 
 #[test]
+fn a_long_pi_select_is_still_a_choice() {
+    // `pi_extension_ui.py` passes a select's labels through uncapped; a model picker can list
+    // more than a hundred.
+    let labels: Vec<Value> = (1..=150)
+        .map(|index| json!({"label": format!("model-{index}")}))
+        .collect();
+    let form = DecisionForm::from_questions(&json!({"questions": [{
+        "id": "0", "question": "Pick a model", "options": labels,
+        "multiSelect": false, "isOther": false,
+    }]}))
+    .unwrap();
+    let [field] = form.fields.as_slice() else {
+        panic!("{form:?}");
+    };
+    assert_eq!(
+        (field.kind, field.options.len()),
+        (FieldKind::SingleChoice, 150)
+    );
+}
+
+#[test]
 fn pi_input_is_a_required_text_field_with_its_placeholder() {
     let (card, answer) = harness("Pi--Input");
     let field = only_field(&card);
@@ -241,7 +262,65 @@ fn antigravity_permission_offers_its_always_allow_pattern() {
     );
 }
 
+// --- Native harness permissions (`NativePermission--Harnesses.json`) -----------------------------
+
+#[test]
+fn every_native_harness_permission_is_an_approval_answered_as_its_mirror_expects() {
+    let fixtures = fixture_json("decisions/NativePermission--Harnesses.json");
+    let fixtures = fixtures.as_object().unwrap();
+    let mut names: Vec<&str> = fixtures.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    assert_eq!(
+        names,
+        ["cursor", "devin", "goose", "hermes", "kimi", "qwen"]
+    );
+    for (harness, fixture) in fixtures {
+        let request = ElicitationRequest::from_value(fixture["elicitation"].clone()).unwrap();
+        let card = Decision::from_request(&request, "conv_a");
+        assert_eq!(card.kind, DecisionKind::Approval, "{harness}");
+        assert_eq!(
+            card.message.as_deref(),
+            fixture["elicitation"]["params"]["message"].as_str(),
+            "{harness}"
+        );
+        assert!(card.tool_input.is_some(), "{harness} shows what it gates");
+        // Only Devin's bridge hands a decline's reply to the agent.
+        assert_eq!(card.accepts_feedback(), harness == "devin", "{harness}");
+        let answer = &fixture["answer"];
+        let response = answer["content"]["feedback"]
+            .as_str()
+            .map_or(DecisionResponse::Approve, |feedback| {
+                DecisionResponse::DeclineWithFeedback(feedback.to_owned())
+            });
+        assert_eq!(posted(&card, &response), *answer, "{harness}");
+    }
+}
+
 // --- SDK harness permissions -------------------------------------------------------------------
+
+#[test]
+fn every_sdk_harness_permission_is_an_approval_of_the_tool_call() {
+    let fixtures = fixture_json("decisions/SdkPermission--Harnesses.json");
+    for (harness, fixture) in fixtures.as_object().unwrap() {
+        let request = ElicitationRequest::from_value(fixture["elicitation"].clone()).unwrap();
+        let card = Decision::from_request(&request, "conv_a");
+        assert_eq!(card.kind, DecisionKind::Approval, "{harness}");
+        let command = fixture["tool_input"]["command"].as_str().unwrap();
+        assert!(
+            card.tool_input
+                .as_deref()
+                .is_some_and(|input| input.contains(command)),
+            "{harness}: {:?}",
+            card.tool_input
+        );
+        assert!(!card.accepts_feedback(), "{harness}");
+        let response = match fixture["answer"]["action"].as_str() {
+            Some("decline") => DecisionResponse::Decline,
+            _ => DecisionResponse::Approve,
+        };
+        assert_eq!(posted(&card, &response), fixture["answer"], "{harness}");
+    }
+}
 
 #[test]
 fn copilot_permission_is_an_approval_showing_the_request() {

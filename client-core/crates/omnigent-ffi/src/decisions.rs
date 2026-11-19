@@ -316,6 +316,10 @@ pub struct DecisionCard {
     pub accepts_feedback: bool,
     /// The user answered locally and the server has not confirmed yet.
     pub answered: bool,
+    /// The agent keeps working while the card waits (a non-blocking question), so the card does
+    /// not mean the agent is waiting for you.
+    #[uniffi(default)]
+    pub agent_keeps_working: bool,
 }
 
 /// One form answer.
@@ -741,6 +745,7 @@ impl DecisionCard {
             policy_name: card.policy_name,
             accepts_feedback,
             answered,
+            agent_keeps_working: card.agent_keeps_working,
         }
     }
 }
