@@ -448,7 +448,8 @@ def summarize(marks: list[dict], launched: float, last_read_ms: float) -> None:
             for mark in marks
             if mark["name"] == "list event"
             and mark["message"].startswith("reset")
-            and since_launch(mark) >= last_read_ms
+            # Within a few seconds of the reads, not a later reload's.
+            and last_read_ms <= since_launch(mark) <= last_read_ms + 5_000
         ),
         None,
     )
