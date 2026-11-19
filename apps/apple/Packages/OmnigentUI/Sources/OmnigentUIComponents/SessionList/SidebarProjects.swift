@@ -129,8 +129,7 @@ struct ProjectFolder<Row: View>: View {
     if let icon = project.icon {
       Text(icon).accessibilityHidden(true)
     } else {
-      // Tinted, as a source list tints its folders: the theme's tint for controls.
-      Image(systemName: "folder").foregroundStyle(ThemeColor.controlTint)
+      Image(systemName: "folder").foregroundStyle(SidebarBoxMetrics.folderTint)
         .accessibilityHidden(true)
     }
   }
