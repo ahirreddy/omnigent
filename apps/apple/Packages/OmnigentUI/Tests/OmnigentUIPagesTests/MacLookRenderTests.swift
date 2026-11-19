@@ -52,6 +52,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case automationsNew = "automations-new"
   case viewersPDF = "viewers-pdf"
   case viewersVideo = "viewers-video"
+  /// Recording links in a reply: a workspace recording and a remote one.
+  case viewersChatVideo = "viewers-chat-video"
   case viewersTable = "viewers-table"
   case viewersTableFiltered = "viewers-table-filtered"
 
@@ -69,7 +71,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     switch self {
     case .prChanges, .prFind, .prCommits, .inboxSuggestion, .inboxFailure: 900
     case .viewersTable, .viewersTableFiltered: 820
-    case .composerMcp, .markersChat, .viewersPDF, .viewersVideo: 736
+    case .composerMcp, .markersChat, .viewersPDF, .viewersVideo, .viewersChatVideo: 736
     case .composerRewind, .tasksPlan, .tasksStopping, .prFileHeader: 480
     case .tasksHistory: 420
     case .automationsLegacyShare: 900
@@ -150,6 +152,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .automationsNew: return AnyView(Fixture.newAutomation)
     case .viewersPDF: return AnyView(PDFPreviewView(data: Fixture.pdf, truncated: false))
     case .viewersVideo: return AnyView(Fixture.video)
+    case .viewersChatVideo: return AnyView(Fixture.chatVideo)
     case .viewersTable: return AnyView(Fixture.dataTableViewer)
     case .viewersTableFiltered: return AnyView(Fixture.dataTableFiltered)
     }

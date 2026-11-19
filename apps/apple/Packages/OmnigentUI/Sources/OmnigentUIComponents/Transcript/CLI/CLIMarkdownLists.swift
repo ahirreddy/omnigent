@@ -167,7 +167,8 @@ extension MarkdownBlock {
       Self.lineBound(String(text.characters)) + 1
     case .code(_, let code): Self.lineBound(code)
     case .html(let text), .math(let text): Self.lineBound(text)
-    case .image(let source, let alt): Self.lineBound(source + alt) + 1
+    case .image(let source, let alt), .video(let source, let alt):
+      Self.lineBound(source + alt) + 1
     case .quote(let blocks): blocks.reduce(blocks.count) { $0 + $1.lineBound }
     case .list(_, _, let items):
       items.reduce(0) { total, item in

@@ -60,10 +60,9 @@ nonisolated extension CLITextBuilder {
       return unit(plain("\u{2014}\u{2014}\u{2014}", color: context.color), indent: context.indent)
     case .html(let raw):
       return unit(plain(raw, color: context.color), indent: context.indent)
-    case .image(let source, let alt):
+    case .image, .video:
       return unit(
-        plain("[Image: \(alt.isEmpty ? source : alt)]", color: palette.dim),
-        indent: context.indent)
+        plain(block.mediaLabel(namingSource: true), color: palette.dim), indent: context.indent)
     case .math(let tex):
       return unit(
         plain(MathText.unicode(tex), color: palette.code), indent: context.indent + character * 2)
