@@ -440,6 +440,13 @@ def summarize(marks: list[dict], launched: float, last_read_ms: float) -> None:
             f"{mark['detail'].get('cpu', '?')} ms CPU since launch, {spent:.0f} ms in "
             f"{len(until)} list events and sidebar builds"
         )
+    # The frames that put the list's rows on screen, each time their count doubled: the list adds
+    # its row views a pass after the sidebar's build.
+    for mark in (mark for mark in marks if mark["name"] == "sidebar rows shown"):
+        print(
+            f"rows on screen: {since_launch(mark):.0f} ms, {mark['detail'].get('rows', '?')} in "
+            f"the list; main thread {mark['detail'].get('cpu', '?')} ms CPU since launch"
+        )
     # A saved list's swap for the server's: the reset applied once the last read landed, which
     # draws nothing new when the rows are the same.
     swap = next(
