@@ -5,7 +5,9 @@ use std::collections::BTreeSet;
 
 use serde_json::{Value, json};
 
-use super::messages::{continue_plan_message, stop_plan_message, task_action_message};
+use super::messages::{
+    continue_plan_message, is_stop_plan_message, stop_plan_message, task_action_message,
+};
 use super::tasks::{
     NativeTask, NativeTaskStatus, StepState, failed_upstream, is_plan_complete, paused_label,
     session_task_list,
@@ -60,6 +62,7 @@ const WORKING: TasksContext = TasksContext {
     awaiting_user: false,
     can_send: true,
     journal_read: true,
+    stopping: false,
 };
 
 const IDLE: TasksContext = TasksContext {
@@ -447,4 +450,62 @@ fn a_replan_from_a_saved_workflow_keeps_its_workflow() {
     );
     let other = plan("p3", 1, json!([{"id": "z", "name": "Z", "depends_on": []}]));
     assert_eq!(plan_workflow_id(&[start, other]), None);
+}
+
+#[test]
+fn a_rows_line_previews_its_markdown_goal_and_its_history_keeps_all_of_it() {
+    let goal = "**Inputs:** the change.\n\n- Fix the tests\n- Send it";
+    let steps = json!([{"id": "a", "name": "A", "goal": goal, "depends_on": []},
+                       {"id": "b", "name": "B", "goal": "**Waits** on `a`", "depends_on": ["a"]},
+                       {"id": "c", "name": "C", "goal": "---", "depends_on": ["a"]}]);
+    let view = tasks_view(&[plan("p", 0, steps)], &[], &BTreeSet::new(), IDLE);
+    assert_eq!(
+        view.rows[0].detail,
+        Some(TaskDetail::Ready {
+            goal: Some("Inputs: the change. Fix the tests · Send it".into())
+        })
+    );
+    assert_eq!(view.rows[0].goal.as_deref(), Some(goal));
+    assert_eq!(
+        view.rows[1].detail,
+        Some(TaskDetail::Text("Waits on a".into()))
+    );
+    // A goal with no text left after its syntax shows no line.
+    assert_eq!(view.rows[2].detail, None);
+}
+
+#[test]
+fn a_stopping_run_shows_stopping_in_stops_place_and_offers_no_stop() {
+    let stopping = TasksContext {
+        stopping: true,
+        ..WORKING
+    };
+    let view = tasks_view(&recorded(), &[], &BTreeSet::new(), stopping);
+    assert!(view.stopping && !view.can_stop && !view.can_continue);
+    assert!(
+        view.rows.iter().all(|row| row.action != Some(TaskAction::Stop)),
+        "a running task's menu offers no second Stop"
+    );
+    let view = tasks_view(&recorded(), &[], &BTreeSet::new(), WORKING);
+    assert!(!view.stopping && view.can_stop);
+    // A viewer who can't send sees neither.
+    let reader = TasksContext {
+        can_send: false,
+        ..stopping
+    };
+    assert!(!tasks_view(&recorded(), &[], &BTreeSet::new(), reader).stopping);
+}
+
+#[test]
+fn a_stop_message_is_known_whatever_plan_it_names() {
+    assert!(is_stop_plan_message(&stop_plan_message(None)));
+    assert!(is_stop_plan_message(&format!(
+        "  {}\n",
+        stop_plan_message(Some("Ship \"it\" now"))
+    )));
+    assert!(is_stop_plan_message(&stop_plan_message(Some(""))));
+    assert!(!is_stop_plan_message(&continue_plan_message(None)));
+    assert!(!is_stop_plan_message("Stop the plan now."));
+    let other = stop_plan_message(None).replace("Stop the plan", "Stop the build");
+    assert!(!is_stop_plan_message(&other));
 }

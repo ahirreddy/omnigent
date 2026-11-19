@@ -350,6 +350,91 @@ pub struct WorkspaceFile {
     pub truncated: bool,
     /// What to show.
     pub preview: FilePreview,
+    /// A `.csv` or `.tsv` file's table, whatever its encoding; `None` for other files and for
+    /// a data file with no rows.
+    #[uniffi(default)]
+    pub data_table: Option<WorkspaceDataTable>,
+}
+
+/// What a data table's column holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum WorkspaceDataColumnType {
+    /// Numbers, `1,234.5` and `25%` included; right-aligned.
+    Number,
+    /// ISO dates, or dates and times.
+    Date,
+    /// Anything else.
+    Text,
+}
+
+/// One column of a data table.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct WorkspaceDataColumn {
+    /// Its name: the header's cell, or `column N` past the header.
+    pub name: String,
+    /// What it holds.
+    pub column_type: WorkspaceDataColumnType,
+    /// Each kept row's place in this column's ascending order: 0 for an empty cell, else from 1,
+    /// equal cells sharing one. Rows sort by it, then by file order; empty cells stay last.
+    pub ranks: Vec<u32>,
+}
+
+/// A `.csv` or `.tsv` file as its table preview shows it (web `parseDataTable`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct WorkspaceDataTable {
+    /// The columns, in file order.
+    pub columns: Vec<WorkspaceDataColumn>,
+    /// The kept rows, at most 1,000, each as wide as `columns`.
+    pub rows: Vec<Vec<String>>,
+    /// Data rows in the content, kept or not.
+    pub total_rows: u64,
+    /// Fields in the widest row, kept or not.
+    pub total_columns: u64,
+    /// How the bytes were decoded: `utf-8`, `utf-16le`, `utf-16be` or `windows-1252`.
+    pub encoding: String,
+    /// The server sent only the start of the file, so `total_rows` is a lower bound.
+    pub truncated: bool,
+}
+
+fn data_table(table: &core::DataTable) -> WorkspaceDataTable {
+    let count = |count: usize| u64::try_from(count).unwrap_or(u64::MAX);
+    WorkspaceDataTable {
+        columns: table
+            .header
+            .iter()
+            .zip(&table.column_types)
+            .enumerate()
+            .map(|(index, (name, column_type))| WorkspaceDataColumn {
+                name: name.clone(),
+                column_type: match column_type {
+                    core::DataColumnType::Number => WorkspaceDataColumnType::Number,
+                    core::DataColumnType::Date => WorkspaceDataColumnType::Date,
+                    core::DataColumnType::Text => WorkspaceDataColumnType::Text,
+                },
+                ranks: table.column_ranks(index),
+            })
+            .collect(),
+        rows: table.rows.clone(),
+        total_rows: count(table.total_rows),
+        total_columns: count(table.total_columns),
+        encoding: table.encoding.clone(),
+        truncated: table.truncated,
+    }
+}
+
+/// `text`, edited UTF-8 content of the data file `path`, as its table; `None` without rows.
+#[uniffi::export]
+#[must_use]
+pub fn workspace_data_table(text: String, path: String) -> Option<WorkspaceDataTable> {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+    core::parse_data_table(text, &path, "utf-8").map(|table| data_table(&table))
+}
+
+/// Whether `path` opens on a table (web `isDataTablePath`): a `.csv` or `.tsv` file.
+#[uniffi::export]
+#[must_use]
+pub fn is_workspace_data_table(path: String) -> bool {
+    core::is_data_table_path(&path)
 }
 
 /// A file's bytes as the server returned them, for sharing or previewing outside the app.
@@ -1064,6 +1149,7 @@ impl ClientCore {
                 byte_count: 0,
                 truncated: false,
                 preview: preview(shown),
+                data_table: None,
             });
         }
         let content = self
@@ -1072,6 +1158,7 @@ impl ClientCore {
             .await
             .map_err(workspace_error)?;
         Ok(WorkspaceFile {
+            data_table: core::file_data_table(&content).as_ref().map(data_table),
             preview: preview(content.preview(&core::PreviewLimits::default())),
             path: content.path.as_str().to_owned(),
             content_type: content.content_type,

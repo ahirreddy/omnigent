@@ -2,8 +2,9 @@ import XCTest
 
 /// Nested agents on the live local server: Add nested agent from the seeded fixture session's row
 /// opens the composer beside it with a provisional row in the sidebar, the session it starts sits
-/// nested under the fixture, the family collapses and expands, a member offers no Pin or Move, and
-/// Option-Command-A on the member opens the composer again for a peer.
+/// nested under the fixture, the family collapses and expands, a member offers no Pin or project,
+/// it leaves the nest and joins it again from Move session, Nests, and Option-Command-A on the
+/// member opens the composer again for a peer.
 final class MacNestedSessionFlowUITests: XCTestCase {
   override func setUp() {
     super.setUp()
@@ -46,6 +47,17 @@ final class MacNestedSessionFlowUITests: XCTestCase {
 
     toggleFamily(of: fixture, hiding: memberRow, live, app)
     checkMenus(member: memberRow, representative: fixtureRow, live, app)
+
+    // Move session, Nests: the server takes the member out of the nest, then back in.
+    choose(["Move session", "Nests", "Remove from nest"], inMenuOf: memberRow, live, app)
+    XCTAssertTrue(
+      live.waitUntil(timeout: 30) { !isNested(memberRow, under: fixtureRow) },
+      "Remove from nest left the member under the fixture")
+    live.shot(app, "nested-member-removed")
+    choose(["Move session", "Nests", "UI test fixture"], inMenuOf: memberRow, live, app)
+    XCTAssertTrue(
+      live.waitUntil(timeout: 30) { isNested(memberRow, under: fixtureRow) },
+      "joining the fixture's nest did not nest the member under it")
 
     // Option-Command-A on the open member opens the composer for a peer; leaving drops its row.
     live.clickTitle(of: memberRow, "the member row")
@@ -107,7 +119,8 @@ final class MacNestedSessionFlowUITests: XCTestCase {
     XCTAssertTrue(memberRow.appears(within: 10), "expanding did not bring the member back")
   }
 
-  /// A member can add a peer but has no Pin or Move; its representative keeps Pin.
+  /// A member can add a peer and move between nests, but has no Pin or project; its
+  /// representative keeps Pin.
   @MainActor
   private func checkMenus(
     member: XCUIElement, representative: XCUIElement, _ live: MacLiveUITestSupport,
@@ -116,13 +129,38 @@ final class MacNestedSessionFlowUITests: XCTestCase {
     let memberMenu = openMenu(of: member, live, app)
     let memberTitles = titles(of: memberMenu)
     XCTAssertEqual(firstTitle(of: memberMenu), "Add nested agent")
-    for refused in ["Pin", "Unpin", "Add to project", "Move session"] {
+    for refused in ["Pin", "Unpin", "Add to project"] {
       XCTAssertFalse(memberTitles.contains(refused), "a member offers \(refused): \(memberTitles)")
     }
+    XCTAssertTrue(memberTitles.contains("Move session"), "no Move session: \(memberTitles)")
     app.typeKey(.escape, modifierFlags: [])
     let headTitles = titles(of: openMenu(of: representative, live, app))
     XCTAssertTrue(headTitles.contains("Pin"), "the fixture lost Pin: \(headTitles)")
     app.typeKey(.escape, modifierFlags: [])
+  }
+
+  /// Right-clicks `row` and chooses `path` through its submenus. The pointer enters each
+  /// submenu beside the row that opened it, so it doesn't cross the menu's other rows.
+  @MainActor
+  private func choose(
+    _ path: [String], inMenuOf row: XCUIElement, _ live: MacLiveUITestSupport,
+    _ app: XCUIApplication
+  ) {
+    _ = openMenu(of: row, live, app)
+    var opener: XCUIElement?
+    for title in path {
+      let items = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", title))
+      guard let item = live.hittable(items) else {
+        XCTFail("no menu item \(title)\n\(app.debugDescription)")
+        return
+      }
+      if let opener {
+        opener.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+          .withOffset(CGVector(dx: item.frame.midX - opener.frame.minX, dy: 0)).hover()
+      }
+      item.click()
+      opener = item
+    }
   }
 
   /// Right-clicks `row` and returns its context menu once it shows.

@@ -60,15 +60,18 @@ enum TasksAdapter {
     }
   }
 
-  /// Whether the session's work is in flight: its turn, or a background task (web
-  /// `useSessionWorking`).
+  /// Whether the session's work is in flight: its turn, a background task, or the sandbox launch
+  /// its run waits on, which hasn't failed (web `useSessionWorking`).
   static func isWorking(_ conversation: ConversationStore, summary: OmnigentCoreFFI.SessionSummary?)
     -> Bool
   {
     let background =
       conversation.sections.first { $0.id == "status" }?.details
       .first { $0.id == "background" }.flatMap { Int($0.text) } ?? 0
-    return conversation.isRunning || background > 0
+    let launching =
+      SandboxAdapter.launchNote(conversation.header?.sandboxLaunch).map { $0.standing != .failed }
+      ?? false
+    return conversation.isRunning || background > 0 || launching
       || summary.map { $0.status == .running || $0.backgroundWorkRunning } == true
   }
 
@@ -81,10 +84,13 @@ enum TasksAdapter {
     let supported = keepsJournal(tasks)
     guard supported || !native.isEmpty else { return nil }
     let markers = markerRows(conversation.rows).keys.filter { $0.hasPrefix("todo-") }
+    let working = isWorking(conversation, summary: summary)
+    let stopping =
+      tasks?.isPlanStopping(working: working, latest: conversation.latestRequest) ?? false
     let context = TasksContext(
-      sessionWorking: isWorking(conversation, summary: summary),
-      awaitingUser: awaitsUser(conversation),
-      canSend: !ComposerAdapter.isReadOnly(conversation), journalRead: journalRead(tasks))
+      sessionWorking: working, awaitingUser: awaitsUser(conversation),
+      canSend: !ComposerAdapter.isReadOnly(conversation), journalRead: journalRead(tasks),
+      stopping: stopping)
     return tasksView(
       entries: supported ? tasks?.entries ?? [] : [], nativeTasks: native,
       nativeMarkers: Array(markers), context: context)
@@ -112,16 +118,28 @@ enum TasksAdapter {
       }
       Task { await conversation.composer.sendTaskMessage(message) }
     }
+    // The plan's Stop shows "Stopping…" until the session stops; a refused one brings Stop back.
+    let stop: @MainActor () -> Void = {
+      if let reason = blockedReason(conversation) {
+        routes.report(reason)
+        return
+      }
+      let started = tasks?.beginPlanStop(latest: conversation.latestRequest)
+      Task {
+        let taken = await conversation.composer.sendTaskMessage(stopPlanMessage(planName: nil))
+        if let started { tasks?.planStopDelivered(started, taken: taken) }
+      }
+    }
     content.perform = { action, row in
       switch action {
-      case .stop: send(stopPlanMessage(planName: nil))
+      case .stop: stop()
       case .run, .resume, .proceed, .retry:
         if let message = taskActionMessage(action: coreAction(action), taskName: row.name) {
           send(message)
         }
       }
     }
-    content.stop = { send(stopPlanMessage(planName: nil)) }
+    content.stop = stop
     content.continuePlan = { send(continuePlanMessage(planName: view.planName)) }
     return content
   }
@@ -154,7 +172,8 @@ enum TasksAdapter {
     TaskListState(
       planName: view.planName, updatedAt: view.updatedAt.map(date), summary: view.summary,
       counts: view.counts.map { TaskCountLine(state: state($0.state), text: $0.text) },
-      paused: view.paused, canStop: view.canStop, canContinue: view.canContinue,
+      paused: view.paused, canStop: view.canStop, isStopping: view.stopping,
+      canContinue: view.canContinue,
       fromPlan: view.fromPlan, rows: view.rows.map { row($0, rows: rows) })
   }
 

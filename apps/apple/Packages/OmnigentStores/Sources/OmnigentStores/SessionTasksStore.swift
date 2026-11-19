@@ -26,10 +26,14 @@ public final class SessionTasksStore {
   public private(set) var journal = Journal.idle
   /// A task the tab should scroll to and flash, from its chat marker; the tab clears it.
   public var taskToShow: String?
+  /// The plan's latest Stop pressed here.
+  public private(set) var planStop: PlanStop?
 
   private let core: ClientCore
   @ObservationIgnored private var generation = 0
   @ObservationIgnored private var catchingUp = false
+  @ObservationIgnored private var stopCount = 0
+  @ObservationIgnored private var settlement = PlanStopSettlement()
 
   init(sessionID: String, core: ClientCore) {
     self.sessionID = sessionID
@@ -140,6 +144,39 @@ public final class SessionTasksStore {
     }
     guard current == generation, case .loaded(let known) = journal else { return }
     if !missed.isEmpty { journal = .loaded(mergeJournalEntries(entries: known, added: missed)) }
+  }
+}
+
+/// The plan's Stop: "Stopping…" from the press until the session stops (web `planStops`).
+extension SessionTasksStore {
+  /// Starts a Stop, before its message goes out.
+  /// - Parameter latest: The transcript's latest request now.
+  /// - Returns: The Stop, for ``planStopDelivered(_:taken:)``.
+  public func beginPlanStop(latest: LatestRequest?) -> PlanStop {
+    stopCount += 1
+    let stop = PlanStop(id: stopCount, baselineRequestID: latest?.id)
+    planStop = stop
+    return stop
+  }
+
+  /// The stop message went out (`taken`), or didn't, which brings Stop back.
+  public func planStopDelivered(_ stop: PlanStop, taken: Bool) {
+    guard planStop?.id == stop.id else { return }
+    if taken {
+      planStop?.sent = true
+    } else {
+      planStop = nil
+    }
+  }
+
+  /// Whether the run is stopping; reading it settles a Stop the session is seen to have
+  /// finished, or one another request followed.
+  /// - Parameters:
+  ///   - working: The session works, as the tab reads it.
+  ///   - latest: The transcript's latest request.
+  /// - Returns: Whether "Stopping…" shows.
+  public func isPlanStopping(working: Bool, latest: LatestRequest?) -> Bool {
+    settlement.stopping(planStop, working: working, latest: latest)
   }
 }
 

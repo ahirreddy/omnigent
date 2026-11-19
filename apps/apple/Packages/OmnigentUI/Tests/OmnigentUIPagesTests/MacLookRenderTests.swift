@@ -41,8 +41,14 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case settingsHarness = "settings-harness"
   case settingsPlugin = "settings-plugin"
   case tasksPlan = "tasks-plan"
+  case tasksStopping = "tasks-stopping"
+  case tasksHistory = "tasks-history"
+  case automationsLegacyShare = "automations-legacy-share"
+  case automationsNew = "automations-new"
   case viewersPDF = "viewers-pdf"
   case viewersVideo = "viewers-video"
+  case viewersTable = "viewers-table"
+  case viewersTableFiltered = "viewers-table-filtered"
 
   var testDescription: String { rawValue }
 
@@ -57,8 +63,12 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   var macWidth: CGFloat {
     switch self {
     case .prChanges, .prFind, .prCommits, .inboxSuggestion, .inboxFailure: 900
+    case .viewersTable, .viewersTableFiltered: 820
     case .composerMcp, .markersChat, .viewersPDF, .viewersVideo: 736
-    case .composerRewind, .tasksPlan, .prFileHeader: 480
+    case .composerRewind, .tasksPlan, .tasksStopping, .prFileHeader: 480
+    case .tasksHistory: 420
+    case .automationsLegacyShare: 900
+    case .automationsNew: 600
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 640
     default: 640
     }
@@ -71,8 +81,12 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .inboxSuggestion, .inboxFailure: 640
     case .composerRewind: 460
     case .tasksPlan: 620
+    case .tasksStopping: 420
+    case .automationsLegacyShare: 640
+    case .automationsNew: 760
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 560
     case .viewersPDF: 520
+    case .viewersTable, .viewersTableFiltered: 480
     default: nil
     }
   }
@@ -112,8 +126,14 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .settingsHarness: return AnyView(Fixture.settings { Fixture.harness })
     case .settingsPlugin: return AnyView(Fixture.settings { Fixture.pluginPage })
     case .tasksPlan: return AnyView(Fixture.tasks)
+    case .tasksStopping: return AnyView(Fixture.tasksStopping)
+    case .tasksHistory: return AnyView(Fixture.taskHistory)
+    case .automationsLegacyShare: return AnyView(Fixture.legacyShareDetail)
+    case .automationsNew: return AnyView(Fixture.newAutomation)
     case .viewersPDF: return AnyView(PDFPreviewView(data: Fixture.pdf, truncated: false))
     case .viewersVideo: return AnyView(Fixture.video)
+    case .viewersTable: return AnyView(Fixture.dataTableViewer)
+    case .viewersTableFiltered: return AnyView(Fixture.dataTableFiltered)
     }
   }
 }

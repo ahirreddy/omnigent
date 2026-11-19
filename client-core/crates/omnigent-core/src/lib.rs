@@ -25,6 +25,7 @@ pub mod harness_setup;
 pub mod http;
 pub mod intents;
 pub mod ledger;
+pub mod markdown_preview;
 pub mod mentions;
 pub mod message_cache;
 pub mod nested_creation;

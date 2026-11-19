@@ -59,6 +59,27 @@ nonisolated enum SidebarFamilies {
     return result
   }
 
+  /// The nests `session` can join, in the list's order: one row of each other family the viewer
+  /// owns and hasn't archived, its representative when loaded (the web's `NestPickerMenu`).
+  static func nestDestinations(
+    for session: SessionSummary, among sessions: [SessionSummary], isShared: (String) -> Bool
+  ) -> [SessionSummary] {
+    var destinations: [SessionSummary] = []
+    var indexes: [String: Int] = [:]
+    for row in sessions {
+      guard let family = row.family, family.id != session.family?.id, row.id != session.id,
+        !row.isArchived, !isShared(row.id)
+      else { continue }
+      if let index = indexes[family.id] {
+        if family.representativeID == row.id { destinations[index] = row }
+      } else {
+        indexes[family.id] = destinations.count
+        destinations.append(row)
+      }
+    }
+    return destinations
+  }
+
   /// The rows of a family-ordered list that show: a collapsed family keeps its head (its first
   /// row) and hides the rest.
   static func visible(

@@ -23,6 +23,8 @@ struct AutomationEditorForm: View {
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
             .disabled(!editor.canSave)
+            // What still needs doing, as the web's tooltip on its disabled Create.
+            .help(editor.saveBlockedReason ?? "")
             .accessibilityIdentifier("automation-save")
         }
         .controlSize(.large)
@@ -42,6 +44,7 @@ struct AutomationEditorForm: View {
             ToolbarItem(placement: .confirmationAction) {
               Button(editor.saveTitle, action: editor.save)
                 .disabled(!editor.canSave)
+                .help(editor.saveBlockedReason ?? "")
                 .accessibilityIdentifier("automation-save")
             }
           }

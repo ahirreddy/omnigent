@@ -43,6 +43,9 @@ pub struct ServerPages {
     /// The caller can add nested agents to a session family (`sibling_sessions`).
     #[uniffi(default)]
     pub sibling_sessions: bool,
+    /// An owned session moves into another nest or out of its own (`session_nest_moves`).
+    #[uniffi(default)]
+    pub session_nest_moves: bool,
     /// Where a nested agent may start (`sibling_session_destinations`). The core always sets
     /// it; `nil` (a record built without it) reads as `.anyHost`.
     #[uniffi(default)]
@@ -190,6 +193,9 @@ pub struct Automation {
     /// Whose it is, for a shared one.
     #[uniffi(default)]
     pub owner_name: String,
+    /// The server can keep grants for it; `false` for a legacy one.
+    #[uniffi(default = true)]
+    pub shareable: bool,
 }
 
 /// What one run of an automation did.
@@ -659,6 +665,7 @@ macro_rules! automation_record {
             source_session_id: $source.source_session_id,
             shared_with_me: $source.shared_with_me,
             owner_name: $source.owner_name,
+            shareable: $source.shareable,
         }
     };
 }
@@ -708,6 +715,14 @@ impl From<AutomationDraft> for core::AutomationDraft {
             source_session_id: draft.source_session_id,
         }
     }
+}
+
+/// Why an automation's offered Share shows disabled, or `None` while it works: sharing off
+/// wins over a legacy automation the server can't keep grants for.
+#[must_use]
+#[uniffi::export]
+pub fn automation_share_disabled_reason(sharing_disabled: bool, shareable: bool) -> Option<String> {
+    core::automation_share_disabled_reason(sharing_disabled, shareable).map(str::to_owned)
 }
 
 /// Why the cost limit typed into the editor can't be saved, or `None`.
@@ -857,6 +872,7 @@ impl ClientCore {
             managed_sandboxes: pages.managed_sandboxes,
             automation_triggers: pages.automation_triggers,
             sibling_sessions: pages.sibling_sessions,
+            session_nest_moves: pages.session_nest_moves,
             sibling_session_destinations: Some(pages.sibling_destinations.into()),
             inbox_items: pages.inbox_items,
             automation_inbox: pages.automation_inbox,

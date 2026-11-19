@@ -51,12 +51,33 @@ public struct AutomationEditorSheet: View {
 
   var saveTitle: String { context.isEditing ? "Save changes" : "Create" }
 
-  var canSave: Bool {
-    draft.canSave && !context.isSaving && context.blocker == nil
-      && (isTrigger || context.scheduleProblem == nil)
-      && !(isTrigger && context.triggerScheduleUnsupported)
-      && context.costLimitProblem == nil && context.mcpProblem == nil
-      && (draft.trigger == nil || !context.triggerPrompt.isEmpty)
+  /// Save follows ``saveBlockedReason``, so the button and what it says can't disagree.
+  var canSave: Bool { !context.isSaving && saveBlockedReason == nil }
+
+  /// Why Save is off: the first of ``saveBlockers``, which the disabled button explains.
+  var saveBlockedReason: String? { saveBlockers.lazy.compactMap(\.self).first }
+
+  /// What keeps Save off, in the form's order (web `submitBlockers`).
+  var saveBlockers: [String?] {
+    let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+    let prompt = draft.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    let missingInstructions =
+      draft.trigger != nil
+      ? context.triggerPrompt.isEmpty : draft.sourceSessionID == nil && prompt.isEmpty
+    return [
+      name.isEmpty ? "Enter a name in the field at the top." : nil,
+      showsTypeRow && !isTrigger ? context.scheduleProblem : nil,
+      missingInstructions
+        ? (draft.trigger == nil
+          ? "Add instructions." : "Fill in the trigger\u{2019}s required fields and instructions.")
+        : nil,
+      isTrigger && context.triggerScheduleUnsupported ? "Use a supported schedule." : nil,
+      context.blocker,
+      draft.agentID.isEmpty ? "Pick an agent." : nil,
+      context.mcpProblem,
+      scheduleInAdvanced ? context.scheduleProblem : nil,
+      context.costLimitProblem,
+    ]
   }
 
   /// A trigger polls on the server's interval, so its schedule stays out of the form.

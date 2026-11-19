@@ -13,7 +13,15 @@ enum ShareAdapter {
   /// Why Share shows disabled: the web's wording for a server whose admin turned sharing off;
   /// `nil` where Share works or is hidden (single-user servers, pages not read yet).
   static func unavailableReason(_ pages: ServerPages?) -> String? {
-    pages?.sharingDisabled == true ? "Sharing has been disabled for this Omnigent server." : nil
+    pages?.sharingDisabled == true
+      ? automationShareDisabledReason(sharingDisabled: true, shareable: true) : nil
+  }
+
+  /// Why an automation's Share shows disabled: sharing off, else a legacy automation the server
+  /// can't keep grants for; `nil` where Share works.
+  static func unavailableReason(_ pages: ServerPages?, automation: Automation) -> String? {
+    automationShareDisabledReason(
+      sharingDisabled: pages?.sharingDisabled == true, shareable: automation.shareable)
   }
 
   /// Whether Share appears at all: on a server that shares, or one that turned sharing off.

@@ -686,6 +686,7 @@ fn a_pushed_journal_entry_reaches_the_tasks_tab_and_its_view() {
             awaiting_user: false,
             can_send: true,
             journal_read: true,
+            stopping: false,
         },
     );
     assert_eq!(view.plan_name.as_deref(), Some("Ship"));

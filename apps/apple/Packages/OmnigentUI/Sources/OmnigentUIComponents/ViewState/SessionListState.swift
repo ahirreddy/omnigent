@@ -219,6 +219,12 @@ public struct SessionListActions {
   public var createAutomation: (@MainActor (SessionSummary) -> Void)?
   /// Move to a project (`nil` removes it from its project).
   public var moveToProject: (@MainActor (SessionSummary, SessionProject?) -> Void)?
+  /// Move into the nest of another session (`nil` removes it from its own); `nil` where the
+  /// server can't move sessions between nests.
+  public var moveToNest: (@MainActor (SessionSummary, SessionSummary?) -> Void)?
+  /// A session can join another nest (the server adds nested agents); without it, a nested
+  /// session can only leave its own.
+  public var canJoinNests = false
   /// Stop the running session.
   public var stop: (@MainActor (SessionSummary) -> Void)?
   /// Delete (after confirmation).

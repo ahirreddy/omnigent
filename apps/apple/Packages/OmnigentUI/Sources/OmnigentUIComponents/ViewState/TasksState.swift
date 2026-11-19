@@ -172,6 +172,8 @@ nonisolated public struct TaskListState: Hashable, Sendable {
   public var paused: String?
   /// The plan's stop control shows.
   public var canStop: Bool
+  /// A disabled "Stopping…" shows in the stop control's place, from Stop until the run stops.
+  public var isStopping: Bool
   /// The plan's play control shows.
   public var canContinue: Bool
   /// The tasks come from a plan, whose tasks say what they wait on.
@@ -183,7 +185,8 @@ nonisolated public struct TaskListState: Hashable, Sendable {
   public init(
     planName: String? = nil, updatedAt: Date? = nil, summary: String,
     counts: [TaskCountLine] = [], paused: String? = nil, canStop: Bool = false,
-    canContinue: Bool = false, fromPlan: Bool = false, rows: [TaskRowState]
+    isStopping: Bool = false, canContinue: Bool = false, fromPlan: Bool = false,
+    rows: [TaskRowState]
   ) {
     self.planName = planName
     self.updatedAt = updatedAt
@@ -191,6 +194,7 @@ nonisolated public struct TaskListState: Hashable, Sendable {
     self.counts = counts
     self.paused = paused
     self.canStop = canStop
+    self.isStopping = isStopping
     self.canContinue = canContinue
     self.fromPlan = fromPlan
     self.rows = rows

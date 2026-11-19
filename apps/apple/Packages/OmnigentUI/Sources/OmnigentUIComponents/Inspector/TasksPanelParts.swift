@@ -55,8 +55,9 @@ struct TaskHistoryView: View {
         Text("After \(Text(TaskTimes.names(row.dependsOn)).foregroundStyle(ThemeColor.primary))")
           .foregroundStyle(Theme.secondary)
       }
-      if let goal = row.goal, row.state != .waiting, row.state != .ready {
-        Text(goal).foregroundStyle(Theme.secondary)
+      // The whole goal, whose start alone is the row's line.
+      if let goal = row.goal {
+        StepDescription(text: goal)
       }
       if row.history.isEmpty {
         Text("Nothing recorded yet.").foregroundStyle(Theme.secondary)
@@ -91,6 +92,29 @@ struct TaskHistoryView: View {
     .background(.quinary, in: RoundedRectangle(cornerRadius: Theme.Radius.small))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("\(row.name) history")
+  }
+}
+
+/// A workflow step's whole description as Markdown (web `StepDescription`): what it reads, does
+/// and produces, then the details a run needs, at about the size of the history around it.
+struct StepDescription: View {
+  let text: String
+  @Environment(\.transcriptAppearance) private var appearance
+
+  #if os(macOS)
+    private static let size = 11.0
+  #else
+    private static let size = 13.0
+  #endif
+
+  var body: some View {
+    var compact = appearance
+    compact.chatFontSize = Self.size
+    return MarkdownView(text)
+      .environment(\.transcriptAppearance, compact)
+      .environment(\.markdownOutputRendering, .rich)
+      .foregroundStyle(Theme.secondary)
+      .accessibilityIdentifier("tasks-step-description")
   }
 }
 

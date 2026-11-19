@@ -242,6 +242,27 @@ impl ClientCore {
         moved.map_err(CoreError::from)
     }
 
+    /// Moves `session_id` into the nest of `destination_id`, or out of its nest with `None`
+    /// (servers that report `session_nest_moves`). It answers once the moved row and the
+    /// members of both nests read again are published.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` before any write; `ReadOnly` for a session
+    /// the caller doesn't own; the write errors.
+    pub async fn move_to_nest(
+        &self,
+        session_id: String,
+        destination_id: Option<String>,
+    ) -> Result<(), CoreError> {
+        let moved = self
+            .sessions()
+            .move_to_nest(&session_id, destination_id.as_deref())
+            .await;
+        self.events_published().await;
+        moved.map(|_| ()).map_err(CoreError::from)
+    }
+
     /// Puts the pinned sessions named in `session_ids` into that order, in the slots they hold
     /// now; pins that are not named keep their place. It answers once the rows it changed, or
     /// put back, are published.

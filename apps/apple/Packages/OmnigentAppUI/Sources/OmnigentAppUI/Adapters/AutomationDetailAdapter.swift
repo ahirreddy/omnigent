@@ -97,7 +97,8 @@ enum AutomationDetailMapping {
       state.sharedBy = automation.ownerName
     } else if pages.offered?.automationSharing == true {
       state.canShare = true
-      state.shareDisabledReason = ShareAdapter.unavailableReason(pages.offered)
+      state.shareDisabledReason = ShareAdapter.unavailableReason(
+        pages.offered, automation: automation)
     }
     if let source = automation.sourceSessionId {
       if automation.sharedWithMe {

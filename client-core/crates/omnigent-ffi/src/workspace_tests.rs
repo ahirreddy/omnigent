@@ -380,6 +380,43 @@ fn a_directory_page_sends_its_limit_and_a_binary_file_reads_as_bytes() {
     assert_eq!(file.content_type.as_deref(), Some("image/png"));
 }
 
+#[test]
+fn a_data_file_reads_as_a_table_in_its_own_encoding_and_edits_reparse() {
+    let mut harness = connected();
+    // "name,n\ncafé,20\nbar,2\n" in Windows-1252, which the server sends as base64.
+    harness.http.route(
+        &format!("{ROOT}/filesystem/people.csv"),
+        json(
+            200,
+            &value!({"encoding": "base64", "content": "bmFtZSxuCmNhZuksMjAKYmFyLDIK",
+                "truncated": true})
+            .to_string(),
+        ),
+    );
+    let file = harness
+        .call(|core| async move {
+            core.read_workspace_file("conv_a".into(), "default".into(), "people.csv".into())
+                .await
+        })
+        .unwrap();
+    assert!(matches!(file.preview, FilePreview::Binary { .. }));
+    let table = file.data_table.unwrap();
+    assert_eq!(table.encoding, "windows-1252");
+    assert!(table.truncated);
+    assert_eq!(table.rows.first().unwrap(), &["caf\u{e9}", "20"]);
+
+    let edited =
+        workspace_data_table("\u{feff}n,label\n10,b\n,a\n2,c\n".into(), "x.csv".into()).unwrap();
+    let names: Vec<&str> = edited.columns.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["n", "label"]);
+    let first = edited.columns.first().unwrap();
+    assert_eq!(first.column_type, WorkspaceDataColumnType::Number);
+    assert_eq!(first.ranks, [2, 0, 1]);
+    assert_eq!((edited.total_rows, edited.total_columns), (3, 2));
+    assert!(is_workspace_data_table("out/DATA.TSV".into()));
+    assert_eq!(workspace_data_table(String::new(), "x.csv".into()), None);
+}
+
 fn notes(harness: &Harness, read: &str) {
     harness.http.route_method(
         "GET",

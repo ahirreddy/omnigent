@@ -9,7 +9,8 @@ import SwiftUI
 /// - ⇧Tab cycles the approval mode.
 /// - Up in an empty field first pulls back the newest queued message, then walks earlier
 ///   prompts; Down walks back.
-/// - Esc stops the running turn once nothing else is open.
+/// - Esc closes the completions, then a command's output; only then does it stop the running
+///   turn.
 struct ComposerKeyboard {
   let state: ComposerViewState
   let actions: ComposerActions
@@ -108,10 +109,15 @@ struct ComposerKeyboard {
     return .ignored
   }
 
-  /// Esc closes the completions first; only then does it stop the turn.
+  /// Esc closes the completions first, then a command's output (`/help`); only then does it
+  /// stop the turn.
   func handleEscape() -> KeyPress.Result {
     if !completions.items.isEmpty {
       dismissedCompletionsDraft = draft
+      return .handled
+    }
+    if state.commandNotice != nil, let dismiss = actions.extras.dismissCommandNotice {
+      dismiss()
       return .handled
     }
     guard state.isRunning, let interrupt = actions.interrupt, !state.isStopping else {

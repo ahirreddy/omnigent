@@ -128,7 +128,19 @@ private struct TasksHeader: View {
   }
 
   @ViewBuilder private var controls: some View {
-    if list.canStop {
+    if list.isStopping {
+      // Stop was taken; the run winds down before Continue shows.
+      Label {
+        Text("Stopping\u{2026}")
+      } icon: {
+        ProgressView().controlSize(.mini)
+      }
+      .labelStyle(.titleAndIcon)
+      .font(.caption)
+      .foregroundStyle(Theme.secondary)
+      .help("Stopping the plan")
+      .accessibilityIdentifier("tasks-plan-stopping")
+    } else if list.canStop {
       Button("Stop", systemImage: "stop.fill", action: content.stop)
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)

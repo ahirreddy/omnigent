@@ -117,6 +117,24 @@ struct InspectorTasksPanelTests {
       #expect(try shown.shows("Updated"))
     }
 
+    @Test("A stopping run shows Stopping in Stop's place, and nothing to press")
+    func stopping() throws {
+      var list = Self.plan
+      list.canStop = false
+      list.isStopping = true
+      let shown = screen(.loaded(list), calls: Calls())
+      defer { shown.close() }
+      #expect(try shown.shows("Stopping\u{2026}"))
+      let running = screen(.loaded(Self.plan), calls: Calls())
+      defer { running.close() }
+      #expect(try !running.shows("Stopping\u{2026}"))
+      // The only button missing is Stop's.
+      let buttons = { (screen: OffscreenWindow<TasksPanel>) in
+        screen.allViews.filter { $0 is NSButton }.count
+      }
+      #expect(buttons(shown) == buttons(running) - 1)
+    }
+
     @Test("Loading, a failed read, and no tasks each say so")
     func readStates() throws {
       let calls = Calls()

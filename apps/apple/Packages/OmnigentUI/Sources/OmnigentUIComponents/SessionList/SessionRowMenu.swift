@@ -21,6 +21,8 @@ struct SessionRowMenu {
   var shareUnavailableReason: String?
   /// Its place among its group's rows (Pinned, or a project); `nil` hides Reorder.
   var move: SessionRowMove?
+  /// The other nests it can join, one session of each, read when the menu shows.
+  var nests: @MainActor () -> [SessionSummary] = { [] }
 
   /// Hover buttons are Mac-only; touch uses the context menu and swipe actions.
   var showsHoverActions: Bool {
@@ -61,6 +63,57 @@ struct SessionRowMenu {
   /// Add nested agent: the owner's, on a session that is not archived (the web's gate).
   var offersNestedAgent: Bool {
     actions.addNestedAgent != nil && !isShared && !session.isArchived
+  }
+
+  /// Filing is the owner's; a nested member files with its representative.
+  private var offersProjects: Bool {
+    actions.moveToProject != nil && !isShared && !session.isNestedMember
+      && (!projects.isEmpty || newProject != nil)
+  }
+
+  /// An owned, active session moves between nests where the server can: into another where it
+  /// adds nested agents, and out of its own.
+  private var offersNests: Bool {
+    actions.moveToNest != nil && !isShared && !session.isArchived
+      && (actions.canJoinNests || session.family != nil)
+  }
+
+  @ViewBuilder private var projectItems: some View {
+    if let move = actions.moveToProject {
+      ForEach(projects) { target in
+        Button(target.name) { move(session, target) }
+          .disabled(target.id == project?.id)
+      }
+      if let newProject {
+        if !projects.isEmpty { Divider() }
+        Button("New project\u{2026}", systemImage: "folder.badge.plus", action: newProject)
+      }
+      if project != nil {
+        Divider()
+        Button("Remove from project") { move(session, nil) }
+      }
+    }
+  }
+
+  /// The nests it can join, by their representative's title, then Remove from nest.
+  @ViewBuilder private func nestItems(
+    _ moveToNest: @escaping @MainActor (SessionSummary, SessionSummary?) -> Void
+  ) -> some View {
+    if actions.canJoinNests {
+      let destinations = nests()
+      ForEach(destinations) { nest in
+        Button(nest.family?.representativeTitle ?? nest.title) { moveToNest(session, nest) }
+      }
+      if destinations.isEmpty {
+        Text("No other nests")
+      }
+    }
+    if session.family != nil {
+      if actions.canJoinNests { Divider() }
+      Button("Remove from nest", systemImage: "rectangle.portrait.and.arrow.right") {
+        moveToNest(session, nil)
+      }
+    }
   }
 
   @ViewBuilder var items: some View {
@@ -106,24 +159,18 @@ struct SessionRowMenu {
         setUnread(session, !isUnread)
       }
     }
-    // Filing is owner-only, as on the web; a nested member moves with its representative.
-    if let move = actions.moveToProject, !isShared, !session.isNestedMember,
-      !projects.isEmpty || newProject != nil
-    {
+    // Moving is owner-only, as on the web; a nested member files with its representative.
+    if let moveToNest = offersNests ? actions.moveToNest : nil {
+      Menu("Move session", systemImage: "folder") {
+        if offersProjects {
+          Menu("Projects", systemImage: "folder") { projectItems }
+        }
+        Menu("Nests", systemImage: "square.on.square") { nestItems(moveToNest) }
+      }
+    } else if offersProjects {
       // "Add to project" until it is filed, then "Move session", as the web.
       Menu(project == nil ? "Add to project" : "Move session", systemImage: "folder") {
-        ForEach(projects) { target in
-          Button(target.name) { move(session, target) }
-            .disabled(target.id == project?.id)
-        }
-        if let newProject {
-          if !projects.isEmpty { Divider() }
-          Button("New project\u{2026}", systemImage: "folder.badge.plus", action: newProject)
-        }
-        if project != nil {
-          Divider()
-          Button("Remove from project") { move(session, nil) }
-        }
+        projectItems
       }
     }
     if let move {

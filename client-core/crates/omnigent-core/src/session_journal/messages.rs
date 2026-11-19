@@ -37,6 +37,9 @@ pub fn continue_plan_message(plan_name: Option<&str>) -> String {
     )
 }
 
+/// What a stop message asks after naming the plan.
+const STOP_PLAN_INSTRUCTIONS: &str = "Stop all background tasks, subagents, and other Omnigent sessions working on this workflow run. Tell each worker to stop its own background tasks, agents, and Omnigent sessions recursively, verify their shutdown, and report back before it stops. Cancel background commands through their original task/terminal handles and wait for their exit results. A missing handle or an empty process list in another sandbox is not proof of shutdown. Cancel this run's timers and queued follow-ups that could restart the work. Keep this main session available while you coordinate and verify that the work has stopped; report anything you could not stop or verify. Preserve completed results and record the worker/session IDs and what remains so the workflow can resume. Leave unfinished steps that were started as started, not done or failed. Do not ask for confirmation or resume the workflow until I explicitly tell you to continue.";
+
 /// The message that asks the main agent to stop the plan's work and say how to resume it
 /// (`stopPlanMessage`).
 #[must_use]
@@ -45,7 +48,18 @@ pub fn stop_plan_message(plan_name: Option<&str>) -> String {
         || "the plan".to_owned(),
         |name| format!("the plan \"{name}\""),
     );
-    format!(
-        "Stop {plan} now. Stop all background tasks, subagents, and other Omnigent sessions working on this workflow run. Tell each worker to stop its own background tasks, agents, and Omnigent sessions recursively, verify their shutdown, and report back before it stops. Cancel background commands through their original task/terminal handles and wait for their exit results. A missing handle or an empty process list in another sandbox is not proof of shutdown. Cancel this run's timers and queued follow-ups that could restart the work. Keep this main session available while you coordinate and verify that the work has stopped; report anything you could not stop or verify. Preserve completed results and record the worker/session IDs and what remains so the workflow can resume. Leave unfinished steps that were started as started, not done or failed. Do not ask for confirmation or resume the workflow until I explicitly tell you to continue."
-    )
+    format!("Stop {plan} now. {STOP_PLAN_INSTRUCTIONS}")
+}
+
+/// Whether `text` is a [`stop_plan_message`], whatever plan it names (`isStopPlanMessage`).
+#[must_use]
+pub fn is_stop_plan_message(text: &str) -> bool {
+    let Some(opening) = text.trim().strip_suffix(STOP_PLAN_INSTRUCTIONS) else {
+        return false;
+    };
+    opening == "Stop the plan now. "
+        || opening
+            .strip_prefix("Stop the plan \"")
+            .and_then(|rest| rest.strip_suffix("\" now. "))
+            .is_some()
 }

@@ -74,6 +74,22 @@ nonisolated public enum WorkspaceMapping {
     }
   }
 
+  static func dataTable(_ table: WorkspaceDataTable) -> DataTablePreview {
+    let columns = table.columns.enumerated().map { index, column in
+      let type: DataColumnType =
+        switch column.columnType {
+        case .number: .number
+        case .date: .date
+        case .text: .text
+        }
+      return DataTableColumn(id: index, name: column.name, type: type, ranks: column.ranks)
+    }
+    return DataTablePreview(
+      columns: columns, rows: table.rows, totalRows: Int(clamping: table.totalRows),
+      totalColumns: Int(clamping: table.totalColumns), encoding: table.encoding,
+      truncated: table.truncated)
+  }
+
   static func textPreview(_ text: OmnigentCoreFFI.TextPreview) -> OmnigentWorkspaceUI.TextPreview {
     let ending: OmnigentWorkspaceUI.LineEnding =
       switch text.lineEnding {

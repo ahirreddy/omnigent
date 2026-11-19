@@ -40,4 +40,14 @@ extension SidebarView {
   }
 
   var dropHandler: SidebarDropHandler { SidebarDropHandler(state: state, actions: actions) }
+
+  /// The nests `session` can join, read when its menu shows.
+  func nestDestinations(for session: SessionSummary) -> @MainActor () -> [SessionSummary] {
+    let state = state
+    return {
+      SidebarFamilies.nestDestinations(for: session, among: state.list.sessions) {
+        state.rowInfo[$0]?.isShared == true
+      }
+    }
+  }
 }

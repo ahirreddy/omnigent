@@ -45,6 +45,8 @@ pub struct ServerPages {
     pub automation_triggers: bool,
     /// `sibling_sessions`: the caller can add nested agents to a session family.
     pub sibling_sessions: bool,
+    /// `session_nest_moves`: an owned session moves into another nest or out of its own.
+    pub session_nest_moves: bool,
     /// `sibling_session_destinations`: where a nested agent may start.
     pub sibling_destinations: SiblingDestinations,
     /// `inbox_items_available`: agents post items to the caller's Inbox.
@@ -144,6 +146,7 @@ impl ServerPages {
             sharing_disabled: !single_user && sharing_off,
             canvas: feature("canvas")?,
             sibling_sessions: sibling_sessions_enabled(object),
+            session_nest_moves: flag("session_nest_moves")?,
             sibling_destinations: SiblingDestinations::from_info(object),
             inbox_items: opt_bool(object, "inbox_items_available")?.unwrap_or(false),
             automation_inbox: opt_bool(object, "scheduled_task_inbox")?.unwrap_or(false),
@@ -233,6 +236,9 @@ pub struct Automation {
     pub shared_with_me: bool,
     /// Whose it is, for a shared one: the owner's name, else their id.
     pub owner_name: String,
+    /// The server can keep grants for it; `false` for a legacy one (`shareable`, absent on older
+    /// servers, which can share every automation).
+    pub shareable: bool,
 }
 
 impl Automation {
@@ -476,6 +482,29 @@ pub fn run_pull_requests_summary(pull_requests: &[RunPullRequest]) -> String {
     format!("PRs: {}", parts.join(", "))
 }
 
+/// Why Share shows disabled on a server whose admin turned sharing off (web `SHARING_OFF_REASON`).
+pub const SHARING_OFF_REASON: &str = "Sharing has been disabled for this Omnigent server.";
+/// Why Share shows disabled on an automation the server can't keep grants for; the server says
+/// the same when it refuses one.
+pub const LEGACY_AUTOMATION_SHARE_REASON: &str =
+    "This is a legacy automation. Recreate it to share it.";
+
+/// Why an automation's offered Share shows disabled, or `None` while it works: sharing off wins
+/// over a legacy automation (web `automationShareDisabledReason`).
+#[must_use]
+pub const fn automation_share_disabled_reason(
+    sharing_disabled: bool,
+    shareable: bool,
+) -> Option<&'static str> {
+    if sharing_disabled {
+        Some(SHARING_OFF_REASON)
+    } else if shareable {
+        None
+    } else {
+        Some(LEGACY_AUTOMATION_SHARE_REASON)
+    }
+}
+
 /// Session spend as the web writes it: `$x.xx`, or `<$0.01` under a cent.
 #[must_use]
 pub fn format_cost_usd(cost: f64) -> String {
@@ -629,6 +658,7 @@ fn automation_from(value: &Value) -> Result<Automation, String> {
         source_session_id: opt_str(object, "source_session_id")?,
         shared_with_me: opt_str(object, "viewer_role")?.as_deref() == Some("viewer"),
         owner_name,
+        shareable: opt_bool(object, "shareable")?.unwrap_or(true),
         state,
         next_run_at,
         last_run_at: opt_i64(object, "last_run_at")?,
