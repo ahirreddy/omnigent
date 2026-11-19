@@ -120,6 +120,22 @@
       #expect(log.events == ["dismissNotice"])
     }
 
+    @Test("Esc closes a command's output before it stops the turn")
+    func escapeDismissesCommandNotice() throws {
+      var state = ComposerViewState()
+      state.isRunning = true
+      state.commandNotice = "Usage: /help"
+      let model = ComposerScreenModel(state: state)
+      let screen = openComposer(model, log.actions)
+      defer { screen.close() }
+      try screen.pressEscape()
+      #expect(log.events == ["dismissNotice"])
+      model.state.commandNotice = nil
+      screen.settle()
+      try screen.pressEscape()
+      #expect(log.events == ["dismissNotice", "stop"])
+    }
+
     @Test("a broken stream offers Reconnect; a connecting one just says so")
     func connection() throws {
       let failed = open {
