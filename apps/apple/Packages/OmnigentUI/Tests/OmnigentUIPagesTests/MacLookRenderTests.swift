@@ -64,6 +64,12 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case projectBoardEmpty = "project-board-empty"
   case projectBoardQuickView = "project-board-quick-view"
   case projectBoardComposer = "project-board-composer"
+  /// The connection line while the core restores the connection, once retrying stopped, the
+  /// moment it is back, and the saved copy shown offline.
+  case connectionReconnecting = "connection-reconnecting"
+  case connectionUnreachable = "connection-unreachable"
+  case connectionReconnected = "connection-reconnected"
+  case connectionOffline = "connection-offline"
 
   var testDescription: String { rawValue }
 
@@ -176,6 +182,9 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .viewersTableFiltered: return AnyView(Fixture.dataTableFiltered)
     case .projectBoard, .projectBoardEmpty, .projectBoardQuickView, .projectBoardComposer:
       return AnyView(LookFixtures.board(self))
+    case .connectionReconnecting, .connectionUnreachable, .connectionReconnected,
+      .connectionOffline:
+      return AnyView(LookFixtures.connection(self))
     }
   }
 }
