@@ -379,6 +379,8 @@ pub struct RunStep {
     pub goal: Option<String>,
     /// What its menu offers; `nil` for none.
     pub action: Option<TaskAction>,
+    /// The menu item's title ("Run", "Continue", "Retry", "Stop").
+    pub action_title: Option<String>,
 }
 
 /// A saved workflow's run read back from a message or an automation's instructions.
@@ -655,6 +657,7 @@ pub fn workflow_run_steps(
             state: item.state.into(),
             goal: item.step.goal,
             action: action.map(Into::into),
+            action_title: action.map(|action| action.title().to_owned()),
         })
         .collect()
 }
@@ -816,6 +819,42 @@ pub fn workflow_description_edit(
         proposal::DescriptionEdit::UseProposed => DescriptionEdit::UseProposed,
         proposal::DescriptionEdit::Write(description) => DescriptionEdit::Write { description },
     }
+}
+
+/// What a harness types before a skill's name: `$` for Codex's own CLI, else `/`.
+#[uniffi::export]
+#[must_use]
+pub fn skill_invocation_prefix(harness: Option<String>) -> String {
+    omnigent_core::slash::skill_invocation_prefix(harness.as_deref()).to_owned()
+}
+
+/// Which workflow skills a skill list offers: Run a workflow needs `workflow`, Save as workflow
+/// `save-workflow`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct WorkflowSkills {
+    /// The `workflow` skill.
+    pub runs: bool,
+    /// The `save-workflow` skill.
+    pub saves: bool,
+}
+
+/// The workflow skills among `skill_names`.
+#[uniffi::export]
+#[must_use]
+pub fn workflow_skills(skill_names: Vec<String>) -> WorkflowSkills {
+    WorkflowSkills {
+        runs: skill_names.iter().any(|name| name == core::WORKFLOW_SKILL),
+        saves: skill_names
+            .iter()
+            .any(|name| name == core::SAVE_WORKFLOW_SKILL),
+    }
+}
+
+/// Markdown as one plain line, for a step's preview in its graph box.
+#[uniffi::export]
+#[must_use]
+pub fn markdown_preview_text(markdown: String) -> String {
+    omnigent_core::markdown_preview::markdown_preview_text(&markdown)
 }
 
 /// The steps laid out as a graph.

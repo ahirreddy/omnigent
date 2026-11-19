@@ -20,4 +20,26 @@ extension ComposerStore {
       return false
     }
   }
+
+  /// Sends a workflow's request ("/workflow …", "/save-workflow …") as the web's dialogs do,
+  /// leaving the draft alone: a skill the server runs goes as one, anything else as a message.
+  /// - Returns: Whether the session took it; a failure is in ``lastError``.
+  @discardableResult
+  public func sendWorkflowMessage(_ message: String) async -> Bool {
+    guard let configuration else { return await sendTaskMessage(message) }
+    let action = OmnigentCoreFFI.slashAction(
+      text: message, hasAttachments: false, configuration: configuration, skills: skills,
+      options: commandOptions)
+    guard case .runSkill(let name, let arguments) = action else {
+      return await sendTaskMessage(message)
+    }
+    do {
+      _ = try await core.runSkill(
+        sessionId: sessionID, text: message, name: name, arguments: arguments)
+      return true
+    } catch {
+      lastError = coreError(error)
+      return false
+    }
+  }
 }

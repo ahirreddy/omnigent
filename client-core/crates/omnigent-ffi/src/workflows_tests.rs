@@ -4,6 +4,22 @@ use super::*;
 use crate::session_journal::TaskAction;
 use crate::test_support::{connected, json as reply};
 
+#[test]
+fn skills_name_their_prefix_and_which_workflow_skills_a_list_offers() {
+    assert_eq!(
+        skill_invocation_prefix(Some("codex-native".to_owned())),
+        "$"
+    );
+    assert_eq!(
+        skill_invocation_prefix(Some("claude-native".to_owned())),
+        "/"
+    );
+    assert_eq!(skill_invocation_prefix(None), "/");
+    let offered = workflow_skills(vec!["workflow".to_owned(), "triage".to_owned()]);
+    assert!(offered.runs && !offered.saves);
+    assert!(workflow_skills(vec!["save-workflow".to_owned()]).saves);
+}
+
 const ID: &str = "0123456789abcdef0123456789abcdef";
 
 fn detail_body(steps: &str) -> String {

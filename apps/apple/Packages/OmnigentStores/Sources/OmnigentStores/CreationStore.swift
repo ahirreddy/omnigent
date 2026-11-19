@@ -61,6 +61,8 @@ public final class CreationStore {
   /// Composer text kept per Add nested agent source, and under `""` a draft handed to the next
   /// new session's page ("Continue in a new session").
   public var composerDrafts: [String: String] = [:]
+  /// A saved workflow the next new session's page runs or plans, handed from the Workflows page.
+  public var workflowLaunch: WorkflowLaunch?
   /// The provisional sidebar rows of the open Add nested agent composers.
   public internal(set) var nestedDrafts: [NestedSessionDraft] = []
 

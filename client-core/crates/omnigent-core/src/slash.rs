@@ -281,6 +281,13 @@ fn skill_prefix(harness: &str) -> &'static str {
     if harness == "codex-native" { "$" } else { "/" }
 }
 
+/// What a harness types before a skill's name: `$` for Codex's own CLI, else `/`
+/// (`skillInvocationPrefix`).
+#[must_use]
+pub fn skill_invocation_prefix(harness: Option<&str>) -> &'static str {
+    skill_prefix(&canonical_harness(harness))
+}
+
 /// The `/` menu for a session: the built-ins it supports first, then its skills.
 #[must_use]
 pub fn slash_commands(
