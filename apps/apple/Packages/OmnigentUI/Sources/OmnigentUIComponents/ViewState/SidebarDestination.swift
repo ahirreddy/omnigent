@@ -10,6 +10,8 @@ nonisolated public enum SidebarDestination: Hashable, Sendable {
   case canvas
   /// Automations (scheduled tasks).
   case automations
+  /// Saved workflows.
+  case workflows
   /// Usage and spend.
   case usage
   /// A project's board, by its folder id (``SessionProject/id``).

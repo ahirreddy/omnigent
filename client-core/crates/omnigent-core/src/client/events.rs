@@ -630,6 +630,48 @@ impl<T: HttpTransport> ClientCore<T> {
         result
     }
 
+    /// Sends `text` to a workflow run's session from a page other than its chat, such as Stop or
+    /// Continue on a run's row. `workflow_run_id` names the run, so the server refuses it once
+    /// the session has started another run. Never retried.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier` before any request; the write errors;
+    /// [`SessionError::MessageDenied`] for a policy denial.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn send_workflow_run_message(
+        &self,
+        session_id: &str,
+        workflow_run_id: &str,
+        text: &str,
+    ) -> Result<MessageSubmission, SessionError> {
+        let result = async {
+            validate_identifier(session_id)?;
+            validate_identifier(workflow_run_id)?;
+            let path = format!("/v1/sessions/{session_id}/events");
+            let mut body = message_body(text, &[]);
+            if let Some(event) = body.as_object_mut() {
+                event.insert("workflow_run_id".to_owned(), json!(workflow_run_id));
+            }
+            let value = self
+                .write_json("POST", &path, &body)
+                .await
+                .map_err(refused_write(session_id))?;
+            match acknowledgement(&value).map_err(|detail| SessionError::DeliveryUncertain {
+                detail: format!("unreadable {path} acknowledgement: {detail}"),
+            })? {
+                Acknowledgement::Accepted(submission) => Ok(submission),
+                Acknowledgement::Denied(reason) => Err(SessionError::MessageDenied { reason }),
+            }
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
     /// Sends `text` alone to a session that is not open here (the Inbox's reply): the same
     /// ledger and cached-row check as [`Self::send_message`], without the live-stream
     /// requirement and without the composer's staged attachments.

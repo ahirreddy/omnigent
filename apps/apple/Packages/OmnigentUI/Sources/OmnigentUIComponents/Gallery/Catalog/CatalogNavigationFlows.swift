@@ -293,7 +293,7 @@ private struct CatalogTabContent: View {
           BrowserSample(tab: tab)
         case .remoteBrowser:
           if let remoteBrowser { remoteBrowser } else { BrowserSample(tab: tab) }
-        case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .project:
+        case .newTab, .newSession, .inbox, .canvas, .automations, .workflows, .usage, .project:
           NewTabPage(
             state: TabsPlaygroundModel.newTabState,
             actions: NewTabPageActions(

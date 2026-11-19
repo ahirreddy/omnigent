@@ -14,6 +14,7 @@ extension ConnectionStore {
   public func reloadOfferedPages() {
     guard let pages, case .connected(let server) = phase else { return }
     pages.offeredBelong(to: "\(server.baseUrl)\n\(server.userId)")
+    workflows?.belong(to: "\(server.baseUrl)\n\(server.userId)")
     offeredPagesReload?.cancel()
     offeredPagesReload = Task { [weak self] in
       var failures = 0

@@ -1,9 +1,17 @@
 import OmnigentPlatform
 public import SwiftUI
 
-/// "Share this automation": the people and groups each run's session is shared with, at Read
-/// access only, as the web's dialog for an automation.
+/// "Share this automation" or "Share this workflow": the people and groups it is shared with,
+/// at Read access only, as the web's dialog for an automation or a workflow.
 nonisolated public struct AutomationShareState: Hashable, Sendable {
+  /// What is shared.
+  public enum Subject: Hashable, Sendable {
+    /// An automation: each run's session goes to the people below.
+    case automation
+    /// A saved workflow: they may view, run and copy it.
+    case workflow
+  }
+
   /// One grantee.
   public struct Person: Hashable, Sendable, Identifiable {
     /// The id or email sent to the server.
@@ -28,12 +36,15 @@ nonisolated public struct AutomationShareState: Hashable, Sendable {
   public var isSaving: Bool
   /// Why the list could not be read or the last change failed.
   public var errorMessage: String?
+  /// What is shared.
+  public var subject: Subject
 
   /// Creates the state.
   public init(
     people: [Person] = [], continuesSession: Bool = false, isLoading: Bool = false,
-    isSaving: Bool = false, errorMessage: String? = nil
+    isSaving: Bool = false, errorMessage: String? = nil, subject: Subject = .automation
   ) {
+    self.subject = subject
     self.people = people
     self.continuesSession = continuesSession
     self.isLoading = isLoading
@@ -71,8 +82,7 @@ public struct AutomationShareSheet: View {
     NavigationStack {
       Form {
         Section {
-          Text("Each run\u{2019}s session is shared with the people below, with Read access.")
-            .foregroundStyle(.secondary)
+          Text(explanation).foregroundStyle(.secondary)
           if state.continuesSession {
             Text(
               "Sharing it replaces the shares on the session it continues with this list, including people added there by hand, even at Edit or Manage. The owner and General access are kept."
@@ -125,7 +135,9 @@ public struct AutomationShareSheet: View {
         }
       }
       .formStyle(.grouped)
-      .navigationTitle("Share this automation")
+      .navigationTitle(
+        state.subject == .workflow ? "Share this workflow" : "Share this automation"
+      )
       .toolbar {
         ToolbarItem(placement: .confirmationAction) {
           Button("Done", action: done).accessibilityIdentifier("automation-share-done")
@@ -137,6 +149,14 @@ public struct AutomationShareSheet: View {
     #endif
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("automation-share-sheet")
+  }
+
+  private var explanation: String {
+    switch state.subject {
+    case .automation: "Each run\u{2019}s session is shared with the people below, with Read access."
+    case .workflow:
+      "The people below can view this workflow, run it and make a copy. Their runs stay private."
+    }
   }
 
   private func submit() {

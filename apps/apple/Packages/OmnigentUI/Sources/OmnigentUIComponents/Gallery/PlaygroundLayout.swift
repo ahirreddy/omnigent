@@ -87,6 +87,8 @@ public struct PlaygroundView: View {
         actions: CanvasActions { id in model.selection = .session(id) })
     case .automations:
       AutomationsView(state: PreviewData.automations, actions: AutomationsActions())
+    case .workflows:
+      WorkflowsView(state: PreviewData.workflows, actions: WorkflowsActions())
     case .usage:
       UsageView(state: PreviewData.usage, actions: UsageActions(formatCost: PreviewData.cost))
     case .project:
@@ -153,6 +155,7 @@ extension PlaygroundModel {
     case .inbox: tab = TabItemState(id: "shell", kind: .inbox, title: "Inbox")
     case .canvas: tab = TabItemState(id: "shell", kind: .canvas, title: "Canvas")
     case .automations: tab = TabItemState(id: "shell", kind: .automations, title: "Automations")
+    case .workflows: tab = TabItemState(id: "shell", kind: .workflows, title: "Workflows")
     case .usage: tab = TabItemState(id: "shell", kind: .usage, title: "Usage")
     case .project:
       tab = TabItemState(id: "shell", kind: .project, title: PreviewData.boardProject.name)

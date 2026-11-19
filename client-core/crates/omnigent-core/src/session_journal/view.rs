@@ -246,7 +246,7 @@ fn history(item: &StepProgress, entries: &[JournalEntry]) -> Vec<TaskHistoryEntr
 }
 
 /// The menu action a task's state offers the viewer (`taskMenuAction`).
-fn action(item: &StepProgress, context: TasksContext) -> Option<TaskAction> {
+pub(crate) fn task_action(item: &StepProgress, context: TasksContext) -> Option<TaskAction> {
     if !context.can_send {
         return None;
     }
@@ -322,7 +322,7 @@ pub fn tasks_view(
                     && (item.state == StepState::Running
                         || (item.state == StepState::NeedsInput
                             && started == Some(StepStatus::Started))),
-                action: action(item, context),
+                action: task_action(item, context),
                 marker_id,
                 failed_names,
                 depends_on_names: item.step.depends_on.iter().map(name_of).collect(),

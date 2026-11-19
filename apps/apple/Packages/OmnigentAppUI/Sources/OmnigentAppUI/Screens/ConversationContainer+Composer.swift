@@ -20,8 +20,20 @@ extension ConversationContainer {
       }
       extras.deleteReviewComment = { id in Task { await panel.deleteLocalComment(id) } }
     }
+    if !ComposerAdapter.isReadOnly(conversation), let workflows {
+      extras.runWorkflow = WorkflowComposerAdapter.runSource(
+        composer: conversation.composer, store: workflows.store, sharing: workflows.sharing,
+        blockedReason: { TasksAdapter.blockedReason(conversation) })
+    }
     extras.liveness.fork = forkSession
     addHostMoves(to: &extras.liveness, sheets: livenessSheets)
     return extras
+  }
+
+  /// The session menu's Fork copies the whole session.
+  func forkable(_ actions: SessionListActions) -> SessionListActions {
+    var actions = actions
+    if let fork = forkSession { actions.fork = { _ in fork() } }
+    return actions
   }
 }

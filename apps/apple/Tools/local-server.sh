@@ -55,6 +55,7 @@ exec env -i \
   OMNIGENT_LOCAL_SINGLE_USER=1 \
   OMNIGENT_SKIP_WEB_UI=true \
   OMNIGENT_NO_UPDATE_CHECK=1 \
+  OMNIGENT_FEATURES="${OMNIGENT_FEATURES:-}" \
   DO_NOT_TRACK=1 \
   "${push_env[@]}" \
   "$repo_dir/.venv/bin/omnigent" server \

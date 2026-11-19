@@ -1,0 +1,62 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workflow_id": "0123456789abcdef0123456789abcdef",
+      "plan_graph_revision": "graph-1",
+      "session_id": "11111111111111111111111111111111",
+      "title": "Triage the upload tests",
+      "started_at": 1762901000,
+      "is_current": true,
+      "session_status": "running",
+      "background_work_running": false,
+      "sandbox_launching": false,
+      "archived": false,
+      "progress": {"total": 3, "started": 1, "done": 1, "needs_input": 0, "failed": 0},
+      "steps": [
+        {"id": "explore", "name": "Explore the failing tests", "goal": null, "depends_on": []},
+        {"id": "rerun", "name": "Rerun the suite", "goal": null, "depends_on": ["explore"]},
+        {"id": "file", "name": "File issues", "goal": null, "depends_on": ["rerun"]}
+      ],
+      "statuses": [
+        {"id": "s1", "position": 1, "created_at": 1762901010, "step": "explore", "kind": "status",
+         "author": {"type": "agent"}, "content": {"status": "done", "graph_revision": "graph-1"}},
+        {"id": "s2", "position": 2, "created_at": 1762901020, "step": "rerun", "kind": "status",
+         "author": {"type": "agent"}, "content": {"status": "started", "graph_revision": "graph-1"}}
+      ],
+      "workflow_name": "Triage flaky tests",
+      "started_by": {"session_id": "22222222222222222222222222222222", "title": "Nightly triage"},
+      "descendant_runs": [
+        {
+          "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "workflow_id": "99999999999999999999999999999999",
+          "plan_graph_revision": 4,
+          "session_id": "33333333333333333333333333333333",
+          "title": "",
+          "started_at": 1762901100,
+          "is_current": true,
+          "session_status": "idle",
+          "sandbox_launching": true,
+          "progress": {"total": 2},
+          "workflow_name": null,
+          "started_by": {"session_id": "11111111111111111111111111111111", "title": "Triage the upload tests"}
+        }
+      ],
+      "descendant_run_count": 3,
+      "descendant_runs_cursor": "cursor-2",
+      "descendant_runs_active": true
+    },
+    {
+      "id": "cccccccccccccccccccccccccccccccc",
+      "workflow_id": "0123456789abcdef0123456789abcdef",
+      "session_id": "44444444444444444444444444444444",
+      "title": "Triage the login tests",
+      "started_at": 1762800000,
+      "session_status": "failed",
+      "archived": true,
+      "progress": {"total": 3, "started": 0, "done": 1, "needs_input": 0, "failed": 1}
+    }
+  ],
+  "next_cursor": "older-runs"
+}

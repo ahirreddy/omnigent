@@ -24,7 +24,12 @@ extension ConnectedServerView {
       )
       .id(sourceID)
     } else {
-      NewSessionContainer(connection: connection, open: open)
+      NewSessionContainer(
+        connection: connection, open: open,
+        openWorkflow: { [connection] id in
+          connection.workflows?.requestedWorkflowID = id
+          selection.wrappedValue = .workflows
+        })
     }
   }
 

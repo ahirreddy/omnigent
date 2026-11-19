@@ -57,6 +57,7 @@ struct PaletteAdapter: ViewModifier {
       hasNextRequest: !connection.sessionList.needsResponse.isEmpty)
     // Gated as the sidebar rows are, on what the server offers.
     state.showsAutomations = connection.pages?.offered?.automations == true
+    state.showsWorkflows = connection.pages?.offered?.workflows == true
     state.showsUsage = connection.pages?.offered?.usage == true
     state.offersNestedAgents = NestedAgentGate.offered(connection)
     return state
@@ -121,6 +122,7 @@ struct PaletteAdapter: ViewModifier {
     case .newSession: .newSession
     case .inbox: .inbox
     case .automations: .automations
+    case .workflows: .workflows
     case .usage: .usage
     case .session(let id): .session(id)
     default: nil
@@ -152,7 +154,8 @@ struct PaletteAdapter: ViewModifier {
       #else
         sidebarToggle()
       #endif
-    case .newSession, .inbox, .automations, .usage, .session, .findSession, .switchServer,
+    case .newSession, .inbox, .automations, .workflows, .usage, .session, .findSession,
+      .switchServer,
       .changes, .composer, .toggleTerminal, .toggleInspector:
       break
     }

@@ -18,6 +18,8 @@ nonisolated public enum PaletteTarget: Hashable, Sendable {
   case inbox
   /// Open Automations.
   case automations
+  /// Open Workflows.
+  case workflows
   /// Open Usage.
   case usage
   /// Open Settings.
@@ -106,6 +108,8 @@ nonisolated public struct PaletteViewState: Hashable, Sendable {
   public var hasNextRequest: Bool
   /// The server offers Automations, as the sidebar row is shown.
   public var showsAutomations = false
+  /// The server offers Workflows.
+  public var showsWorkflows = false
   /// The server offers Usage, as the sidebar row is shown.
   public var showsUsage = false
   /// The server can add nested agents, so the shortcut guide lists Option-Command-A.

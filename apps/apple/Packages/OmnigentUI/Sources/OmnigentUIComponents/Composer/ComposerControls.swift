@@ -8,6 +8,7 @@ struct AddMenu: View {
   let chooseFiles: () -> Void
   let choosePhotos: () -> Void
   let paste: ([NSItemProvider]) -> Void
+  @State private var runsWorkflow = false
 
   var body: some View {
     Menu {
@@ -18,7 +19,9 @@ struct AddMenu: View {
           .disabled(!canAttach)
         PasteButton(supportedContentTypes: [.fileURL, .image], payloadAction: paste)
       }
-      if extras.newSideChat != nil || extras.setGoal != nil || extras.togglePlan != nil {
+      if extras.newSideChat != nil || extras.setGoal != nil || extras.togglePlan != nil
+        || extras.runWorkflow != nil
+      {
         Section("Session") {
           if let newSideChat = extras.newSideChat {
             Button(
@@ -32,6 +35,10 @@ struct AddMenu: View {
             Toggle(isOn: Binding(get: { extras.isPlanOn }, set: { _ in togglePlan() })) {
               Label("Plan", systemImage: "checklist")
             }
+          }
+          if extras.runWorkflow != nil {
+            Button("Run a workflow\u{2026}", systemImage: "flowchart") { runsWorkflow = true }
+              .accessibilityIdentifier("composer-run-workflow")
           }
         }
       }
@@ -47,6 +54,11 @@ struct AddMenu: View {
     .accessibilityLabel("Add")
     .accessibilityHint("Attaches files or images, or starts a side chat, goal or plan")
     .accessibilityIdentifier("composer-add")
+    .sheet(isPresented: $runsWorkflow) {
+      if let source = extras.runWorkflow {
+        RunWorkflowSheet(source: source) { runsWorkflow = false }
+      }
+    }
   }
 }
 

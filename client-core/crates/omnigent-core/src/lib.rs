@@ -53,6 +53,7 @@ pub mod sse;
 pub mod terminal;
 #[cfg(test)]
 pub(crate) mod testing;
+pub mod workflows;
 pub mod workspace;
 pub mod workspace_store;
 

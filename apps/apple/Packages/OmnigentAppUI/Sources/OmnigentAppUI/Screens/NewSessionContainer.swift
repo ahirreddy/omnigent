@@ -24,6 +24,8 @@ struct NewSessionContainer: View {
   let project: ProjectSummary?
   /// Only the composer, floated over a project's board.
   let isFloating: Bool
+  /// Opens the Workflows page on a workflow, after its planning chat starts or Cancel.
+  let openWorkflow: (@MainActor (String) -> Void)?
 
   @State private var draft = ""
   @State private var form: NewSessionForm
@@ -51,8 +53,10 @@ struct NewSessionContainer: View {
     nestedSourceID: String? = nil, open: @escaping @MainActor (String) -> Void,
     openWithNotice: (@MainActor (String, String) -> Void)? = nil,
     continueInNewSession: (@MainActor () -> Void)? = nil,
-    project: ProjectSummary? = nil, isFloating: Bool = false
+    project: ProjectSummary? = nil, isFloating: Bool = false,
+    openWorkflow: (@MainActor (String) -> Void)? = nil
   ) {
+    self.openWorkflow = openWorkflow
     self.connection = connection
     self.open = open
     self.nestedSourceID = nestedSourceID
@@ -110,18 +114,16 @@ struct NewSessionContainer: View {
         submitWithCommandReturn: composerPreferences.submitWithCommandReturn),
       actions: actions(creation),
       // The web's hero: a nested agent's, the project's name, else "What should we build?".
-      heading: form.heading, subtitle: form.nested?.subtitle,
+      heading: form.heading, subtitle: form.nested?.subtitle ?? form.workflowSubtitle,
       importSessions: importSessions(openURL, openSettingsAt),
       options: form.options(creation, projects: connection.sessionList.projects),
-      optionActions: optionActions(creation), isFloating: isFloating
+      optionActions: optionActions(creation), isFloating: isFloating,
+      workflow: form.workflowControls(clearDraft: { draft = "" }, openWorkflow: openWorkflow)
     )
     .modifier(
       NewSessionLifecycle(
         form: form, creation: creation, connection: connection,
-        opened: { sessionID in
-          finish(creation)
-          open(sessionID)
-        },
+        opened: { opened($0, creation) },
         openedUnfinished: openUnfinished(creation))
     )
     .onChange(of: draft) {
@@ -132,6 +134,7 @@ struct NewSessionContainer: View {
       let request = form.skillsRequest(creation)
       await launch?.loadSkills(request.target, unavailable: request.unavailable)
     }
+    .onChange(of: creation.workflowLaunch) { takeWorkflowLaunch(creation) }
     .onChange(of: creation.worktrees, initial: true) { form.seedWorktree(creation) }
     .onChange(of: alwaysUseWorktree) { form.seedWorktree(creation) }
     .sheet(
@@ -314,6 +317,7 @@ extension NewSessionContainer {
   private func begin(_ creation: CreationStore) async {
     guard let nestedSourceID else {
       if let handed = creation.composerDrafts.removeValue(forKey: "") { draft = handed }
+      takeWorkflowLaunch(creation)
       await form.load(creation)
       if let project { await form.applyProject(project, creation) }
       return
@@ -321,6 +325,19 @@ extension NewSessionContainer {
     form.nested = NestedComposer(sourceID: nestedSourceID)
     draft = creation.composerDrafts[nestedSourceID] ?? ""
     await form.loadNested(creation)
+  }
+
+  /// A created session opens, except a planning chat: its workflow's page opens with it.
+  private func opened(_ sessionID: String, _ creation: CreationStore) {
+    let planned = form.planningStarted(
+      sessionID, workflows: connection.workflows, openWorkflow: openWorkflow)
+    finish(creation)
+    if !planned { open(sessionID) }
+  }
+
+  /// A workflow the Workflows page asked to run or plan; a planning chat's prompt is the draft.
+  private func takeWorkflowLaunch(_ creation: CreationStore) {
+    if let prompt = form.takeWorkflowLaunch(creation) { draft = prompt }
   }
 
   /// Keeps a nested composer's text under its source, so it comes back with the composer.
@@ -332,6 +349,7 @@ extension NewSessionContainer {
   /// A created session takes the draft with it.
   private func finish(_ creation: CreationStore) {
     if let sourceID = form.nested?.sourceID { creation.composerDrafts[sourceID] = nil }
+    form.clearWorkflow()
     draft = ""
     launch?.clearMentions()
   }

@@ -8,6 +8,7 @@ public import SwiftUI
 public struct TasksPanel: View {
   private let content: TasksPanelContent
   @State private var flashed: String?
+  @State private var runsWorkflow = false
 
   /// The tab.
   /// - Parameter content: What it shows and does.
@@ -39,7 +40,19 @@ public struct TasksPanel: View {
         ContentUnavailableView {
           Label("No tasks yet", systemImage: "checklist")
         } description: {
-          Text("Tasks show up here when the agent makes a to-do list.")
+          if content.runWorkflow != nil {
+            Text("Tasks show up here when the agent makes a to-do list or you run a workflow.")
+          } else {
+            Text("Tasks show up here when the agent makes a to-do list.")
+          }
+        } actions: {
+          if let source = content.runWorkflow {
+            Button("Run a workflow") { runsWorkflow = true }
+              .accessibilityIdentifier("tasks-run-workflow")
+              .sheet(isPresented: $runsWorkflow) {
+                RunWorkflowSheet(source: source) { runsWorkflow = false }
+              }
+          }
         }
         .accessibilityIdentifier("tasks-empty")
       case .loaded(let list):
@@ -99,6 +112,7 @@ private struct TasksHeader: View {
   let list: TaskListState
   let content: TasksPanelContent
   let select: (String) -> Void
+  @State private var savesWorkflow = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
@@ -128,6 +142,29 @@ private struct TasksHeader: View {
   }
 
   @ViewBuilder private var controls: some View {
+    runControl
+    if let graph = content.graph { TasksGraphButton(graph: graph, title: list.planName) }
+    if let save = content.saveAsWorkflow {
+      Menu {
+        Button("Save as workflow\u{2026}", systemImage: "flowchart") { savesWorkflow = true }
+          .disabled(save.disabledReason != nil)
+          .help(save.disabledReason ?? "")
+          .accessibilityIdentifier("tasks-save-workflow")
+      } label: {
+        Image(systemName: "ellipsis").accessibilityLabel("Plan actions")
+      }
+      .menuStyle(.button)
+      .buttonStyle(.borderless)
+      .menuIndicator(.hidden)
+      .fixedSize()
+      .accessibilityIdentifier("tasks-plan-menu")
+      .sheet(isPresented: $savesWorkflow) {
+        SaveWorkflowSheet(source: save) { savesWorkflow = false }
+      }
+    }
+  }
+
+  @ViewBuilder private var runControl: some View {
     if list.isStopping {
       // Stop was taken; the run winds down before Continue shows.
       Label {
@@ -168,6 +205,38 @@ private struct TasksHeader: View {
     return pieces.reduce(Text(verbatim: "")) { Text("\($0)\($1)") }
       .font(.callout)
       .accessibilityIdentifier("tasks-summary")
+  }
+}
+
+/// View the plan on the graph: the plan's steps by dependency, in a sheet.
+private struct TasksGraphButton: View {
+  let graph: WorkflowGraphState
+  let title: String?
+  @State private var showsGraph = false
+
+  var body: some View {
+    Button("View the plan on the graph", systemImage: "arrow.up.left.and.arrow.down.right") {
+      showsGraph = true
+    }
+    .labelStyle(.iconOnly)
+    .buttonStyle(.borderless)
+    .help("View the plan on the graph")
+    .accessibilityIdentifier("tasks-plan-graph")
+    .sheet(isPresented: $showsGraph) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+        HStack {
+          Text(title ?? "Plan").font(.headline)
+          Spacer()
+          Button("Done") { showsGraph = false }.keyboardShortcut(.cancelAction)
+        }
+        WorkflowStepsGraph(graph: graph)
+      }
+      .padding(Theme.Spacing.large)
+      #if os(macOS)
+        .frame(minWidth: 560, idealWidth: 720, minHeight: 420)
+      #endif
+      .accessibilityIdentifier("tasks-graph-sheet")
+    }
   }
 }
 

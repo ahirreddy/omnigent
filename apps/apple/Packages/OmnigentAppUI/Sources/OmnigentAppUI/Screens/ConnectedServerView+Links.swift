@@ -44,6 +44,9 @@ extension ConnectedServerView {
       case .automation(let id):
         session.connection.pages?.requestedAutomationID = id
         selection.wrappedValue = .automations
+      case .workflow(let id):
+        session.connection.workflows?.requestedWorkflowID = id
+        selection.wrappedValue = .workflows
       case .settings(let section):
         guard let openSettings else { return await fallback.open(url) }
         openSettings(DeepLinkDestinations.settings(section: section, server: settingsServer))

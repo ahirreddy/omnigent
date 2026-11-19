@@ -33,6 +33,8 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
   case page(DeepLinkPage)
   /// One automation's page, `omnigent://host/tasks/<automationID>`.
   case automation(id: String)
+  /// One saved workflow's page, `omnigent://host/workflows/<workflowID>`.
+  case workflow(id: String)
   /// Settings, `omnigent://host/settings` or `/settings/<section>` with the web's section ids
   /// (`appearance`, `mcp`, `archived`...).
   case settings(section: String?)
@@ -46,6 +48,7 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
     case .register: "/register"
     case .page(let page): "/\(page.rawValue)"
     case .automation(let id): "/tasks/\(id)"
+    case .workflow(let id): "/workflows/\(id)"
     case .settings(let section): section.map { "/settings/\($0)" } ?? "/settings"
     }
   }
@@ -54,7 +57,7 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
   public var sessionID: String? {
     switch self {
     case .conversation(let sessionID), .message(let sessionID, _): sessionID
-    case .home, .register, .page, .automation, .settings: nil
+    case .home, .register, .page, .automation, .workflow, .settings: nil
     }
   }
 
@@ -74,6 +77,8 @@ nonisolated public enum DeepLinkPage: String, Hashable, Sendable, CaseIterable {
   case inbox
   /// `/tasks`, the automations.
   case automations = "tasks"
+  /// `/workflows`.
+  case workflows
   /// `/usage`.
   case usage
   /// `/canvas`.
@@ -152,7 +157,8 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
 
   /// `""` and `/` are home; `/c/<id>` and `/c/<id>/` are a conversation, or one of its messages
   /// with a non-empty `message`; `/register` with a non-empty `invite` is an invite; `/new`,
-  /// `/inbox`, `/tasks`, `/usage` and `/canvas` are pages, and `/tasks/<id>` one automation;
+  /// `/inbox`, `/tasks`, `/workflows`, `/usage` and `/canvas` are pages, `/tasks/<id>` one
+  /// automation and `/workflows/<id>` one workflow;
   /// `/settings` with an optional section (and a harness, dropped) is Settings.
   private static func route(_ path: Substring, query: Substring) throws(DeepLinkError)
     -> DeepLinkRoute
@@ -187,11 +193,12 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
     return route
   }
 
-  /// `/tasks/<id>` and `/c/<id>`, the latter with an optional `message`.
+  /// `/tasks/<id>`, `/workflows/<id>` and `/c/<id>`, the latter with an optional `message`.
   private static func item(_ segments: [Substring], query: Substring) -> DeepLinkRoute? {
     guard let id = identifier(segments[2]) else { return nil }
     switch segments[1] {
     case "tasks": return .automation(id: id)
+    case "workflows": return .workflow(id: id)
     case "c":
       if let messageID = queryValue("message", in: query), !messageID.isEmpty {
         return .message(sessionID: id, messageID: messageID)

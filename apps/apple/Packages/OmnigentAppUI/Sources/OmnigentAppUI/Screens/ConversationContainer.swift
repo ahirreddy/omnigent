@@ -18,6 +18,8 @@ struct ConversationContainer: View {
   let panel: SessionPanelStore?
   /// The Tasks tab's journal.
   var tasks: SessionTasksStore?
+  /// The saved workflows Run a workflow offers, where the server keeps them.
+  var workflows: TasksAdapter.Workflows?
   /// The window's message focus, where a task's Show in the chat scrolls.
   var transcriptFocus: TranscriptFocus?
   /// The file changes that reached this chat's workspace, read by ``ChangedFilesFollower`` and
@@ -283,13 +285,6 @@ struct ConversationContainer: View {
       actions.openSession = tabRoutes.openSession
     }
     SessionToolsAdapter.addSelectionActions(to: &actions, store: conversation, routes: toolRoutes)
-    return actions
-  }
-
-  /// The session menu's Fork copies the whole session.
-  func forkable(_ actions: SessionListActions) -> SessionListActions {
-    var actions = actions
-    if let fork = forkSession { actions.fork = { _ in fork() } }
     return actions
   }
 

@@ -205,6 +205,8 @@ public struct ComposerExtraActions {
   public var newSideChat: (@MainActor () -> Void)?
   /// Set a goal (Add menu).
   public var setGoal: (@MainActor () -> Void)?
+  /// Run a workflow, where the agent has the workflow skill and the server workflows.
+  public var runWorkflow: WorkflowRunSource?
   /// Toggle plan mode (Add menu); the current value.
   public var togglePlan: (@MainActor () -> Void)?
   /// Plan mode is on.

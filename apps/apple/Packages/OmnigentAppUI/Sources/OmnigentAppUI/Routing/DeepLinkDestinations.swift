@@ -12,6 +12,7 @@ public enum DeepLinkDestinations {
     case .newSession: .newSession
     case .inbox: .inbox
     case .automations: .automations
+    case .workflows: .workflows
     case .usage: .usage
     case .canvas: .canvas
     }

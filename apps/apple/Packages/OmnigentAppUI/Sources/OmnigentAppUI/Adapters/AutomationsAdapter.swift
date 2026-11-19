@@ -88,6 +88,9 @@ struct AutomationsAdapter: View {
         }
         .onAppear { openPendingSource(pages) }
         .onChange(of: pages.pendingAutomationSource) { openPendingSource(pages) }
+        .onChange(of: connection.workflows?.pendingAutomation, initial: true) {
+          openPendingWorkflow(pages)
+        }
         .sheet(item: $editing) { target in editor(pages, target: target) }
         .sheet(item: $sharing) { target in shareSheet(pages, target: target) }
         .transientBanner($banner)
@@ -300,6 +303,16 @@ struct AutomationsAdapter: View {
 /// Opening and saving the editor.
 extension AutomationsAdapter {
   /// Opens the editor on the session a menu asked to make an automation from.
+  /// New automation from a workflow (the Workflows page's Create automation): named for it, each
+  /// run a new session that runs it as saved.
+  private func openPendingWorkflow(_ pages: PagesStore) {
+    guard let workflow = connection.workflows?.pendingAutomation else { return }
+    connection.workflows?.pendingAutomation = nil
+    detailID = nil
+    draft = AutomationsMapping.workflowDraft(workflow, catalog: pages.automationCatalog.value)
+    present(id: "")
+  }
+
   private func openPendingSource(_ pages: PagesStore) {
     guard let source = pages.takePendingAutomationSource() else { return }
     detailID = nil

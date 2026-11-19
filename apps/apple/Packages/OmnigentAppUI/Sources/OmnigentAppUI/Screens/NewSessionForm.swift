@@ -53,6 +53,8 @@ final class NewSessionForm {
   @ObservationIgnored var didReadMcpServices = false
   /// The source of an Add nested agent composer; `nil` for a new session.
   var nested: NestedComposer?
+  /// The saved workflow the session runs or plans; `nil` for an ordinary session.
+  var workflow: NewSessionWorkflow?
 
   /// The selected agent in `creation`'s catalog.
   func selectedAgent(_ creation: CreationStore?) -> OmnigentCoreFFI.CreationAgent? {
@@ -202,16 +204,17 @@ final class NewSessionForm {
     // A first-class project files the session at creation; a label-only one is moved after.
     selection.projectId = project?.id
     selection.mcpRegistryServices = mcpLaunchServices(creation)
-    let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    let (title, message) = workflowStart(text: text, selection: &selection)
     if isSandbox {
       let target = sandbox.target(creation.catalog.value)
       Task {
-        await creation.createInSandbox(selection, target: target, title: title, firstMessage: text)
+        await creation.createInSandbox(
+          selection, target: target, title: title, firstMessage: message)
       }
     } else if let draft = pendingAgent, selection.agentId == Self.pendingAgentID {
-      Task { await creation.create(agent: draft, selection, firstMessage: text) }
+      Task { await creation.create(agent: draft, selection, firstMessage: message) }
     } else {
-      Task { await creation.create(selection, title: title, firstMessage: text) }
+      Task { await creation.create(selection, title: title, firstMessage: message) }
     }
   }
 

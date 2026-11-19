@@ -92,6 +92,11 @@ pub struct ServerPages {
     pub automation_approval_skipping_modes: bool,
     /// `session_create_permission_modes`: a trigger's workers can take a permission mode.
     pub session_create_permission_modes: bool,
+    /// The `workflows` feature and `workflows`: saved workflows, their pages and Run a workflow.
+    pub workflows: bool,
+    /// `workflow_sharing` on a multi-user server with workflows: a workflow can be shared, and
+    /// the Workflows page lists those shared with the caller.
+    pub workflow_sharing: bool,
 }
 
 impl ServerPages {
@@ -123,7 +128,10 @@ impl ServerPages {
                 .iter()
                 .any(|entry| entry.as_str() == Some("mcp"))
         });
+        let workflows = feature("workflows")? && flag("workflows")?;
         Ok(Self {
+            workflows,
+            workflow_sharing: workflows && flag("workflow_sharing")? && !single_user,
             automation_subhour: flag("scheduled_task_subhour")?,
             automation_trigger_headers: flag("scheduled_task_trigger_headers")?,
             automation_trigger_poll_minutes: count("automation_trigger_poll_minutes")?
@@ -993,7 +1001,7 @@ pub fn describe_run_failure(
     (Some(known.0), known.1)
 }
 
-/// One person or group an automation is shared with, at read access.
+/// One person or group an automation or a saved workflow is shared with, at read access.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AutomationGrant {
     /// The grantee's id or email.
@@ -1002,10 +1010,10 @@ pub struct AutomationGrant {
     pub display_name: String,
 }
 
-/// The only level an automation can be shared at: read.
+/// The only level an automation or a saved workflow can be shared at: read.
 const LEVEL_READ: u8 = 1;
 
-/// The most grant pages read from one automation.
+/// The most grant pages read from one automation or workflow.
 const MAX_GRANT_PAGES: usize = 10;
 
 fn grant_from(value: &Value) -> Result<AutomationGrant, String> {
@@ -1377,41 +1385,54 @@ impl<T: HttpTransport> ClientCore<T> {
     pub async fn automation_grants(&self, id: &str) -> Result<Vec<AutomationGrant>, SessionError> {
         let result = async {
             validate_identifier(id)?;
-            let path = format!("/v1/scheduled-tasks/{id}/permissions");
-            let mut grants = Vec::new();
-            let mut cursors = std::collections::BTreeSet::new();
-            let mut after: Option<String> = None;
-            for _ in 0..MAX_GRANT_PAGES {
-                let query: Vec<(&str, String)> = after
-                    .iter()
-                    .map(|cursor| ("after", cursor.clone()))
-                    .collect();
-                let value = self.get_json(&path, &query).await?;
-                let object = as_object(&value, &path).map_err(malformed(&path))?;
-                for row in opt_array(object, "permissions")
-                    .map_err(malformed(&path))?
-                    .ok_or_else(|| malformed(&path)("`permissions` is missing".into()))?
-                {
-                    let level = as_object(row, "permission")
-                        .and_then(|grant| opt_u64(grant, "level"))
-                        .map_err(malformed(&path))?;
-                    // The owner's own grant can't be changed here.
-                    if level.is_some_and(|level| level >= 4) {
-                        continue;
-                    }
-                    grants.push(grant_from(row).map_err(malformed(&path))?);
-                }
-                match opt_str(object, "next_cursor").map_err(malformed(&path))? {
-                    None => return Ok(grants),
-                    Some(cursor) if cursors.insert(cursor.clone()) => after = Some(cursor),
-                    Some(_) => return Err(SessionError::InvalidPagination),
-                }
-            }
-            Ok(grants)
+            self.read_grants(&format!("/v1/scheduled-tasks/{id}/permissions"))
+                .await
         }
         .await;
         self.dispatch();
         result
+    }
+
+    /// The read-access grants at `path`, a resource's `permissions`, following `next_cursor`.
+    /// The owner's own grant isn't listed.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(super) async fn read_grants(
+        &self,
+        path: &str,
+    ) -> Result<Vec<AutomationGrant>, SessionError> {
+        let mut grants = Vec::new();
+        let mut cursors = std::collections::BTreeSet::new();
+        let mut after: Option<String> = None;
+        for _ in 0..MAX_GRANT_PAGES {
+            let query: Vec<(&str, String)> = after
+                .iter()
+                .map(|cursor| ("after", cursor.clone()))
+                .collect();
+            let value = self.get_json(path, &query).await?;
+            let object = as_object(&value, path).map_err(malformed(path))?;
+            for row in opt_array(object, "permissions")
+                .map_err(malformed(path))?
+                .ok_or_else(|| malformed(path)("`permissions` is missing".into()))?
+            {
+                let level = as_object(row, "permission")
+                    .and_then(|grant| opt_u64(grant, "level"))
+                    .map_err(malformed(path))?;
+                // The owner's own grant can't be changed here.
+                if level.is_some_and(|level| level >= 4) {
+                    continue;
+                }
+                grants.push(grant_from(row).map_err(malformed(path))?);
+            }
+            match opt_str(object, "next_cursor").map_err(malformed(path))? {
+                None => return Ok(grants),
+                Some(cursor) if cursors.insert(cursor.clone()) => after = Some(cursor),
+                Some(_) => return Err(SessionError::InvalidPagination),
+            }
+        }
+        Ok(grants)
     }
 
     /// Shares automation `id` with `user_id` at read access, as the web's dialog does; its
@@ -1432,14 +1453,27 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<(), SessionError> {
         let result = async {
             validate_identifier(id)?;
-            super::share::validate_grantee(user_id)?;
-            let path = format!("/v1/scheduled-tasks/{id}/permissions");
-            let body = json!({"user_id": user_id.trim(), "level": LEVEL_READ});
-            self.write_json("PUT", &path, &body).await.map(|_| ())
+            self.grant_read_access(&format!("/v1/scheduled-tasks/{id}/permissions"), user_id)
+                .await
         }
         .await;
         self.dispatch();
         result
+    }
+
+    /// Grants `user_id` read access at `path`, a resource's `permissions`. Never retried.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(super) async fn grant_read_access(
+        &self,
+        path: &str,
+        user_id: &str,
+    ) -> Result<(), SessionError> {
+        super::share::validate_grantee(user_id)?;
+        let body = json!({"user_id": user_id.trim(), "level": LEVEL_READ});
+        self.write_json("PUT", path, &body).await.map(|_| ())
     }
 
     /// Stops sharing automation `id` with `user_id`. Never retried.
@@ -1458,15 +1492,29 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<(), SessionError> {
         let result = async {
             validate_identifier(id)?;
-            super::share::validate_grantee(user_id)?;
-            let path = format!("/v1/scheduled-tasks/{id}/permissions/{}", user_id.trim());
-            self.write(self.prepare("DELETE", &path, &[], None)?)
+            self.revoke_access(&format!("/v1/scheduled-tasks/{id}/permissions"), user_id)
                 .await
-                .map(|_| ())
         }
         .await;
         self.dispatch();
         result
+    }
+
+    /// Removes `user_id`'s grant at `path`, a resource's `permissions`. Never retried.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(super) async fn revoke_access(
+        &self,
+        path: &str,
+        user_id: &str,
+    ) -> Result<(), SessionError> {
+        super::share::validate_grantee(user_id)?;
+        let path = format!("{path}/{}", user_id.trim());
+        self.write(self.prepare("DELETE", &path, &[], None)?)
+            .await
+            .map(|_| ())
     }
 
     /// The hosts that deliver long session messages (`long_session_messages_supported` in

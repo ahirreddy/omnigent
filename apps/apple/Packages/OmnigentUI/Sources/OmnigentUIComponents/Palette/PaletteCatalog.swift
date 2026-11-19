@@ -53,7 +53,7 @@ enum PaletteCatalog {
     return entries
   }
 
-  /// Automations and Usage, when the server offers them.
+  /// Automations, Workflows and Usage, when the server offers them.
   private static func pages(_ state: PaletteViewState) -> [PaletteEntry] {
     var pages: [PaletteEntry] = []
     if state.showsAutomations {
@@ -61,6 +61,12 @@ enum PaletteCatalog {
         PaletteEntry(
           id: "automations", title: "Go to Automations", detail: state.scope, symbol: "clock",
           keywords: ["scheduled", "recurring", "cron"], target: .automations))
+    }
+    if state.showsWorkflows {
+      pages.append(
+        PaletteEntry(
+          id: "workflows", title: "Go to Workflows", detail: state.scope, symbol: "flowchart",
+          keywords: ["plan", "steps", "routine"], target: .workflows))
     }
     if state.showsUsage {
       pages.append(

@@ -365,6 +365,7 @@ extension PlaygroundModel {
     case .inbox: "Inbox"
     case .canvas: "Canvas"
     case .automations: "Automations"
+    case .workflows: "Workflows"
     case .usage: "Usage"
     case .project: PreviewData.boardProject.name
     case .newSession, .nestedSession, nil: ""

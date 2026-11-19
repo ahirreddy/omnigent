@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The sidebar's top rows: New session, Automations, Inbox, Canvas, Usage, and the native quick
-/// filters (Running, Needs you). While the server's pages can't be read, a quiet row says so.
+/// The sidebar's top rows: New session, Automations, Workflows, Inbox, Canvas, Usage, and the
+/// native quick filters (Running, Needs you). While the server's pages can't be read, a quiet row
+/// says so.
 struct SidebarNavigationRows: View {
   let state: SidebarViewState
   let selection: SidebarDestination?
@@ -21,6 +22,13 @@ struct SidebarNavigationRows: View {
         .tag(SidebarDestination.automations)
         .sidebarSelection(selection == .automations)
         .accessibilityIdentifier("sidebar-automations")
+    }
+    if state.showsWorkflows {
+      Label("Workflows", systemImage: "flowchart")
+        .neutralSidebarIcon()
+        .tag(SidebarDestination.workflows)
+        .sidebarSelection(selection == .workflows)
+        .accessibilityIdentifier("sidebar-workflows")
     }
     if let failure = state.pagesFailure {
       SidebarPagesFailureRow(failure: failure, retry: actions.retryPages)

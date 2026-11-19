@@ -209,6 +209,9 @@ pub struct CreationSelection {
     /// Server-configured MCP services the session starts with (from `launch_mcp_services`).
     #[uniffi(default)]
     pub mcp_registry_services: Vec<String>,
+    /// The saved workflow the session runs, so it lists among the workflow's runs.
+    #[uniffi(default)]
+    pub workflow_id: Option<String>,
 }
 
 /// The `git` block of a new external-host session.
@@ -423,6 +426,7 @@ impl From<CreationSelection> for core::CreationSelection {
             project_id: selection.project_id,
             smart_routing: selection.smart_routing,
             mcp_registry_services: selection.mcp_registry_services,
+            workflow_id: selection.workflow_id,
         }
     }
 }

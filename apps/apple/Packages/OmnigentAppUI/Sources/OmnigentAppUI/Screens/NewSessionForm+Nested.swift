@@ -86,7 +86,9 @@ extension NewSessionForm {
 
   /// The heading: a nested agent's, the project's name, else the web's question.
   var heading: String {
-    nested != nil ? NestedComposer.heading : project?.name ?? NewSessionPage.defaultHeading
+    nested != nil
+      ? NestedComposer.heading
+      : workflowHeading ?? project?.name ?? NewSessionPage.defaultHeading
   }
 
   /// Opens the composer beside its source: the catalog again for the server's current policy,

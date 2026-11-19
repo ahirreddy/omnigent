@@ -64,6 +64,15 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case projectBoardEmpty = "project-board-empty"
   case projectBoardQuickView = "project-board-quick-view"
   case projectBoardComposer = "project-board-composer"
+  case workflowsList = "workflows-list"
+  case workflowsEmpty = "workflows-empty"
+  case workflowNew = "workflows-new"
+  case workflowDetail = "workflows-detail"
+  case workflowDetailProposal = "workflows-detail-proposal"
+  case workflowDetailDraft = "workflows-detail-draft"
+  case workflowDetailShared = "workflows-detail-shared"
+  case workflowRunSheet = "workflows-run-sheet"
+  case workflowTasks = "workflows-tasks"
   /// The connection line while the core restores the connection, once retrying stopped, the
   /// moment it is back, and the saved copy shown offline.
   case connectionReconnecting = "connection-reconnecting"
@@ -86,6 +95,12 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .prChanges, .prFind, .prCommits, .inboxSuggestion, .inboxFailure: 900
     case .viewersTable, .viewersTableFiltered: 820
     case .projectBoard, .projectBoardEmpty, .projectBoardQuickView, .projectBoardComposer: 1_360
+    case .workflowDetailDraft: 1_240
+    case .workflowsList, .workflowsEmpty, .workflowDetail, .workflowDetailProposal,
+      .workflowDetailShared:
+      960
+    case .workflowNew, .workflowRunSheet: 560
+    case .workflowTasks: 480
     case .composerMcp, .markersChat, .viewersPDF, .viewersVideo, .viewersChatVideo: 736
     case .composerRewind, .tasksPlan, .tasksStopping, .prFileHeader: 480
     case .tasksHistory: 420
@@ -115,6 +130,12 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .viewersPDF: 520
     case .viewersTable, .viewersTableFiltered: 480
     case .projectBoard, .projectBoardEmpty, .projectBoardQuickView, .projectBoardComposer: 780
+    case .workflowsList, .workflowsEmpty: 720
+    case .workflowDetail, .workflowDetailProposal, .workflowDetailShared: 1_280
+    case .workflowDetailDraft: 760
+    case .workflowNew: 440
+    case .workflowRunSheet: 480
+    case .workflowTasks: 560
     default: nil
     }
   }
@@ -182,6 +203,9 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .viewersTableFiltered: return AnyView(Fixture.dataTableFiltered)
     case .projectBoard, .projectBoardEmpty, .projectBoardQuickView, .projectBoardComposer:
       return AnyView(LookFixtures.board(self))
+    case .workflowsList, .workflowsEmpty, .workflowNew, .workflowDetail, .workflowDetailProposal,
+      .workflowDetailDraft, .workflowDetailShared, .workflowRunSheet, .workflowTasks:
+      return LookFixtures.workflows(self)
     case .connectionReconnecting, .connectionUnreachable, .connectionReconnected,
       .connectionOffline:
       return AnyView(LookFixtures.connection(self))

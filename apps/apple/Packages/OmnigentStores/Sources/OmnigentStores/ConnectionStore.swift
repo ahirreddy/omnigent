@@ -82,6 +82,8 @@ public final class ConnectionStore {
   public let pages: PagesStore?
   /// The Canvas page's sessions and layout; `nil` when the core did not start.
   public let canvas: CanvasStore?
+  /// Saved workflows; `nil` when the core did not start.
+  public let workflows: WorkflowsStore?
   /// Keeps composer drafts across launches; `nil` keeps them in memory only.
   public var draftArchive: ComposerDraftArchive? {
     didSet { markSavedDrafts() }
@@ -114,6 +116,7 @@ public final class ConnectionStore {
     browserActions = BrowserActionStore(core: core)
     pages = PagesStore(core: core)
     canvas = CanvasStore(core: core)
+    workflows = WorkflowsStore(core: core)
     sessionList.core = core
     sessionList.eventsBeforeAnswer = { [weak self] in await self?.eventsSentSoFarApplied() }
     _ = core.subscribe(listener: relay)
@@ -127,6 +130,7 @@ public final class ConnectionStore {
     browserActions = nil
     pages = nil
     canvas = nil
+    workflows = nil
     record(scope: .connection, startupError)
     phase = .failed(serverUrl: "", error: startupError)
   }
@@ -163,36 +167,6 @@ public final class ConnectionStore {
     offeredPagesReload?.cancel()
     relay.finish()
     core?.shutdown()
-  }
-
-  /// Whether discovery is in flight.
-  public var isLoading: Bool { if case .loading = state { true } else { false } }
-
-  /// Whether discovery succeeded and the server is usable.
-  public var isConnected: Bool { discovery != nil }
-
-  /// Whether the core is connected and signed in.
-  public var isSignedIn: Bool {
-    if case .connected = phase { return true }
-    return false
-  }
-
-  /// The server the core is connected to.
-  public var connectedServer: ConnectedServer? {
-    if case .connected(let server) = phase { return server }
-    return nil
-  }
-
-  /// The discovered server, when connected.
-  public var discovery: ServerDiscovery? {
-    if case .connected(let discovery) = state { return discovery }
-    return nil
-  }
-
-  /// The failure message, when discovery failed.
-  public var errorMessage: String? {
-    if case .failed(_, let message) = state { return message }
-    return nil
   }
 
   /// Runs discovery against `serverURL` and publishes the outcome in ``state``.

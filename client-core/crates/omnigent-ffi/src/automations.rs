@@ -110,6 +110,12 @@ pub struct ServerPages {
     /// A trigger's workers can take a permission mode.
     #[uniffi(default)]
     pub session_create_permission_modes: bool,
+    /// Saved workflows, their pages and Run a workflow (`features.workflows` and `workflows`).
+    #[uniffi(default)]
+    pub workflows: bool,
+    /// A workflow can be shared, and the Workflows page lists those shared with the caller.
+    #[uniffi(default)]
+    pub workflow_sharing: bool,
 }
 
 /// Whether an automation fires.
@@ -900,6 +906,8 @@ impl ClientCore {
             automation_harness_settings: pages.automation_harness_settings,
             automation_approval_skipping_modes: pages.automation_approval_skipping_modes,
             session_create_permission_modes: pages.session_create_permission_modes,
+            workflows: pages.workflows,
+            workflow_sharing: pages.workflow_sharing,
         })
     }
 

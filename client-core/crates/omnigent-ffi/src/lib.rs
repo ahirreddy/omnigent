@@ -79,6 +79,7 @@ pub mod slash;
 pub mod sync;
 pub mod terminal;
 pub mod transcript;
+pub mod workflows;
 pub mod workspace;
 
 mod cache_driver;

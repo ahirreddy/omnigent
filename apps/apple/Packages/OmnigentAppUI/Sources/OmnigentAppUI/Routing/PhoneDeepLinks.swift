@@ -182,6 +182,9 @@
       case .automation(let id):
         session?.connection.pages?.requestedAutomationID = id
         selection = .automations
+      case .workflow(let id):
+        session?.connection.workflows?.requestedWorkflowID = id
+        selection = .workflows
       case .settings(let section):
         // The screen shows the scene's own server.
         openSettingsAt?(DeepLinkDestinations.settings(section: section, server: nil))

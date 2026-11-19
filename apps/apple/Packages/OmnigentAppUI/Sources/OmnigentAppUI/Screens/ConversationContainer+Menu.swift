@@ -214,14 +214,18 @@ extension ConversationContainer {
 
   /// The Tasks tab, read when the panel draws, so the tasks do not redraw the chat.
   func tasksSlot(report: @escaping @MainActor (String) -> Void) -> TasksSlot {
-    let (tasks, conversation, summary) = (tasks, conversation, summary)
+    let (tasks, conversation, summary, workflows) = (tasks, conversation, summary, workflows)
     let (focus, sessionID) = (transcriptFocus, conversation.sessionID)
     let routes = TasksAdapter.Routes(showRow: { focus?.focus($0, in: sessionID) }, report: report)
     return TasksSlot(
       isShown: { TasksAdapter.showsTab(tasks: tasks, conversation: conversation) },
       content: {
-        TasksAdapter.content(
+        var content = TasksAdapter.content(
           tasks: tasks, conversation: conversation, summary: summary, routes: routes)
+        TasksAdapter.addWorkflows(
+          to: &content, tasks: tasks, conversation: conversation, summary: summary,
+          workflows: workflows)
+        return content
       })
   }
 
