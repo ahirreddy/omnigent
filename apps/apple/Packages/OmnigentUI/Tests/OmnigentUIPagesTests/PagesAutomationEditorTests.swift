@@ -120,7 +120,6 @@
       if kind == "blocker" { #expect(try screen.shows("Pick a host before pinning")) }
       if kind == "schedule" {
         #expect(try screen.shows("Choose a day."))
-        #expect(try screen.shows("Needs attention"), "the schedule button says so, as the web's")
       }
     }
 
@@ -267,8 +266,12 @@
       #expect(draft.value.projectID == "p1")
       let defaults = screen.popUps.filter { $0.title == "Default" }
       #expect(defaults.count == 2, "model and effort")
-      try screen.choose("Opus", inPopUp: defaults[0])
-      try screen.choose("High", inPopUp: defaults[1])
+      // A form's pop-ups aren't in layout order among the window's views: pick by what each offers.
+      for choice in ["Opus", "High"] {
+        let offering = try #require(
+          try defaults.first { try screen.titles(inPopUp: $0).contains(choice) })
+        try screen.choose(choice, inPopUp: offering)
+      }
       #expect([draft.value.model, draft.value.effort] == ["opus", "high"])
       try screen.choose("Default", inPopUp: try popUp(screen, showing: "Opus"))
       #expect(draft.value.model.isEmpty)
@@ -340,7 +343,7 @@
         "a session copy starts each run anew")
     }
 
-    @Test("the dialog reads as the web's: title, type and schedule, prompt, run row, Advanced")
+    @Test("the form keeps the web's order: name, type and schedule, prompt, run on, Advanced")
     func layout() throws {
       var context = context()
       context.triggerTypes = [AutomationOption(id: "jira", name: "Jira")]
@@ -350,50 +353,37 @@
       let screen = sheet(
         EditedValue(AutomationDraftState(name: "Brief", agentID: "a1")), context: context)
       defer { screen.close() }
+      let order = [
+        "automation-name", "automation-trigger-type", "automation-schedule-preset",
+        "automation-prompt", "automation-host", "automation-agent", "automation-permission-mode",
+        "automation-advanced",
+      ]
       let frames = try screen.withAccessibilityTree {
-        try [
-          "automation-name", "automation-trigger-type", "automation-schedule", "automation-prompt",
-          "automation-host", "automation-agent", "automation-permission-mode",
-          "automation-advanced", "automation-save",
-        ].reduce(into: [String: CGRect]()) { $0[$1] = try screen.accessibilityFrame($1) }
+        try (order + ["automation-save"]).map { try screen.accessibilityFrame($0) }
       }
-      func frame(_ id: String) throws -> CGRect { try #require(frames[id]) }
-      let type = try frame("automation-trigger-type")
-      let schedule = try frame("automation-schedule")
-      let name = try frame("automation-name")
-      #expect(name.maxY <= type.minY, "the name leads, as the title")
-      #expect(abs(type.midY - schedule.midY) < 2, "type and schedule share a row")
-      #expect(type.maxX <= schedule.minX, "the type, then the schedule")
-      let prompt = try frame("automation-prompt")
-      #expect(type.maxY <= prompt.minY)
-      #expect(prompt.height >= 120, "a large field, as the web's")
-      let host = try frame("automation-host")
-      let agent = try frame("automation-agent")
-      let permissions = try frame("automation-permission-mode")
-      #expect(prompt.maxY <= host.minY)
-      #expect(abs(host.midY - agent.midY) < 2 && abs(agent.midY - permissions.midY) < 2)
-      #expect(host.maxX <= agent.minX && agent.maxX <= permissions.minX)
-      let advanced = try frame("automation-advanced")
-      let save = try frame("automation-save")
-      #expect(host.maxY <= advanced.minY)
-      #expect(advanced.maxY <= save.minY)
+      for (above, below) in zip(frames.dropLast(), frames.dropFirst().dropLast()) {
+        #expect(above.maxY <= below.minY + 1, "\(above) is above \(below)")
+      }
+      let save = try #require(frames.last)
+      let advanced = try #require(frames.dropLast().last)
+      #expect(save.maxX > screen.host.bounds.width - 40, "Create sits at the bottom right")
+      #expect(save.minY > advanced.maxY)
     }
 
-    @Test("the schedule menu lists the frequencies, and offers to replace a kept rule")
+    @Test("the frequency is a pop-up menu, and a kept rule offers a new schedule")
     func scheduleMenu() throws {
-      SystemSideEffects.reset()
-      let draft = EditedValue(AutomationDraftState(schedule: nil, keptRule: "Every 3rd Tuesday"))
-      let screen = OffscreenWindow(
-        AutomationScheduleMenu(draft: draft.binding, context: context()), width: 360, height: 500)
+      let draft = EditedValue(AutomationDraftState())
+      let screen = sheet(draft, context: context())
       defer { screen.close() }
-      #expect(try screen.shows("Every 3rd Tuesday"))
-      #expect(try screen.shows("Choose a frequency to replace it."))
-      try screen.clickButton(at: 0)
-      #expect(draft.value.schedule == ScheduleChoice())
-      #expect(screen.popUps.allSatisfy { $0.title != "Every day" }, "no pop-up for them")
-      for frequency in ["Interval", "Every hour", "Every weekday", "Custom schedule"] {
-        #expect(try screen.shows(frequency), "the frequencies are a list, as the web's menu")
-      }
+      try screen.choose("Every hour", inPopUp: try popUp(screen, showing: "Every day"))
+      #expect(draft.value.schedule?.preset == .hourly)
+      let kept = EditedValue(AutomationDraftState(schedule: nil, keptRule: "Every 3rd Tuesday"))
+      let edited = sheet(kept, context: context(editing: true))
+      defer { edited.close() }
+      try edited.clickElement("automation-advanced")
+      #expect(try edited.shows("Choose a frequency to replace it."))
+      try edited.clickElement("automation-schedule-replace")
+      #expect(kept.value.schedule == ScheduleChoice())
     }
   }
 #endif

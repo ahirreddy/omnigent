@@ -34,13 +34,9 @@ final class MacPagesFlowUITests: XCTestCase {
     let prompt = live.element("automation-prompt", in: app)
     live.click(prompt, "the prompt field")
     prompt.typeText("Say hello from the flow.")
-    // Every ten minutes, as the web's Interval schedule, from the schedule button's menu.
-    live.click(live.element("automation-schedule", in: app), "the schedule button")
-    live.click(app.radioButtons["Interval"].firstMatch, "the Interval frequency")
-    live.click(nameField, "the name field, closing the schedule menu")
-    XCTAssertTrue(
-      live.element("automation-schedule-menu", in: app).disappears(within: 10),
-      "the schedule menu stayed")
+    // Every ten minutes, as the web's Interval schedule, from the frequency menu.
+    live.click(live.element("automation-schedule-preset", in: app), "the frequency menu")
+    live.clickMenuItem("Interval", in: app)
     pickHostAndSave(live, app, workspace: workspace)
 
     let listed = live.text(containing: name, in: app)
@@ -73,12 +69,14 @@ final class MacPagesFlowUITests: XCTestCase {
     live.click(scope, "the project field", timeout: 15)
     scope.typeText("ES")
     // As the web's, the instructions have a tab of their own.
-    live.click(live.element("automation-trigger-tab-instructions", in: app), "the Instructions tab")
+    live.click(
+      app.radioButtons.matching(NSPredicate(format: "label BEGINSWITH %@", "Instructions"))
+        .firstMatch, "the Instructions tab")
     let field = live.element("automation-trigger-instructions", in: app)
     live.click(field, "the instructions field")
     field.typeText(instructions)
     XCTAssertFalse(
-      live.element("automation-schedule", in: app).exists,
+      live.element("automation-schedule-preset", in: app).exists,
       "a trigger polls, so its schedule stays out of the form")
     pickHostAndSave(live, app, workspace: workspace)
 
@@ -131,7 +129,8 @@ final class MacPagesFlowUITests: XCTestCase {
     live.clickMenuItem("Jira", in: app)
     let scope = live.element("automation-trigger-scope", in: app)
     XCTAssertTrue(scope.appears(within: 10), "no trigger form\n\(app.debugDescription)")
-    XCTAssertFalse(live.element("automation-schedule", in: app).exists, "a trigger has no schedule")
+    XCTAssertFalse(
+      live.element("automation-schedule-preset", in: app).exists, "a trigger has no schedule")
     live.click(live.element("automation-trigger-type", in: app), "the trigger type")
     live.clickMenuItem("Schedule", in: app)
     XCTAssertTrue(prompt.appears(within: 10), "the schedule's form didn't come back")

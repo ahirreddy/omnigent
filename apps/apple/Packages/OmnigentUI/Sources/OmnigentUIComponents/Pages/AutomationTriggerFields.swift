@@ -86,108 +86,36 @@ enum AutomationTriggerPanel: String, Hashable, CaseIterable, Identifiable {
   var id: Self { self }
 }
 
-/// A trigger template's fields, as the web lays them out: Trigger and Instructions tabs; the
-/// Trigger tab a card with the service's mark, what the event does, its warnings, a sentence of
-/// pickers ("Ticket created where project is ENG"), "and" condition rows and link-back; the
-/// Instructions tab what each started session gets. The prompt they render can be taken over as
-/// a plain prompt.
-struct AutomationTriggerBuilder: View {
-  @Binding var trigger: AutomationTriggerDraft
-  let template: AutomationTriggerTemplate
-  let renderedPrompt: String
+/// What a trigger watches, as the first row of its form: the service's mark in its brand color,
+/// the event's first sentence with the rest under an info button, and the tags saying what a run
+/// needs (the service's MCP) and what to trust.
+struct AutomationTriggerHeader: View {
+  let copy: AutomationTriggerCopy
+  let source: String
   /// The source's own MCP service, when the catalog has one.
   var mcp: AutomationMcpOption?
   @Binding var usesMcp: Bool
-  /// Switches the event, as the core's `trigger_fields_for_event`.
-  var switchEvent: (@MainActor (String) -> Void)?
-  let editAsPrompt: () -> Void
-  @State private var panel: AutomationTriggerPanel = .trigger
   @State private var showsDetails = false
 
-  private var copy: AutomationTriggerCopy {
-    AutomationTriggerCopy(template: template, trigger: trigger)
-  }
-
   var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      AutomationPillPicker(
-        label: "Trigger setup", values: AutomationTriggerPanel.allCases, selection: $panel,
-        title: panelTitle, identifier: { "automation-trigger-tab-\($0.rawValue)" })
-      if copy.instructionsTooLong, panel != .instructions {
-        HStack(spacing: Theme.Spacing.medium) {
-          Text(copy.tooLongMessage).foregroundStyle(Theme.failure)
-            .fixedSize(horizontal: false, vertical: true)
-          Spacer(minLength: 0)
-          Button("Edit instructions") { panel = .instructions }.controlSize(.small)
-        }
-        .font(.callout)
-        .accessibilityIdentifier("automation-trigger-too-long-notice")
-      }
-      switch panel {
-      case .trigger: triggerCard
-      case .instructions: instructions
-      }
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("automation-trigger-fields")
-  }
-
-  private func panelTitle(_ panel: AutomationTriggerPanel) -> String {
-    switch panel {
-    case .trigger: "Trigger"
-    case .instructions:
-      trigger.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        ? "Instructions *" : (copy.instructionsTooLong ? "Instructions \u{26A0}" : "Instructions")
-    }
-  }
-
-  private var triggerCard: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      header
-      Divider()
-      builder
-      if copy.hasIncompleteCondition {
-        Text("Fill in or remove each condition.").foregroundStyle(.secondary)
-          .accessibilityIdentifier("automation-trigger-empty-condition")
-      }
-      Spacer(minLength: Theme.Spacing.small)
-      Toggle(template.linkBackLabel, isOn: linkBack)
-        #if os(macOS)
-          .toggleStyle(.checkbox)
-        #endif
-        .font(.callout)
-        .accessibilityIdentifier("automation-trigger-link-back")
-    }
-    .padding(Theme.Spacing.medium)
-    .frame(maxWidth: .infinity, minHeight: 240, alignment: .topLeading)
-    .overlay(
-      RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-        .strokeBorder(ThemeColor.border)
-    )
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("automation-trigger-card")
-  }
-
-  /// The service's mark, what the event does with more under the info button, and the tags.
-  private var header: some View {
     HStack(alignment: .top, spacing: Theme.Spacing.medium) {
-      Image(systemName: template.systemImage)
-        .foregroundStyle(AutomationStyle.brandColor(trigger.source))
+      Image(systemName: copy.template.systemImage)
+        .font(.title3)
+        .foregroundStyle(AutomationStyle.brandColor(source))
         .frame(width: 32, height: 32)
         .background(
-          RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-            .fill(AutomationStyle.brandColor(trigger.source).opacity(0.1))
+          AutomationStyle.brandColor(source).opacity(0.12),
+          in: RoundedRectangle(cornerRadius: 8, style: .continuous)
         )
         .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.extraSmall) {
-          Text(copy.summary).foregroundStyle(.secondary)
+          Text(copy.summary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("automation-trigger-description")
           Button("More trigger details", systemImage: "info.circle") { showsDetails.toggle() }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
             .help(copy.details)
             .popover(isPresented: $showsDetails) {
               Text(copy.details).font(.callout).padding(Theme.Spacing.medium)
@@ -197,180 +125,52 @@ struct AutomationTriggerBuilder: View {
             }
             .accessibilityIdentifier("automation-trigger-details")
         }
-        FlowLayout(spacing: Theme.Spacing.small) {
-          mcpTag
-          AutomationTag(
-            label: "Untrusted source", systemImage: "exclamationmark.triangle",
-            message: copy.sourceWarning
-          )
-          .accessibilityIdentifier("automation-trigger-untrusted")
+        // In a row, or stacked when the row is too narrow.
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: Theme.Spacing.small) { tags }
+          VStack(alignment: .leading, spacing: Theme.Spacing.small) { tags }
         }
       }
     }
+    .padding(.vertical, Theme.Spacing.extraSmall)
+  }
+
+  @ViewBuilder private var tags: some View {
+    mcpTag
+    AutomationTag(
+      label: "Untrusted source", systemImage: "exclamationmark.triangle.fill",
+      message: copy.sourceWarning, tint: .orange
+    )
+    .accessibilityIdentifier("automation-trigger-untrusted")
   }
 
   /// The service's MCP: used, offered to add, or needed.
   @ViewBuilder private var mcpTag: some View {
     if let mcp, usesMcp {
       AutomationTag(
-        label: "Uses \(mcp.title) MCP", systemImage: "info.circle",
-        message: "Every run, and each session it starts, uses your \(mcp.title) MCP service."
+        label: "Uses \(mcp.title) MCP", systemImage: "checkmark.circle.fill",
+        message: "Every run, and each session it starts, uses your \(mcp.title) MCP service.",
+        tint: .green
       )
       .accessibilityIdentifier("automation-trigger-mcp")
     } else if let mcp {
-      Button {
-        usesMcp = true
-      } label: {
-        Label("Add \(mcp.title) MCP", systemImage: "powerplug")
-          .font(.caption)
-          .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.tiny)
-          .foregroundStyle(Theme.warning)
-          .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.warning.opacity(0.1))
-          )
-          .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-              .strokeBorder(Theme.warning.opacity(0.4)))
-      }
-      .buttonStyle(.plain)
-      .disabled(!mcp.isConnected)
-      .help(
-        mcp.isConnected
-          ? "Runs only work if the agent can reach \(mcp.title). Add your \(mcp.title) MCP service, or give the agent its tools another way."
-          : "Sign in to \(mcp.title) in Settings to add it."
-      )
-      .accessibilityIdentifier("automation-trigger-mcp")
+      // Bordered, so a form row's tap doesn't press it.
+      Button("Add \(mcp.title) MCP", systemImage: "powerplug") { usesMcp = true }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(!mcp.isConnected)
+        .help(
+          mcp.isConnected
+            ? "Runs only work if the agent can reach \(mcp.title). Add your \(mcp.title) MCP service, or give the agent its tools another way."
+            : "Sign in to \(mcp.title) in Settings to add it."
+        )
+        .accessibilityIdentifier("automation-trigger-mcp")
     } else {
-      AutomationTag(label: "MCP required", systemImage: "info.circle", message: copy.toolsWarning)
-        .accessibilityIdentifier("automation-trigger-tools")
-    }
-  }
-
-  /// The sentence of pickers, its hints, and the condition rows.
-  private var builder: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      FlowLayout(spacing: Theme.Spacing.small) {
-        if template.events.count > 1 {
-          Picker("Event", selection: eventSelection) {
-            ForEach(template.events) { Text($0.name).tag($0.id) }
-          }
-          .labelsHidden().fixedSize()
-          .accessibilityIdentifier("automation-trigger-event")
-        } else if let event = template.events.first {
-          Text(event.name).foregroundStyle(Theme.accent)
-            .accessibilityIdentifier("automation-trigger-event")
-        }
-        if let target = copy.event?.target {
-          Text(target.word).foregroundStyle(.secondary)
-          TextField(
-            target.label,
-            text: Binding(get: { trigger.target ?? "" }, set: { trigger.target = $0 }),
-            prompt: Text(target.placeholder)
-          )
-          .frame(width: 130)
-          .accessibilityIdentifier("automation-trigger-target")
-        }
-        Text("where \(copy.scopeLabel)").foregroundStyle(.secondary)
-        if template.scopeOperators.count > 1, copy.event?.isGroup != true {
-          Picker(
-            "Scope operator",
-            selection: Binding(
-              get: { trigger.scopeOperator ?? "is" }, set: { trigger.scopeOperator = $0 })
-          ) {
-            ForEach(template.scopeOperators) { Text($0.name).tag($0.id) }
-          }
-          .labelsHidden().fixedSize()
-          .accessibilityIdentifier("automation-trigger-scope-operator")
-        }
-        HStack(spacing: Theme.Spacing.extraSmall) {
-          if let prefix = copy.event?.scopePrefix, !prefix.isEmpty {
-            Text(prefix).fontWeight(.medium).foregroundStyle(Theme.accent)
-          }
-          TextField(
-            copy.scopeLabel, text: $trigger.scope,
-            prompt: Text(copy.event?.scopePlaceholder ?? template.scopePlaceholder)
-          )
-          .frame(width: 180)
-          .accessibilityIdentifier("automation-trigger-scope")
-        }
-      }
-      if copy.targetMissing, let hint = copy.event?.target?.hint {
-        Text(hint).foregroundStyle(.secondary)
-          .accessibilityIdentifier("automation-trigger-target-hint")
-      }
-      ForEach($trigger.conditions) { $condition in
-        AutomationTriggerConditionRow(
-          condition: $condition, template: template, fields: copy.fields,
-          remove: { trigger.conditions.removeAll { $0.id == condition.id } })
-      }
-      if let first = copy.fields.first, let operation = first.operations.first {
-        Button("Add condition", systemImage: "plus") {
-          trigger.conditions.append(
-            AutomationTriggerCondition(field: first.id, operation: operation.id))
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .padding(.leading, 40)
-        .accessibilityIdentifier("automation-trigger-add-condition")
-      }
-    }
-  }
-}
-
-/// The Instructions tab, and the bindings the Trigger tab writes through.
-extension AutomationTriggerBuilder {
-  /// What each started session gets, with the prompt it renders.
-  private var instructions: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      TextField(
-        copy.instructionsLabel, text: $trigger.instructions,
-        prompt: Text(template.instructionsPlaceholder), axis: .vertical
+      AutomationTag(
+        label: "MCP required", systemImage: "info.circle", message: copy.toolsWarning,
+        tint: .secondary
       )
-      .textFieldStyle(.plain)
-      .lineLimit(10...)
-      .padding(Theme.Spacing.medium)
-      .frame(maxWidth: .infinity, minHeight: 240, alignment: .topLeading)
-      .overlay(
-        RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-          .strokeBorder(ThemeColor.border)
-      )
-      .accessibilityIdentifier("automation-trigger-instructions")
-      if copy.instructionsTooLong {
-        Text(copy.tooLongMessage).foregroundStyle(Theme.failure)
-          .fixedSize(horizontal: false, vertical: true)
-          .accessibilityIdentifier("automation-trigger-instructions-limit")
-      }
-      if !renderedPrompt.isEmpty {
-        DisclosureGroup("Prompt each run sends") {
-          Text(renderedPrompt).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .font(.callout)
-        .accessibilityIdentifier("automation-trigger-prompt-preview")
-        Button("Edit as a prompt", action: editAsPrompt)
-          .automationLinkStyle()
-          .accessibilityIdentifier("automation-trigger-edit-prompt")
-      }
+      .accessibilityIdentifier("automation-trigger-tools")
     }
-    .font(.callout)
-  }
-
-  private var linkBack: Binding<Bool> {
-    Binding(
-      get: { trigger.linkBack },
-      set: {
-        trigger.linkBack = $0
-        trigger.linkBackTouched = true
-      })
-  }
-
-  /// Switching events clears what the new event reads differently, through the core.
-  private var eventSelection: Binding<String> {
-    Binding(
-      get: { trigger.event },
-      set: { id in
-        guard id != trigger.event else { return }
-        if let switchEvent { switchEvent(id) } else { trigger.event = id }
-      })
   }
 }

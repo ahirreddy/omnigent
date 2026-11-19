@@ -61,34 +61,34 @@ struct AutomationTriggerConditionRow: View {
   }
 }
 
-/// A small outlined tag whose explanation shows on hover and to VoiceOver, as the web's
-/// `WarningTag`.
+/// A small tag whose explanation shows on hover and to VoiceOver, as the web's `WarningTag`,
+/// tinted by what it means.
 struct AutomationTag: View {
   let label: String
   let systemImage: String
   let message: String
+  var tint: Color = .secondary
 
   var body: some View {
-    Label(label, systemImage: systemImage)
-      .font(.caption)
-      .foregroundStyle(.secondary)
-      .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.tiny)
-      .background(
-        RoundedRectangle(cornerRadius: 6, style: .continuous).fill(AutomationStyle.mutedFill)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(ThemeColor.border)
-      )
-      .fixedSize()
-      .help(message)
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel("\(label): \(message)")
+    HStack(spacing: Theme.Spacing.extraSmall) {
+      Image(systemName: systemImage)
+      Text(label)
+    }
+    .font(.caption)
+    .foregroundStyle(tint)
+    .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.tiny)
+    .background(tint.opacity(0.12), in: Capsule())
+    .fixedSize()
+    .help(message)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(label): \(message)")
   }
 }
 
-/// A trigger template's fields as form sections, for an iOS form: the Trigger section with what
-/// the event does, its warnings, the event, scope, inline value, conditions and link-back; the
-/// Instructions section with what each started session gets and the prompt it renders.
+/// A trigger template's fields as form sections behind the web's Trigger and Instructions tabs:
+/// the Trigger tab with what the event does and its tags, the event, scope, inline value,
+/// conditions and link-back; the Instructions tab with what each started session gets and the
+/// prompt it renders.
 struct AutomationTriggerFields: View {
   @Binding var trigger: AutomationTriggerDraft
   let template: AutomationTriggerTemplate
@@ -99,6 +99,7 @@ struct AutomationTriggerFields: View {
   /// Switches the event, as the core's `trigger_fields_for_event`.
   var switchEvent: (@MainActor (String) -> Void)?
   let editAsPrompt: () -> Void
+  @State private var panel: AutomationTriggerPanel = .trigger
 
   private var copy: AutomationTriggerCopy {
     AutomationTriggerCopy(template: template, trigger: trigger)
@@ -106,13 +107,49 @@ struct AutomationTriggerFields: View {
 
   var body: some View {
     Section {
+      Picker("Trigger setup", selection: $panel) {
+        ForEach(AutomationTriggerPanel.allCases) { Text(panelTitle($0)).tag($0) }
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      .accessibilityIdentifier("automation-trigger-tabs")
+      if copy.instructionsTooLong, panel != .instructions {
+        HStack(alignment: .firstTextBaseline) {
+          Label(copy.tooLongMessage, systemImage: "exclamationmark.triangle.fill")
+            .foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+          Spacer(minLength: 0)
+          Button("Edit instructions") { panel = .instructions }
+        }
+        .font(.callout)
+        .accessibilityIdentifier("automation-trigger-too-long-notice")
+      }
+    }
+    switch panel {
+    case .trigger: triggerSection
+    case .instructions: instructionsSection
+    }
+  }
+
+  private func panelTitle(_ panel: AutomationTriggerPanel) -> String {
+    switch panel {
+    case .trigger: "Trigger"
+    case .instructions:
+      trigger.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        ? "Instructions *" : (copy.instructionsTooLong ? "Instructions \u{26A0}" : "Instructions")
+    }
+  }
+
+  private var triggerSection: some View {
+    Section {
+      AutomationTriggerHeader(copy: copy, source: trigger.source, mcp: mcp, usesMcp: $usesMcp)
       Picker("Event", selection: eventSelection) {
         ForEach(template.events) { Text($0.name).tag($0.id) }
       }
       .accessibilityIdentifier("automation-trigger-event")
       if template.scopeOperators.count > 1, copy.event?.isGroup != true {
         Picker(
-          copy.scopeLabel.capitalizedFirst,
+          "Where \(copy.scopeLabel)",
           selection: Binding(
             get: { trigger.scopeOperator ?? "is" }, set: { trigger.scopeOperator = $0 })
         ) {
@@ -120,15 +157,18 @@ struct AutomationTriggerFields: View {
         }
         .accessibilityIdentifier("automation-trigger-scope-operator")
       }
-      HStack(spacing: Theme.Spacing.extraSmall) {
-        if let prefix = copy.event?.scopePrefix, !prefix.isEmpty {
-          Text(prefix).foregroundStyle(.secondary)
+      LabeledContent(copy.scopeLabel.capitalizedFirst) {
+        HStack(spacing: Theme.Spacing.extraSmall) {
+          if let prefix = copy.event?.scopePrefix, !prefix.isEmpty {
+            Text(prefix).foregroundStyle(.secondary)
+          }
+          TextField(
+            copy.scopeLabel.capitalizedFirst, text: $trigger.scope,
+            prompt: Text(copy.event?.scopePlaceholder ?? template.scopePlaceholder)
+          )
+          .labelsHidden()
+          .accessibilityIdentifier("automation-trigger-scope")
         }
-        TextField(
-          copy.scopeLabel.capitalizedFirst, text: $trigger.scope,
-          prompt: Text(copy.event?.scopePlaceholder ?? template.scopePlaceholder)
-        )
-        .accessibilityIdentifier("automation-trigger-scope")
       }
       if let target = copy.event?.target {
         TextField(
@@ -155,52 +195,37 @@ struct AutomationTriggerFields: View {
       }
       if copy.hasIncompleteCondition {
         Text("Fill in or remove each condition.").font(.callout).foregroundStyle(.secondary)
+          .accessibilityIdentifier("automation-trigger-empty-condition")
       }
       Toggle(template.linkBackLabel, isOn: linkBack)
         .accessibilityIdentifier("automation-trigger-link-back")
-      if let mcp {
-        Toggle("Use the \(mcp.title) MCP", isOn: $usesMcp)
-          .disabled(!mcp.isConnected && !usesMcp)
-          .accessibilityIdentifier("automation-trigger-mcp")
-      }
-    } header: {
-      Text("Trigger")
-    } footer: {
-      VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-        Text(copy.summary).accessibilityIdentifier("automation-trigger-description")
-        Text(mcp == nil ? copy.toolsWarning : mcpNote)
-        Text(copy.sourceWarning)
-      }
     }
-    Section("Instructions") {
+  }
+
+  private var instructionsSection: some View {
+    Section {
       TextField(
         copy.instructionsLabel, text: $trigger.instructions,
         prompt: Text(template.instructionsPlaceholder), axis: .vertical
       )
-      .lineLimit(6...12)
+      .lineLimit(8...14)
+      .labelsHidden()
       .accessibilityIdentifier("automation-trigger-instructions")
       if copy.instructionsTooLong {
-        Text(copy.tooLongMessage).font(.callout).foregroundStyle(Theme.failure)
+        Text(copy.tooLongMessage).font(.callout).foregroundStyle(.red)
           .accessibilityIdentifier("automation-trigger-instructions-limit")
       }
       if !renderedPrompt.isEmpty {
         DisclosureGroup("Prompt each run sends") {
           Text(renderedPrompt).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
         }
+        .accessibilityIdentifier("automation-trigger-prompt-preview")
         Button("Edit as a prompt", action: editAsPrompt)
           .accessibilityIdentifier("automation-trigger-edit-prompt")
       }
+    } header: {
+      Text(copy.instructionsLabel)
     }
-  }
-
-  private var mcpNote: String {
-    guard let mcp else { return "" }
-    if usesMcp {
-      return "Every run, and each session it starts, uses your \(mcp.title) MCP service."
-    }
-    return mcp.isConnected
-      ? "Runs only work if the agent can reach \(mcp.title)."
-      : "Sign in to \(mcp.title) in Settings to add it."
   }
 
   private var linkBack: Binding<Bool> {

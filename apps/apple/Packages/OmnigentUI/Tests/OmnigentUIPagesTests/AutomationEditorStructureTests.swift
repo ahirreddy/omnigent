@@ -48,9 +48,8 @@ struct AutomationEditorStructureTests {
     #expect(!edited.showsTypeRow)
     #expect(edited.scheduleInAdvanced)
     #expect(edited.saveTitle == "Save changes")
-    let button = AnyView(EmptyView())
-    #expect(edited.advancedRows(scheduleButton: button).map(\.id).contains("schedule"))
-    #expect(!new.advancedRows(scheduleButton: button).map(\.id).contains("schedule"))
+    #expect(edited.advancedRows().map(\.id).contains("schedule"))
+    #expect(!new.advancedRows().map(\.id).contains("schedule"))
     var copy = AutomationDraftState()
     copy.sourceSessionID = "s1"
     copy.sourceSessionTitle = "Release notes"

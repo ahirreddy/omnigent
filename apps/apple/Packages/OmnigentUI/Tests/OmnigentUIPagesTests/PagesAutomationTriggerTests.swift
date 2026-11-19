@@ -63,6 +63,11 @@
         width: 900, height: 1_500)
     }
 
+    /// Picks the Trigger (0) or Instructions (1) tab.
+    private func tab<Content>(_ index: Int, _ screen: OffscreenWindow<Content>) throws {
+      try screen.click(segment: index, of: try #require(screen.segmentedControls.first))
+    }
+
     @Test("the event and scope write back; a new trigger picks its session continuity")
     func eventAndScope() throws {
       let draft = draft()
@@ -152,9 +157,10 @@
       let draft = draft()
       let screen = sheet(draft)
       defer { screen.close() }
-      #expect(try screen.shows("Instructions *"), "empty instructions are marked, as the web's")
+      let tabs = try #require(screen.segmentedControls.first)
+      #expect(tabs.label(forSegment: 1) == "Instructions *", "empty ones are marked, as the web's")
       #expect(screen.textFields.allSatisfy { $0.placeholderString != "What each session does" })
-      try screen.clickElement("automation-trigger-tab-instructions")
+      try tab(1, screen)
       let field = try #require(
         screen.textFields.first { $0.placeholderString == "What each session does" })
       try screen.replaceText(in: field, with: "0123456789")
@@ -162,10 +168,10 @@
       try screen.type("x")
       #expect(draft.value.trigger?.instructions == "0123456789x")
       #expect(try screen.shows("Keep instructions to 10 characters or fewer"))
-      try screen.clickElement("automation-trigger-tab-trigger")
+      try tab(0, screen)
       #expect(try screen.shows("Edit instructions"), "the Trigger tab says so too")
       #expect(draft.value.trigger?.linkBack == true)
-      try screen.clickElement("automation-trigger-link-back")
+      try screen.click(try #require(screen.switches.last))
       #expect(draft.value.trigger?.linkBack == false)
     }
 
@@ -174,7 +180,7 @@
       let draft = draft()
       let screen = sheet(draft, prompt: "Rendered prompt")
       defer { screen.close() }
-      try screen.clickElement("automation-trigger-tab-instructions")
+      try tab(1, screen)
       try screen.clickElement("automation-trigger-edit-prompt")
       #expect(draft.value.trigger == nil)
       #expect(draft.value.prompt == "Rendered prompt")
@@ -185,11 +191,10 @@
     func promptDisclosure() throws {
       let screen = sheet(draft(), prompt: "Rendered prompt")
       defer { screen.close() }
-      try screen.clickElement("automation-trigger-tab-instructions")
+      try tab(1, screen)
       #expect(try !screen.shows("Rendered prompt"))
-      // The two tabs, the disclosure, Edit as a prompt, Advanced settings, Cancel, Save.
-      let frames = screen.buttonFrames
-      try screen.click(frames[frames.count - 5].center)
+      // The disclosure leads the Instructions tab's buttons.
+      try screen.click(try #require(screen.buttonFrames.first).center)
       screen.settle(0.3)
       #expect(try screen.shows("Rendered prompt"))
     }
@@ -198,7 +203,7 @@
     func noPromptYet() throws {
       let screen = sheet(draft())
       defer { screen.close() }
-      try screen.clickElement("automation-trigger-tab-instructions")
+      try tab(1, screen)
       #expect(try !screen.shows("Edit as a prompt"))
       #expect(try !screen.shows("Prompt each run sends"))
     }
@@ -232,75 +237,25 @@
       #expect(try !screen.shows("Checks look back"), "the rest waits under the info button")
       #expect(try screen.shows("MCP required"))
       #expect(try screen.shows("Untrusted source"))
-      #expect(try screen.shows("where project"))
+      #expect(try screen.shows("Project"))
     }
 
-    @Test("the builder reads as a sentence, with conditions and link-back below")
+    @Test("the Trigger tab keeps the web's order: tabs, event, scope, conditions, link-back")
     func builderLayout() throws {
       let condition = AutomationTriggerCondition(field: "label", operation: "has")
       let screen = sheet(draft(conditions: [condition]))
       defer { screen.close() }
+      let order = [
+        "automation-trigger-tabs", "automation-trigger-event", "automation-trigger-scope",
+        "automation-trigger-condition-\(condition.id)", "automation-trigger-add-condition",
+        "automation-trigger-link-back", "automation-host",
+      ]
       let frames = try screen.withAccessibilityTree {
-        try [
-          "automation-trigger-tab-trigger", "automation-trigger-tab-instructions",
-          "automation-trigger-card", "automation-trigger-event", "automation-trigger-scope",
-          "automation-trigger-condition-\(condition.id)", "automation-trigger-add-condition",
-          "automation-trigger-link-back", "automation-host",
-        ].reduce(into: [String: CGRect]()) { $0[$1] = try screen.accessibilityFrame($1) }
+        try order.map { try screen.accessibilityFrame($0) }
       }
-      func frame(_ id: String) throws -> CGRect { try #require(frames[id]) }
-      let triggerTab = try frame("automation-trigger-tab-trigger")
-      let instructionsTab = try frame("automation-trigger-tab-instructions")
-      let card = try frame("automation-trigger-card")
-      #expect(abs(triggerTab.midY - instructionsTab.midY) < 2, "the tabs share a row")
-      #expect(triggerTab.maxY <= card.minY, "the tabs, then the card")
-      let event = try frame("automation-trigger-event")
-      let scope = try frame("automation-trigger-scope")
-      #expect(abs(event.midY - scope.midY) < 4, "event and scope read as one sentence")
-      #expect(event.maxX < scope.minX)
-      let row = try frame("automation-trigger-condition-\(condition.id)")
-      let add = try frame("automation-trigger-add-condition")
-      let linkBack = try frame("automation-trigger-link-back")
-      #expect(event.maxY <= row.minY && row.maxY <= add.minY && add.maxY <= linkBack.minY)
-      #expect(card.contains(CGPoint(x: linkBack.midX, y: linkBack.midY)), "link-back ends the card")
-      let host = try frame("automation-host")
-      #expect(card.maxY <= host.minY, "the run row follows")
-    }
-
-    @Test("an event's help, scope operators, inline value and budget hint come from main's form")
-    func eventDetails() throws {
-      var rich = template
-      rich.eventDetails = [
-        "created": .init(
-          description: "Runs your automation on all new tickets.", scopeLabel: "project",
-          scopePlaceholder: "ES, OPS"),
-        "updated": .init(
-          description: "Runs each time a matching ticket is assigned.", scopeLabel: "project",
-          scopePlaceholder: "ES",
-          target: .init(
-            word: "to", label: "Assignee", placeholder: "me or email", hint: nil,
-            isRequired: false)),
-      ]
-      rich.scopeOperators = [
-        AutomationOption(id: "is", name: "equals"), AutomationOption(id: "in", name: "in"),
-      ]
-      rich.budgetHint = "Update the Omnigent server to allow up to 16,000."
-      let draft = draft(instructions: "0123456789x")
-      let screen = sheet(draft, template: rich)
-      defer { screen.close() }
-      #expect(try screen.shows("Runs your automation on all new tickets."))
-      #expect(try screen.shows("Update the Omnigent server to allow up to 16,000."))
-      let operation = try #require(screen.popUps.first { $0.title == "equals" })
-      try screen.choose("in", inPopUp: operation)
-      #expect(draft.value.trigger?.scopeOperator == "in")
-      let event = try #require(screen.popUps.first { $0.title == "A ticket is created" })
-      try screen.choose("A ticket is updated", inPopUp: event)
-      #expect(try screen.shows("Runs each time a matching ticket is assigned."))
-      let target = try #require(screen.textFields.first { $0.placeholderString == "me or email" })
-      try screen.replaceText(in: target, with: "me")
-      #expect(draft.value.trigger?.target == "me")
-      try screen.clickElement("automation-trigger-link-back")
-      #expect(draft.value.trigger?.linkBackTouched == true)
+      for (above, below) in zip(frames, frames.dropFirst()) {
+        #expect(above.maxY <= below.minY + 1, "\(above) is above \(below)")
+      }
     }
   }
 #endif

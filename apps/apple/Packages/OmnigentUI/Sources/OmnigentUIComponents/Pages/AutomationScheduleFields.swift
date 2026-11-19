@@ -13,8 +13,6 @@ struct ScheduleFields: View {
   var offersMinutes = true
   /// Includes the ending; the editor shows it on a row of its own.
   var showsEnding = true
-  /// The frequencies as a list, as the web's schedule menu, rather than a pop-up.
-  var listsFrequencies = false
 
   var body: some View {
     frequencyPicker
@@ -67,8 +65,9 @@ struct ScheduleFields: View {
     }
   }
 
-  @ViewBuilder private var frequencyPicker: some View {
-    let picker = Picker("Frequency", selection: presetSelection) {
+  /// The frequency, as a pop-up menu.
+  private var frequencyPicker: some View {
+    Picker("Frequency", selection: presetSelection) {
       ForEach(presets) { preset in
         Text(preset.title).tag(preset)
           .selectionDisabled(
@@ -77,15 +76,6 @@ struct ScheduleFields: View {
       }
     }
     .accessibilityIdentifier("automation-schedule-preset")
-    #if os(macOS)
-      if listsFrequencies {
-        picker.pickerStyle(.radioGroup).labelsHidden()
-      } else {
-        picker
-      }
-    #else
-      if listsFrequencies { picker.pickerStyle(.inline).labelsHidden() } else { picker }
-    #endif
   }
 
   /// "1 week", "3 days".
@@ -231,6 +221,31 @@ struct ScheduleFields: View {
         .filter { (1...31).contains($0) }
         if !days.isEmpty { choice.monthDays = days }
       })
+  }
+}
+
+/// The schedule's frequency and time, or a rule kept as it is until a new one is chosen.
+struct AutomationScheduleRows: View {
+  @Binding var draft: AutomationDraftState
+  let context: AutomationEditorContext
+
+  var body: some View {
+    if let kept = draft.keptRule, draft.schedule == nil {
+      LabeledContent("Repeats", value: kept)
+      Text(
+        "This schedule can\u{2019}t be edited in this form yet. Choose a frequency to replace it."
+      )
+      .font(.callout).foregroundStyle(.red)
+      .fixedSize(horizontal: false, vertical: true)
+      Button("Choose a new schedule") { draft.schedule = ScheduleChoice() }
+        .accessibilityIdentifier("automation-schedule-replace")
+    } else {
+      ScheduleFields(
+        choice: Binding(
+          get: { draft.schedule ?? ScheduleChoice() }, set: { draft.schedule = $0 }),
+        anchoredScheduling: context.anchoredScheduling, minuteRange: context.minuteRange,
+        offersMinutes: context.offersMinutes, showsEnding: false)
+    }
   }
 }
 
