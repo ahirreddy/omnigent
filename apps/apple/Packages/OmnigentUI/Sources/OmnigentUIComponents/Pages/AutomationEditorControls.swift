@@ -6,9 +6,7 @@ extension AutomationEditorSheet {
   static let sandboxTag = "\u{0}sandbox"
 
   var nameField: some View {
-    TextField("Automation title", text: $draft.name, prompt: Text("Name your automation"))
-      .font(.title2.weight(.semibold))
-      .textFieldStyle(.plain)
+    TextField("Name", text: $draft.name, prompt: Text("Name your automation"))
       .accessibilityIdentifier("automation-name")
   }
 
@@ -47,8 +45,8 @@ extension AutomationEditorSheet {
   }
 
   /// The schedule's frequency and time, or the rule kept as it is until a new one is chosen.
-  func scheduleRows(listsFrequencies: Bool) -> some View {
-    AutomationScheduleRows(draft: $draft, context: context, listsFrequencies: listsFrequencies)
+  var scheduleRows: some View {
+    AutomationScheduleRows(draft: $draft, context: context)
   }
 
   @ViewBuilder var scheduleProblem: some View {
@@ -173,22 +171,33 @@ extension AutomationEditorSheet {
     return nil
   }
 
-  /// One row under Advanced settings: a muted label and its control.
+  /// One row under Advanced settings: a label and its control, or, without a label, form rows
+  /// of their own (an edit's schedule).
   struct AdvancedRow: Identifiable {
     let id: String
-    let label: String
+    let label: String?
     let control: AnyView
 
-    init(_ id: String, _ label: String, _ control: some View) {
+    init(_ id: String, _ label: String?, _ control: some View) {
       self.id = id
       self.label = label
       self.control = AnyView(control)
     }
+
+    /// The row in a form.
+    @ViewBuilder var formRow: some View {
+      if let label {
+        LabeledContent(label) { control }
+          .accessibilityElement(children: .contain)
+          .accessibilityIdentifier("automation-advanced-\(id)")
+      } else {
+        control
+      }
+    }
   }
 
-  /// The rows under Advanced settings, as the web's; an edit's schedule takes the layout's
-  /// `scheduleButton`, where it puts the schedule there.
-  func advancedRows(scheduleButton: AnyView? = nil) -> [AdvancedRow] {
+  /// The rows under Advanced settings, in the web's order.
+  func advancedRows() -> [AdvancedRow] {
     var rows = overrideRows
     if context.supportsSessionModes, !isTrigger, draft.sourceSessionID == nil {
       rows.append(AdvancedRow("session", "Session continuity", sessionPicker))
@@ -202,8 +211,8 @@ extension AutomationEditorSheet {
     if !context.mcpServices.isEmpty {
       rows.append(AdvancedRow("mcp", "MCP services", mcpMenu))
     }
-    if scheduleInAdvanced, let scheduleButton {
-      rows.append(AdvancedRow("schedule", "Schedule", scheduleButton))
+    if scheduleInAdvanced {
+      rows.append(AdvancedRow("schedule", nil, scheduleRows))
     }
     if !isTrigger, draft.schedule != nil {
       rows.append(
@@ -358,9 +367,7 @@ extension AutomationEditorSheet {
     if let problem = context.mcpProblem {
       Text(problem).font(.callout).foregroundStyle(Theme.failure)
     }
-    #if os(macOS)
-      if scheduleInAdvanced { scheduleProblem }
-    #endif
+    if scheduleInAdvanced { scheduleProblem }
   }
 
   func overridePicker(

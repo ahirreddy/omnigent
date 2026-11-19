@@ -60,11 +60,18 @@
       ]
     }
 
-    /// Clicks one of the All / Active / Paused pills.
+    /// Picks one of the All / Active / Paused segments, after the tabs.
     private func pick<Content>(_ filter: AutomationsFilter, _ screen: OffscreenWindow<Content>)
       throws
     {
-      try screen.clickElement("automations-filter-\(filter.rawValue)")
+      let control = try #require(screen.segmentedControls.dropFirst().first)
+      let index = try #require(AutomationsFilter.allCases.firstIndex(of: filter))
+      try screen.click(segment: index, of: control)
+    }
+
+    /// The system search field.
+    private func searchField<Content>(_ screen: OffscreenWindow<Content>) throws -> NSSearchField {
+      try #require(screen.allViews.compactMap { $0 as? NSSearchField }.first)
     }
 
     @Test("the filter and search report both values as they change")
@@ -75,8 +82,7 @@
       #expect(log.entries == ["filter active []"])
       try pick(.paused, screen)
       #expect(log.entries.last == "filter paused []")
-      let search = try #require(screen.textFields.first)
-      try screen.replaceText(in: search, with: "br")
+      try screen.replaceText(in: try searchField(screen), with: "br")
       #expect(log.entries.suffix(2) == ["filter paused [b]", "filter paused [br]"])
     }
 
@@ -296,10 +302,10 @@
       #expect(try screen.shows("Couldn\u{2019}t load automations."))
       #expect(try screen.shows("Server down"))
       #expect(try screen.shows("Can't pause"))
-      // New, the tabs, the three filter pills, Dismiss, Retry.
-      try screen.clickControl(at: 5)
+      // New, the tabs, the filter, Dismiss, Retry.
+      try screen.clickControl(at: 3)
       #expect(log.entries == ["dismiss"])
-      try screen.clickControl(at: 6)
+      try screen.clickControl(at: 4)
       #expect(log.entries == ["dismiss", "retry"])
     }
 
@@ -322,7 +328,7 @@
       let screen = page(AutomationsViewState(rows: [], hasAny: false))
       defer { screen.close() }
       #expect(screen.segmentedControls.count == 1, "only the tabs")
-      #expect(try !screen.shows("Paused"), "no filter pills")
+      #expect(try searchField(screen).placeholderString == "Search automations")
     }
 
     @Test("every button stays in the window at a narrow width, even with a long name")
@@ -351,7 +357,7 @@
       defer { screen.close() }
       let identifiers = [
         "automations-intro-button", "automations-new", "automations-tabs", "automations-search",
-        "automations-filter-all", "automation-a", "automation-b", "automations-trigger-jira",
+        "automations-filter", "automation-a", "automation-b", "automations-trigger-jira",
         "automations-trigger-linear",
       ]
       let frames = try screen.withAccessibilityTree {
@@ -366,7 +372,7 @@
       #expect(new.minX > 600, "New sits at the right")
       let tabs = try frame("automations-tabs")
       let search = try frame("automations-search")
-      let filter = try frame("automations-filter-all")
+      let filter = try frame("automations-filter")
       #expect(new.maxY <= tabs.minY && tabs.maxY <= search.minY && search.maxY <= filter.minY)
       #expect(search.width > 600, "the search box spans the page")
       let first = try frame("automation-a")

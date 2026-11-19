@@ -56,10 +56,9 @@ struct AutomationsScreenTests {
     return (screen, opened)
   }
 
-  // In reading order: the guide's button, New, the tabs, the filter pills (the search box is a
-  // plain field, not counted), then the row's menu.
+  // In reading order: the guide's button, New, the tabs, the filter, then the row's menu, the
+  // last control while no templates show.
   private static let newButton = 1
-  private static let rowMenuControl = 6
   private static let editorMarker = "Advanced settings"  // Only the editor shows it.
 
   /// The editor's Create or Save changes: its last control, once the form can be saved.
@@ -70,11 +69,9 @@ struct AutomationsScreenTests {
 
   /// The row's menu button, wherever the header puts the list.
   private func rowMenu<Content: View>(_ screen: OffscreenWindow<Content>) throws -> CGPoint {
-    let frames = screen.controlFrames
-    guard frames.indices.contains(Self.rowMenuControl) else {
-      throw OffscreenWindowError.notFound("the row's menu among \(frames.count) controls")
+    guard let frame = screen.controlFrames.last else {
+      throw OffscreenWindowError.notFound("the row's menu")
     }
-    let frame = frames[Self.rowMenuControl]
     return CGPoint(x: frame.midX, y: frame.midY)
   }
 
@@ -297,7 +294,8 @@ extension AutomationsScreenTests {
     // Under the list: Jira, Slack, then GitHub among the suggested templates.
     #expect(try screen.shows("Suggested"))
     #expect(try screen.shows("Requires the GitHub CLI or a GitHub MCP server."))
-    try screen.clickControl(at: Self.rowMenuControl + 3)
+    // GitHub, then Linear and PagerDuty, end the page's controls.
+    try screen.clickControl(at: screen.controlFrames.count - 3)
     try await settle(screen, untilShowing: Self.editorMarker)
     let shown = try screen.shownText()
     #expect(shown.contains { $0.localizedCaseInsensitiveContains("GitHub") }, "\(shown.prefix(20))")

@@ -23,11 +23,13 @@ public struct AutomationDetailView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
         if let back = actions.back {
+          // A back button as the platform draws one: the chevron and the page it returns to.
           Button(action: back) {
-            Label("Automations", systemImage: "chevron.left")
+            Label("Automations", systemImage: "chevron.backward")
           }
           .buttonStyle(.borderless)
-          .foregroundStyle(.secondary)
+          .keyboardShortcut("[", modifiers: .command)
+          .help("Back to Automations")
           .accessibilityIdentifier("automation-detail-back")
           .padding(.bottom, Theme.Spacing.large)
         }
@@ -50,7 +52,7 @@ public struct AutomationDetailView: View {
         }
         configuration.padding(.top, Theme.Spacing.extraLarge)
         Divider().padding(.vertical, Theme.Spacing.extraLarge)
-        Text("Runs").font(AutomationStyle.sectionLabel).foregroundStyle(.secondary)
+        Text("Runs").font(AutomationStyle.sectionTitle)
           .accessibilityAddTraits(.isHeader)
           .padding(.bottom, Theme.Spacing.small)
         runs
@@ -88,12 +90,12 @@ public struct AutomationDetailView: View {
 
   private var titleBlock: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-      Text(state.name).font(AutomationStyle.pageTitle.weight(.semibold))
+      Text(state.name).font(AutomationStyle.pageTitle)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityAddTraits(.isHeader)
         .accessibilityIdentifier("automation-detail-title")
       if let owner = state.sharedBy {
-        Text("Shared by \(owner)").font(.callout).foregroundStyle(.secondary)
+        Text("Shared by \(owner)").font(AutomationStyle.detail).foregroundStyle(.secondary)
           .accessibilityIdentifier("automation-detail-owner")
       }
     }
@@ -138,21 +140,14 @@ public struct AutomationDetailView: View {
     }
   }
 
-  /// A ghost icon button, as the web's header actions.
+  /// An icon-only button in the platform's bordered style, named by its tooltip.
   private func iconButton(
     _ title: String, systemImage: String, action: @escaping @MainActor () -> Void
   ) -> some View {
-    Button(action: action) {
-      Image(systemName: systemImage)
-        .foregroundStyle(.primary)
-        .frame(width: Theme.Control.target, height: Theme.Control.target)
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.borderless)
-    .tint(.primary)
-    .hoverHighlight()
-    .help(title)
-    .accessibilityLabel(title)
+    Button(title, systemImage: systemImage, action: action)
+      .labelStyle(.iconOnly)
+      .buttonStyle(.bordered)
+      .help(title)
   }
 
   @ViewBuilder private var shareButton: some View {
@@ -196,13 +191,13 @@ public struct AutomationDetailView: View {
       }
       Text(state.isPaused ? "Paused" : "Active")
         .font(.caption.weight(.medium))
-        .foregroundStyle(state.isPaused ? AnyShapeStyle(.secondary) : AnyShapeStyle(Theme.success))
+        .foregroundStyle(state.isPaused ? AnyShapeStyle(.secondary) : AnyShapeStyle(.green))
         .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.tiny)
         .background(
           Capsule().fill(
             state.isPaused
-              ? AnyShapeStyle(AutomationStyle.mutedFill)
-              : AnyShapeStyle(Theme.success.opacity(0.15))
+              ? AnyShapeStyle(.quaternary)
+              : AnyShapeStyle(Color.green.opacity(0.15))
           )
         )
         .fixedSize()
@@ -243,7 +238,7 @@ extension AutomationDetailView {
             .rotationEffect(.degrees(showsConfiguration ? 0 : -90))
           Text("Configuration")
         }
-        .font(AutomationStyle.sectionLabel)
+        .font(AutomationStyle.sectionTitle)
         .foregroundStyle(.secondary)
         .contentShape(Rectangle())
       }
@@ -262,7 +257,7 @@ extension AutomationDetailView {
           ) {
             ForEach(state.configuration) { field in
               VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-                Text(field.label.uppercased()).font(.callout).tracking(0.5)
+                Text(field.label).font(.caption)
                   .foregroundStyle(.secondary)
                 Text(field.value).textSelection(.enabled)
                   .fixedSize(horizontal: false, vertical: true)
@@ -320,7 +315,7 @@ extension AutomationDetailView {
   /// A titled block with a muted label, 24 points below what precedes it.
   private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      Text(title).font(AutomationStyle.sectionLabel).foregroundStyle(.secondary)
+      Text(title).font(AutomationStyle.sectionTitle)
         .accessibilityAddTraits(.isHeader)
       content()
     }

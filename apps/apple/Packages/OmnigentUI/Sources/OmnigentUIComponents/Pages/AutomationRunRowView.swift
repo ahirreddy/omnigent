@@ -43,13 +43,13 @@ struct AutomationRunRowView: View {
           }
         }
       }
-      .font(.callout)
+      .font(AutomationStyle.detail)
       Spacer(minLength: 0)
     }
     .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.small)
     .background(
       RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-        .fill(isHovered && open != nil ? AutomationStyle.mutedFill : .clear)
+        .fill(isHovered && open != nil ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
     )
     .contentShape(Rectangle())
     .accessibilityIdentifier("automation-run-\(run.id)")
@@ -87,7 +87,7 @@ struct AutomationRunRowView: View {
         }
       }
     } label: {
-      Text(summary).font(.callout).underline().foregroundStyle(.secondary)
+      Label(summary, systemImage: "arrow.triangle.pull").font(AutomationStyle.detail)
     }
     .menuStyle(.button)
     .buttonStyle(.borderless)
@@ -108,7 +108,7 @@ struct AutomationRunRowView: View {
   @ViewBuilder private var indicator: some View {
     switch run.indicator {
     case .failed:
-      Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.warning)
+      Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
         .help("Failed").accessibilityLabel("Failed")
     case .skipped:
       Image(systemName: "calendar.badge.minus").foregroundStyle(.secondary)
