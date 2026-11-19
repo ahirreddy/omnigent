@@ -264,15 +264,22 @@
       let spy = spy()
       let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 800)
       defer { screen.close() }
-      #expect(try screen.plainButtons(inRow: workRow).isEmpty)
+      // The folder's chevron always shows; the rest only while the row is hovered.
+      let chevron = ["Expand project", "Collapse project"]
+      let hoverButtons = {
+        try screen.plainButtons(inRow: workRow).filter {
+          !chevron.contains($0.accessibilityLabel() ?? "")
+        }
+      }
+      #expect(try hoverButtons().isEmpty)
       try screen.hoverRow(workRow)
-      let newSession = try #require(try screen.plainButtons(inRow: workRow).first)
+      let newSession = try #require(try hoverButtons().first)
       try screen.click(newSession)
       #expect(spy.calls == ["new in p1"])
       let menu = try screen.openMenu(try #require(try screen.popUps(inRow: workRow).first))
       #expect(menu.item(named: "Rename project\u{2026}") != nil)
       try screen.endRowHover()
-      #expect(try screen.plainButtons(inRow: workRow).isEmpty)
+      #expect(try hoverButtons().isEmpty)
     }
   }
 #endif
