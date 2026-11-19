@@ -59,7 +59,7 @@ struct SidebarFamilySectionsTests {
   func familyAcrossAPage() {
     // One row short of a page, so the family's head ends the page and its members run past it.
     let loose = (1..<ProjectFolderPaging.pageSize).map {
-      SessionSummary(id: "s\($0)", title: "S\($0)", updatedAt: 2000 - $0)
+      SessionSummary(id: "s\($0)", title: "S\($0)", updatedAt: Int64(2000 - $0))
     }
     var state = FamilyFixture.state(
       loose + [FamilyFixture.coordinator, FamilyFixture.implementation, FamilyFixture.review])
