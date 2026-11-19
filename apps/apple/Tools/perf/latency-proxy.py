@@ -438,6 +438,20 @@ def summarize(marks: list[dict], launched: float, last_read_ms: float) -> None:
             f"{mark['detail'].get('cpu', '?')} ms CPU since launch, {spent:.0f} ms in "
             f"{len(until)} list events and sidebar builds"
         )
+    # A saved list's swap for the server's: the reset applied once the last read landed, which
+    # draws nothing new when the rows are the same.
+    swap = next(
+        (
+            mark
+            for mark in marks
+            if mark["name"] == "list event"
+            and mark["message"].startswith("reset")
+            and since_launch(mark) >= last_read_ms
+        ),
+        None,
+    )
+    if swap is not None:
+        print(f"server's list applied: {since_launch(swap):.0f} ms")
     counts = collections.Counter(mark["name"] for mark in marks)
     print(
         f"sidebar builds: {counts['sidebar state']}, list events applied: "
