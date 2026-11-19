@@ -1,8 +1,10 @@
 //! The sidebar's projects and the pages of its open folders, read by the engine as soon as the
-//! connection is up rather than after the app draws its first frame: the projects and their sort
-//! order at once, beside the list's first page, then the first page of each folder the sidebar
-//! shows open (the web's `?project=` read). A list reload reads the open folders again; their
-//! rows stay shown meanwhile, and folders that are closed by then are forgotten.
+//! connection is up rather than after the app draws its first frame.
+//!
+//! The projects and their sort order come at once, beside the list's first page, then the first
+//! page of each folder the sidebar shows open (the web's `?project=` read). A list reload reads
+//! the open folders again; their rows stay shown meanwhile, and folders that are closed by then
+//! are forgotten.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;

@@ -127,6 +127,28 @@
       #expect(try screen.toolbarText().contains("A"), "the strip is back with its tab")
     }
 
+    @Test("A collapse the split view makes renders the strip, not the shell, sidebar or detail")
+    func splitViewToggleRendersTheStrip() throws {
+      let content = HostContent()
+      let screen = titled(
+        ReadingShellHarness(content: content, spy: SidebarSpy(SidebarFixture.state)))
+      defer { screen.close() }
+      let split = try #require(screen.allViews.lazy.compactMap { $0 as? NSSplitView }.first)
+      let controller = try #require(split.delegate as? NSSplitViewController)
+      let sidebar = try #require(controller.splitViewItems.first)
+      for isHidden in [true, false] {
+        let forToggle = RenderTally.recording {
+          // As View > Hide Sidebar, Control-Command-S and the toolbar's button send it.
+          controller.toggleSidebar(nil)
+          screen.settle(0.5)
+        }
+        #expect(sidebar.isCollapsed == isHidden)
+        let others = forToggle.filter { $0.key != "strip" }
+        #expect(others.isEmpty, "\(others)")
+        #expect(forToggle["strip", default: 0] <= 2)
+      }
+    }
+
     @Test("The search text renders the sidebar, which shows it, and not the shell")
     func searchTextRendersTheSidebar() throws {
       let content = HostContent()

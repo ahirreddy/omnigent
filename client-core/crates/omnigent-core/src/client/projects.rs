@@ -48,7 +48,10 @@ impl From<&SessionListItem> for ProjectMember {
             representative: family.and_then(|family| family.representative_id.clone()),
             nested: family.is_some_and(|family| family.nests(&row.id)),
             working: row.status == SessionStatus::Running
-                || row.pending_elicitations_count.value().is_some_and(|count| *count > 0)
+                || row
+                    .pending_elicitations_count
+                    .value()
+                    .is_some_and(|count| *count > 0)
                 || row.background_work_running.value() == Some(&true),
         }
     }

@@ -107,16 +107,21 @@ impl ServerPages {
         let sharing_mode = opt_str(object, "sharing_mode")?;
         let sharing_off = sharing_mode.as_deref() == Some("off");
         let sharing_restricted = sharing_mode.as_deref() == Some("restricted_read_only");
-        let flag =|name: &str| opt_bool(object, name).map(|flag| flag.unwrap_or(false));
+        let flag = |name: &str| opt_bool(object, name).map(|flag| flag.unwrap_or(false));
         let count = |name: &str| {
-            opt_u64(object, name).map(|value| value.map(|value| u32::try_from(value).unwrap_or(u32::MAX)))
+            opt_u64(object, name)
+                .map(|value| value.map(|value| u32::try_from(value).unwrap_or(u32::MAX)))
         };
-        let mcp_registry = opt_array(object, "enabled_connections")?
-            .is_some_and(|connections| connections.iter().any(|entry| entry.as_str() == Some("mcp")));
+        let mcp_registry = opt_array(object, "enabled_connections")?.is_some_and(|connections| {
+            connections
+                .iter()
+                .any(|entry| entry.as_str() == Some("mcp"))
+        });
         Ok(Self {
             automation_subhour: flag("scheduled_task_subhour")?,
             automation_trigger_headers: flag("scheduled_task_trigger_headers")?,
-            automation_trigger_poll_minutes: count("automation_trigger_poll_minutes")?.unwrap_or(10),
+            automation_trigger_poll_minutes: count("automation_trigger_poll_minutes")?
+                .unwrap_or(10),
             session_message_max_chars: count("session_message_max_chars")?.unwrap_or(0),
             automation_mcp_services: flag("scheduled_task_mcp_services")? && mcp_registry,
             automation_source_sessions: flag("scheduled_task_source_sessions")?,
@@ -166,6 +171,10 @@ pub enum AutomationState {
 
 /// One automation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent facts of the server's record, mirrored one to one"
+)]
 pub struct Automation {
     /// Id.
     pub id: String,
@@ -1278,7 +1287,11 @@ impl<T: HttpTransport> ClientCore<T> {
                 }
                 let value = self.get_json(&path, &query).await?;
                 let object = as_object(&value, &path).map_err(malformed(&path))?;
-                for row in opt_array(object, "runs").map_err(malformed(&path))?.into_iter().flatten() {
+                for row in opt_array(object, "runs")
+                    .map_err(malformed(&path))?
+                    .into_iter()
+                    .flatten()
+                {
                     runs.push(run_pull_requests_from(row).map_err(malformed(&path))?);
                 }
                 match opt_str(object, "next_cursor").map_err(malformed(&path))? {
@@ -1314,8 +1327,10 @@ impl<T: HttpTransport> ClientCore<T> {
             let mut cursors = std::collections::BTreeSet::new();
             let mut after: Option<String> = None;
             for _ in 0..MAX_GRANT_PAGES {
-                let query: Vec<(&str, String)> =
-                    after.iter().map(|cursor| ("after", cursor.clone())).collect();
+                let query: Vec<(&str, String)> = after
+                    .iter()
+                    .map(|cursor| ("after", cursor.clone()))
+                    .collect();
                 let value = self.get_json(&path, &query).await?;
                 let object = as_object(&value, &path).map_err(malformed(&path))?;
                 for row in opt_array(object, "permissions")
@@ -1355,7 +1370,11 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    pub async fn grant_automation_access(&self, id: &str, user_id: &str) -> Result<(), SessionError> {
+    pub async fn grant_automation_access(
+        &self,
+        id: &str,
+        user_id: &str,
+    ) -> Result<(), SessionError> {
         let result = async {
             validate_identifier(id)?;
             super::share::validate_grantee(user_id)?;

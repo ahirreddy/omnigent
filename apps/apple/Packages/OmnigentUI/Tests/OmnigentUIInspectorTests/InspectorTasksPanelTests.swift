@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import OmnigentUIComponents
@@ -7,7 +8,6 @@ import Testing
   import AppKit
   import OmnigentViewTesting
   import OmnigentViewTextReading
-  import SwiftUI
   @testable import OmnigentUITestSupport
 #endif
 

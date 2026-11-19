@@ -156,14 +156,13 @@ impl HostedConnection {
         info: Option<ServerInfo>,
     ) -> Result<ConnectedServer, HostedAuthError> {
         self.disconnect();
-        let info = match info {
-            Some(info) => info,
-            None => {
-                let info_response = transport
-                    .send(self.build_request("GET", "/v1/info", &[], "application/json")?)
-                    .await?;
-                ServerInfo::from_json(&self.checked(&info_response)?.body)?
-            }
+        let info = if let Some(info) = info {
+            info
+        } else {
+            let info_response = transport
+                .send(self.build_request("GET", "/v1/info", &[], "application/json")?)
+                .await?;
+            ServerInfo::from_json(&self.checked(&info_response)?.body)?
         };
         let single_user = self.expects_single_user();
         if single_user {

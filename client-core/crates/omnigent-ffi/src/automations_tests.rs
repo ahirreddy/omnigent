@@ -13,16 +13,12 @@ use serde_json::json;
 
 use crate::automation_triggers::{
     TriggerCondition, TriggerConfig, TriggerConfigContext, TriggerFields, TriggerOperator,
-    TriggerPollingTarget, TriggerPromptDisplay, TriggerScopeOperator, TriggerSource,
-    TriggerWorker, WorkerPlacement, combine_trigger_prompt, decode_trigger_prompt,
-    empty_trigger_fields, encode_trigger_prompt, is_trigger_prompt,
-    read_trigger_message_max_chars, render_trigger_config_prompt, split_trigger_prompt,
-    strip_trigger_header, trigger_fields_complete, trigger_fields_for_event,
-    trigger_message_budget, trigger_prompt_display, trigger_session_link_placeholder,
-    trigger_sources, trigger_template,
-};
-use crate::automations::{
-    RunPullRequestStatus, RunPullRequests, cost_limit_problem, describe_cost_limit,
+    TriggerPollingTarget, TriggerPromptDisplay, TriggerScopeOperator, TriggerSource, TriggerWorker,
+    WorkerPlacement, combine_trigger_prompt, decode_trigger_prompt, empty_trigger_fields,
+    encode_trigger_prompt, is_trigger_prompt, read_trigger_message_max_chars,
+    render_trigger_config_prompt, split_trigger_prompt, strip_trigger_header,
+    trigger_fields_complete, trigger_fields_for_event, trigger_message_budget,
+    trigger_prompt_display, trigger_session_link_placeholder, trigger_sources, trigger_template,
 };
 use crate::automations::{
     Automation, AutomationDraft, AutomationFilter, AutomationRunStatus, AutomationState,
@@ -30,6 +26,9 @@ use crate::automations::{
     Weekday, arrange_automations, build_schedule_rrule, default_schedule_model, describe_schedule,
     format_next_run, maximum_schedule_interval, minimum_schedule_interval, parse_schedule_rrule,
     schedule_needs_anchored_scheduling, validate_schedule,
+};
+use crate::automations::{
+    RunPullRequestStatus, RunPullRequests, cost_limit_problem, describe_cost_limit,
 };
 use crate::sessions::SiblingSessionDestinations;
 use crate::test_support::{connected, json as reply};

@@ -27,8 +27,7 @@ use std::sync::{Mutex, PoisonError};
 
 use omnigent_protocol::sessions::{SessionSnapshot, SessionStatus};
 use omnigent_protocol::{
-    ContentPart, ConversationItem, Field, FromWire, ItemData, ItemStatus, MessageRole,
-    TextPartKind,
+    ContentPart, ConversationItem, Field, FromWire, ItemData, ItemStatus, MessageRole, TextPartKind,
 };
 use serde_json::{Map, Value, json};
 use url::Url;
@@ -1232,28 +1231,37 @@ impl DemoState {
         if permission(session) < 4 {
             return Err(Reject(403, "Only the owner can rewind this session."));
         }
-        let harness = session.snapshot.harness.value().cloned().unwrap_or_default();
+        let harness = session
+            .snapshot
+            .harness
+            .value()
+            .cloned()
+            .unwrap_or_default();
         if !matches!(harness.as_str(), "claude-native" | "claude-sdk") {
-            return Err(Reject(400, "/rewind is not available for this session type."));
+            return Err(Reject(
+                400,
+                "/rewind is not available for this session type.",
+            ));
         }
         if self.replies.contains_key(id) {
             return Err(Reject(400, "Stop the current turn before running /rewind."));
         }
         let not_a_prompt = || Reject(400, "/rewind needs one of this session's prompts.");
-        let index = session
-            .snapshot
-            .items
+        let items = &session.snapshot.items;
+        let (index, item) = items
             .iter()
-            .position(|item| item.id == item_id)
+            .enumerate()
+            .find(|(_, item)| item.id == item_id)
             .ok_or_else(not_a_prompt)?;
-        let prompt = match &session.snapshot.items[index].data {
+        let prompt = match &item.data {
             ItemData::Message(message) if message.role == MessageRole::User && !message.is_meta => {
                 message.visible_text()
             }
             _ => return Err(not_a_prompt()),
         };
-        let kept: Vec<Value> = session.snapshot.items[..index]
+        let kept: Vec<Value> = items
             .iter()
+            .take(index)
             .map(|item| serde_json::to_value(item).unwrap_or(Value::Null))
             .collect();
         let mut fields = snapshot_fields(&session.snapshot)?;

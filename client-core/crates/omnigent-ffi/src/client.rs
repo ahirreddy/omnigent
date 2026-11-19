@@ -478,11 +478,11 @@ impl Inner {
         .await
         {
             Ok(resolved) => resolved,
-                Err(error) => {
-                    self.check_generation(generation)?;
-                    return Err(self.fail(server_url, error));
-                }
-            };
+            Err(error) => {
+                self.check_generation(generation)?;
+                return Err(self.fail(server_url, error));
+            }
+        };
         self.check_generation(generation)?;
         lock(&self.auth).resolved = Some(resolved.clone());
         // The server's auth mode decides, never the host: `resolve_mode` reports the local
@@ -1256,9 +1256,10 @@ impl ClientCore {
     /// one's first page as soon as the projects are known, and again with each list reload; the
     /// sessions arrive as `SessionListChanged` upserts, the pages as `ProjectFoldersChanged`.
     pub fn set_open_project_folders(&self, folder_ids: Vec<String>) {
-        self.inner.post(Msg::List(crate::list_driver::ListMsg::OpenFolders(
-            folder_ids.into_iter().collect(),
-        )));
+        self.inner
+            .post(Msg::List(crate::list_driver::ListMsg::OpenFolders(
+                folder_ids.into_iter().collect(),
+            )));
     }
 
     /// Reads `project`'s folder's first page, or with `next` the page after its loaded ones (a

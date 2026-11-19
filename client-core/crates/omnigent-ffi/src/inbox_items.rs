@@ -286,7 +286,6 @@ pub fn inbox_dismiss_options() -> Vec<InboxDismissOption> {
     .collect()
 }
 
-
 /// The latest run of an automation that failed before it made a session.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct AutomationFailureRecord {

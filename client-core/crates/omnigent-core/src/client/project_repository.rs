@@ -1,7 +1,8 @@
-//! A new project from a repository, as the web's `NewProjectButton` makes one under the
-//! `project_repository_creation` feature: cloned onto a host first
-//! (`POST /v1/hosts/{id}/repositories/clone`), or saved for a sandbox to prepare, then created
-//! with the repository in its config (`POST /v1/projects`).
+//! A new project from a repository, as the web's `NewProjectButton` makes one.
+//!
+//! Under the `project_repository_creation` feature, the repository is cloned onto a host first
+//! (`POST /v1/hosts/{id}/repositories/clone`), or saved for a sandbox to prepare, then the
+//! project is created with the repository in its config (`POST /v1/projects`).
 
 use serde_json::{Map, Value, json};
 
@@ -105,7 +106,7 @@ pub fn clone_failure_message(reason: &str) -> &'static str {
 }
 
 /// What a refused project create tells the user (`friendlyProjectError`).
-fn project_failure_message(error: &SessionError) -> &'static str {
+const fn project_failure_message(error: &SessionError) -> &'static str {
     match error {
         SessionError::Rejected { status: 409, .. } => {
             "A project with this name already exists. Use a different name."
@@ -259,10 +260,11 @@ impl<T: HttpTransport> ClientCore<T> {
         let created = match self.write_json("POST", "/v1/projects", &body).await {
             Ok(created) => created,
             Err(error) => {
-                let mut message = project_failure_message(&error).to_owned();
-                if let Some(path) = checkout {
-                    message.push_str(&format!(" The repository is already checked out at {path}."));
-                }
+                let failure = project_failure_message(&error);
+                let message = checkout.map_or_else(
+                    || failure.to_owned(),
+                    |path| format!("{failure} The repository is already checked out at {path}."),
+                );
                 return Err(rejected(message));
             }
         };

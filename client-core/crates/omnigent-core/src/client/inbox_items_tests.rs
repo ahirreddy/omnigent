@@ -6,8 +6,8 @@ use serde_json::{Value, json};
 use super::super::SessionError;
 use super::super::test_support::{Reply, RouteTransport, connected, path_of, query_value};
 use super::{
-    AgentInboxPage, AutomationFailurePage, InboxLinkTarget, InboxResolution,
-    inbox_item_kind_label, inbox_item_preview, safe_web_link,
+    AgentInboxPage, AutomationFailurePage, InboxLinkTarget, InboxResolution, inbox_item_kind_label,
+    inbox_item_preview, safe_web_link,
 };
 
 const ITEM_ID: &str = "0123456789abcdef0123456789abcdef";
@@ -254,7 +254,6 @@ fn only_plain_web_links_are_safe() {
     assert!(safe_web_link("example.com").is_none());
 }
 
-
 #[test]
 fn automation_failures_decode_with_the_webs_reasons() {
     let page = AutomationFailurePage::from_value(&json!({
@@ -295,7 +294,8 @@ fn automation_failures_page_by_cursor() {
     assert_eq!(query_value(&request, "limit").as_deref(), Some("50"));
     assert_eq!(query_value(&request, "after").as_deref(), Some("5:t2"));
 
-    core.transport().ok("/v1/scheduled-tasks/inbox", r#"{"data":7}"#);
+    core.transport()
+        .ok("/v1/scheduled-tasks/inbox", r#"{"data":7}"#);
     assert!(matches!(
         block_on(core.automation_failures(None)),
         Err(SessionError::MalformedResponse { .. })

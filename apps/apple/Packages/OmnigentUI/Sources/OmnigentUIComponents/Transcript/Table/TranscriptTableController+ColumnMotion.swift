@@ -29,10 +29,12 @@
             && scrollView.isDescendant(of: item.viewController.view))
           {
             columnWatches.append(
-              item.observe(\.isCollapsed, options: [.old, .new]) { [weak self] _, change in
+              item.observe(\.isCollapsed, options: [.old, .new]) { [weak self] item, change in
                 // AppKit sets the item's state as the collapse starts, on the main thread, and
                 // says so again as it ends.
                 guard change.oldValue != change.newValue else { return }
+                // A column that collapses in one step gives one new width: nothing to hold.
+                guard !SidebarSlide.collapsesAtOnce(item) else { return }
                 MainActor.assumeIsolated { self?.columnMotionBegan() }
               })
           }

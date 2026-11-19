@@ -226,7 +226,8 @@ fn the_prompt_and_its_readable_files_return_to_the_new_composer() {
 #[test]
 fn a_draft_already_in_the_new_composer_wins_over_the_prompt() {
     let core = connected(RouteTransport::local());
-    core.update_composer("conv_rewound", "my own words").unwrap();
+    core.update_composer("conv_rewound", "my own words")
+        .unwrap();
     let restored = block_on(core.restore_rewound_prompt(&rewound(vec![file(
         None,
         Some("data:text/plain;base64,aGVsbG8="),

@@ -2002,11 +2002,7 @@ fn inventory_hints_reload_the_list_after_a_delay_unless_the_socket_is_live() {
     ));
     harness.pump();
     harness.advance(3_000);
-    assert_eq!(
-        harness.http.list_reads(),
-        lists + 1,
-        "the socket covers it"
-    );
+    assert_eq!(harness.http.list_reads(), lists + 1, "the socket covers it");
 }
 
 #[test]
