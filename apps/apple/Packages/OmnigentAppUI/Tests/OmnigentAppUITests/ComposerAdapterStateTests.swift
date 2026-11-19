@@ -215,10 +215,10 @@ struct ComposerAdapterStateTests {
     let store = try await Fixtures.store()
     let failure = CoreError.InvalidState(message: "down")
     store.linkChanged(.reconnecting(reason: failure, failures: 1, delayMs: 2_600))
-    #expect(ComposerAdapter.connection(store)?.message == "Reconnecting\u{2026} \u{00B7} down")
+    #expect(ComposerAdapter.connection(store)?.message == "Reconnecting\u{2026} \u{00B7} Down.")
     store.linkChanged(.reconnecting(reason: failure, failures: .max, delayMs: .max))
     let longest = try #require(ComposerAdapter.connection(store)?.message)
-    #expect(longest == "Reconnecting\u{2026} attempt \(UInt32.max) \u{00B7} down")
+    #expect(longest == "Reconnecting\u{2026} attempt \(UInt32.max) \u{00B7} Down.")
     #expect(store.errors.count == 2)
   }
 

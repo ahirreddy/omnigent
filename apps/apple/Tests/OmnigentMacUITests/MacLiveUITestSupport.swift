@@ -14,8 +14,13 @@ struct MacLiveUITestSupport {
   let server: String
 
   init(_ test: XCTestCase) {
+    self.init(test, server: Self.environment["OMNIGENT_E2E_SERVER_URL"] ?? "http://127.0.0.1:6767")
+  }
+
+  /// Support for the app on `server`, such as a relay in front of the local server.
+  init(_ test: XCTestCase, server: String) {
     self.test = test
-    server = Self.environment["OMNIGENT_E2E_SERVER_URL"] ?? "http://127.0.0.1:6767"
+    self.server = server
   }
 
   nonisolated static var environment: [String: String] { ProcessInfo.processInfo.environment }

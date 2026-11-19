@@ -263,6 +263,11 @@ let macTestDependencies: [TargetDependency] = [
 let developerIDTestSettings: SettingsDictionary = [
   "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) OMNIGENT_CHROMIUM"
 ]
+/// The Mac UI test runners may listen: the reconnect flow relays the app's connection through
+/// the runner, to cut it and restore it while the local server keeps running.
+let macUITestRunnerSettings: SettingsDictionary = [
+  "CODE_SIGN_ENTITLEMENTS": "Tests/OmnigentMacUITests/OmnigentMacUITests.entitlements"
+]
 
 /// Scheme for one Mac edition: build, test (unit + UI), run, archive.
 func macScheme(_ name: String, tests: [TargetReference]) -> Scheme {
@@ -306,7 +311,8 @@ let project = Project(
       extraDependencies: macTestDependencies, settings: developerIDTestSettings),
     uiTests(
       name: "OmnigentMacUITests", host: "OmnigentMac", destinations: [.mac],
-      deployment: .macOS(Omnigent.deploymentVersion), settings: developerIDTestSettings),
+      deployment: .macOS(Omnigent.deploymentVersion),
+      settings: developerIDTestSettings.merging(macUITestRunnerSettings) { _, runner in runner }),
     unitTests(
       name: "OmnigentMacAppStoreTests", host: "OmnigentMacAppStore", destinations: [.mac],
       deployment: .macOS(Omnigent.deploymentVersion), sourceDirectory: "OmnigentMacTests",
@@ -319,7 +325,8 @@ let project = Project(
       ]),
     uiTests(
       name: "OmnigentMacAppStoreUITests", host: "OmnigentMacAppStore", destinations: [.mac],
-      deployment: .macOS(Omnigent.deploymentVersion), sourceDirectory: "OmnigentMacUITests"),
+      deployment: .macOS(Omnigent.deploymentVersion), sourceDirectory: "OmnigentMacUITests",
+      settings: macUITestRunnerSettings),
   ] + BrowserTargets.helperTargets(macBrowser),
   schemes: [
     .scheme(

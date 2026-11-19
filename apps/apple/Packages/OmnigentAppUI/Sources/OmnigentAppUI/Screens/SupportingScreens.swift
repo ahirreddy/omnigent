@@ -49,8 +49,17 @@ struct ConnectionIssuesBanner: View {
     if health.showsReconnected { return .reconnected }
     switch health.reachability {
     case .online, .offline: return nil
-    case .reconnecting(let reason, _): return .reconnecting(detail: reason.message)
-    case .unreachable(let error): return .unreachable(detail: error.message)
+    case .reconnecting(let reason, _): return .reconnecting(detail: ConnectionReason.text(reason))
+    case .unreachable(let error): return .unreachable(detail: ConnectionReason.text(error))
+    }
+  }
+
+  /// Whether the state line covers an outage of the server connection, which the composer
+  /// then leaves to it.
+  static func showsOutage(_ health: ConnectionHealth) -> Bool {
+    switch health.reachability {
+    case .reconnecting, .unreachable: true
+    case .online, .offline: false
     }
   }
 

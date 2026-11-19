@@ -127,6 +127,7 @@ struct ConnectionRecoveryTests {
     let store = try await connectedStore(RouteServer(), sockets: sockets)
     store.health.noticeDuration = .seconds(30)
     let conversation = try #require(store.conversation("conv_a"))
+    #expect(store.workspace("conv_a") != nil)
     let first = await sockets.waitForOpenedSocket()
     first.sink.opened()
     first.sink.message(message: .text(text: #"{"type":"snapshot","items":[]}"#))
@@ -153,6 +154,7 @@ struct ConnectionRecoveryTests {
     #expect(!store.issues.contains { $0.error.isConnectivityProblem })
     #expect(store.sessionList.lastError == nil)
     #expect(!conversation.errors.contains(unreachable))
+    #expect(store.fileChanges(in: "conv_a") == 1, "changes pushed while away are read again")
   }
 
   @Test("Connection failures are the network's; sign-in, refusals and doubtful sends are not")
