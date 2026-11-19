@@ -57,18 +57,22 @@ struct SidebarFamilySectionsTests {
 
   @Test("A folder's page counts every member, its head first; the family runs onto the next page")
   func familyAcrossAPage() {
-    let loose = (1...4).map { SessionSummary(id: "s\($0)", title: "S\($0)", updatedAt: 2000 - $0) }
+    // One row short of a page, so the family's head ends the page and its members run past it.
+    let loose = (1..<ProjectFolderPaging.pageSize).map {
+      SessionSummary(id: "s\($0)", title: "S\($0)", updatedAt: 2000 - $0)
+    }
     var state = FamilyFixture.state(
       loose + [FamilyFixture.coordinator, FamilyFixture.implementation, FamilyFixture.review])
     state.projects = [
       SessionProject(
-        id: "work", name: "Work", sessionIds: ["s1", "s2", "s3", "s4", "coord", "impl", "review"])
+        id: "work", name: "Work", sessionIds: loose.map(\.id) + ["coord", "impl", "review"])
     ]
     let open = SidebarNavigationOrder.sessionIDs(state, collapsed: [], expandedProjects: ["work"])
-    #expect(open == ["s1", "s2", "s3", "s4", "coord"])
+    #expect(open == loose.map(\.id) + ["coord"])
     let more = SidebarNavigationOrder.sessionIDs(
-      state, collapsed: [], expandedProjects: ["work"], shownInProject: ["work": 10])
-    #expect(more == ["s1", "s2", "s3", "s4", "coord", "impl", "review"])
+      state, collapsed: [], expandedProjects: ["work"],
+      shownInProject: ["work": ProjectFolderPaging.pageSize * 2])
+    #expect(more == loose.map(\.id) + ["coord", "impl", "review"])
   }
 
   @Test("Keyboard order and Shift ranges skip a collapsed family's members")
