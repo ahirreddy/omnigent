@@ -30,9 +30,8 @@ final class MacProjectFolderFlowUITests: XCTestCase {
   private static let places: [Place] = [
     .pill, .gap, .pillAfterItsTooltip, .topEdge, .pill, .bottomEdge, .text,
   ]
-  /// Five listed and three under Show more: one click lists all, with Show more still in the
-  /// small VM screen's sidebar.
-  private static let sessionCount = 8
+  /// A page listed and three under Show more: one click lists all.
+  private static let sessionCount = 13
   /// The newest sessions, renamed over and over; the others wait on a request.
   private static let renamedCount = 3
 
@@ -46,9 +45,9 @@ final class MacProjectFolderFlowUITests: XCTestCase {
     super.tearDown()
   }
 
-  /// A folder of eight, five waiting on a request: each expansion lists five, and every click on
-  /// Show more lists the rest wherever it lands, across renames that stream in and the sidebar's
-  /// minute-long reconcile.
+  /// A folder of thirteen, ten waiting on a request: each expansion lists a page, and every click
+  /// on Show more lists the rest wherever it lands, across renames that stream in and the
+  /// sidebar's minute-long reconcile.
   @MainActor
   func testShowMoreTakesEveryClickBesideANeedsYouPill() async throws {
     let live = MacLiveUITestSupport(self)
@@ -104,8 +103,8 @@ final class MacProjectFolderFlowUITests: XCTestCase {
     let sessions: [String]
   }
 
-  /// A project of eight, all but the newest three waiting on a request, so that the three under
-  /// Show more wait on one. All are deleted once the test ends.
+  /// A project of thirteen, all but the newest three waiting on a request, so that the three
+  /// under Show more wait on one. All are deleted once the test ends.
   @MainActor
   private func seedFolder(_ live: MacLiveUITestSupport) async throws -> SeededFolder {
     let fixture = try await live.serverJSON("GET", "/v1/sessions/\(try live.fixtureSession())")
