@@ -61,8 +61,9 @@ extension ConnectionStore {
     for open in workspaceStores.keys {
       withMutation(keyPath: \.[fileChangesIn: open]) { fileChangeCounts[open, default: 0] += 1 }
     }
-    // The core reads the list, the projects and the hosts again as its socket resumes.
-    reloadOfferedPages()
+    // The core reads the list, the projects and the hosts again as its socket resumes; session
+    // streams still waiting out their backoff redial now, and the offered pages are read again.
+    foreground()
   }
 }
 
