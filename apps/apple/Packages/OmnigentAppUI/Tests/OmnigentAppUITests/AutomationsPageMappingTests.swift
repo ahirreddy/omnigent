@@ -200,4 +200,29 @@ struct AutomationsPageMappingTests {
     #expect(!AutomationTriggerMapping.defaultName("jira").isEmpty)
     #expect(AutomationTriggerMapping.cards.map(\.systemImage).allSatisfy { $0 != "bolt" })
   }
+
+  @Test("Switching the Trigger type keeps each type's fields, and carries the instructions over")
+  func switchingTriggerTypes() {
+    var kept: [String: AutomationDraftState] = [:]
+    var draft = AutomationDraftState(name: "", prompt: "Look into it.", agentID: "a1")
+    draft.hostID = "h1"
+    let jira = AutomationTriggerMapping.switchedType(draft, to: "jira", kept: &kept, offered: nil)
+    #expect(jira.trigger?.source == "jira")
+    #expect(jira.trigger?.instructions == "Look into it.", "the instructions carry over")
+    #expect(jira.name == AutomationTriggerMapping.defaultName("jira"))
+    #expect(jira.continuesSession && jira.isTrigger)
+    #expect(jira.hostID == "h1", "where it runs stays")
+    var edited = jira
+    edited.trigger?.scope = "ENG"
+    let back = AutomationTriggerMapping.switchedType(edited, to: nil, kept: &kept, offered: nil)
+    #expect(back.trigger == nil && !back.isTrigger)
+    #expect(back.prompt == "Look into it.", "the schedule's own fields come back")
+    #expect(!back.continuesSession)
+    let again = AutomationTriggerMapping.switchedType(back, to: "jira", kept: &kept, offered: nil)
+    #expect(again.trigger?.scope == "ENG", "the trigger's edits come back too")
+    var typed = back
+    typed.name = "Triage"
+    let slack = AutomationTriggerMapping.switchedType(typed, to: "slack", kept: &kept, offered: nil)
+    #expect(slack.name == "Triage", "a typed name carries over")
+  }
 }

@@ -308,48 +308,15 @@ extension AutomationsAdapter {
     editing = Editing(id: id)
   }
 
-  /// Switches a new automation between a schedule (`nil`) and an integration, as the web's:
-  /// each type keeps its own fields, and a typed name and the instructions carry over.
+  /// Switches a new automation between a schedule (`nil`) and an integration, as the web's.
   private func switchTriggerType(_ pages: PagesStore, to id: String?) {
-    let current = draft.trigger?.source ?? Self.scheduleType
-    let target = id ?? Self.scheduleType
-    guard current != target else { return }
-    typeDrafts[current] = draft
-    let previousDefault = AutomationTriggerMapping.defaultName(current)
-    let typedName =
-      !draft.name.trimmingCharacters(in: .whitespaces).isEmpty && draft.name != previousDefault
-    let instructions = draft.trigger?.instructions ?? draft.prompt
-    var next = draft
-    if let saved = typeDrafts[target] {
-      next.name = saved.name
-      next.prompt = saved.prompt
-      next.systemPrompt = saved.systemPrompt
-      next.trigger = saved.trigger
-      next.isTrigger = saved.isTrigger
-      next.schedule = saved.schedule
-      next.continuesSession = saved.continuesSession
-    } else if let id, let source = AutomationTriggerMapping.source(id) {
-      let schedule = AutomationsMapping.triggerSchedule(
-        pages.offered, continuesSession: true, inSandbox: draft.runsInSandbox)
-      next = AutomationTriggerMapping.newDraft(source, base: draft, schedule: schedule)
-      next.trigger?.instructions = instructions
-      if typedName { next.name = draft.name }
-      if pages.offered?.automationMcpServices == true {
-        Task { await pages.loadAutomationMcpServices() }
-      }
-    } else {
-      next.trigger = nil
-      next.isTrigger = false
-      next.systemPrompt = nil
-      next.prompt = instructions
-      next.schedule = ScheduleChoice()
-      next.continuesSession = false
-      next.name = typedName ? draft.name : ""
+    let current = draft.trigger?.source
+    draft = AutomationTriggerMapping.switchedType(
+      draft, to: id, kept: &typeDrafts, offered: pages.offered)
+    if id != nil, id != current, pages.offered?.automationMcpServices == true {
+      Task { await pages.loadAutomationMcpServices() }
     }
-    draft = next
   }
-
-  private static let scheduleType = "schedule"
 
   private func save(_ pages: PagesStore, saved: Automation?) {
     guard !isSaving else { return }
