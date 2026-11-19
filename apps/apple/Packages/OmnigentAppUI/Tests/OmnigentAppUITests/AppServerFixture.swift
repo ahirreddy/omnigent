@@ -84,7 +84,18 @@ func signedInStore(
   let store = ConnectionStore(core: core)
   await store.connect(serverURL: url)
   #expect(store.isSignedIn, "phase: \(store.phase)")
+  try await offeredPagesRead(store)
   return store
+}
+
+/// Waits for the connect's read of the offered pages to land or fail: started after a test's
+/// own read, it would land in its place.
+@MainActor
+func offeredPagesRead(_ store: ConnectionStore) async throws {
+  guard let pages = store.pages else { return }
+  try await eventually("the connect's read of the offered pages") {
+    pages.offered != nil || pages.offeredError != nil
+  }
 }
 
 /// Waits for what a detached task or the core's events will do.

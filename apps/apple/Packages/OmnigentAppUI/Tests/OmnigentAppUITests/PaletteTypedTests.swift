@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import OmnigentCoreFFI
+import OmnigentStores
 import OmnigentTestSupport
 import OmnigentUIComponents
 import OmnigentViewTesting
@@ -8,7 +9,6 @@ import SwiftUI
 import Testing
 
 @testable import OmnigentAppUI
-@testable import OmnigentStores
 
 /// Where the palette asked Settings to open.
 @MainActor
@@ -98,8 +98,6 @@ struct PaletteTypedTests {
   func offeredPages(query: String, page: SidebarDestination) async throws {
     let server = threeSessionServer()
     let session = try await signedInSession(server)
-    // The connect's own read of the pages ends first, so it cannot land after the one below.
-    await session.connection.offeredPagesReload?.value
     server.route(
       "/v1/info",
       .json(#"{"single_user":true,"automations_enabled":true,"features":{"usage_page":true}}"#))
