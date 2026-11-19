@@ -2,7 +2,7 @@ public import Observation
 public import OmnigentCoreFFI
 
 /// Whether the server can be reached: the one state every connection warning shows.
-public enum ServerReachability: Equatable, Sendable {
+public enum ConnectionReachability: Equatable, Sendable {
   /// Live, or nothing to report (signed out, or the first connect still in flight).
   case online
   /// The live connection dropped and at least one attempt to restore it failed; the core keeps
@@ -25,7 +25,7 @@ enum ReachabilitySignal: Equatable {
   /// Neither live nor known to be down: connecting, or a healthy socket recycling.
   case unsettled
   /// Down, as the warning should say.
-  case disrupted(ServerReachability)
+  case disrupted(ConnectionReachability)
 }
 
 /// Follows one server's connection so its warnings clear once it is back, and says when that
@@ -35,10 +35,10 @@ struct ConnectionRecovery: Equatable {
   /// The server observed, normalized; a different one starts over.
   private(set) var server: String?
   /// The disruption on screen, `nil` while there is none.
-  private(set) var disruption: ServerReachability?
+  private(set) var disruption: ConnectionReachability?
 
   /// What the warnings show.
-  var reachability: ServerReachability { disruption ?? .online }
+  var reachability: ConnectionReachability { disruption ?? .online }
 
   /// Applies one observation.
   /// - Parameters:
@@ -86,7 +86,7 @@ public final class ConnectionHealth {
   public static let reconnectedNoticeDuration: Duration = .seconds(2)
 
   /// What the connection warnings show.
-  public private(set) var reachability: ServerReachability = .online
+  public private(set) var reachability: ConnectionReachability = .online
   /// "Reconnected" shows: the connection came back after a disruption the user could see.
   public private(set) var showsReconnected = false
   /// How many times the connection came back; a read keyed on it runs again.

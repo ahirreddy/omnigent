@@ -210,16 +210,15 @@ struct ComposerAdapterStateTests {
     #expect(ComposerAdapter.connection(closed) == nil)
   }
 
-  @Test("A reconnect's wait reads sensibly at both ends of its range")
-  func reconnectDelays() async throws {
+  @Test("A reconnect says its attempt and reason, with no countdown to go stale")
+  func reconnectLine() async throws {
     let store = try await Fixtures.store()
     let failure = CoreError.InvalidState(message: "down")
-    store.linkChanged(.reconnecting(reason: failure, failures: 1, delayMs: 0))
-    #expect(ComposerAdapter.connection(store)?.message == "Reconnecting in 1s: down")
+    store.linkChanged(.reconnecting(reason: failure, failures: 1, delayMs: 2_600))
+    #expect(ComposerAdapter.connection(store)?.message == "Reconnecting\u{2026} \u{00B7} down")
     store.linkChanged(.reconnecting(reason: failure, failures: .max, delayMs: .max))
     let longest = try #require(ComposerAdapter.connection(store)?.message)
-    #expect(longest.contains("attempt \(UInt32.max)"))
-    #expect(longest.hasPrefix("Reconnecting in "))
+    #expect(longest == "Reconnecting\u{2026} attempt \(UInt32.max) \u{00B7} down")
     #expect(store.errors.count == 2)
   }
 
