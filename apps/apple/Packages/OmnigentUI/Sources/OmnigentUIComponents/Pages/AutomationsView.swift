@@ -105,6 +105,7 @@ public struct AutomationsView: View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
       SearchField("Search automations", text: $search, identifier: "automations-search")
         .controlSize(.large)
+        .accessibilityIdentifier("automations-search")
       if hasAny {
         Picker("Filter automations", selection: $filter) {
           ForEach(AutomationsFilter.allCases) { Text($0.title).tag($0) }
