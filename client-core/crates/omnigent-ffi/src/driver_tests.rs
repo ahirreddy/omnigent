@@ -1832,6 +1832,75 @@ fn a_socket_that_resumes_reloads_the_list() {
 }
 
 #[test]
+fn a_socket_that_resumes_reads_the_projects_and_hosts_again() {
+    let mut harness = connected();
+    let (sink, _) = live_socket(&mut harness);
+    sink.ended(crate::host::SocketEnd::Closed {
+        code: 1012,
+        reason: "restart".into(),
+    });
+    harness.pump();
+    harness.advance(10_000);
+    let projects = harness.http.count("/v1/sessions/projects");
+    harness.events.take();
+    live_socket(&mut harness);
+    assert_eq!(harness.http.count("/v1/sessions/projects"), projects + 1);
+    assert!(harness.events.all().contains(&CoreEvent::HostsChanged));
+}
+
+#[test]
+fn a_foreground_during_a_reconnect_wait_reconnects_now() {
+    let mut harness = live_session();
+    let (socket_sink, _) = live_socket(&mut harness);
+    let (stream_sink, _, _) = harness.streams.last();
+    socket_sink.ended(crate::host::SocketEnd::Failed {
+        failure: ConnectionFailure::Offline {
+            message: "gone".into(),
+        },
+    });
+    stream_sink.finish(Some(ConnectionFailure::Offline {
+        message: "gone".into(),
+    }));
+    harness.pump();
+    let sockets = harness.sockets.count();
+    let streams = harness.streams.count();
+    harness.core.foreground();
+    harness.pump();
+    assert_eq!(
+        harness.sockets.count(),
+        sockets + 1,
+        "the socket redials at once"
+    );
+    assert_eq!(
+        harness.streams.count(),
+        streams + 1,
+        "the stream reopens at once"
+    );
+}
+
+#[test]
+fn a_foreground_after_a_long_silence_replaces_the_live_links() {
+    let mut harness = live_session();
+    live_socket(&mut harness);
+    let sockets = harness.sockets.count();
+    let streams = harness.streams.count();
+    // Asleep: no heartbeat arrived, and the watchdogs have not fired yet.
+    harness.advance(40_000);
+    harness.core.foreground();
+    harness.pump();
+    assert_eq!(
+        harness.streams.count(),
+        streams + 1,
+        "a stream silent 40 s is replaced"
+    );
+    assert_eq!(
+        harness.sockets.count(),
+        sockets,
+        "a socket silent 40 s may still be alive"
+    );
+}
+
+#[test]
 fn a_bearer_rotation_with_no_connection_reports_nothing() {
     let mut harness = connected();
     harness.core.disconnect();
