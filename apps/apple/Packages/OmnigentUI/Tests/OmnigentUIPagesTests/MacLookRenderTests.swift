@@ -17,6 +17,9 @@ import Testing
 /// `OMNIGENT_LOOK_SCREENS` to a comma-separated list of name prefixes to draw only those.
 enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case decisionsQuestion = "decisions-question"
+  /// The card under a window root's accent: the theme's, then the system's.
+  case decisionsQuestionThemeAccent = "decisions-question-theme-accent"
+  case decisionsQuestionSystemAccent = "decisions-question-system-accent"
   case decisionsForm = "decisions-form"
   case decisionsDates = "decisions-dates"
   case decisionsPage = "decisions-page"
@@ -82,6 +85,12 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     switch self {
     case .decisionsQuestion:
       return AnyView(Fixture.card(PreviewData.claudeQuestion, draft: Fixture.questionDraft))
+    case .decisionsQuestionThemeAccent, .decisionsQuestionSystemAccent:
+      // As `omnigentAppearance` sets a window's root.
+      return AnyView(
+        Fixture.card(PreviewData.claudeQuestion, draft: Fixture.questionDraft)
+          .tint(ThemeColor.controlTint)
+          .omnigentTheme(.omni, systemAccent: self == .decisionsQuestionSystemAccent))
     case .decisionsForm: return AnyView(Fixture.card(PreviewData.form, draft: Fixture.formDraft))
     case .decisionsDates: return AnyView(Fixture.card(Fixture.dates, draft: Fixture.datesDraft))
     case .decisionsPage: return AnyView(Fixture.card(PreviewData.externalPage))

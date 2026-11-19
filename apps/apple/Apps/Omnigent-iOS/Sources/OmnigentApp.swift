@@ -34,13 +34,12 @@ struct OmnigentApp: App {
 
   private func root(_ request: PhoneWindowRequest?) -> some View {
     IOSRootView(request: request)
-      // SwiftUI controls, sheets, pickers and links take the theme's tint instead of system blue,
-      // and so do UIKit's alerts. The window keeps the system tint, so the keyboard focus ring
-      // stays neutral as the web's does, not the primary pink.
-      .tint(ThemeColor.controlTint)
+      // SwiftUI controls, sheets, pickers and links take the accent (the theme's, or the
+      // system's under Use system accent), and so do UIKit's alerts. The window keeps the system
+      // tint, so the keyboard focus ring stays neutral as the web's does, not the primary pink.
       .background { AlertTint() }
       .appearanceSettings(theme)
-      .omnigentTheme(theme.theme, appearance: theme.mode)
+      .omnigentAppearance(theme)
   }
 
   #if DEBUG

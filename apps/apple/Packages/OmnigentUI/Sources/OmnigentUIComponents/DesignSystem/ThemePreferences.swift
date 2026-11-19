@@ -142,6 +142,9 @@ public final class ThemePreferences {
   public static let customKey = "omnigent:custom-theme"
   /// `omnigent:terminal-theme`.
   public static let terminalKey = "omnigent:terminal-theme"
+  /// The app's own key for Use system accent, a Boolean; the web has no such setting, so it is
+  /// not in a settings file.
+  public static let systemAccentKey = "omnigent:use-system-accent"
 
   /// Why a stored value could not be read. Surfaced, never swallowed.
   public enum ReadError: Error, Equatable, CustomStringConvertible {
@@ -172,6 +175,11 @@ public final class ThemePreferences {
   /// The terminal color scheme.
   public var terminal: TerminalThemePreference {
     didSet { defaults.set(terminal.rawValue, forKey: Self.terminalKey) }
+  }
+  /// Controls and the primary action take the system's accent (the Mac's accent color, iOS's
+  /// tint) instead of the theme's. Off by default, so they follow the color theme.
+  public var usesSystemAccent: Bool {
+    didSet { defaults.set(usesSystemAccent, forKey: Self.systemAccentKey) }
   }
   /// Problems found reading stored values, for Settings to show.
   public private(set) var readErrors: [ReadError] = []
@@ -208,12 +216,27 @@ public final class ThemePreferences {
     if storedTerminal != nil, TerminalThemePreference(rawValue: storedTerminal ?? "") == nil {
       errors.append(.malformed(key: Self.terminalKey))
     }
+    switch Self.decodeSystemAccent(defaults.object(forKey: Self.systemAccentKey)) {
+    case .success(let uses): usesSystemAccent = uses
+    case .failure(let error):
+      usesSystemAccent = false
+      errors.append(error)
+    }
     readErrors = errors
   }
 
   /// The active theme.
   public var theme: OmnigentTheme {
     paletteID == "custom" ? custom.theme() : OmnigentTheme.named(paletteID)
+  }
+
+  /// The stored Use system accent: off when unset, an error for anything but a Boolean.
+  static func decodeSystemAccent(_ stored: Any?) -> Result<Bool, ReadError> {
+    guard let stored else { return .success(false) }
+    guard !(stored is String), let uses = stored as? Bool else {
+      return .failure(.malformed(key: systemAccentKey))
+    }
+    return .success(uses)
   }
 
   /// Every theme the picker offers: the presets and Custom.
@@ -228,6 +251,7 @@ public final class ThemePreferences {
     if paletteID != stored.paletteID { paletteID = stored.paletteID }
     if custom != stored.custom { custom = stored.custom }
     if terminal != stored.terminal { terminal = stored.terminal }
+    if usesSystemAccent != stored.usesSystemAccent { usesSystemAccent = stored.usesSystemAccent }
     if readErrors != stored.readErrors { readErrors = stored.readErrors }
   }
 
