@@ -158,6 +158,8 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   }
   /// The "Submit with ⌘ + Enter" setting: Return inserts a newline instead of sending.
   public var submitWithCommandReturn: Bool
+  /// Send goes with an empty draft, as a workflow's run without additional instructions does.
+  public var sendsWithoutText = false
   /// Agent, host, workspace and server, for the context row.
   public var context: ExecutionContext?
   /// A message sent mid-turn steers the running turn; otherwise it waits for the turn to end.

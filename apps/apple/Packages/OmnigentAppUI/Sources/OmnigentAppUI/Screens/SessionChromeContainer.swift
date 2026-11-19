@@ -216,7 +216,8 @@ extension AppTabContent {
     switch self {
     case .chat, .harness, .subagent: true
     case .sideChatSession(_, let childID): childID != nil
-    case .newTab, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .project,
+    case .newTab, .newSession, .nestedSession, .inbox, .canvas, .automations, .workflows, .usage,
+      .project,
       .terminal, .sideChat, .browser, .agentBrowser, .remoteBrowser:
       false
     }

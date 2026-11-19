@@ -86,6 +86,21 @@ enum AutomationsMapping {
     return draft
   }
 
+  /// A new automation that runs `workflow` as saved (web `lockedWorkflow`): named for it, with a
+  /// new session each run, as a workflow's runs need.
+  static func workflowDraft(
+    _ workflow: SavedWorkflow, catalog: OmnigentCoreFFI.CreationCatalog?
+  ) -> AutomationDraftState {
+    var draft = newDraft(catalog: catalog)
+    draft.name = workflow.name
+    draft.continuesSession = false
+    let harness = catalog?.agents.first { $0.id == draft.agentID }?.harness
+    draft.prompt = savedWorkflowMessage(
+      skillPrefix: skillInvocationPrefix(harness: harness), workflowId: workflow.id,
+      workflowName: workflow.name, details: "", reviewPlanFirst: false)
+    return draft
+  }
+
   /// A new trigger's schedule: the server's polling interval where the scheduler runs minute
   /// rules there, else hourly.
   static func triggerSchedule(_ offered: ServerPages?, continuesSession: Bool, inSandbox: Bool)

@@ -217,6 +217,8 @@ private struct CatalogDetail: View {
         actions: CanvasActions { model.selection = .session($0) })
     case .automations:
       AutomationsView(state: PreviewData.automations, actions: AutomationsActions())
+    case .workflows:
+      WorkflowsView(state: PreviewData.workflows, actions: WorkflowsActions())
     case .usage:
       UsageView(state: PreviewData.usage, actions: UsageActions(formatCost: PreviewData.cost))
     case .project:

@@ -42,6 +42,7 @@ extension NewSessionForm {
       approvalModes: NewSessionAdapter.approvalModes(agent, selected: selection.approvalMode),
       purpose: .start, context: context(creation, connection: connection))
     state.submitWithCommandReturn = submitWithCommandReturn
+    state.sendsWithoutText = sendsWorkflowWithoutText
     applyCompletions(launch, to: &state)
     return state
   }
@@ -49,6 +50,7 @@ extension NewSessionForm {
   /// The composer's prompt: a nested agent's, the project's, else the web's.
   private var placeholder: String {
     if nested != nil { return NestedComposer.placeholder }
+    if let workflowPlaceholder { return workflowPlaceholder }
     return project.map { "Start a new session in \($0.name)" }
       ?? "Describe a task to start a new session\u{2026}"
   }

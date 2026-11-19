@@ -166,11 +166,7 @@ public struct ConnectedServerView: View {
     state.collapsedFamilies = sidebar.collapsedFamilies
     state = SidebarNestedDraftRows.applied(
       to: state, drafts: connection.creationStore?.nestedDrafts ?? [], list: connection.sessionList)
-    state.showsAutomations = connection.pages?.offered?.automations == true
-    state.showsUsage = connection.pages?.offered?.usage == true
-    state.showsCanvas = connection.pages?.offered?.canvas == true
-    state.projectBoards = connection.pages?.offered?.projectKanban == true
-    state.showsSharedScope = connection.pages?.offered?.sharing ?? true
+    SidebarAdapter.applyOfferedPages(connection.pages?.offered, to: &state)
     state.projectRunChoices = newProjectRunChoices
     state.pagesFailure = SidebarAdapter.pagesFailure(connection)
     state.projectSort = connection.sessionList.projectSortMode.map {
@@ -222,6 +218,8 @@ public struct ConnectedServerView: View {
         newSession: { selection = .newSession })
     case .automations:
       AutomationsAdapter(connection: connection) { selection = .session($0) }
+    case .workflows:
+      workflowsPage
     case .usage:
       UsageAdapter(connection: connection) { selection = .session($0) }
     case .project(let id):
@@ -332,7 +330,8 @@ extension ConnectedServerView {
     let tabs = session.tabs
     return Group {
       switch tab.content {
-      case .chat, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .project:
+      case .chat, .newSession, .nestedSession, .inbox, .canvas, .automations, .workflows, .usage,
+        .project:
         detail(tab.content.destination)
       case .newTab:
         newTabPage(tab, routes: routes)

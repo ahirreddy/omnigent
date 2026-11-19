@@ -26,6 +26,8 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
   case canvas
   /// Automations.
   case automations
+  /// Workflows.
+  case workflows
   /// Usage.
   case usage
   /// A project's board.
@@ -46,6 +48,7 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
     case .inbox: "tray"
     case .canvas: "square.grid.2x2"
     case .automations: "clock"
+    case .workflows: "flowchart"
     case .usage: "creditcard"
     case .project: "rectangle.split.3x1"
     }
@@ -66,6 +69,7 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
     case .inbox: "Inbox"
     case .canvas: "Canvas"
     case .automations: "Automations"
+    case .workflows: "Workflows"
     case .usage: "Usage"
     case .project: "Project"
     }

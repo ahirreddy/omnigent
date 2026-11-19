@@ -270,7 +270,8 @@ extension SessionTabGroups {
   /// terminal shows in the session's chat.
   nonisolated static func belongsInGroup(_ content: AppTabContent) -> Bool {
     switch content {
-    case .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .project, .harness:
+    case .newSession, .nestedSession, .inbox, .canvas, .automations, .workflows, .usage, .project,
+      .harness:
       false
     case .newTab, .chat, .terminal, .sideChat, .sideChatSession, .subagent, .browser,
       .agentBrowser, .remoteBrowser:

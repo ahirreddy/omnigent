@@ -255,6 +255,17 @@ enum SidebarAdapter {
     connection.isOffline ? offlineText : nil
   }
 
+  /// The sidebar rows of the pages the server offers; before any read, none, and the Shared
+  /// scope as on a multi-user server.
+  static func applyOfferedPages(_ offered: ServerPages?, to state: inout SidebarViewState) {
+    state.showsAutomations = offered?.automations == true
+    state.showsWorkflows = offered?.workflows == true
+    state.showsUsage = offered?.usage == true
+    state.showsCanvas = offered?.canvas == true
+    state.projectBoards = offered?.projectKanban == true
+    state.showsSharedScope = offered?.sharing ?? true
+  }
+
   /// Why the sidebar has no Automations, Usage or Canvas rows when the reason is a failed read
   /// rather than the server: `nil` once pages were read, or before any read finished.
   /// - Parameter connection: The connection.

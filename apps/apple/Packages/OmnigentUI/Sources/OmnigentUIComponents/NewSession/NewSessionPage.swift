@@ -17,6 +17,7 @@ public struct NewSessionPage: View {
   private let options: NewSessionOptions?
   private let optionActions: NewSessionOptionActions
   private let isFloating: Bool
+  private let workflow: NewSessionWorkflowControls?
 
   @State private var gaze: CGSize = .zero
   @Environment(\.layoutWidth) private var layoutWidth
@@ -40,14 +41,16 @@ public struct NewSessionPage: View {
   ///   - optionActions: Their actions.
   ///   - isFloating: Only the composer and its chips, floated over another page (a project's
   ///     board), without the heading.
+  ///   - workflow: A saved workflow's run or planning chat: its review choice and Cancel.
   public init(
     draft: Binding<String>, composer: ComposerViewState, actions: ComposerActions,
     heading: String = Self.defaultHeading, subtitle: String? = nil,
     importSessions: (@MainActor () -> Void)? = nil, showsContextDetails: Bool = false,
     options: NewSessionOptions? = nil, optionActions: NewSessionOptionActions = .init(),
-    isFloating: Bool = false
+    isFloating: Bool = false, workflow: NewSessionWorkflowControls? = nil
   ) {
     self.isFloating = isFloating
+    self.workflow = workflow
     self.options = options
     self.optionActions = optionActions
     _draft = draft
@@ -158,6 +161,7 @@ public struct NewSessionPage: View {
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("new-session-subtitle")
       }
+      if let workflow { workflow }
       if pinsComposer { importButton }
     }
     .padding(.horizontal, Theme.Spacing.extraLarge)
