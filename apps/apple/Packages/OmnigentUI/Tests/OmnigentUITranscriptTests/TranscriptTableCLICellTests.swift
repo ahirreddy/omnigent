@@ -100,6 +100,7 @@
         [
           message(TranscriptFixture.user("u1", "Short?")),
           message(TranscriptFixture.user("u2", "> It said this\nMy reply to it")),
+          message(TranscriptFixture.questionReply("u3")),
           message(TranscriptFixture.answer("a1", Self.answer)),
           message(TranscriptFixture.answer("a2", "## Step\n\nA paragraph with `code`.\n\n- one")),
           row(.footer(id: "a1", text: "Worked for 12s \u{2022} 9:47 PM")),
@@ -290,6 +291,30 @@
         try await Task.sleep(for: .milliseconds(10))
       }
       #expect(style.builtDocument(for: spec, width: column.width) != nil)
+    }
+  }
+
+  // MARK: Question replies
+
+  extension TranscriptTableCLICellTests {
+    @Test("A reply to an agent's questions draws each answer under its dim quoted question")
+    func questionReply() throws {
+      let cell = TranscriptTableCLICell(style: style(environment()))
+      cell.show(message(TranscriptFixture.questionReply("u-reply")), version: 0, width: Self.width)
+      #expect(cell.kind == .cliText(.userMessage))
+      let text = try #require(cell.document).text.text
+      #expect(text.string == "\u{21AA} Re: Color?\nBlue\nLarge")
+      func color(of words: String) throws -> NSColor? {
+        let found = try #require(text.string.range(of: words))
+        let location = NSRange(found, in: text.string).location
+        // Nothing reads the effective range back.
+        return unsafe text.attribute(.foregroundColor, at: location, effectiveRange: nil)
+          as? NSColor
+      }
+      let palette = CLIPalette.fallback
+      #expect(try color(of: "\u{21AA} Re: Color?") == palette.dim.platformColor)
+      #expect(try color(of: "Blue") == palette.userText.platformColor)
+      #expect(try color(of: "Large") == palette.userText.platformColor)
     }
   }
 #endif

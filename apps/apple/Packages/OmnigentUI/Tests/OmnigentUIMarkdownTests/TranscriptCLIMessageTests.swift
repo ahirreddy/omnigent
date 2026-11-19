@@ -29,6 +29,30 @@
           UserPrompt.Run(text: "```\n> code\n```", isQuote: false)
         ])
       #expect(UserPrompt.runs(">").isEmpty)
+      // A reply to an agent's questions: each question's quoted line, then its answer as typed.
+      let row = Fixture.questionReply("u")
+      let reply = UserPrompt.source(row)
+      #expect(reply == QuestionReplyMarkdown.text(row.questionReplies))
+      #expect(UserPrompt.source(Fixture.user("p", "plain")) == "plain")
+      #expect(
+        UserPrompt.runs(reply) == [
+          UserPrompt.Run(text: "\u{21AA} Re: Color?", isQuote: false, isQuestion: true),
+          UserPrompt.Run(text: "Blue", isQuote: false),
+          UserPrompt.Run(text: "Large", isQuote: false),
+        ])
+    }
+
+    @Test("A reply to an agent's questions shows each answer under its quoted question")
+    func questionReply() throws {
+      let band = transcriptScreen(
+        CLIItemView(
+          item: .message(Fixture.questionReply("u")), decorations: ["u": MessageDecoration()]))
+      defer { band.close() }
+      let shown = try band.shownText()
+      for text in ["\u{21AA} Re: Color?", "Blue", "Large"] {
+        #expect(shown.contains(text), "\(text)")
+      }
+      #expect(!shown.contains { $0.contains("omnigent-question-reply") })
     }
 
     @Test("A prompt with a quote shows both the quote and the reply")

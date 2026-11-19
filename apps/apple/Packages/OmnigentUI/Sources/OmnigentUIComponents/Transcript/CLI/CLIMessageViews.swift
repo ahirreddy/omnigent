@@ -76,7 +76,7 @@ struct CLIUserBand: View, Equatable {
         }
       }
       if !row.text.isEmpty, !isCollapsedOrigin {
-        CLIUserText(text: row.text)
+        CLIUserText(text: UserPrompt.source(row))
       }
       AttachmentStrip(attachments: row.attachments)
       if let activity = row.activity {
