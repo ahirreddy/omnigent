@@ -436,6 +436,8 @@ impl Engine {
         self.start_realtime();
         self.refresh_list();
         self.read_projects();
+        // The open folders read beside the projects when their names are known already.
+        self.read_open_folders();
     }
 
     /// Stops every connection, then reports `phase`.

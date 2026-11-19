@@ -2,13 +2,15 @@
 //! "Load more" pages after them (the sidebar's and the Inbox's). Each reload also reads the pinned
 //! sessions at the same time, so the Pinned section is whole before the pages that hold them load.
 //! The pages hold unarchived sessions, as the web's sidebar reads them, until the sidebar shows
-//! the archived ones.
+//! the archived ones. While the saved list shows, a connection's first page waits for its pins
+//! and open folders, so the server's list replaces the saved one in one step.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use futures::future::AbortHandle;
 use omnigent_core::SessionError;
+use omnigent_core::message_cache::SavedProjects;
 use omnigent_core::project_settings::ProjectSortMode as CoreSortMode;
 use omnigent_core::projects::ProjectSummary as CoreProject;
 use omnigent_core::sessions::{
@@ -18,7 +20,7 @@ use omnigent_core::sessions::{
 use crate::engine::{Engine, Msg};
 use crate::errors::CoreError;
 use crate::events::{CoreEvent, ErrorScope};
-use crate::project_driver::{FolderRead, Folders};
+use crate::project_driver::{FolderRead, Folders, sort_mode};
 use crate::runtime::post;
 use crate::sessions::SessionListChange;
 
@@ -61,6 +63,8 @@ pub(crate) enum ListMsg {
         read: FolderRead,
         result: Result<SessionPage, SessionError>,
     },
+    /// A held first page has waited long enough.
+    HoldElapsed { generation: u64 },
 }
 
 /// How often the list is read again while connected. The updates socket announces a new session
@@ -97,7 +101,19 @@ pub(crate) struct ListWindow {
     pub(crate) folders: Folders,
     /// Which sessions the pages hold; kept across connections, as the sidebar keeps it.
     pub(crate) listed: ListedSessions,
+    /// The saved list shows: this connection's first page waits for its pins, projects and open
+    /// folders, so the server's rows replace the saved ones in one step.
+    pub(crate) holds_for_saved: bool,
+    /// The first page, while it waits for them.
+    held: Option<SessionPage>,
+    /// This reload's pinned read has answered.
+    pins_answered: bool,
+    /// Ends the wait after [`HELD_PAGE_MAX_MS`].
+    hold_timer: Option<AbortHandle>,
 }
+
+/// The longest a first page waits for the reads that replace the saved list with it.
+pub(crate) const HELD_PAGE_MAX_MS: u64 = 1_500;
 
 impl ListWindow {
     /// How many rows a reload asks for: every loaded page, at least the first, at most the
@@ -125,6 +141,11 @@ impl Engine {
                 read,
                 result,
             } => self.folder_loaded(&folder, token, read, result),
+            ListMsg::HoldElapsed { generation } => {
+                if generation == self.list.generation {
+                    self.release_held_page(true);
+                }
+            }
         }
     }
 
@@ -143,12 +164,15 @@ impl Engine {
         self.report_folders();
     }
 
-    /// Drops the delayed reload and the periodic re-read, as a reload or a disconnect does.
+    /// Drops the delayed reload, the periodic re-read and a held page's wait, as a reload or a
+    /// disconnect does.
     pub(crate) fn cancel_list_timers(&mut self) {
-        for timer in [self.list.refresh.take(), self.list.reconcile.take()]
-            .into_iter()
-            .flatten()
-        {
+        let timers = [
+            self.list.refresh.take(),
+            self.list.reconcile.take(),
+            self.list.hold_timer.take(),
+        ];
+        for timer in timers.into_iter().flatten() {
             timer.abort();
         }
     }
@@ -178,6 +202,8 @@ impl Engine {
         self.list.loading_more = false;
         self.list.page_shown = false;
         self.list.early_pins = None;
+        self.list.pins_answered = false;
+        self.list.held = None;
         let generation = self.list.generation;
         let limit = self.list.reload_limit();
         let listed = self.list.listed;
@@ -206,42 +232,74 @@ impl Engine {
         }
         self.schedule_list_reconcile();
         match result {
-            Ok(page) => {
-                self.list.rows = u32::try_from(page.selected_rows).unwrap_or(u32::MAX);
-                self.list.next_cursor = page.next_cursor;
-                self.list.page_shown = true;
-                let mut shown = page.sessions;
-                let listed: BTreeSet<String> = shown.iter().map(|row| row.id.clone()).collect();
-                let early = self.list.early_pins.take();
-                let pins = early
-                    .as_ref()
-                    .map_or(&self.list.pins, |early| &early.sessions);
-                // Pins and open folders past the page keep showing while their reads run, as
-                // the rows stand now: an edit since their read shows.
-                let mut kept = listed;
-                let others: Vec<String> = pins
-                    .iter()
-                    .chain(self.list.folders.rows())
-                    .filter(|row| kept.insert(row.id.clone()))
-                    .map(|row| row.id.clone())
-                    .collect();
-                shown.extend(self.sessions.shown_summaries(&others));
-                self.emit(CoreEvent::SessionListChanged {
-                    change: SessionListChange::Reset {
-                        sessions: shown.iter().cloned().map(Into::into).collect(),
-                    },
-                });
-                self.read_observe(&shown);
-                self.emit(CoreEvent::SessionListLoaded);
-                self.emit_list_paging();
-                self.update_watch();
-                self.saved_list_reset(page.rows);
-                if let Some(early) = early {
-                    self.list.pins = early.sessions;
-                    self.saved_list_more(&early.rows);
-                }
+            Ok(page) if self.list.holds_for_saved => {
+                self.list.held = Some(page);
+                let tx = self.sender();
+                self.list.hold_timer = Some(self.host.after(HELD_PAGE_MAX_MS, move || {
+                    post(&tx, Msg::List(ListMsg::HoldElapsed { generation }));
+                }));
+                self.release_held_page(false);
             }
-            Err(error) => self.list_failed(error),
+            Ok(page) => self.show_page(page),
+            Err(error) => {
+                self.leave_early();
+                self.list_failed(error);
+            }
+        }
+    }
+
+    /// Shows the held first page once its pins, projects and open folders have answered, or
+    /// (`force`) once it has waited [`HELD_PAGE_MAX_MS`].
+    pub(crate) fn release_held_page(&mut self, force: bool) {
+        let answered =
+            (self.list.pins_answered || self.is_demo()) && self.list.folders.first_reads_answered();
+        if !force && !answered {
+            return;
+        }
+        let Some(page) = self.list.held.take() else {
+            return;
+        };
+        if let Some(timer) = self.list.hold_timer.take() {
+            timer.abort();
+        }
+        self.list.holds_for_saved = false;
+        self.show_page(page);
+    }
+
+    fn show_page(&mut self, page: SessionPage) {
+        self.list.rows = u32::try_from(page.selected_rows).unwrap_or(u32::MAX);
+        self.list.next_cursor = page.next_cursor;
+        self.list.page_shown = true;
+        let mut shown = page.sessions;
+        let listed: BTreeSet<String> = shown.iter().map(|row| row.id.clone()).collect();
+        let early = self.list.early_pins.take();
+        let pins = early
+            .as_ref()
+            .map_or(&self.list.pins, |early| &early.sessions);
+        // Pins and open folders past the page keep showing while their reads run, as the rows
+        // stand now: an edit since their read shows.
+        let mut kept = listed;
+        let others: Vec<String> = pins
+            .iter()
+            .chain(self.list.folders.rows())
+            .filter(|row| kept.insert(row.id.clone()))
+            .map(|row| row.id.clone())
+            .collect();
+        shown.extend(self.sessions.shown_summaries(&others));
+        self.emit(CoreEvent::SessionListChanged {
+            change: SessionListChange::Reset {
+                sessions: shown.iter().cloned().map(Into::into).collect(),
+            },
+        });
+        self.leave_early();
+        self.read_observe(&shown);
+        self.emit(CoreEvent::SessionListLoaded);
+        self.emit_list_paging();
+        self.update_watch();
+        self.saved_list_reset(page.rows);
+        if let Some(early) = early {
+            self.list.pins = early.sessions;
+            self.saved_list_more(&early.rows);
         }
     }
 
@@ -250,6 +308,12 @@ impl Engine {
         if generation != self.list.generation || !self.is_connected() {
             return;
         }
+        self.list.pins_answered = true;
+        self.apply_pins(result);
+        self.release_held_page(false);
+    }
+
+    fn apply_pins(&mut self, result: Result<Option<SessionPage>, SessionError>) {
         let page = match result {
             Ok(Some(page)) => page,
             // A server without the filter: its pins arrive with their pages.
@@ -277,9 +341,21 @@ impl Engine {
         self.list.pins = page.sessions;
     }
 
-    /// Shows the saved list while the server cannot be reached: no more pages load.
-    pub(crate) fn show_saved_list(&mut self, summaries: &[SessionSummary]) {
+    /// Shows the saved list and its projects until the server's replaces it: no more pages
+    /// load. The saved projects name the open folders' first reads until the server's land.
+    pub(crate) fn show_saved_list(
+        &mut self,
+        summaries: &[SessionSummary],
+        projects: Option<&SavedProjects>,
+    ) {
         self.reset_list_window();
+        if let Some(saved) = projects {
+            self.list.folders.know(&saved.projects);
+            self.emit(CoreEvent::ProjectsLoaded {
+                projects: saved.projects.iter().cloned().map(Into::into).collect(),
+                sort_mode: sort_mode(saved.sort),
+            });
+        }
         self.emit(CoreEvent::SessionListChanged {
             change: SessionListChange::Reset {
                 sessions: summaries.iter().cloned().map(Into::into).collect(),

@@ -461,6 +461,11 @@ impl Inner {
                 server_url: server_url.to_owned(),
             },
         });
+        // The saved list shows while the connect runs, before its first read.
+        self.post(Msg::Saved(SavedMsg::Connecting {
+            server_url: server_url.to_owned(),
+            expected_user_id: expected_user_id.clone(),
+        }));
         // Until a new connection is up, nothing may still reach the server being left.
         self.sessions.disconnect();
         if self.demo.is_some() {

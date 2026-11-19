@@ -118,6 +118,32 @@ struct SessionListOfflineBar: View {
   }
 }
 
+/// The line under the sidebar while the list is this device's saved copy.
+nonisolated public enum SidebarSavedListNotice: Hashable, Sendable {
+  /// The server cannot be reached.
+  case offline(String)
+  /// The app is connecting, and the server's list replaces the saved one once it arrives.
+  case refreshing(String)
+}
+
+/// The list is this device's saved copy while the server's is on its way: a quiet line under
+/// the sidebar with a spinner.
+struct SessionListRefreshingBar: View {
+  let message: String
+
+  var body: some View {
+    HStack(alignment: .center, spacing: Theme.Spacing.small) {
+      ProgressView().controlSize(.small)
+      Text(message).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+      Spacer(minLength: 4)
+    }
+    .padding(Theme.Spacing.medium)
+    .background(.bar)
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("sidebar-refreshing")
+  }
+}
+
 #if os(iOS)
   /// A row's iPhone and iPad swipe actions: read state and pin leading, archive trailing.
   struct SessionSwipeActions: ViewModifier {

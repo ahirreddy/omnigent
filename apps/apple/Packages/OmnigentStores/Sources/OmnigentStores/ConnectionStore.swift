@@ -43,6 +43,9 @@ public final class ConnectionStore {
   /// The server whose saved sessions show because it could not be reached; `nil` when online
   /// or when nothing was saved. See ``isOffline``.
   public internal(set) var offlineServerURL: String?
+  /// The server whose saved sessions show while the app connects to it, until its own list
+  /// replaces them; `nil` otherwise. See ``isShowingSavedList``.
+  public internal(set) var savedListServerURL: String?
   /// Bumped when the server's host inventory changes.
   public internal(set) var hostsRevision = 0
   /// Bumped when the server's project list changes.
@@ -163,10 +166,7 @@ public final class ConnectionStore {
   }
 
   /// Whether discovery is in flight.
-  public var isLoading: Bool {
-    if case .loading = state { return true }
-    return false
-  }
+  public var isLoading: Bool { if case .loading = state { true } else { false } }
 
   /// Whether discovery succeeded and the server is usable.
   public var isConnected: Bool { discovery != nil }

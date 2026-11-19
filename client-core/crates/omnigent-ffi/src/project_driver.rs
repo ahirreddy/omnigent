@@ -10,9 +10,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use omnigent_core::SessionError;
+use omnigent_core::message_cache::SavedProjects;
 use omnigent_core::project_settings::ProjectSortMode as CoreSortMode;
 use omnigent_core::projects::ProjectSummary as CoreProject;
 use omnigent_core::sessions::{SessionPage, SessionSummary};
+use omnigent_protocol::SessionListItem;
 
 use crate::engine::{Engine, Msg};
 use crate::errors::CoreError;
@@ -31,6 +33,14 @@ const PROJECT_PAGE_LIMIT: u32 = 20;
 #[uniffi::export]
 pub fn project_folder_id(project: ProjectSummary) -> String {
     folder_id(&project.into())
+}
+
+/// The app's name for how projects sort.
+pub(crate) const fn sort_mode(mode: CoreSortMode) -> ProjectSortMode {
+    match mode {
+        CoreSortMode::Alphabetical => ProjectSortMode::Alphabetical,
+        CoreSortMode::Manual => ProjectSortMode::Manual,
+    }
 }
 
 fn folder_id(project: &CoreProject) -> String {
@@ -58,6 +68,11 @@ pub struct ProjectFolderPaging {
 pub(crate) struct Folders {
     /// The projects read on this connection; `None` before the first read lands.
     projects: Option<Vec<CoreProject>>,
+    /// The projects last read on any connection, or saved: they name the open folders' first
+    /// reads until this connection's projects land, so those reads need not wait for them.
+    known: Vec<CoreProject>,
+    /// This connection's projects read answered.
+    projects_answered: bool,
     /// Bumped by each projects read; older answers are dropped.
     projects_read: u64,
     /// The folders the sidebar shows open; kept across connections, as the sidebar keeps them.
@@ -78,13 +93,17 @@ struct FolderPages {
     reading: Option<(u64, bool)>,
     /// Every loaded page's rows; a reload's page keeps showing them.
     rows: Vec<SessionSummary>,
+    /// The same pages' rows as the server sent them, for the saved list.
+    saved: Vec<SessionListItem>,
 }
 
 impl Folders {
-    /// A new connection: the open folders stay, nothing read on the old one does.
+    /// A new connection: the open folders and the known projects stay, nothing read on the old
+    /// one does.
     pub(crate) fn for_new_connection(&mut self) -> Self {
         Self {
             open: std::mem::take(&mut self.open),
+            known: std::mem::take(&mut self.known),
             projects_read: self.projects_read.wrapping_add(1),
             next_read: self.next_read,
             reported: std::mem::take(&mut self.reported),
@@ -97,9 +116,38 @@ impl Folders {
         self.pages.values().flat_map(|pages| pages.rows.iter())
     }
 
+    /// The loaded folders' rows as the server sent them.
+    pub(crate) fn saved_rows(&self) -> impl Iterator<Item = &SessionListItem> {
+        self.pages.values().flat_map(|pages| pages.saved.iter())
+    }
+
+    /// Takes the saved projects as known, when no read has made any known.
+    pub(crate) fn know(&mut self, saved: &[CoreProject]) {
+        if self.known.is_empty() {
+            self.known = saved.to_vec();
+        }
+    }
+
+    /// Another account connected: the projects known were the last one's.
+    pub(crate) fn forget_known(&mut self) {
+        self.known.clear();
+    }
+
+    /// Whether this connection's projects read, and the first read of each open folder it or
+    /// the known projects name, have answered.
+    pub(crate) fn first_reads_answered(&self) -> bool {
+        self.projects_answered
+            && self.open.iter().all(|folder| {
+                self.pages
+                    .get(folder)
+                    .is_none_or(|pages| pages.reading.is_none())
+            })
+    }
+
     fn project(&self, folder: &str) -> Option<CoreProject> {
         self.projects
-            .as_ref()?
+            .as_ref()
+            .unwrap_or(&self.known)
             .iter()
             .find(|project| folder_id(project) == folder)
             .cloned()
@@ -156,19 +204,37 @@ impl Engine {
         if read != self.list.folders.projects_read || !self.is_connected() {
             return;
         }
+        self.list.folders.projects_answered = true;
         match result {
             Ok((projects, mode)) => {
                 self.emit(CoreEvent::ProjectsLoaded {
                     projects: projects.iter().cloned().map(Into::into).collect(),
-                    sort_mode: match mode {
-                        CoreSortMode::Alphabetical => ProjectSortMode::Alphabetical,
-                        CoreSortMode::Manual => ProjectSortMode::Manual,
-                    },
+                    sort_mode: sort_mode(mode),
                 });
                 let known: BTreeSet<String> = projects.iter().map(folder_id).collect();
                 let folders = &mut self.list.folders;
                 folders.pages.retain(|folder, _| known.contains(folder));
-                folders.projects = Some(projects);
+                // A folder read by a name its project no longer has reads its first page again.
+                for (folder, pages) in &mut folders.pages {
+                    let fresh = projects
+                        .iter()
+                        .find(|project| folder_id(project) == *folder);
+                    let read = pages.project.as_ref();
+                    if let (Some(fresh), Some(read)) = (fresh, read)
+                        && fresh.name != read.name
+                    {
+                        pages.project = Some(fresh.clone());
+                        pages.loaded = false;
+                        pages.reading = None;
+                        pages.next_cursor = None;
+                    }
+                }
+                folders.known.clone_from(&projects);
+                folders.projects = Some(projects.clone());
+                self.saved_projects(SavedProjects {
+                    projects,
+                    sort: mode,
+                });
                 self.read_open_folders();
                 self.report_folders();
             }
@@ -176,11 +242,12 @@ impl Engine {
                 let error = CoreError::from(error);
                 if error.requires_sign_in() {
                     self.sign_in_lost(error);
-                } else {
-                    self.emit(CoreEvent::ProjectsFailed { error });
+                    return;
                 }
+                self.emit(CoreEvent::ProjectsFailed { error });
             }
         }
+        self.release_held_page(false);
     }
 
     /// The sidebar shows `open` expanded: read each one's first page that is not loaded yet.
@@ -207,7 +274,9 @@ impl Engine {
         self.report_folders();
     }
 
-    fn read_open_folders(&mut self) {
+    /// Reads the first page of each open folder that is neither loaded nor loading, by the
+    /// projects of this connection or, before they land, the known ones.
+    pub(crate) fn read_open_folders(&mut self) {
         let open: Vec<String> = self.list.folders.open.iter().cloned().collect();
         for folder in open {
             let pages = self.list.folders.pages.get(&folder);
@@ -296,10 +365,13 @@ impl Engine {
                 pages.next_cursor = page.next_cursor;
                 if read == FolderRead::Next {
                     pages.rows.extend(page.sessions);
+                    pages.saved.extend(page.rows.iter().cloned());
                 } else {
                     pages.rows = page.sessions;
+                    pages.saved.clone_from(&page.rows);
                 }
                 self.update_watch();
+                self.saved_list_more(&page.rows);
             }
             Err(error) => {
                 let error = CoreError::from(error);
@@ -314,6 +386,7 @@ impl Engine {
             }
         }
         self.report_folders();
+        self.release_held_page(false);
     }
 
     /// Tells the app every folder's pages, when any changed.
