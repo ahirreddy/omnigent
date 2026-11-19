@@ -116,6 +116,9 @@ public struct AppShell<Detail: View>: View {
       .unmeasuredMinimum(UnmeasuredMinimum.column)
       // A shown sidebar takes its width from the content (split panes too) on Mac.
       .detailBesideSidebar()
+      #if os(macOS)
+        .sidebarSlide()
+      #endif
       .environment(tabDrag)
       .onGeometryChange(for: CGFloat.self) {
         $0.size.width
@@ -125,6 +128,9 @@ public struct AppShell<Detail: View>: View {
       }
     }
     .adaptiveLayoutWidth()
+    #if os(macOS)
+      .sidebarSlideTransactions()
+    #endif
     .countsRenders("shell")
     #if os(macOS)
       .modifier(
@@ -190,6 +196,10 @@ extension AppShell {
     } set: { visibility, transaction in
       Self.layOutVisibleWindows()
       columns.visibility = visibility
+      var transaction = transaction
+      #if os(macOS)
+        if SidebarSlide.holdsAnimations { transaction.disablesAnimations = true }
+      #endif
       withTransaction(transaction) { space.isSidebarHidden = visibility == .detailOnly }
       Self.layOutVisibleWindows()
     }
