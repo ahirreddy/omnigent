@@ -80,6 +80,22 @@ extension ConnectedServerView {
     }
   }
 
+  /// Moves a session into the nest of `destination`, or out of its own, showing the nest it
+  /// joins open; a refusal offers the move again.
+  func moveToNest(_ sessionID: String, destination: String?) {
+    let list = connection.sessionList
+    if let destination {
+      sidebarModel.collapsedFamilies = SidebarNavigationOrder.reveal(destination, in: sidebarState)
+    }
+    Task {
+      if await !list.moveToNest(sessionID, destinationID: destination) {
+        list.offerRetry("Could Not Move the Session") {
+          moveToNest(sessionID, destination: destination)
+        }
+      }
+    }
+  }
+
   /// Files several sessions into `project`, or out of theirs, as one change (the bulk bar); a
   /// nested family member moves with its representative. A refusal offers the move again.
   func move(_ sessionIDs: [String], to project: ProjectSummary?) {

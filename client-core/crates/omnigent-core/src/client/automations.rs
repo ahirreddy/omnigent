@@ -45,6 +45,8 @@ pub struct ServerPages {
     pub automation_triggers: bool,
     /// `sibling_sessions`: the caller can add nested agents to a session family.
     pub sibling_sessions: bool,
+    /// `session_nest_moves`: an owned session moves into another nest or out of its own.
+    pub session_nest_moves: bool,
     /// `sibling_session_destinations`: where a nested agent may start.
     pub sibling_destinations: SiblingDestinations,
     /// `inbox_items_available`: agents post items to the caller's Inbox.
@@ -144,6 +146,7 @@ impl ServerPages {
             sharing_disabled: !single_user && sharing_off,
             canvas: feature("canvas")?,
             sibling_sessions: sibling_sessions_enabled(object),
+            session_nest_moves: flag("session_nest_moves")?,
             sibling_destinations: SiblingDestinations::from_info(object),
             inbox_items: opt_bool(object, "inbox_items_available")?.unwrap_or(false),
             automation_inbox: opt_bool(object, "scheduled_task_inbox")?.unwrap_or(false),

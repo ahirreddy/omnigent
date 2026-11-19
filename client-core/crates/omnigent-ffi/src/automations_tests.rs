@@ -350,6 +350,7 @@ fn server_pages_map_each_flag_to_its_own_field() {
         managed_sandboxes: false,
         automation_triggers: false,
         sibling_sessions: false,
+        session_nest_moves: false,
         sibling_session_destinations: Some(SiblingSessionDestinations::AnyHost),
         inbox_items: false,
         automation_inbox: false,

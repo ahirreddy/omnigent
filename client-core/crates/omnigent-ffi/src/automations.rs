@@ -43,6 +43,9 @@ pub struct ServerPages {
     /// The caller can add nested agents to a session family (`sibling_sessions`).
     #[uniffi(default)]
     pub sibling_sessions: bool,
+    /// An owned session moves into another nest or out of its own (`session_nest_moves`).
+    #[uniffi(default)]
+    pub session_nest_moves: bool,
     /// Where a nested agent may start (`sibling_session_destinations`). The core always sets
     /// it; `nil` (a record built without it) reads as `.anyHost`.
     #[uniffi(default)]
@@ -869,6 +872,7 @@ impl ClientCore {
             managed_sandboxes: pages.managed_sandboxes,
             automation_triggers: pages.automation_triggers,
             sibling_sessions: pages.sibling_sessions,
+            session_nest_moves: pages.session_nest_moves,
             sibling_session_destinations: Some(pages.sibling_destinations.into()),
             inbox_items: pages.inbox_items,
             automation_inbox: pages.automation_inbox,

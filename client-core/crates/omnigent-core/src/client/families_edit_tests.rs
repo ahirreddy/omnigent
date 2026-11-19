@@ -585,3 +585,86 @@ fn deleting_a_project_unfiles_representatives_before_archiving_their_members() {
     );
     assert_eq!(core.transport().writes().len(), 0);
 }
+
+#[test]
+fn a_session_joins_a_nest_or_leaves_its_own_and_both_nests_are_read_again() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("PATCH"),
+        "/v1/sessions/solo",
+        None,
+        ok(&family_row("solo", "lead", &json!({}))),
+    );
+    transport.respond(
+        Some("GET"),
+        "/v1/sessions/lead",
+        None,
+        ok(&family_row("lead", "lead", &json!({}))),
+    );
+    transport.respond(
+        Some("GET"),
+        "/v1/sessions/peer",
+        None,
+        ok(&family_row("peer", "lead", &json!({}))),
+    );
+    let (core, recorder) = family_core(transport);
+    let moved = block_on(core.move_to_nest("solo", Some("lead"))).unwrap();
+    assert_eq!(moved.family.map(|family| family.id).as_deref(), Some("lead"));
+    assert_eq!(
+        body_json(&core.transport().writes()[0]),
+        json!({"nest_source_id": "lead"})
+    );
+    let mut reads = lines_after_connect(&core);
+    reads.sort();
+    assert_eq!(
+        reads,
+        [
+            "GET /v1/sessions/lead",
+            "GET /v1/sessions/peer",
+            "PATCH /v1/sessions/solo"
+        ]
+    );
+    assert!(changed_rows(&recorder)[0].iter().any(|row| row.id == "solo"));
+
+    // Leaving sends a null nest; the nest it left is read again.
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("PATCH"),
+        "/v1/sessions/peer",
+        None,
+        ok(&solo_row(&json!({"id": "peer", "family": null}))),
+    );
+    transport.respond(
+        Some("GET"),
+        "/v1/sessions/lead",
+        None,
+        ok(&family_row("lead", "lead", &json!({}))),
+    );
+    let (core, _) = family_core(transport);
+    let left = block_on(core.move_to_nest("peer", None)).unwrap();
+    assert!(left.family.is_none());
+    assert_eq!(
+        body_json(&core.transport().writes()[0]),
+        json!({"nest_source_id": null})
+    );
+    assert_eq!(
+        lines_after_connect(&core),
+        ["PATCH /v1/sessions/peer", "GET /v1/sessions/lead"]
+    );
+}
+
+#[test]
+fn only_the_owner_moves_a_session_between_nests() {
+    let core = connected(RouteTransport::local());
+    core.apply_session_rows(vec![solo_row(&json!({"permission_level": 1}))])
+        .unwrap();
+    assert_eq!(
+        block_on(core.move_to_nest("solo", Some("lead"))),
+        Err(SessionError::ReadOnly)
+    );
+    assert!(matches!(
+        block_on(core.move_to_nest("bad id", None)),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+    assert_eq!(core.transport().writes().len(), 0);
+}

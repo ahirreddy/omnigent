@@ -394,6 +394,10 @@ fn pages_follow_what_the_server_advertises() {
     assert!(ServerPages::from_value(&json!({"features": {"usage_page": "yes"}})).is_err());
     assert!(ServerPages::from_value(&json!({"features": {"canvas": "yes"}})).is_err());
     assert!(ServerPages::from_value(&json!({"sharing_mode": 1})).is_err());
+    // Moving sessions between nests needs a server that says it can.
+    assert!(!ServerPages::from_value(&json!({})).unwrap().session_nest_moves);
+    let moves = json!({"session_nest_moves": true});
+    assert!(ServerPages::from_value(&moves).unwrap().session_nest_moves);
 }
 
 #[test]

@@ -1,12 +1,15 @@
 //! Writes to session families: a nested member is never pinned or moved on its own; pinning or
-//! moving a representative carries its whole family on the server; and after any family write
-//! the members this client holds are read again, so their `family` is the server's.
+//! moving a representative carries its whole family on the server; a session moves into or out
+//! of a nest by itself; and after any family write the members this client holds are read
+//! again, so their `family` is the server's.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use futures::future::join_all;
+use serde_json::json;
 
-use super::sessions::{SessionChange, SessionSummary};
+use super::requests::{acknowledgement, validate_identifier};
+use super::sessions::{SessionChange, SessionSummary, decode_snapshot_value};
 use super::{ClientCore, ClientEvent, SessionError, State, lock};
 use crate::http::HttpTransport;
 use crate::session_families::NESTED_MEMBER_EDIT_REFUSAL;
@@ -144,6 +147,82 @@ impl<T: HttpTransport> ClientCore<T> {
             state.events.push(ClientEvent::InventoryInvalidated);
         }
         refreshed
+    }
+
+    /// Moves `session_id` into the nest of `destination_id`, or out of its nest with `None`
+    /// (`PATCH /v1/sessions/{id}` with `nest_source_id`, servers that report
+    /// `session_nest_moves`). The members of the nests it left and joined that this client holds
+    /// are read again, so their `family` is the server's.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::ReadOnly`] for a
+    /// session the caller doesn't own; [`SessionError::DeliveryUncertain`] for an unreadable
+    /// acknowledgement; the write errors, such as the server's refusal of a session it can't
+    /// move.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn move_to_nest(
+        &self,
+        session_id: &str,
+        destination_id: Option<&str>,
+    ) -> Result<SessionSummary, SessionError> {
+        let result = self.write_nest(session_id, destination_id).await;
+        self.dispatch();
+        result
+    }
+
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn write_nest(
+        &self,
+        session_id: &str,
+        destination_id: Option<&str>,
+    ) -> Result<SessionSummary, SessionError> {
+        validate_identifier(session_id)?;
+        if let Some(destination) = destination_id {
+            validate_identifier(destination)?;
+        }
+        let (left, epoch) = {
+            let state = lock(&self.state);
+            let cached = state.summaries.get(session_id);
+            // Moving a session is its owner's, as filing it is.
+            if cached.is_some_and(|row| !row.can_archive()) {
+                return Err(SessionError::ReadOnly);
+            }
+            let left = cached.and_then(|row| row.family.as_ref().map(|family| family.id.clone()));
+            (left, state.metadata_epoch(session_id))
+        };
+        let path = format!("/v1/sessions/{session_id}");
+        let body = json!({ "nest_source_id": destination_id });
+        let response = self
+            .write(self.prepare("PATCH", &path, &[], Some(&body))?)
+            .await?;
+        let decoded =
+            decode_snapshot_value(acknowledgement(&path, &response)?).map_err(|detail| {
+                SessionError::DeliveryUncertain {
+                    detail: format!("unreadable {path} acknowledgement: {detail}"),
+                }
+            })?;
+        let moved = {
+            let mut state = lock(&self.state);
+            let moved = state.accept_projection(&decoded.projection, epoch)?;
+            state.settle_intents(&moved);
+            state.events.push(ClientEvent::SessionsChanged {
+                sessions: vec![moved.clone()],
+            });
+            moved
+        };
+        let joined = moved.family.as_ref().map(|family| family.id.clone());
+        let families: BTreeSet<String> = [left, joined].into_iter().flatten().collect();
+        for family in families {
+            self.refresh_family(&family, session_id).await;
+        }
+        Ok(moved)
     }
 }
 

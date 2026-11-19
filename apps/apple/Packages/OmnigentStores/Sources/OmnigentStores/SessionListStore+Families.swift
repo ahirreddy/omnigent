@@ -2,6 +2,19 @@ public import OmnigentCoreFFI
 
 /// Moves that respect session families: a nested member moves only with its representative.
 extension SessionListStore {
+  /// Moves `sessionID` into the nest of `destinationID`, or out of its own with `nil`. The rows
+  /// of both nests change once the server answers.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - destinationID: A session of the nest it joins, or `nil`.
+  /// - Returns: Whether it moved; a failure is in ``editError``.
+  @discardableResult
+  public func moveToNest(_ sessionID: String, destinationID: String?) async -> Bool {
+    await perform { core in
+      try await core.moveToNest(sessionId: sessionID, destinationId: destinationID)
+    }
+  }
+
   /// Files `sessionIDs` into `project`, or removes them from their project, as one change of
   /// the list (the bulk bar's Move to project). A label-only project is promoted first. A nested
   /// family member moves with its representative, which must be among them

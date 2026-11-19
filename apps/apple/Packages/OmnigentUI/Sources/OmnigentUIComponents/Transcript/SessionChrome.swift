@@ -258,6 +258,8 @@ struct SessionChromeParts: ViewModifier {
   private func sessionMenu(_ summary: SessionSummary, _ chrome: SessionChrome) -> SessionRowMenu {
     var actions = chrome.extras.sessionActions
     actions.share = nil
+    // Nests are the sidebar's, as on the web; the header files into projects only.
+    actions.moveToNest = nil
     if chrome.extras.share != nil {
       let present: @MainActor (SessionSummary) -> Void = { _ in prompts.showsShare = true }
       actions.share = present

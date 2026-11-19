@@ -241,6 +241,12 @@ extension ConnectedServerView {
     if NestedAgentGate.offered(connection) {
       actions.addNestedAgent = { addNestedAgent(beside: $0.id) }
     }
+    if connection.pages?.offered?.sessionNestMoves == true {
+      actions.moveToNest = { summary, destination in
+        moveToNest(summary.id, destination: destination?.id)
+      }
+      actions.canJoinNests = NestedAgentGate.offered(connection)
+    }
     // Split view holds two tabs of one session; another session goes beside it in a window
     // (Open in New Window), so the rows offer no Open in Split View.
     actions.shareUnavailableReason = shareUnavailableReason
