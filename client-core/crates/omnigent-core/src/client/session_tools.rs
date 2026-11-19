@@ -43,7 +43,11 @@ const CODEX_NICKNAME_LABEL: &str = "omnigent.codex_native.agent_nickname";
 /// `"true"` on a session that takes no more messages: a closed sub-agent, or a Codex side chat
 /// whose fork went away with its runner.
 const CLOSED_LABEL: &str = "omnigent.closed";
+/// `"true"` when the server can restore a closed Codex side chat from its saved context.
+const SIDE_CHAT_RESUME_LABEL: &str = "omnigent.codex_native.side_chat_resume";
+const WRAPPER_LABEL: &str = "omnigent.wrapper";
 const CODEX_NATIVE_WRAPPER: &str = "codex-native-ui";
+const CODEX_SUBAGENT_WRAPPER: &str = "codex-native-ui-subagent";
 const COLLABORATION_LABEL: &str = "omnigent.codex_native.collaboration_mode";
 const PLAN: &str = "plan";
 
@@ -165,11 +169,16 @@ pub fn is_side_chat<'a>(label: impl Fn(&str) -> Option<&'a str>) -> bool {
         || label(SIDE_CHAT_LABEL) == Some("1")
 }
 
-/// Whether a session's labels, read through `label`, say it takes no more messages (web
-/// `readOnlyReasonForSessionLabels`).
+/// Whether a session's labels, read through `label`, say it takes no more messages.
+///
+/// As web `readOnlyReasonForSessionLabels`: a closed Codex `/side` chat the server can resume
+/// still takes them, since the next message resumes it.
 #[must_use]
 pub fn is_closed<'a>(label: impl Fn(&str) -> Option<&'a str>) -> bool {
-    label(CLOSED_LABEL) == Some("true")
+    let resumable = label(WRAPPER_LABEL) == Some(CODEX_SUBAGENT_WRAPPER)
+        && label(CODEX_NICKNAME_LABEL) == Some(SIDE_CHAT_TITLE)
+        && label(SIDE_CHAT_RESUME_LABEL) == Some("true");
+    label(CLOSED_LABEL) == Some("true") && !resumable
 }
 
 /// When a server-forked side chat began: the history it copied from its parent was created

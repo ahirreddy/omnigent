@@ -1,0 +1,101 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "5e0c1f6a2b3d4e5f60718293a4b5c6d5",
+      "position": 5,
+      "created_at": 1795080900,
+      "scheduled_task_run_id": null,
+      "step": "docs",
+      "author": { "type": "agent" },
+      "kind": "status",
+      "content": {
+        "status": "failed",
+        "text": "Lint broke",
+        "graph_revision": "9a3e1c0b7d6f4e2a8b5c1d0e3f2a4b6c"
+      },
+      "workflow_id": null
+    },
+    {
+      "id": "5e0c1f6a2b3d4e5f60718293a4b5c6d4",
+      "position": 4,
+      "created_at": 1795080600,
+      "scheduled_task_run_id": null,
+      "step": "docs",
+      "author": { "type": "agent" },
+      "kind": "status",
+      "content": { "status": "started", "graph_revision": "9a3e1c0b7d6f4e2a8b5c1d0e3f2a4b6c" },
+      "workflow_id": null
+    },
+    {
+      "id": "5e0c1f6a2b3d4e5f60718293a4b5c6d3",
+      "position": 3,
+      "created_at": 1795080500,
+      "scheduled_task_run_id": null,
+      "step": "test",
+      "author": { "type": "agent" },
+      "kind": "status",
+      "content": {
+        "status": "started",
+        "text": "Running the suite",
+        "graph_revision": "9a3e1c0b7d6f4e2a8b5c1d0e3f2a4b6c"
+      },
+      "workflow_id": null
+    },
+    {
+      "id": "5e0c1f6a2b3d4e5f60718293a4b5c6d2",
+      "position": 2,
+      "created_at": 1795080400,
+      "scheduled_task_run_id": null,
+      "step": "build",
+      "author": { "type": "agent" },
+      "kind": "status",
+      "content": {
+        "status": "done",
+        "text": "Compiled",
+        "graph_revision": "9a3e1c0b7d6f4e2a8b5c1d0e3f2a4b6c"
+      },
+      "workflow_id": null
+    },
+    {
+      "id": "5e0c1f6a2b3d4e5f60718293a4b5c6d1",
+      "position": 1,
+      "created_at": 1795080100,
+      "scheduled_task_run_id": null,
+      "step": "build",
+      "author": { "type": "agent" },
+      "kind": "status",
+      "content": { "status": "started", "graph_revision": "9a3e1c0b7d6f4e2a8b5c1d0e3f2a4b6c" },
+      "workflow_id": null
+    },
+    {
+      "id": "5e0c1f6a2b3d4e5f60718293a4b5c6d0",
+      "position": 0,
+      "created_at": 1795080000,
+      "scheduled_task_run_id": null,
+      "step": null,
+      "author": { "type": "agent" },
+      "kind": "plan",
+      "content": {
+        "version": 1,
+        "name": "Ship the JSON flag",
+        "steps": [
+          { "id": "build", "name": "Build", "goal": "Compile the CLI", "depends_on": [] },
+          { "id": "test", "name": "Run the tests", "goal": null, "depends_on": ["build"] },
+          {
+            "id": "docs",
+            "name": "Update the docs",
+            "goal": "Document the flag",
+            "depends_on": ["build"]
+          },
+          { "id": "ship", "name": "Ship it", "goal": "Open the PR", "depends_on": ["test", "docs"] }
+        ],
+        "graph_revision": "9a3e1c0b7d6f4e2a8b5c1d0e3f2a4b6c"
+      },
+      "workflow_id": null
+    }
+  ],
+  "first_id": "5e0c1f6a2b3d4e5f60718293a4b5c6d5",
+  "last_id": "5e0c1f6a2b3d4e5f60718293a4b5c6d0",
+  "has_more": false
+}

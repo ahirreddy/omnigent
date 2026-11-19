@@ -98,6 +98,62 @@ public final class WorkspaceStore: WorkspaceDataSource {
       path: file.path, data: file.bytes, truncated: file.truncated)
   }
 
+  /// The whole file `path`, downloaded without the read cap.
+  /// - Parameter path: The file.
+  /// - Returns: Its bytes.
+  /// - Throws: The failure to show.
+  public func download(_ path: String) async throws(WorkspaceFailure)
+    -> OmnigentWorkspaceUI.WorkspaceFileContents
+  {
+    let file = try await call {
+      try await core.downloadWorkspaceFile(
+        sessionId: sessionID, environmentId: environmentID, path: path, offset: nil, length: nil)
+    }
+    return OmnigentWorkspaceUI.WorkspaceFileContents(path: file.path, data: file.bytes)
+  }
+
+  /// `length` bytes of the video `path` from `offset`, with the type the player accepts it as.
+  /// - Parameters:
+  ///   - path: The video.
+  ///   - offset: The first byte.
+  ///   - length: How many bytes.
+  /// - Returns: The bytes and what the server said about the file.
+  /// - Throws: The failure to show.
+  public func readVideo(_ path: String, offset: UInt64, length: UInt64)
+    async throws(WorkspaceFailure) -> WorkspaceVideoChunk
+  {
+    let part = try await call {
+      try await core.downloadWorkspaceFile(
+        sessionId: sessionID, environmentId: environmentID, path: path, offset: offset,
+        length: length)
+    }
+    return WorkspaceVideoChunk(
+      data: part.bytes, offset: part.offset, totalLength: part.totalLength,
+      videoType: workspaceVideoType(contentType: part.contentType, path: path))
+  }
+
+  /// The chapters of the recording `path`, from its `.chapters.vtt` file; none without one.
+  /// - Parameter path: The recording.
+  /// - Returns: The chapters file and its chapters, by start.
+  public func videoChapters(_ path: String) async -> VideoChapters {
+    let chaptersPath = videoChaptersPath(path: path)
+    let file: OmnigentCoreFFI.WorkspaceFile
+    do {
+      file = try await core.readWorkspaceFile(
+        sessionId: sessionID, environmentId: environmentID, path: chaptersPath)
+    } catch {
+      // Most recordings have no chapters file; the web shows none whatever the read's error.
+      return .none
+    }
+    guard case .text(let text) = file.preview, !text.clipped, !text.serverTruncated else {
+      return .none
+    }
+    let chapters = parseVideoChapters(text: text.text).map {
+      OmnigentWorkspaceUI.VideoChapter(time: $0.time, end: $0.end, title: $0.title)
+    }
+    return VideoChapters(file: chapters.isEmpty ? nil : chaptersPath, chapters: chapters)
+  }
+
   /// Files whose name or path contains `query`, anywhere in the environment.
   /// - Parameters:
   ///   - query: The text to find.

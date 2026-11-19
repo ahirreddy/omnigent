@@ -14,6 +14,7 @@ struct CLIActivityLine: View, Equatable {
   @Environment(\.cliPalette) private var palette
   @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.conversationActions) private var conversationActions
+  @Environment(\.taskMarkerLinks) private var taskLinks
   private(set) var size = CLIFontSize()
 
   static func == (lhs: Self, rhs: Self) -> Bool { lhs.row == rhs.row }
@@ -209,6 +210,9 @@ struct CLIActivityLine: View, Equatable {
         CLIAction(
           title: "Open \(activity.summary)", systemImage: "arrow.up.forward.square",
           identifier: "subagent-marker-open-\(row.id)", perform: { open(session) }))
+    }
+    if let tasks = TranscriptMarker.tasksAction(activity, rowID: row.id, links: taskLinks) {
+      actions.append(tasks)
     }
     let copyText =
       activity.kind == .terminal

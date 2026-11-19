@@ -665,6 +665,43 @@ fn a_side_chat_that_ended_is_closed_by_its_labels() {
     assert!(settings(&sub_agent).closed && !settings(&sub_agent).is_side_chat);
 }
 
+/// Web `readOnlyReasonForSessionLabels`: only a closed Codex `/side` chat whose runner can
+/// restore it (`side_chat_resume` is `"true"`) keeps taking messages.
+#[test]
+fn a_closed_codex_side_chat_the_server_can_resume_takes_messages() {
+    let closed = |labels: serde_json::Value| {
+        header_from_snapshot(
+            &minimal_session(&serde_json::json!({"labels": labels})),
+            None,
+        )
+        .unwrap()
+        .settings
+        .unwrap()
+        .closed
+    };
+    let side_chat = |resume: Option<&str>| {
+        let mut labels = serde_json::json!({
+            "omnigent.closed": "true",
+            "omnigent.wrapper": "codex-native-ui-subagent",
+            "omnigent.codex_native.agent_nickname": "Side chat",
+        });
+        if let Some(resume) = resume {
+            labels["omnigent.codex_native.side_chat_resume"] = resume.into();
+        }
+        labels
+    };
+    assert!(!closed(side_chat(Some("true"))));
+    assert!(closed(side_chat(Some("false"))));
+    assert!(closed(side_chat(None)));
+    // Another Codex sub-agent, or a server fork, stays closed whatever the label says.
+    let mut reviewer = side_chat(Some("true"));
+    reviewer["omnigent.codex_native.agent_nickname"] = "reviewer".into();
+    assert!(closed(reviewer));
+    let mut fork = side_chat(Some("true"));
+    fork.as_object_mut().unwrap().remove("omnigent.wrapper");
+    assert!(closed(fork));
+}
+
 #[test]
 fn null_fields_clear_to_safe_defaults_and_absent_ones_keep_the_previous_value() {
     let earlier = header_from_snapshot(

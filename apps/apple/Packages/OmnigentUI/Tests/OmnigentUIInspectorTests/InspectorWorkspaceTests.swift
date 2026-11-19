@@ -250,7 +250,7 @@
     func tabNames() {
       #expect(
         InspectorTab.allCases.map(\.title) == [
-          "Files", "Changes", "Pull Requests", "Agents", "Info", "Search",
+          "Files", "Changes", "Pull Requests", "Tasks", "Agents", "Info", "Search",
         ])
       #expect(InspectorTab.pullRequests.shortTitle == "PRs")
       #expect(InspectorTab.changes.shortTitle == "Changes")
@@ -258,6 +258,14 @@
       #expect(InspectorTab.files.id == .files)
       #expect(!InspectorTab.shown(hasSearch: false).contains(.search))
       #expect(InspectorTab.shown(hasSearch: true).last == .search)
+      #expect(!InspectorTab.shown(hasSearch: true).contains(.tasks), "no tasks, no tab")
+      var withTasks = WorkspaceSlots()
+      withTasks.tasks = TasksSlot { TasksPanelContent(state: .empty) }
+      #expect(InspectorTab.shown(withTasks).contains(.tasks))
+      withTasks.tasks?.isShown = { false }
+      #expect(!InspectorTab.shown(withTasks).contains(.tasks), "read when the panel draws")
+      withTasks.tasks?.isShown = { true }
+      #expect(InspectorTab.shown(withTasks).firstIndex(of: .tasks) == 3, "after Pull Requests")
     }
   }
 

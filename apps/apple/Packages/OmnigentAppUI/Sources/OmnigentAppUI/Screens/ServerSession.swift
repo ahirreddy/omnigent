@@ -23,6 +23,8 @@ public final class ServerSession {
   public private(set) var workspaces: [String: WorkspaceBrowserModel] = [:]
   /// The right panel's server data (panel features, pull requests) of open sessions.
   public private(set) var panels: [String: SessionPanelStore] = [:]
+  /// The Tasks tab's journals of open sessions.
+  public private(set) var sessionTasks: [String: SessionTasksStore] = [:]
   /// The window's tabs, per session, and the page it shows.
   public let tabs = SessionTabGroups()
   /// The drafts of new side chats, by tab.
@@ -108,6 +110,7 @@ public final class ServerSession {
         panel.detachReviewComment = { [weak composer] in composer?.detachReviewComment($0) }
         panels[sessionID] = panel
       }
+      if sessionTasks[sessionID] == nil { sessionTasks[sessionID] = connection.tasks(sessionID) }
     }
     Task { await loadDeclaredTerminalNames([sessionID]) }
   }
@@ -151,6 +154,7 @@ public final class ServerSession {
         workspaces[sessionID] = nil
       }
       panels[sessionID] = nil
+      sessionTasks[sessionID] = nil
     }
   }
 
@@ -191,17 +195,26 @@ public final class ServerSession {
     return self[storesOf: sessionID].panel
   }
 
+  /// A session's Tasks tab journal.
+  /// - Parameter sessionID: The session.
+  /// - Returns: Its store while the session is open.
+  public func tasks(of sessionID: String) -> SessionTasksStore? {
+    access(keyPath: \.[storesOf: sessionID])
+    return self[storesOf: sessionID].tasks
+  }
+
   /// One session's stores, which its readers are told about together.
   private struct SessionStores {
     let terminals: TerminalStore?
     let workspace: WorkspaceBrowserModel?
     let panel: SessionPanelStore?
+    let tasks: SessionTasksStore?
   }
 
   private subscript(storesOf sessionID: String) -> SessionStores {
     SessionStores(
       terminals: _terminalStores[sessionID], workspace: _workspaces[sessionID],
-      panel: _panels[sessionID])
+      panel: _panels[sessionID], tasks: _sessionTasks[sessionID])
   }
 
   private subscript(declaredTerminalsOf sessionID: String) -> DeclaredTerminals {

@@ -416,6 +416,15 @@ pub enum CoreEvent {
         /// The files, or why they are unavailable.
         update: ChangedFilesUpdate,
     },
+    /// An entry was appended to an open session's journal (`session.journal.appended`). The
+    /// Tasks tab adds it to the journal it read; `None` when the entry could not be read, so the
+    /// tab reads what it missed.
+    SessionJournalAppended {
+        /// The session.
+        session_id: String,
+        /// The entry.
+        entry: Option<crate::session_journal::JournalEntry>,
+    },
     /// The connection's bearer was renewed in place; streams and the session list were not
     /// interrupted.
     CredentialRotated {

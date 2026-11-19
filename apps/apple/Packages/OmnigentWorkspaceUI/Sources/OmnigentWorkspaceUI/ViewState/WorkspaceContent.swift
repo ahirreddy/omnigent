@@ -185,7 +185,11 @@ nonisolated public enum FilePreview: Hashable, Sendable {
   case text(TextPreview)
   /// A complete image.
   case image(format: ImageFormat, data: Data)
-  /// Neither.
+  /// A PDF as the server returned it; `truncated` when it is cut and cannot open.
+  case pdf(data: Data, truncated: Bool)
+  /// A video, streamed once asked to play.
+  case video
+  /// None of these.
   case binary(reason: BinaryReason)
 }
 

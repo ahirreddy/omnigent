@@ -17,6 +17,7 @@ use base64::Engine as _;
 use serde_json::Value;
 
 use super::error::WorkspaceError;
+use super::media::{is_pdf_file, is_video_file};
 use super::path::WorkspacePath;
 use crate::client::json::{as_object, opt_bool, opt_str, opt_u64, req_str};
 
@@ -245,13 +246,32 @@ pub enum FilePreview {
         /// The image bytes.
         bytes: Vec<u8>,
     },
-    /// Neither; offer to open or download it.
+    /// A PDF ([`super::media::is_pdf_file`]), as the server returned it.
+    Pdf {
+        /// The bytes returned.
+        bytes: Vec<u8>,
+        /// The server returned only part of it, which a PDF reader cannot open.
+        truncated: bool,
+    },
+    /// A video ([`super::media::is_video_file`]): the player streams it with ranged downloads
+    /// (`ClientCore::download_workspace_file`) once asked to play.
+    Video,
+    /// None of these; offer to open or download it.
     Binary {
         /// Why.
         reason: BinaryReason,
         /// Bytes returned.
         byte_count: u64,
     },
+}
+
+impl FilePreview {
+    /// What a viewer shows for `path` before reading it, when its name alone decides: a video,
+    /// which the web never reads through the capped JSON envelope.
+    #[must_use]
+    pub fn before_reading(path: &WorkspacePath) -> Option<Self> {
+        is_video_file(path.as_str(), None).then_some(Self::Video)
+    }
 }
 
 /// Text ready for a monospaced viewer.
@@ -283,6 +303,22 @@ impl FileContent {
     /// What a viewer should show under `limits`.
     #[must_use]
     pub fn preview(&self, limits: &PreviewLimits) -> FilePreview {
+        // The web's order: video, image, PDF, then text or binary.
+        let content_type = self.content_type.as_deref();
+        if is_video_file(self.path.as_str(), content_type) {
+            return FilePreview::Video;
+        }
+        let image =
+            matches!(&self.body, FileBody::Binary(bytes) if ImageFormat::sniff(bytes).is_some());
+        if !image && is_pdf_file(self.path.as_str(), content_type) {
+            return FilePreview::Pdf {
+                bytes: match &self.body {
+                    FileBody::Text(text) => text.as_bytes().to_vec(),
+                    FileBody::Binary(bytes) => bytes.clone(),
+                },
+                truncated: self.truncated,
+            };
+        }
         match &self.body {
             FileBody::Binary(bytes) => match ImageFormat::sniff(bytes) {
                 Some(_) if self.truncated => FilePreview::Binary {

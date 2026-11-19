@@ -22,6 +22,14 @@ fn panel_features_read_info_and_default_to_unsupported() {
             ),
             Reply::json(200, r#"{"single_user":true}"#),
             Reply::json(200, r#"{"features":"on"}"#),
+            Reply::json(
+                200,
+                r#"{"session_journal":true,"features":{"workflows":true}}"#,
+            ),
+            Reply::json(
+                200,
+                r#"{"session_journal":true,"features":{"workflows":false}}"#,
+            ),
         ],
     );
     assert_eq!(
@@ -30,6 +38,7 @@ fn panel_features_read_info_and_default_to_unsupported() {
             content_search: true,
             pull_requests: true,
             comment_anchors: true,
+            session_journal: false,
         })
     );
     assert_eq!(
@@ -40,6 +49,9 @@ fn panel_features_read_info_and_default_to_unsupported() {
         block_on(core.panel_features()),
         Err(SessionError::MalformedResponse { .. })
     ));
+    // Journals are served only with the workflows feature on, as the web gates its Tasks tab.
+    assert!(block_on(core.panel_features()).unwrap().session_journal);
+    assert!(!block_on(core.panel_features()).unwrap().session_journal);
 }
 
 #[test]

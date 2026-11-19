@@ -230,7 +230,11 @@ struct PathMenu: View {
       if let share = actions.share {
         Button("Share\u{2026}", systemImage: "square.and.arrow.up") { share(path) }
       }
-      if actions.quickLook != nil || actions.share != nil { Divider() }
+      if let download = actions.download {
+        Button("Download\u{2026}", systemImage: "arrow.down.circle") { download(path) }
+          .accessibilityIdentifier("workspace.download")
+      }
+      if actions.quickLook != nil || actions.share != nil || actions.download != nil { Divider() }
     }
     Button("Copy Path") { WorkspacePlatform.copy(path) }
     if let absolute = source.absoluteLocation(of: path) {

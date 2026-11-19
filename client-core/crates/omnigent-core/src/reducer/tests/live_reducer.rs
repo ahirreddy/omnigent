@@ -847,11 +847,13 @@ fn state_sections_cover_todos_servers_resources_and_failed_changes() {
         background_tasks: Some(Vec::new()),
         todos: Some(vec![
             Todo {
+                key: "task-1".to_owned(),
                 content: "Write".to_owned(),
                 status: TodoStatus::Pending,
                 active_form: None,
             },
             Todo {
+                key: "task-2".to_owned(),
                 content: "Ship".to_owned(),
                 status: TodoStatus::InProgress,
                 active_form: None,

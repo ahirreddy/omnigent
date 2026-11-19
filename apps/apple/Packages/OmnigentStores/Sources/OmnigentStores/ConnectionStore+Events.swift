@@ -79,6 +79,7 @@ extension ConnectionStore {
     switch event {
     case .sessionLinkChanged(let id, let state):
       conversations[id]?.linkChanged(state)
+      tasksStores[id]?.linkChanged(state)
     case .sessionHydrated(let id):
       conversations[id]?.hydrated()
     case .historyPagingChanged(let id, let hasOlder, let isLoading):
@@ -176,7 +177,13 @@ extension ConnectionStore {
       }
       if scope == .sessionList { sessionList.failed(error) }
     default:
-      break
+      applyTasksEvent(event)
     }
+  }
+
+  /// An entry pushed to an open session's journal goes to its Tasks tab.
+  private func applyTasksEvent(_ event: CoreEvent) {
+    guard case .sessionJournalAppended(let id, let entry) = event else { return }
+    tasksStores[id]?.journalAppended(entry)
   }
 }

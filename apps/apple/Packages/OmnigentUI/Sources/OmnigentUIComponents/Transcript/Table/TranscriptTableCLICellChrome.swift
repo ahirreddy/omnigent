@@ -188,6 +188,10 @@
             title: "Open \(activity.summary)", systemImage: "arrow.up.forward.square",
             identifier: "subagent-marker-open-\(row.id)", perform: { open(session) }))
       }
+      let links = style.environment.values?.taskMarkerLinks
+      if let tasks = TranscriptMarker.tasksAction(activity, rowID: row.id, links: links) {
+        actions.append(tasks)
+      }
       let copyText = row.text.isEmpty ? activity.summary : row.text
       if !copyText.isEmpty {
         actions.append(

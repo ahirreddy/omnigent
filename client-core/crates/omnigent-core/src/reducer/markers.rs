@@ -8,12 +8,15 @@ use serde_json::{Map, Value};
 
 use super::presentation::{TITLE_CHARS, bounded};
 use super::state::{ActivityKind, DetailSection};
+use crate::session_journal::tasks::{journal_marker_id, todo_marker_id};
 
 /// The resource type of the journal's receipts: task markers, plan lines and checkpoints.
 pub(super) const JOURNAL_RESOURCE: &str = "journal";
 
 /// Past this many names, a plan line counts them instead.
 const NAMES_IN_A_LINE: usize = 3;
+/// The detail holding the id a task marker answers to (`journal-<entry>`, `todo-<task>-<status>`).
+pub(super) const MARKER_DETAIL: &str = "marker";
 
 /// What a marker row shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,6 +113,14 @@ fn task_marker(resource: &ResourceEventData) -> Option<Marker> {
         .filter(|name| !name.is_empty())
         .unwrap_or(&resource.resource_id);
     let native = fields.and_then(|fields| fields.get("native")) == Some(&Value::Bool(true));
+    // The id the Tasks tab links back to (`taskMarkerId`): the journal entry, or for the agent's
+    // own list, which has none, the task and its status.
+    let marker_id = string(fields, "entry_id")
+        .filter(|entry| !entry.is_empty())
+        .map_or_else(
+            || todo_marker_id(&resource.resource_id, status),
+            journal_marker_id,
+        );
     Some(Marker {
         kind: ActivityKind::TaskMarker,
         title: label.to_owned(),
@@ -133,6 +144,7 @@ fn task_marker(resource: &ResourceEventData) -> Option<Marker> {
                 },
                 false,
             ),
+            detail(MARKER_DETAIL, "Marker", &marker_id, true),
         ]
         .into_iter()
         .flatten()
@@ -209,9 +221,13 @@ fn plan_marker(resource: &ResourceEventData) -> Option<Marker> {
         title: text.clone(),
         summary: String::new(),
         status: "plan".to_owned(),
-        details: detail("entry", "Plan entry", entry, true)
-            .into_iter()
-            .collect(),
+        details: [
+            detail("entry", "Plan entry", entry, true),
+            detail(MARKER_DETAIL, "Marker", &journal_marker_id(entry), true),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
         text,
     })
 }

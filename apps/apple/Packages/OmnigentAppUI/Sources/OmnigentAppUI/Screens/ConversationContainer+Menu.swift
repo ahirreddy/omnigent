@@ -207,8 +207,27 @@ extension ConversationContainer {
       canEdit: !(conversation.header?.readOnly ?? false),
       newSideChat: SessionToolsAdapter.sideChat(conversation, routes: routes),
       agents: AgentTreeAdapter.panel(conversation, open: routes.openSession),
+      tasks: tasksSlot(report: routes.report),
       composer: conversation.composer, report: routes.report
     ).slots
+  }
+
+  /// The Tasks tab, read when the panel draws, so the tasks do not redraw the chat.
+  func tasksSlot(report: @escaping @MainActor (String) -> Void) -> TasksSlot {
+    let (tasks, conversation, summary) = (tasks, conversation, summary)
+    let (focus, sessionID) = (transcriptFocus, conversation.sessionID)
+    let routes = TasksAdapter.Routes(showRow: { focus?.focus($0, in: sessionID) }, report: report)
+    return TasksSlot(
+      isShown: { TasksAdapter.showsTab(tasks: tasks, conversation: conversation) },
+      content: {
+        TasksAdapter.content(
+          tasks: tasks, conversation: conversation, summary: summary, routes: routes)
+      })
+  }
+
+  /// The chat's task marker links, pointed at this session; its markers read the tasks.
+  var taskMarkerLinks: TaskMarkerLinks {
+    TasksAdapter.point(markerLinks, tasks: tasks, conversation: conversation, showTasks: showTasks)
   }
 
   /// The window loads what its panel shows of this chat's session, so the chat does not.

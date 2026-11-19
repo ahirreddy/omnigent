@@ -17,6 +17,10 @@ const MAX_PAGES: usize = 20;
 
 /// What `GET /v1/info` says the right panel can offer. Missing fields mean unsupported.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent server capability flags, mirrored one to one from /v1/info"
+)]
 pub struct PanelFeatures {
     /// `features.workspace_content_search`: the session workspace can be searched by content.
     pub content_search: bool,
@@ -25,6 +29,9 @@ pub struct PanelFeatures {
     /// `comment_anchor_metadata`: session comments can carry a pull request's diff
     /// coordinates, so the Changes tab can leave local review comments for the agent.
     pub comment_anchors: bool,
+    /// `features.workflows` and `session_journal`: the server keeps session journals, whose
+    /// plans the Tasks tab shows.
+    pub session_journal: bool,
 }
 
 impl PanelFeatures {
@@ -35,14 +42,19 @@ impl PanelFeatures {
     /// A description of the first field with the wrong shape.
     pub fn from_value(value: &Value) -> Result<Self, String> {
         let object = as_object(value, "/v1/info")?;
-        let content_search = match opt_object(object, "features")? {
-            Some(features) => opt_bool(features, "workspace_content_search")?.unwrap_or(false),
-            None => false,
+        let features = opt_object(object, "features")?;
+        let feature = |name: &str| -> Result<bool, String> {
+            Ok(match features {
+                Some(features) => opt_bool(features, name)?.unwrap_or(false),
+                None => false,
+            })
         };
         Ok(Self {
-            content_search,
+            content_search: feature("workspace_content_search")?,
             pull_requests: opt_bool(object, "session_pull_requests")?.unwrap_or(false),
             comment_anchors: opt_bool(object, "comment_anchor_metadata")?.unwrap_or(false),
+            session_journal: feature("workflows")?
+                && opt_bool(object, "session_journal")?.unwrap_or(false),
         })
     }
 }

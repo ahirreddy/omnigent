@@ -408,11 +408,11 @@ fn todo_section(state: &SessionEventState, result: &mut Vec<EventSection>) {
         .iter()
         .filter(|todo| todo.status.as_str() == "completed")
         .count();
+    // Each detail is keyed by the task's own key, as the server's task markers name it.
     let details = todos
         .iter()
         .take(SECTION_ENTRIES)
-        .enumerate()
-        .map(|(index, todo)| {
+        .map(|todo| {
             let status = todo.status.as_str();
             let heading = format!("{}: {}", type_title(status), todo.content);
             let text = if status == "in_progress" {
@@ -420,7 +420,7 @@ fn todo_section(state: &SessionEventState, result: &mut Vec<EventSection>) {
             } else {
                 &todo.content
             };
-            detail(&format!("todo-{index}"), &heading, text)
+            detail(&todo.key, &heading, text)
         })
         .collect();
     let summary = format!("{completed} of {} complete", todos.len());

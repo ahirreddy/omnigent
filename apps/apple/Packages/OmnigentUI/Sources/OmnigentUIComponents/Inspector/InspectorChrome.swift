@@ -155,7 +155,7 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
           Button("Search Files") { show(.search) }
             .keyboardShortcut(AppShortcuts.searchWorkspace)
         }
-        let panels = InspectorTab.shown(hasSearch: slots.search != nil)
+        let panels = InspectorTab.shown(slots)
         ForEach(panels.indices, id: \.self) { index in
           Button(panels[index].title) { show(panels[index]) }
             .keyboardShortcut(AppShortcuts.rightPanelTab(index))

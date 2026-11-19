@@ -68,6 +68,7 @@ pub mod sandbox;
 pub mod sandbox_state;
 pub mod server_admin;
 pub mod session_index;
+pub mod session_journal;
 pub mod session_tools;
 pub mod sessions;
 pub mod share;

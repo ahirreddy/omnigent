@@ -5,7 +5,7 @@ struct InspectorTabLabels {
   let slots: WorkspaceSlots
 
   /// The tabs the panel shows, in order.
-  var tabs: [InspectorTab] { InspectorTab.shown(hasSearch: slots.search != nil) }
+  var tabs: [InspectorTab] { InspectorTab.shown(slots) }
 
   /// The tab's title with its count, when it has one.
   func label(for tab: InspectorTab) -> String {
