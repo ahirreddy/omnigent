@@ -225,9 +225,7 @@ final class MacSessionFlowUITests: XCTestCase {
   func testSessionMenuFilesTheSessionInAProject() async throws {
     let live = MacLiveUITestSupport(self)
     let session = try live.fixtureSession()
-    let name = "UI flow \(UUID().uuidString.prefix(6))"
-    let project = try await live.serverJSON("POST", "/v1/projects", body: ["name": name])
-    let projectID = try XCTUnwrap(project["id"] as? String, "\(project)")
+    let (projectID, name) = try await live.flowProject("filing")
     let app = live.launch()
     defer { app.terminate() }
     live.open(session, in: app)
@@ -241,7 +239,6 @@ final class MacSessionFlowUITests: XCTestCase {
     let unfiled = try await live.chooseInSessionMenu(
       "Move session", "Remove from project", filing: session, becomes: nil, in: app)
     XCTAssertNil(unfiled, "Remove from project left the session filed")
-    _ = try await live.serverJSON("DELETE", "/v1/projects/\(projectID)")
   }
 }
 
@@ -277,24 +274,6 @@ extension MacLiveUITestSupport {
     }
     return filed
   }
-  /// Sends a request to the local server the flows run on and reads its JSON object; an empty
-  /// `body` (whose values may nest) sends none.
-  func serverJSON(
-    _ method: String, _ path: String, body: [String: Any] = [:]
-  ) async throws -> [String: Any] {
-    let url = try XCTUnwrap(URL(string: server + path))
-    var request = URLRequest(url: url)
-    request.httpMethod = method
-    if !body.isEmpty {
-      request.httpBody = try JSONSerialization.data(withJSONObject: body)
-      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    }
-    let (data, response) = try await URLSession.shared.data(for: request)
-    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-    XCTAssertTrue((200..<300).contains(status), "\(method) \(path) answered \(status)")
-    return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-  }
-
   /// The project the server files `sessionID` in, read until it is `expected` or ten seconds
   /// pass: the app's move reaches the server after the menu closes.
   func projectOf(_ sessionID: String, becomes expected: String?) async throws -> String? {
