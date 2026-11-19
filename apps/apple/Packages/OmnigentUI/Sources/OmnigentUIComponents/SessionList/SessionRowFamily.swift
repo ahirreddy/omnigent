@@ -127,14 +127,17 @@ struct SessionFamilyChevron: View {
 /// level of nesting is one step in, which puts a row's gutter under its parent's icon.
 enum SessionFamilyMetrics {
   /// The gutter: the chevron's square hit box.
-  static let gutter: CGFloat = 16
+  static let gutter: CGFloat = 12
   /// The chevron itself, at the gutter's leading edge: where the Mac outline draws a folder's
   /// disclosure triangle, so every chevron sits on the same grid.
   static let chevronWidth: CGFloat = 6
-  /// Between the gutter and the row's icon, as between the icon and the title.
-  static let gutterSpacing = Theme.Spacing.small
-  /// One level of nesting: the gutter and its spacing, as wide as the icon and its spacing.
+  /// Between the gutter and the row's icon.
+  static let gutterSpacing = Theme.Spacing.extraSmall
+  /// One level of nesting: the gutter and its spacing.
   static let step = gutter + gutterSpacing
+  /// A session row's harness mark; a folder's icon takes the same width so its name lines up
+  /// with the session titles.
+  static let markWidth: CGFloat = 16
   /// A folder's rows that are no session (loading, No sessions, Show more): a step in, past
   /// the gutter, so their text starts at the icons of the folder's sessions.
   static let folderNoteIndent = step * 2
