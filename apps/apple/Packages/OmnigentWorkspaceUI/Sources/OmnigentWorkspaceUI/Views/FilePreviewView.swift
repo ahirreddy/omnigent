@@ -8,11 +8,12 @@ import WebKit
 #endif
 
 /// The files the viewer can render as well as show as source, as the web's file viewer: Markdown,
-/// HTML and SVG (in WebKit), and Jupyter notebooks.
+/// HTML and SVG (in WebKit), Jupyter notebooks, and CSV and TSV files as a table.
 nonisolated public enum FilePreviewKind: Hashable, Sendable {
   case markdown
   case html
   case notebook
+  case dataTable
 
   /// The kind `path` previews as, by its extension; `nil` shows only the source.
   public static func of(path: String) -> Self? {
@@ -22,6 +23,7 @@ nonisolated public enum FilePreviewKind: Hashable, Sendable {
     case "md", "markdown", "mdx": return .markdown
     case "html", "htm", "svg": return .html
     case "ipynb": return .notebook
+    case "csv", "tsv": return dot > name.startIndex ? .dataTable : nil
     default: return nil
     }
   }
@@ -74,10 +76,21 @@ extension EnvironmentValues {
 struct FilePreviewView: View {
   let kind: FilePreviewKind
   let text: String
+  /// A data file's table, which the core parsed.
+  var table: DataTablePreview?
   @Environment(\.workspaceMarkdownRenderer) private var renderMarkdown
 
   var body: some View {
     switch kind {
+    case .dataTable:
+      if let table {
+        // Sorting and filters belong to these columns; a rewrite with others starts afresh.
+        DataTableView(table: table).id(table.columns.map(\.name))
+      } else {
+        ContentUnavailableView(
+          "No Rows", systemImage: "tablecells",
+          description: Text("This file has no rows. Switch to Source to see the raw file."))
+      }
     case .markdown:
       ScrollView {
         markdown(text)

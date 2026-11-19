@@ -84,6 +84,13 @@ public protocol WorkspaceDataSource: AnyObject {
   /// - Returns: The chapters file and its chapters, by start.
   func videoChapters(_ path: String) async -> VideoChapters
 
+  /// The table of a data file's edited text, as the core parses it.
+  /// - Parameters:
+  ///   - text: The unsaved text.
+  ///   - path: The `.csv` or `.tsv` file.
+  /// - Returns: The table, or `nil` when the text has no rows or the source cannot parse it.
+  func dataTable(_ text: String, path: String) -> DataTablePreview?
+
   /// Saves an edit of a text file. With `base` (the text the edit started from) a change by
   /// someone else since is a conflict and nothing is written; without it the file is overwritten.
   /// - Parameters:
@@ -191,6 +198,13 @@ extension WorkspaceDataSource {
   /// - Returns: None.
   public func videoChapters(_ path: String) async -> VideoChapters { .none }
   // swiftlint:enable async_without_await
+
+  /// No parsing; a source with the core's parser overrides this, so edits show in the table.
+  /// - Parameters:
+  ///   - text: The unsaved text.
+  ///   - path: The file.
+  /// - Returns: `nil`.
+  public func dataTable(_ text: String, path: String) -> DataTablePreview? { nil }
 }
 
 /// One chapter of a recording.

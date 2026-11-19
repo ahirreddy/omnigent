@@ -43,6 +43,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case tasksPlan = "tasks-plan"
   case viewersPDF = "viewers-pdf"
   case viewersVideo = "viewers-video"
+  case viewersTable = "viewers-table"
+  case viewersTableFiltered = "viewers-table-filtered"
 
   var testDescription: String { rawValue }
 
@@ -57,6 +59,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   var macWidth: CGFloat {
     switch self {
     case .prChanges, .prFind, .prCommits, .inboxSuggestion, .inboxFailure: 900
+    case .viewersTable, .viewersTableFiltered: 820
     case .composerMcp, .markersChat, .viewersPDF, .viewersVideo: 736
     case .composerRewind, .tasksPlan, .prFileHeader: 480
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 640
@@ -73,6 +76,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .tasksPlan: 620
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 560
     case .viewersPDF: 520
+    case .viewersTable, .viewersTableFiltered: 480
     default: nil
     }
   }
@@ -114,6 +118,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .tasksPlan: return AnyView(Fixture.tasks)
     case .viewersPDF: return AnyView(PDFPreviewView(data: Fixture.pdf, truncated: false))
     case .viewersVideo: return AnyView(Fixture.video)
+    case .viewersTable: return AnyView(Fixture.dataTableViewer)
+    case .viewersTableFiltered: return AnyView(Fixture.dataTableFiltered)
     }
   }
 }

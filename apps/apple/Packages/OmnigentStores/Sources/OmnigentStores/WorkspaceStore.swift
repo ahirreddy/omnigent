@@ -80,7 +80,17 @@ public final class WorkspaceStore: WorkspaceDataSource {
         sessionId: sessionID, environmentId: environmentID, path: path)
     }
     return OmnigentWorkspaceUI.WorkspaceFile(
-      path: file.path, byteCount: file.byteCount, preview: WorkspaceMapping.preview(file.preview))
+      path: file.path, byteCount: file.byteCount, preview: WorkspaceMapping.preview(file.preview),
+      dataTable: file.dataTable.map(WorkspaceMapping.dataTable))
+  }
+
+  /// The table of a data file's unsaved text, as the core parses it.
+  /// - Parameters:
+  ///   - text: The edited text.
+  ///   - path: The file.
+  /// - Returns: The table, or `nil` without rows.
+  public func dataTable(_ text: String, path: String) -> DataTablePreview? {
+    workspaceDataTable(text: text, path: path).map(WorkspaceMapping.dataTable)
   }
 
   /// The file `path`'s bytes as the server returned them, binary files included.

@@ -51,15 +51,23 @@ public struct FileViewerView: View {
     VStack(spacing: 0) {
       FileHeader(
         file: file, source: source, actions: actions, modes: modes,
-        viewMode: modes.count > 1 ? modeBinding : nil, review: review,
+        viewMode: modes.count > 1 ? modeBinding : nil, review: showsTable ? nil : review,
         showsComments: $showsComments)
       Divider()
       switch file.preview {
       case .text(let text):
-        if text.serverTruncated || text.clipped {
-          NoticeBar(symbol: "scissors", text: notice(for: text))
+        // The table reads the whole content the server sent, not the clipped text.
+        let clipped = text.clipped && !showsTable
+        if text.serverTruncated || clipped {
+          NoticeBar(symbol: "scissors", text: notice(for: text, clipped: clipped))
         }
         withComments(content(text))
+      case .binary where showsTable:
+        // A data file in another encoding: the core decoded it for the table.
+        if file.dataTable?.truncated == true {
+          NoticeBar(symbol: "scissors", text: serverNotice)
+        }
+        FilePreviewView(kind: .dataTable, text: "", table: file.dataTable)
       case .image(let format, let data):
         ImagePreview(format: format, data: data, byteCount: file.byteCount)
       case .pdf(let data, let truncated):
@@ -101,7 +109,7 @@ public struct FileViewerView: View {
         isMarkdown: previewKind == .markdown, review: review
       ) { commenting = $0 }
     } else if let previewKind, mode == .preview {
-      FilePreviewView(kind: previewKind, text: editedText(text))
+      FilePreviewView(kind: previewKind, text: editedText(text), table: shownTable)
     } else if let editor, editor.isDirty {
       // Unsaved edits show as source; comments wait until they are saved.
       CodeTextView(preview: edited(text, editedText(text)), markedLine: line)
@@ -126,7 +134,8 @@ public struct FileViewerView: View {
     let layout = wide ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
     layout {
       content.frame(maxWidth: .infinity, maxHeight: .infinity)
-      if showsComments, let review {
+      // Comments anchor to lines, which the table does not show, as on the web.
+      if showsComments, let review, !showsTable {
         Divider()
         FileCommentsPanel(review: review, selectedID: $selectedCommentID) {
           showsComments = false
@@ -146,10 +155,15 @@ public struct FileViewerView: View {
     showsComments = true
   }
 
-  /// Preview for a previewable file, Source, and Edit when the viewer may edit it.
+  /// Preview for a previewable file, Source, and Edit when the viewer may edit it. A data file
+  /// in another encoding keeps Source, which says it can't show the bytes, as the web's does.
   private var modes: [FileViewMode] {
     var modes: [FileViewMode] = previewKind == nil ? [] : [.preview]
-    if case .text = file.preview { modes.append(.source) }
+    if case .text = file.preview {
+      modes.append(.source)
+    } else if previewKind == .dataTable {
+      modes.append(.source)
+    }
     if editor != nil, actions.canEdit { modes.append(.edit) }
     return modes
   }
@@ -170,16 +184,32 @@ public struct FileViewerView: View {
   }
 
   private var previewKind: FilePreviewKind? {
+    let kind = FilePreviewKind.of(path: file.path)
+    if kind == .dataTable, file.dataTable != nil { return kind }
     guard case .text = file.preview else { return nil }
-    return FilePreviewKind.of(path: file.path)
+    return kind
   }
 
-  private func notice(for text: TextPreview) -> String {
+  /// The viewer shows a data file's table rather than its text.
+  private var showsTable: Bool { previewKind == .dataTable && shownMode == .preview }
+
+  /// The table as read, or of the unsaved edits when the source can parse them.
+  private var shownTable: DataTablePreview? {
+    guard let editor, editor.isDirty else { return file.dataTable }
+    _ = editor.textRevision
+    return source.dataTable(editor.text, path: file.path) ?? file.dataTable
+  }
+
+  private func notice(for text: TextPreview, clipped: Bool) -> String {
     let lines = text.lineCount.formatted()
-    if text.clipped {
+    if clipped {
       return "Showing the first \(lines) lines. Open the file to see all of it."
     }
-    return "The server returned the first \(file.byteCount.formatted(.byteCount(style: .file)))."
+    return serverNotice
+  }
+
+  private var serverNotice: String {
+    "The server returned the first \(file.byteCount.formatted(.byteCount(style: .file)))."
   }
 }
 

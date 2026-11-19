@@ -201,6 +201,8 @@ nonisolated public struct WorkspaceFile: Hashable, Sendable, Identifiable {
   public var byteCount: UInt64
   /// What to show.
   public var preview: FilePreview
+  /// A `.csv` or `.tsv` file's table, whatever its encoding; `nil` when it has no rows.
+  public var dataTable: DataTablePreview?
 
   /// The path.
   public var id: String { path }
@@ -210,10 +212,14 @@ nonisolated public struct WorkspaceFile: Hashable, Sendable, Identifiable {
   ///   - path: Environment-relative path.
   ///   - byteCount: Bytes the server returned.
   ///   - preview: What to show.
-  public init(path: String, byteCount: UInt64, preview: FilePreview) {
+  ///   - dataTable: A data file's table.
+  public init(
+    path: String, byteCount: UInt64, preview: FilePreview, dataTable: DataTablePreview? = nil
+  ) {
     self.path = path
     self.byteCount = byteCount
     self.preview = preview
+    self.dataTable = dataTable
   }
 }
 

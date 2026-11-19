@@ -10,6 +10,8 @@
 //!   file content with binary, image, PDF, video and syntax detection ([`media`]), path search,
 //!   content search with UTF-16 and UTF-8 match ranges, changed files, environments and session
 //!   files.
+//! - [`data_table`]: the table preview of `.csv` and `.tsv` files, with column types and sort
+//!   ranks.
 //! - [`download`]: a file's raw bytes, whole or one byte range, without the read cap.
 //! - [`diff`]: a unified-diff model computed from the server's before/after text (pure Rust
 //!   Myers) or parsed from a patch, with hunks, stats and side-by-side rows.
@@ -26,6 +28,7 @@
 
 mod client;
 pub mod content;
+pub mod data_table;
 pub mod diff;
 pub mod download;
 pub mod error;
@@ -38,6 +41,10 @@ pub mod search;
 pub use content::{
     BinaryReason, FileBody, FileContent, FilePreview, ImageFormat, LineEnding, PreviewLimits,
     SERVER_READ_CAP_BYTES, SyntaxLanguage, TextPreview, line_count,
+};
+pub use data_table::{
+    DataColumnType, DataTable, compare_cells, decode_data_file, file_data_table,
+    is_data_table_path, parse_data_table,
 };
 pub use diff::{
     DiffHunk, DiffLine, DiffLineKind, DiffOptions, DiffParseError, DiffStats, FileChangeKind,
