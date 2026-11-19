@@ -91,9 +91,10 @@ struct DeepLinkTests {
   }
 
   @Test(
-    "rejects paths that are not a conversation, page or settings",
+    "rejects paths that are not a conversation, page, automation or settings",
     arguments: [
-      "omnigent://localhost:8000/members", "omnigent://localhost:8000/tasks/t_1",
+      "omnigent://localhost:8000/members", "omnigent://localhost:8000/tasks/t_1/runs",
+      "omnigent://localhost:8000/tasks/%2F",
       "omnigent://localhost:8000/settings/..", "omnigent://localhost:8000/settings/a/b/c",
       "omnigent://localhost:8000/c/", "omnigent://localhost:8000/c/a/b",
       "omnigent://localhost:8000//",
@@ -112,6 +113,10 @@ struct DeepLinkTests {
     #expect(try parse("omnigent://127.0.0.1:6767/usage").route == .page(.usage))
     #expect(try parse("omnigent://127.0.0.1:6767/new/").route == .page(.newSession))
     #expect(try parse("omnigent://127.0.0.1:6767/tasks").route == .page(.automations))
+    let automation = try parse("omnigent://127.0.0.1:6767/tasks/task%3A7?share=1").route
+    #expect(automation == .automation(id: "task:7"))
+    #expect(automation.path == "/tasks/task:7")
+    #expect(automation.sessionID == nil)
     #expect(try parse("omnigent://127.0.0.1:6767/inbox").route.path == "/inbox")
     #expect(try parse("omnigent://127.0.0.1:6767/settings").route == .settings(section: nil))
     let section = try parse("omnigent://127.0.0.1:6767/settings/custom-agents").route

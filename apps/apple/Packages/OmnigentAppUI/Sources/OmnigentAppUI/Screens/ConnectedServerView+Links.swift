@@ -41,6 +41,9 @@ extension ConnectedServerView {
         selection.wrappedValue = await session.showLinkedSession(sessionID)
       case .page(let page):
         selection.wrappedValue = DeepLinkDestinations.selection(for: page)
+      case .automation(let id):
+        session.connection.pages?.requestedAutomationID = id
+        selection.wrappedValue = .automations
       case .settings(let section):
         guard let openSettings else { return await fallback.open(url) }
         openSettings(DeepLinkDestinations.settings(section: section, server: settingsServer))

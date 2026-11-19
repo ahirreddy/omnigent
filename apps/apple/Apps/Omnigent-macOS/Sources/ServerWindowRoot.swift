@@ -257,6 +257,7 @@ struct ServerWindowRoot: View {
       session.transcriptFocus.focus(messageID, in: sessionID)
       Task { selection = await session.showLinkedSession(sessionID) }
     case .page(let page): selection = DeepLinkDestinations.selection(for: page)
+    case .automation(let id): selection = Self.automation(id, in: session)
     case .settings(let section):
       openSettingsAt(
         DeepLinkDestinations.settings(
@@ -383,5 +384,13 @@ extension ServerWindowRoot {
       )
       return true
     }
+  }
+}
+
+extension ServerWindowRoot {
+  /// The Automations page, asked to show the automation `id`.
+  static func automation(_ id: String, in session: ServerSession) -> SidebarDestination {
+    session.connection.pages?.requestedAutomationID = id
+    return .automations
   }
 }
