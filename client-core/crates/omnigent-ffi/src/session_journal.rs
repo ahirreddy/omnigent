@@ -413,6 +413,9 @@ pub struct TasksView {
     pub paused: Option<String>,
     /// The plan's stop control shows.
     pub can_stop: bool,
+    /// "Stopping…" shows in the stop control's place, from Stop until the session stops.
+    #[uniffi(default)]
+    pub stopping: bool,
     /// The plan's play control shows.
     pub can_continue: bool,
     /// The tasks, in order.
@@ -434,6 +437,9 @@ pub struct TasksContext {
     pub can_send: bool,
     /// The journal was read (or the server keeps none).
     pub journal_read: bool,
+    /// The user's Stop was taken and the session hasn't stopped yet.
+    #[uniffi(default)]
+    pub stopping: bool,
 }
 
 fn row(row: view::TaskRow) -> TaskRow {
@@ -506,6 +512,7 @@ pub fn tasks_view(
             awaiting_user: context.awaiting_user,
             can_send: context.can_send,
             journal_read: context.journal_read,
+            stopping: context.stopping,
         },
     );
     TasksView {
@@ -525,6 +532,7 @@ pub fn tasks_view(
             .collect(),
         paused: shown.paused,
         can_stop: shown.can_stop,
+        stopping: shown.stopping,
         can_continue: shown.can_continue,
         rows: shown.rows.into_iter().map(row).collect(),
     }
@@ -565,6 +573,13 @@ pub fn continue_plan_message(plan_name: Option<String>) -> String {
 #[must_use]
 pub fn stop_plan_message(plan_name: Option<String>) -> String {
     messages::stop_plan_message(plan_name.as_deref())
+}
+
+/// Whether `text` is the plan's stop message, whatever plan it names (web `isStopPlanMessage`).
+#[uniffi::export]
+#[must_use]
+pub fn is_stop_plan_message(text: String) -> bool {
+    messages::is_stop_plan_message(&text)
 }
 
 #[uniffi::export]

@@ -137,6 +137,8 @@ pub struct TasksContext {
     pub can_send: bool,
     /// The journal could be read; without it only the agent's own list shows.
     pub journal_read: bool,
+    /// The user's Stop was taken and the session hasn't stopped yet.
+    pub stopping: bool,
 }
 
 /// The Tasks tab.
@@ -162,9 +164,14 @@ pub struct TasksView {
     pub counts: Vec<(StepState, String)>,
     /// What an idle list says: "Stopped" or "Run ended".
     pub paused: Option<String>,
-    /// The plan's stop control shows: the session works and the plan is not complete.
+    /// The plan's stop control shows: the session works, the plan is not complete and the
+    /// run isn't already stopping.
     pub can_stop: bool,
-    /// The plan's play control shows: the list is paused and the viewer can send.
+    /// A disabled "Stopping…" shows in the stop control's place, from Stop until the session
+    /// stops.
+    pub stopping: bool,
+    /// The plan's play control shows: the list is paused, the viewer can send and the run
+    /// isn't stopping.
     pub can_continue: bool,
     /// The tasks, in order.
     pub rows: Vec<TaskRow>,
@@ -244,7 +251,10 @@ fn action(item: &StepProgress, context: TasksContext) -> Option<TaskAction> {
         return None;
     }
     match item.state {
-        StepState::Running => context.session_working.then_some(TaskAction::Stop),
+        // A run already stopping offers no Stop, so its stop message isn't sent twice.
+        StepState::Running => {
+            (context.session_working && !context.stopping).then_some(TaskAction::Stop)
+        }
         StepState::Ready => Some(TaskAction::Run),
         StepState::Stopped => Some(TaskAction::Continue),
         StepState::NeedsInput => Some(TaskAction::Proceed),
@@ -367,6 +377,7 @@ fn header(
     let paused = paused_label(progress, entries, context.session_working);
     let complete =
         list.plan.is_some() && is_plan_complete(progress, plan_graph_revision(entries).as_ref());
+    let stopping = context.can_send && context.stopping && !complete;
     TasksView {
         plan_name: list
             .plan
@@ -379,8 +390,9 @@ fn header(
         summary,
         counts,
         paused: paused.map(|label| PausedLabel::text(label).to_owned()),
-        can_stop: context.can_send && context.session_working && !complete,
-        can_continue: context.can_send && paused.is_some(),
+        can_stop: context.can_send && context.session_working && !complete && !stopping,
+        stopping,
+        can_continue: context.can_send && paused.is_some() && !stopping,
         rows,
     }
 }
