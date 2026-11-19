@@ -99,8 +99,11 @@ public struct WorkspaceVideoView: View {
         .accessibilityHidden(true)
       if let openFile {
         Button(title, action: openFile)
-          .buttonStyle(.plain)
-          .underline(pattern: .dot)
+          #if os(macOS)
+            .buttonStyle(.link)
+          #else
+            .buttonStyle(.borderless)
+          #endif
           .lineLimit(1)
           .help(title)
       } else {
@@ -154,19 +157,11 @@ public struct WorkspaceVideoView: View {
     ZStack {
       switch playback.phase {
       case .idle:
-        Button {
+        Button("Play recording", systemImage: "play.fill") {
           playback.play(reader)
-        } label: {
-          VStack(spacing: 10) {
-            Image(systemName: "play.fill")
-              .font(.largeTitle)
-            Text("Play recording")
-          }
-          .padding(16)
-          .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
+        .buttonStyle(.bordered)
+        .controlSize(.large)
         .accessibilityLabel("Play video: \(title)")
         .accessibilityIdentifier("workspace.video.play")
       case .loading, .ready:

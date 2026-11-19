@@ -88,9 +88,7 @@ struct TaskHistoryView: View {
     }
     .font(.caption)
     .padding(Theme.Spacing.medium)
-    .background(
-      Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.Radius.small)
-    )
+    .background(.quinary, in: RoundedRectangle(cornerRadius: Theme.Radius.small))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("\(row.name) history")
   }
@@ -116,20 +114,30 @@ struct TaskGlyph: View {
         Circle().strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
           .foregroundStyle(Theme.secondary)
       case .waiting, .ready:
-        Circle()
-          .strokeBorder(
-            state == .ready ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.5)
-          )
-          .overlay {
-            Text("\(number)")
-              .font(.system(size: 9, weight: .medium).monospacedDigit())
-              .foregroundStyle(
-                state == .ready ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Theme.secondary))
-          }
+        numbered
+          .foregroundStyle(
+            state == .ready ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Theme.secondary))
       }
     }
     .frame(width: 18, height: 18)
     .accessibilityHidden(true)
+  }
+
+  /// The task's number in a circle: the system's numbered symbol up to 50, then the digits in a
+  /// ring drawn to match.
+  @ViewBuilder private var numbered: some View {
+    if (0...50).contains(number) {
+      Image(systemName: "\(number).circle").accessibilityHidden(true)
+    } else {
+      Circle()
+        .strokeBorder(.secondary)
+        .overlay {
+          Text("\(number)")
+            .font(.caption2.weight(.medium).monospacedDigit())
+            .minimumScaleFactor(0.5)
+            .padding(2)
+        }
+    }
   }
 }
 

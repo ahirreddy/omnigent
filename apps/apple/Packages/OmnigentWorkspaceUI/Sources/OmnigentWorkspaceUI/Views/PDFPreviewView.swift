@@ -55,9 +55,6 @@ struct PDFPreviewView: View {
         .foregroundStyle(.secondary)
         .accessibilityIdentifier("workspace.pdf.pages")
       Spacer()
-      Button("Zoom Out", systemImage: "minus") { scale = Self.zoomedOut(scale) }
-        .labelStyle(.iconOnly)
-        .disabled(scale <= Self.minimumScale)
       Button {
         scale = 1
       } label: {
@@ -65,16 +62,26 @@ struct PDFPreviewView: View {
           .monospacedDigit()
           .frame(minWidth: 40)
       }
+      .buttonStyle(.borderless)
       .disabled(scale == 1)
       .help("Reset zoom")
       .accessibilityLabel("Reset zoom")
-      Button("Zoom In", systemImage: "plus") { scale = Self.zoomedIn(scale) }
-        .labelStyle(.iconOnly)
-        .disabled(scale >= Self.maximumScale)
+      // Zoom out and in as one control, as Preview's toolbar pairs them.
+      ControlGroup {
+        Button("Zoom Out", systemImage: "minus.magnifyingglass") {
+          scale = Self.zoomedOut(scale)
+        }
+        .disabled(scale <= Self.minimumScale)
+        Button("Zoom In", systemImage: "plus.magnifyingglass") { scale = Self.zoomedIn(scale) }
+          .disabled(scale >= Self.maximumScale)
+      }
+      .labelStyle(.iconOnly)
+      .controlSize(.small)
+      .fixedSize()
     }
-    .buttonStyle(.borderless)
     .padding(.horizontal, 12)
     .padding(.vertical, 6)
+    .background(.bar)
   }
 
   private func note(_ message: String) -> some View {
