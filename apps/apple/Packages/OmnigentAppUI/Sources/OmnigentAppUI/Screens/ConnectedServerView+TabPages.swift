@@ -95,7 +95,11 @@ extension ConnectedServerView {
   /// iPhone) does not rebuild it.
   func keptAlive(page: AppTab?, isCompact: Bool) -> [AppTab] {
     let tabs = session.tabs
-    guard isCompact else { return tabs.keptAlive() + (page.map { [$0] } ?? []) }
+    // A board's quick view builds its session's chat itself.
+    let kept = tabs.keptAlive().filter { tab in
+      tabs.quickViewSessionID.map { tab.content.conversationID != $0 } ?? true
+    }
+    guard isCompact else { return kept + (page.map { [$0] } ?? []) }
     return (tabs.selected ?? page).map { [$0] } ?? []
   }
 

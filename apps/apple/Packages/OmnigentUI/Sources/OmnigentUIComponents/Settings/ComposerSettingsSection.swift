@@ -60,3 +60,25 @@ public struct SessionSettingsSection: View {
     }
   }
 }
+
+/// Settings > General > Projects: whether a project opens its board of sessions (the web's
+/// Kanban board views), where the server offers boards.
+public struct ProjectBoardSettingsSection: View {
+  @AppStorage(InterfacePreferences.projectBoardKey) private var opensBoard = true
+
+  /// Creates the section.
+  public init() {}
+
+  /// The section.
+  public var body: some View {
+    Section {
+      Toggle(isOn: $opensBoard) {
+        Text("Kanban board views")
+        Text("Monitor a project's agents in one view and respond the moment one needs you.")
+      }
+      .accessibilityIdentifier("settings.project-kanban-board")
+    } header: {
+      Text("Projects")
+    }
+  }
+}

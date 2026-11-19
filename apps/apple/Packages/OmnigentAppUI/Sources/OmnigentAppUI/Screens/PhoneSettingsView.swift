@@ -156,6 +156,7 @@
       case .general:
         Form {
           ComposerSettingsSection()
+          ProjectBoardSettingsSection()
           SessionSettingsSection()
           LinksAndSessionsSettingsSection()
         }

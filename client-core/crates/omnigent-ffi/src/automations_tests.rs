@@ -359,6 +359,7 @@ fn server_pages_map_each_flag_to_its_own_field() {
         sharing_restricted: false,
         public_edit: false,
         project_repository_creation: false,
+        project_kanban: false,
         automation_subhour: false,
         automation_trigger_headers: false,
         automation_trigger_poll_minutes: 10,
@@ -420,6 +421,13 @@ fn server_pages_map_each_flag_to_its_own_field() {
             r#"{"single_user":true,"features":{"canvas":true}}"#,
             ServerPages {
                 canvas: true,
+                ..none
+            },
+        ),
+        (
+            r#"{"single_user":true,"features":{"project_kanban":true}}"#,
+            ServerPages {
+                project_kanban: true,
                 ..none
             },
         ),

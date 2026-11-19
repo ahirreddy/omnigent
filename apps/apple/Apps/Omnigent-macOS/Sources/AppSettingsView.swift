@@ -49,6 +49,7 @@ struct AppSettingsView: View {
       selection: Bindable(navigator).tab
     ) {
       ComposerSettingsSection()
+      ProjectBoardSettingsSection()
       SessionSettingsSection()
       LinksAndSessionsSettingsSection()
       BrowserEngineSettingsView(

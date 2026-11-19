@@ -34,6 +34,8 @@ public final class SessionTabGroups {
   public private(set) var groups: [String: TabStore] = [:]
   /// Sessions in the order they were last shown, the most recent first.
   public private(set) var recentSessions: [String] = []
+  /// The session a project board's quick view shows beside its lanes; it stays open meanwhile.
+  public var quickViewSessionID: String?
   /// Tabs in the order they were last shown, across sessions, the most recent first.
   @ObservationIgnored private(set) var recentTabs: [String] = []
   /// Each chat's Chat or Terminal choice, by session (see ``viewChoice(_:)``).
@@ -75,9 +77,11 @@ public final class SessionTabGroups {
   /// chats their built tabs show.
   public var liveSessionIDs: Set<String> {
     let recent = recentSessions.prefix(liveLimit)
-    return recent.reduce(into: Set(recent)) { live, sessionID in
+    var live = recent.reduce(into: Set(recent)) { live, sessionID in
       live.formUnion(groups[sessionID]?.liveSessionIDs ?? [])
     }
+    if let quickViewSessionID { live.insert(quickViewSessionID) }
+    return live
   }
 
   /// A tab of any session, with its session.
@@ -97,6 +101,8 @@ public final class SessionTabGroups {
   public func show(_ destination: SidebarDestination?) {
     if let sessionID = destination?.sessionID { _ = group(sessionID) }
     guard page != destination else { return }
+    // A quick view belongs to the board it opened on.
+    quickViewSessionID = nil
     page = destination
     if let sessionID = destination?.sessionID { noteShown(sessionID) }
     onChange?(nil)
@@ -264,7 +270,8 @@ extension SessionTabGroups {
   /// terminal shows in the session's chat.
   nonisolated static func belongsInGroup(_ content: AppTabContent) -> Bool {
     switch content {
-    case .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .harness: false
+    case .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .project, .harness:
+      false
     case .newTab, .chat, .terminal, .sideChat, .sideChatSession, .subagent, .browser,
       .agentBrowser, .remoteBrowser:
       true

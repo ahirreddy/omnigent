@@ -12,6 +12,8 @@ nonisolated public enum SidebarDestination: Hashable, Sendable {
   case automations
   /// Usage and spend.
   case usage
+  /// A project's board, by its folder id (``SessionProject/id``).
+  case project(String)
   /// A session.
   case session(String)
   /// The new-session page adding a nested agent beside a session ("Add nested agent").
@@ -20,6 +22,12 @@ nonisolated public enum SidebarDestination: Hashable, Sendable {
   /// The selected session id, if a session is selected.
   public var sessionID: String? {
     if case .session(let id) = self { return id }
+    return nil
+  }
+
+  /// The project whose board is shown, by its folder id.
+  public var projectID: String? {
+    if case .project(let id) = self { return id }
     return nil
   }
 }

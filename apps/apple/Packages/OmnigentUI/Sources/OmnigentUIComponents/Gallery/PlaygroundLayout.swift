@@ -89,6 +89,8 @@ public struct PlaygroundView: View {
       AutomationsView(state: PreviewData.automations, actions: AutomationsActions())
     case .usage:
       UsageView(state: PreviewData.usage, actions: UsageActions(formatCost: PreviewData.cost))
+    case .project:
+      PreviewData.projectBoard { id in model.selection = .session(id) }
     case .session:
       conversation
     }
@@ -152,6 +154,8 @@ extension PlaygroundModel {
     case .canvas: tab = TabItemState(id: "shell", kind: .canvas, title: "Canvas")
     case .automations: tab = TabItemState(id: "shell", kind: .automations, title: "Automations")
     case .usage: tab = TabItemState(id: "shell", kind: .usage, title: "Usage")
+    case .project:
+      tab = TabItemState(id: "shell", kind: .project, title: PreviewData.boardProject.name)
     case .newSession, .nestedSession, nil:
       tab = TabItemState(id: "shell", kind: .newSession, title: "New Session")
     }

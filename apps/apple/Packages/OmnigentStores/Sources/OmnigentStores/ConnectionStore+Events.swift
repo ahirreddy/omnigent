@@ -142,8 +142,8 @@ extension ConnectionStore {
       sessionList.projectsError = error
     case .projectFoldersChanged(let folders):
       sessionList.paging.foldersChanged(folders)
-    case .projectFolderFailed(_, let error):
-      sessionList.paging.reportFailure(error)
+    case .projectFolderFailed(let folderID, let error):
+      sessionList.paging.folderFailed(folderID, error)
     default:
       break
     }

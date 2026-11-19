@@ -28,6 +28,8 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
   case automations
   /// Usage.
   case usage
+  /// A project's board.
+  case project
 
   /// The SF Symbol.
   public var systemImage: String {
@@ -45,6 +47,7 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
     case .canvas: "square.grid.2x2"
     case .automations: "clock"
     case .usage: "creditcard"
+    case .project: "rectangle.split.3x1"
     }
   }
 
@@ -64,6 +67,7 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
     case .canvas: "Canvas"
     case .automations: "Automations"
     case .usage: "Usage"
+    case .project: "Project"
     }
   }
 }

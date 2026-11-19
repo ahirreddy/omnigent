@@ -417,6 +417,10 @@ fn pages_follow_what_the_server_advertises() {
     );
     assert!(ServerPages::from_value(&json!({"features": {"usage_page": "yes"}})).is_err());
     assert!(ServerPages::from_value(&json!({"features": {"canvas": "yes"}})).is_err());
+    // A project opens its board only where the server says so.
+    assert!(!ServerPages::from_value(&json!({})).unwrap().project_kanban);
+    let kanban = json!({"features": {"project_kanban": true}});
+    assert!(ServerPages::from_value(&kanban).unwrap().project_kanban);
     assert!(ServerPages::from_value(&json!({"sharing_mode": 1})).is_err());
     // Moving sessions between nests needs a server that says it can.
     assert!(

@@ -20,6 +20,10 @@ struct NewSessionContainer: View {
   let openWithNotice: (@MainActor (String, String) -> Void)?
   /// Leaves a nested composer for a new session's, which takes the draft.
   let continueInNewSession: (@MainActor () -> Void)?
+  /// The project the session is filed in from the start: a project board's composer.
+  let project: ProjectSummary?
+  /// Only the composer, floated over a project's board.
+  let isFloating: Bool
 
   @State private var draft = ""
   @State private var form: NewSessionForm
@@ -46,13 +50,16 @@ struct NewSessionContainer: View {
     connection: ConnectionStore, form: NewSessionForm = NewSessionForm(),
     nestedSourceID: String? = nil, open: @escaping @MainActor (String) -> Void,
     openWithNotice: (@MainActor (String, String) -> Void)? = nil,
-    continueInNewSession: (@MainActor () -> Void)? = nil
+    continueInNewSession: (@MainActor () -> Void)? = nil,
+    project: ProjectSummary? = nil, isFloating: Bool = false
   ) {
     self.connection = connection
     self.open = open
     self.nestedSourceID = nestedSourceID
     self.openWithNotice = openWithNotice
     self.continueInNewSession = continueInNewSession
+    self.project = project
+    self.isFloating = isFloating
     _form = State(initialValue: form)
   }
 
@@ -106,7 +113,7 @@ struct NewSessionContainer: View {
       heading: form.heading, subtitle: form.nested?.subtitle,
       importSessions: importSessions(openURL, openSettingsAt),
       options: form.options(creation, projects: connection.sessionList.projects),
-      optionActions: optionActions(creation)
+      optionActions: optionActions(creation), isFloating: isFloating
     )
     .modifier(
       NewSessionLifecycle(
@@ -308,6 +315,7 @@ extension NewSessionContainer {
     guard let nestedSourceID else {
       if let handed = creation.composerDrafts.removeValue(forKey: "") { draft = handed }
       await form.load(creation)
+      if let project { await form.applyProject(project, creation) }
       return
     }
     form.nested = NestedComposer(sourceID: nestedSourceID)

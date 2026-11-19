@@ -64,6 +64,8 @@ pub struct ServerPages {
     pub public_edit: bool,
     /// The `project_repository_creation` feature: New project can start from a repository.
     pub project_repository_creation: bool,
+    /// The `project_kanban` feature: a project opens its sessions board.
+    pub project_kanban: bool,
     /// `scheduled_task_subhour`: hosts and continued sessions run schedules under an hour.
     pub automation_subhour: bool,
     /// `scheduled_task_trigger_headers`: runs drop a trigger prompt's header before dispatch.
@@ -157,6 +159,7 @@ impl ServerPages {
             sharing_restricted,
             public_edit: opt_str(object, "public_sharing_max_level")?.as_deref() == Some("edit"),
             project_repository_creation: feature("project_repository_creation")?,
+            project_kanban: feature("project_kanban")?,
         })
     }
 }

@@ -30,6 +30,7 @@ pub mod mentions;
 pub mod message_cache;
 pub mod nested_creation;
 pub mod notifications;
+pub mod project_board;
 pub mod read_state;
 pub mod realtime;
 pub mod reconcile;

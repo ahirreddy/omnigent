@@ -70,8 +70,8 @@ struct KeptPlaces {
       guard conversations > 0 else { return false }
       conversations -= 1
       return true
-    case .newTab, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .terminal,
-      .harness, .browser, .agentBrowser, .remoteBrowser:
+    case .newTab, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .project,
+      .terminal, .harness, .browser, .agentBrowser, .remoteBrowser:
       return false
     }
   }

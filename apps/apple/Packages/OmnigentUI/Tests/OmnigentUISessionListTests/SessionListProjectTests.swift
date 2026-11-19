@@ -148,7 +148,7 @@
       let sessions = (0..<7).map { SessionSummary(id: "s\($0)", title: "S\($0)") }
       func pages(shown: Int) -> ProjectFolderPages {
         ProjectFolderPages(
-          project: work, sessions: sessions, paging: SidebarPaging(), shown: shown, selectedID: nil,
+          project: work, sessions: sessions, paging: SidebarPaging(), shown: shown, selection: nil,
           load: { _ in loads += 1 }, setShown: { calls.append($0) })
       }
       let first = pages(shown: 0)
@@ -159,7 +159,8 @@
       first.load?()
       #expect(loads == 2)
       let noLoad = ProjectFolderPages(
-        project: work, sessions: sessions, paging: SidebarPaging(), shown: 0, selectedID: "s6",
+        project: work, sessions: sessions, paging: SidebarPaging(), shown: 0,
+        selection: .session("s6"),
         load: nil, setShown: { _ in })
       // The open session stays listed even past the first page.
       #expect(noLoad.visibleCount == sessions.count)

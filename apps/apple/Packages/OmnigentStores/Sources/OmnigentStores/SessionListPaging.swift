@@ -27,6 +27,12 @@ public final class SessionListPaging {
   public private(set) var isLoading = false
   /// Project folders' pages, by folder id (the core's `projectFolderId`).
   public private(set) var projects: [String: ProjectPages] = [:]
+  /// Why a folder's last read failed, by folder id, until it reads again.
+  public private(set) var folderFailures: [String: CoreError] = [:]
+  /// The folders the sidebar shows open.
+  @ObservationIgnored private var sidebarFolders: Set<String> = []
+  /// The folders whose board is shown; they stay loaded as an open folder does.
+  @ObservationIgnored private var boardFolders: [String: Int] = [:]
 
   /// The core pages load through; set by the owning ``ConnectionStore``.
   @ObservationIgnored var core: ClientCore?
@@ -48,7 +54,9 @@ public final class SessionListPaging {
   /// while a page is loading, for a first page it read already, or once every member is loaded.
   /// - Parameter project: The folder's project.
   public func loadProject(_ project: ProjectSummary) {
-    let isLoaded = projects[projectFolderId(project: project)]?.isLoaded == true
+    let folderID = projectFolderId(project: project)
+    let isLoaded = projects[folderID]?.isLoaded == true
+    if folderFailures[folderID] != nil { folderFailures[folderID] = nil }
     core?.loadProjectFolder(project: project, next: isLoaded)
   }
 
@@ -56,7 +64,31 @@ public final class SessionListPaging {
   /// as the projects are known and keeps them through list reloads.
   /// - Parameter folderIDs: The open folders.
   public func setOpenFolders(_ folderIDs: Set<String>) {
-    core?.setOpenProjectFolders(folderIds: folderIDs.sorted())
+    sidebarFolders = folderIDs
+    reportOpenFolders()
+  }
+
+  /// A project's board shows (`true`) or leaves: while any board of it shows, the core keeps its
+  /// folder's pages through list reloads, as it does an open folder's.
+  /// - Parameters:
+  ///   - folderID: The board's folder.
+  ///   - isShown: Whether the board shows.
+  public func setBoardShown(_ folderID: String, _ isShown: Bool) {
+    let count = (boardFolders[folderID] ?? 0) + (isShown ? 1 : -1)
+    boardFolders[folderID] = count > 0 ? count : nil
+    reportOpenFolders()
+  }
+
+  /// The folders the core keeps read: open in the sidebar, or with a board shown.
+  var openFolderIDs: Set<String> { sidebarFolders.union(boardFolders.keys) }
+
+  private func reportOpenFolders() {
+    core?.setOpenProjectFolders(folderIds: openFolderIDs.sorted())
+  }
+
+  func folderFailed(_ folderID: String, _ error: CoreError) {
+    folderFailures[folderID] = error
+    reportFailure(error)
   }
 
   func pagingChanged(hasMore: Bool, isLoading: Bool) {
@@ -75,10 +107,13 @@ public final class SessionListPaging {
         )
       }, uniquingKeysWith: { _, last in last })
     if pages != projects { projects = pages }
+    let read = folders.filter { $0.isLoaded || $0.isLoading }.map(\.folderId)
+    for folderID in read where folderFailures[folderID] != nil { folderFailures[folderID] = nil }
   }
 
   func clear() {
     pagingChanged(hasMore: false, isLoading: false)
     if !projects.isEmpty { projects = [:] }
+    if !folderFailures.isEmpty { folderFailures = [:] }
   }
 }

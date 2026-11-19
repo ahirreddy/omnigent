@@ -16,6 +16,7 @@ public struct NewSessionPage: View {
   private let showsContextDetails: Bool
   private let options: NewSessionOptions?
   private let optionActions: NewSessionOptionActions
+  private let isFloating: Bool
 
   @State private var gaze: CGSize = .zero
   @Environment(\.layoutWidth) private var layoutWidth
@@ -37,12 +38,16 @@ public struct NewSessionPage: View {
   ///   - showsContextDetails: Open the execution-context details (playground captures).
   ///   - options: The folder, worktree and repository chips under the composer.
   ///   - optionActions: Their actions.
+  ///   - isFloating: Only the composer and its chips, floated over another page (a project's
+  ///     board), without the heading.
   public init(
     draft: Binding<String>, composer: ComposerViewState, actions: ComposerActions,
     heading: String = Self.defaultHeading, subtitle: String? = nil,
     importSessions: (@MainActor () -> Void)? = nil, showsContextDetails: Bool = false,
-    options: NewSessionOptions? = nil, optionActions: NewSessionOptionActions = .init()
+    options: NewSessionOptions? = nil, optionActions: NewSessionOptionActions = .init(),
+    isFloating: Bool = false
   ) {
+    self.isFloating = isFloating
     self.options = options
     self.optionActions = optionActions
     _draft = draft
@@ -62,6 +67,16 @@ public struct NewSessionPage: View {
 
   /// The page.
   public var body: some View {
+    if isFloating {
+      composerView
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("new-session-floating")
+    } else {
+      page
+    }
+  }
+
+  private var page: some View {
     Group {
       // A phone keeps the composer on the keyboard, as ChatGPT does; Otto and the heading
       // center in the space above it.
