@@ -50,6 +50,13 @@ extension ConnectedServerView {
       })
   }
 
+  /// The saved workflows a chat's Run a workflow offers, where the server keeps them.
+  var workflowsReach: TasksAdapter.Workflows? {
+    let offered = connection.pages?.offered
+    guard offered?.workflows == true, let store = connection.workflows else { return nil }
+    return TasksAdapter.Workflows(store: store, sharing: offered?.workflowSharing == true)
+  }
+
   /// The planning session's chat beside a workflow, once its conversation is open.
   @ViewBuilder private func plannerChat(_ id: String) -> some View {
     if let chat = chat(id) {

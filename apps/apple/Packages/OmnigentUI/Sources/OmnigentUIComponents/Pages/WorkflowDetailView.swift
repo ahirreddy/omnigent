@@ -102,12 +102,23 @@ public struct WorkflowDetailView<Planner: View>: View {
     }
   }
 
-  /// The name with its actions beside it; on a phone the actions go under the name.
+  /// The name with its actions beside it; on a phone Run goes under the name, the others in a
+  /// menu beside it.
   @ViewBuilder private var header: some View {
     if layoutWidth == .compact {
       VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
         titleBlock
-        headerActions
+        HStack(spacing: Theme.Spacing.small) {
+          if let run = actions.run {
+            Button("Run", systemImage: "play.fill", action: run)
+              .buttonStyle(.borderedProminent)
+              .disabled(!state.canRun)
+              .accessibilityIdentifier("workflow-detail-run")
+          }
+          Menu("More", systemImage: "ellipsis.circle") { compactMenu }
+            .labelStyle(.iconOnly)
+            .accessibilityIdentifier("workflow-detail-more")
+        }
       }
     } else {
       HStack(alignment: .top, spacing: Theme.Spacing.large) {
@@ -227,6 +238,31 @@ public struct WorkflowDetailView<Planner: View>: View {
 
 /// The page's plan and automations.
 extension WorkflowDetailView {
+  /// A phone's menu of the header's other actions; a viewer's show disabled.
+  @ViewBuilder private var compactMenu: some View {
+    if let edit = actions.editPlan {
+      Button("Edit plan with agent", systemImage: "pencil", action: edit)
+        .disabled(state.isReadOnly)
+    }
+    if let clone = actions.clone {
+      Button("Clone", systemImage: "doc.on.doc", action: clone).disabled(state.isCloning)
+    }
+    if let create = actions.createAutomation, state.offersAutomations, !state.isReadOnly {
+      Button("Create automation", systemImage: "clock", action: create).disabled(!state.canRun)
+    }
+    if state.isReadOnly || state.share != nil {
+      Button("Share workflow", systemImage: "square.and.arrow.up") { actions.share?() }
+        .disabled(state.isReadOnly || state.share != .enabled || actions.share == nil)
+    }
+    if actions.delete != nil {
+      Divider()
+      Button("Delete workflow", systemImage: "trash", role: .destructive) {
+        confirmingDelete = true
+      }
+      .disabled(state.isReadOnly)
+    }
+  }
+
   /// "Plan" with whether it is saved, Save plan, and the steps or how to make some.
   private var planSection: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {

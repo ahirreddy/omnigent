@@ -550,6 +550,19 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     project's board: list rows carry no labels, so the core can't tell a shared run.
   - Left and Right on a selected project row don't collapse and expand its folder; its button
     does.
+- [ ] **Workflows** (the web's `features.workflows`), parts not ported yet:
+  - New automation has no Workflow field: Create automation opens the editor with the run's
+    message as its instructions, still editable, instead of a locked workflow with "Each run
+    follows this workflow as saved", and continuing one session isn't refused for it.
+  - A trigger's workers don't start as runs of its workflow (`session_create_workflow_id`).
+  - The Tasks tab doesn't list "Ran N workflows" under the session's run, nor does the chat
+    show the tasks' one-line preview (`ChatTasksPreview`).
+  - An automation's run history doesn't show each run's tasks, plan or graph (`RunTasks`), nor
+    what each run's agent last wrote (`run-steps`).
+  - A run row's "Stopping…" lasts while its workflow's page shows; the session's Tasks tab
+    learns of that Stop from the transcript, as for a Stop sent elsewhere.
+  - The planning chat sends its prompt as the first message; the web leaves it as the
+    composer's draft for a host session.
 
 ## Product decisions
 

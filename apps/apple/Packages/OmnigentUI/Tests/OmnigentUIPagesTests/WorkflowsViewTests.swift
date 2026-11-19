@@ -95,6 +95,34 @@
       #expect(try screen.shows("Retry"))
     }
 
+    @Test("Run a workflow picks a saved one, then runs it with its details and no review")
+    func runSheet() throws {
+      var sent: [RunWorkflowRequest] = []
+      var source = LookFixtures.runSource
+      source.run = { sent.append($0) }
+      let screen = OffscreenWindow(
+        RunWorkflowSheet(source: source, close: {}), width: 560, height: 480)
+      defer { screen.close() }
+      #expect(try screen.shows("On-call handoff"), "a shared workflow is offered too")
+      #expect(try !screen.shows("Draft release notes"), "a draft can't run")
+      try screen.clickElement("run-workflow-pick-wf_triage")
+      #expect(try screen.shows("Run Triage flaky tests"))
+      try screen.clickElement("run-workflow-run")
+      #expect(
+        sent == [
+          RunWorkflowRequest(description: "", reviewPlanFirst: false, savedWorkflowID: "wf_triage")
+        ])
+    }
+
+    @Test("a plan's Tasks tab offers its graph and Save as workflow, disabled once saved")
+    func tasksControls() throws {
+      let screen = OffscreenWindow(LookFixtures.workflowTasks, width: 480, height: 560)
+      defer { screen.close() }
+      _ = try screen.withAccessibilityTree { try screen.accessibilityFrame("tasks-plan-graph") }
+      let menu = try #require(screen.popUps.first)
+      #expect(try screen.titles(inPopUp: menu).contains("Save as workflow\u{2026}"))
+    }
+
     @Test("the delete prompt names the automations that run the workflow")
     func deletePromptMessage() {
       let prompt = WorkflowDeletePrompt.ready(

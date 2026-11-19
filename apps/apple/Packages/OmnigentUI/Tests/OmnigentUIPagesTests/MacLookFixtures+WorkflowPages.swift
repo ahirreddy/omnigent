@@ -43,6 +43,10 @@ extension LookFixtures {
       return themed(detail(state))
     case .workflowNew:
       return themed(NewWorkflowSheet(create: { _ in nil }, nameTaken: { _ in false }, close: {}))
+    case .workflowRunSheet:
+      return themed(RunWorkflowSheet(source: runSource, close: {}))
+    case .workflowTasks:
+      return themed(workflowTasks)
     default:
       return themed(WorkflowsView(state: PreviewData.workflows, actions: listActions))
     }
@@ -54,6 +58,38 @@ extension LookFixtures {
 
   @MainActor private static func detail(_ state: WorkflowDetailState) -> some View {
     WorkflowDetailView(state: state, actions: detailActions, planner: EmptyView?.none)
+  }
+
+  /// Run a workflow's saved workflows: the caller's with a plan and one shared with them.
+  @MainActor static var runSource: WorkflowRunSource {
+    WorkflowRunSource(
+      choices: { search in
+        var choices = RunWorkflowChoices()
+        let rows =
+          PreviewData.workflows.yours.rows.filter { !$0.isDraft }
+          + (PreviewData.workflows.shared?.rows ?? [])
+        choices.rows = rows.filter { search.isEmpty || $0.name.localizedStandardContains(search) }
+        choices.hasAny = true
+        return choices
+      },
+      run: { _ in })
+  }
+
+  /// The Tasks tab of a workflow's run: its plan on the graph and Save as workflow.
+  @MainActor static var workflowTasks: some View {
+    let started = now.addingTimeInterval(-300)
+    let list = TaskListState(
+      planName: "Triage flaky tests", updatedAt: started, summary: "2 of 4 finished",
+      counts: [TaskCountLine(state: .running, text: "1 running")], canStop: true, fromPlan: true,
+      rows: PreviewData.workflowRuns[0].steps.map { step in
+        TaskRowState(
+          id: step.id, number: step.number, name: step.name, state: step.state ?? .waiting,
+          stateLabel: step.state == .done ? "Done" : "Running")
+      })
+    var content = TasksPanelContent(state: .loaded(list))
+    content.graph = PreviewData.workflowRuns[0].graph
+    content.saveAsWorkflow = WorkflowSaveSource(initialName: "Triage flaky tests", save: { _ in })
+    return TasksPanel(content: content)
   }
 
   @MainActor private static var listActions: WorkflowsActions {

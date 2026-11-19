@@ -244,7 +244,7 @@ public struct ConnectedServerView: View {
     return ConversationContainer(
       conversation: conversation, summary: summary,
       terminals: session.terminals(of: id), workspace: session.workspace(of: id),
-      panel: session.panel(of: id), tasks: session.tasks(of: id),
+      panel: session.panel(of: id), tasks: session.tasks(of: id), workflows: workflowsReach,
       transcriptFocus: session.transcriptFocus,
       changedFilesRevision: { connection.fileChanges(in: id) },
       navigation: navigation(from: ownerID ?? id),

@@ -16,6 +16,12 @@ struct WorkflowSheetChrome<Content: View>: View {
   var body: some View {
     #if os(macOS)
       VStack(spacing: 0) {
+        // A Mac sheet draws no navigation title, so the sheet names itself.
+        Text(title).font(.headline)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, Theme.Spacing.extraLarge)
+          .padding(.top, Theme.Spacing.large)
+          .accessibilityAddTraits(.isHeader)
         Form { content() }.formStyle(.grouped)
         Divider()
         HStack(spacing: Theme.Spacing.small) {

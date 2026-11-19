@@ -231,6 +231,12 @@ public struct TasksPanelContent {
   public var retry: @MainActor () -> Void
   /// The tab scrolled to ``taskToShow``.
   public var shown: @MainActor () -> Void
+  /// The plan's steps as a graph; `nil` hides View the plan on the graph.
+  public var graph: WorkflowGraphState?
+  /// Save as workflow; `nil` hides it.
+  public var saveAsWorkflow: WorkflowSaveSource?
+  /// Run a workflow from the empty tab; `nil` leaves the link out.
+  public var runWorkflow: WorkflowRunSource?
 
   /// Content.
   public init(

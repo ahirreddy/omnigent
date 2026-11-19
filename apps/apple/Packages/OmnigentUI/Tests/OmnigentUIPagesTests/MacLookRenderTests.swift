@@ -71,6 +71,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case workflowDetailProposal = "workflows-detail-proposal"
   case workflowDetailDraft = "workflows-detail-draft"
   case workflowDetailShared = "workflows-detail-shared"
+  case workflowRunSheet = "workflows-run-sheet"
+  case workflowTasks = "workflows-tasks"
 
   var testDescription: String { rawValue }
 
@@ -91,7 +93,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .workflowsList, .workflowsEmpty, .workflowDetail, .workflowDetailProposal,
       .workflowDetailShared:
       960
-    case .workflowNew: 560
+    case .workflowNew, .workflowRunSheet: 560
+    case .workflowTasks: 480
     case .composerMcp, .markersChat, .viewersPDF, .viewersVideo, .viewersChatVideo: 736
     case .composerRewind, .tasksPlan, .tasksStopping, .prFileHeader: 480
     case .tasksHistory: 420
@@ -125,6 +128,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .workflowDetail, .workflowDetailProposal, .workflowDetailShared: 1_280
     case .workflowDetailDraft: 760
     case .workflowNew: 440
+    case .workflowRunSheet: 480
+    case .workflowTasks: 560
     default: nil
     }
   }
@@ -193,7 +198,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .projectBoard, .projectBoardEmpty, .projectBoardQuickView, .projectBoardComposer:
       return AnyView(LookFixtures.board(self))
     case .workflowsList, .workflowsEmpty, .workflowNew, .workflowDetail, .workflowDetailProposal,
-      .workflowDetailDraft, .workflowDetailShared:
+      .workflowDetailDraft, .workflowDetailShared, .workflowRunSheet, .workflowTasks:
       return LookFixtures.workflows(self)
     }
   }

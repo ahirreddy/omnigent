@@ -20,6 +20,11 @@ extension ConversationContainer {
       }
       extras.deleteReviewComment = { id in Task { await panel.deleteLocalComment(id) } }
     }
+    if !ComposerAdapter.isReadOnly(conversation), let workflows {
+      extras.runWorkflow = WorkflowComposerAdapter.runSource(
+        composer: conversation.composer, store: workflows.store, sharing: workflows.sharing,
+        blockedReason: { TasksAdapter.blockedReason(conversation) })
+    }
     extras.liveness.fork = forkSession
     addHostMoves(to: &extras.liveness, sheets: livenessSheets)
     return extras

@@ -66,13 +66,23 @@ public struct WorkflowsView: View {
       }
       Spacer(minLength: 0)
       if actions.create != nil {
-        Button("New workflow", systemImage: "plus") { creating = true }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.large)
-          .fixedSize()
-          .accessibilityIdentifier("workflows-new")
+        // A phone keeps the title whole: New shows as its symbol.
+        if layoutWidth == .compact {
+          newButton.labelStyle(.iconOnly).buttonBorderShape(.circle)
+        } else {
+          newButton
+        }
       }
     }
+  }
+
+  private var newButton: some View {
+    Button("New workflow", systemImage: "plus") { creating = true }
+      .buttonStyle(.borderedProminent)
+      .controlSize(.large)
+      .fixedSize()
+      .help("New workflow")
+      .accessibilityIdentifier("workflows-new")
   }
 
   @ViewBuilder private var yours: some View {
