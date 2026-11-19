@@ -555,6 +555,13 @@ fn goal_control_follows_the_harness() {
         goal_control(Some("codex-native-ui"), Some("codex-native"), None, None),
         Some(GoalControl::Managed)
     );
+    // Claude Code native takes its built-in `/goal`, whatever the agent.
+    assert_eq!(
+        goal_control(Some("claude-code-native-ui"), Some("claude-native"), None, None),
+        Some(GoalControl::Command {
+            backend: "Claude".into()
+        })
+    );
     assert_eq!(
         goal_control(None, Some("claude-sdk"), Some("Polly"), None),
         Some(GoalControl::Command {

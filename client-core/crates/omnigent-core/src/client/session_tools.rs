@@ -8,8 +8,9 @@
 //!   thread instead: the message goes to the parent as `/side <question>`, which its runner
 //!   takes as the request to fork, and the fork is the next child the parent reports.
 //! - Plan mode is Codex-native's collaboration mode (`PATCH` `collaboration_mode`).
-//! - The goal is Codex-native's `…/codex_goal`; top-level Polly sessions on the Claude SDK or
-//!   Codex take a `/goal <condition>` command instead (web `shouldShow*GoalControl`).
+//! - The goal is Codex-native's `…/codex_goal`; Claude Code native sessions and top-level Polly
+//!   sessions on the Claude SDK or Codex take a `/goal <condition>` command instead (web
+//!   `shouldShow*GoalControl`).
 
 use std::collections::BTreeMap;
 
@@ -47,6 +48,7 @@ const CLOSED_LABEL: &str = "omnigent.closed";
 const SIDE_CHAT_RESUME_LABEL: &str = "omnigent.codex_native.side_chat_resume";
 const WRAPPER_LABEL: &str = "omnigent.wrapper";
 const CODEX_NATIVE_WRAPPER: &str = "codex-native-ui";
+const CLAUDE_NATIVE_WRAPPER: &str = "claude-code-native-ui";
 const CODEX_SUBAGENT_WRAPPER: &str = "codex-native-ui-subagent";
 const COLLABORATION_LABEL: &str = "omnigent.codex_native.collaboration_mode";
 const PLAN: &str = "plan";
@@ -253,6 +255,12 @@ pub fn goal_control(
 ) -> Option<GoalControl> {
     if wrapper == Some(CODEX_NATIVE_WRAPPER) {
         return Some(GoalControl::Managed);
+    }
+    // Claude Code's own `/goal`, which the bridge hands to the TUI as a command.
+    if wrapper == Some(CLAUDE_NATIVE_WRAPPER) {
+        return Some(GoalControl::Command {
+            backend: "Claude".to_owned(),
+        });
     }
     let polly = parent_id.is_none_or(str::is_empty)
         && agent_name.is_some_and(|name| name.eq_ignore_ascii_case("polly"));
