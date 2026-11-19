@@ -33,7 +33,7 @@ struct RunWorkflowSheet: View {
   /// The saved workflows by name, with New workflow under them.
   private func picker(_ choices: RunWorkflowChoices) -> some View {
     WorkflowSheetChrome(
-      title: "Run a workflow", actionTitle: "New workflow", canSubmit: true,
+      title: "Run a workflow", actionTitle: Self.newTitle, canSubmit: true,
       submit: describeNew, cancel: close, actionIdentifier: "run-workflow-describe"
     ) {
       Section {
@@ -48,8 +48,10 @@ struct RunWorkflowSheet: View {
             HStack(spacing: Theme.Spacing.small) {
               Image(systemName: "flowchart").foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-              Text(row.name).lineLimit(1)
-              Text(line(row)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+              Self.rowLayout {
+                Text(row.name).lineLimit(1)
+                Text(line(row)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+              }
               Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
@@ -63,6 +65,24 @@ struct RunWorkflowSheet: View {
         }
       }
     }
+  }
+
+  /// A navigation bar on iPhone and iPad keeps its button short, so the title fits.
+  private static var newTitle: String {
+    #if os(macOS)
+      "New workflow"
+    #else
+      "New"
+    #endif
+  }
+
+  /// A row's line sits beside its name on Mac and under it on iPhone and iPad.
+  private static var rowLayout: AnyLayout {
+    #if os(macOS)
+      AnyLayout(HStackLayout(spacing: Theme.Spacing.small))
+    #else
+      AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.tiny))
+    #endif
   }
 
   /// "Shared by Ada · first line of its description".
