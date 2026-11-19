@@ -34,7 +34,9 @@ nonisolated public struct SidebarPaging: Hashable, Sendable {
 
 /// How many rows a folder shows per Show more, as the web's.
 nonisolated enum ProjectFolderPaging {
-  static let pageSize = 5
+  static let pageSize = 10
+  /// Show all: every member, and every page read.
+  static let all = Int.max
 
   /// The folder's rows: `shown` of its loaded sessions, rounded up to keep the open session
   /// visible (the web never leaves it hidden).

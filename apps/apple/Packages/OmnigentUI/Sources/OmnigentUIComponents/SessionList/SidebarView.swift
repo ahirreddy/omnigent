@@ -288,8 +288,8 @@ extension SidebarView {
           var ids = expandedProjects
           if expanded { ids.insert(project.id) } else { ids.remove(project.id) }
           setExpandedProjects(ids)
-          // Each expansion starts at one page, as the web's.
-          if !expanded { shownInProject[project.id] = nil }
+          // Each expansion starts at one page, as the web's, unless Show all is on.
+          if !expanded, shownInProject[project.id] != .max { shownInProject[project.id] = nil }
         }),
       pages: pages,
       menu: ProjectMenu(

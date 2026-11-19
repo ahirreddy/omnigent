@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The paging of one folder: its members are read from the server a page at a time (the web's
-/// `?project=` read), and listed five more per Show more.
+/// `?project=` read), and listed ten more per Show more, or all of them.
 struct ProjectFolderPages {
   /// Rows listed.
   let visibleCount: Int
@@ -14,6 +14,10 @@ struct ProjectFolderPages {
   let showMore: () -> Void
   /// Read the folder's first page, or its next.
   let load: (() -> Void)?
+  /// Show all is on: every member is listed and every page read.
+  var showsAll = false
+  /// List every member, reading the pages left.
+  var showAll: () -> Void = {}
 }
 
 extension ProjectFolderPages {
@@ -37,7 +41,11 @@ extension ProjectFolderPages {
         setShown(next)
         if next > sessions.count { loadPage?() }
       },
-      load: loadPage)
+      load: loadPage, showsAll: shown == ProjectFolderPaging.all,
+      showAll: {
+        setShown(ProjectFolderPaging.all)
+        if paging.projectsWithMore.contains(project.id) { loadPage?() }
+      })
   }
 }
 
@@ -123,6 +131,12 @@ struct ProjectFolder<Row: View>: View {
     .task(id: isExpanded && !pages.isLoaded) {
       if isExpanded, !pages.isLoaded { pages.load?() }
     }
+    // Show all reads the folder's remaining pages, one after another.
+    .task(
+      id: "\(isExpanded) \(pages.showsAll) \(pages.hasMore) \(pages.isLoading) \(sessions.count)"
+    ) {
+      if isExpanded, pages.showsAll, pages.hasMore, !pages.isLoading { pages.load?() }
+    }
   }
 
   private func toggle() {
@@ -172,7 +186,7 @@ struct ProjectFolder<Row: View>: View {
     // The click area reaches the row's edges above and below the text; the rows beside it
     // clip what reaches past.
     let reach = rowHeight / 2
-    return Button(action: pages.showMore) {
+    let more = Button(action: pages.showMore) {
       HStack {
         Text(title)
         Spacer(minLength: 4)
@@ -192,6 +206,16 @@ struct ProjectFolder<Row: View>: View {
       [title, moreMarker?.accessibilityText].compactMap(\.self).joined(separator: ", ")
     )
     .accessibilityIdentifier("project-show-more-\(project.id)")
+    return HStack(spacing: Theme.Spacing.small) {
+      more
+      if !isWaiting {
+        Button("Show all", action: pages.showAll)
+          .buttonStyle(.borderless)
+          .foregroundStyle(.secondary)
+          .help("List every session in this project")
+          .accessibilityIdentifier("project-show-all-\(project.id)")
+      }
+    }
   }
 
   @ViewBuilder private var hoverButtons: some View {
