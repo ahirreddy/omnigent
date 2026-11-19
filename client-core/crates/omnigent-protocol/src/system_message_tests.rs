@@ -161,6 +161,25 @@ fn a_sub_agent_wake_is_classified_apart() {
 }
 
 #[test]
+fn a_resumed_turn_is_classified_apart() {
+    let prompt = "[System: session resumed]\nYour runner was interrupted while this task was \
+                  active. Continue the existing task from its current state.";
+    let parsed = parse_system_message(prompt).expect("a notice");
+    assert_eq!(parsed.kind, SystemMessageKind::SessionResumed);
+    assert_eq!(parsed.label, "Session resumed");
+    assert!(parsed.body.starts_with("Your runner was interrupted"));
+    assert_eq!(
+        parse_system_message("[System: session resumed]").map(|parsed| parsed.kind),
+        Some(SystemMessageKind::SessionResumed)
+    );
+    // Only the exact header: other text about resuming stays an ordinary notice.
+    assert_eq!(
+        parse_system_message("[System: session resumed early]").map(|parsed| parsed.kind),
+        Some(SystemMessageKind::Generic)
+    );
+}
+
+#[test]
 fn interrupt_records_are_interrupted_notices() {
     for record in [
         "[Request interrupted by user]",

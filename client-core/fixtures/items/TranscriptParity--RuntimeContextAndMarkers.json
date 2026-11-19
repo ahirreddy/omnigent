@@ -112,6 +112,20 @@
     ]
   },
   {
+    "id": "resumed",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r0",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[System: session resumed]\nYour runner was interrupted while this task was active. Continue the existing task from its current state. Check any interrupted operation's outcome before repeating it."
+      }
+    ]
+  },
+  {
     "id": "envelope",
     "type": "message",
     "status": "completed",
