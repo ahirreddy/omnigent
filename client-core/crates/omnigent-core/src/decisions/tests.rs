@@ -278,14 +278,11 @@ fn question_preview_fallback_produces_form() {
     assert_eq!(card.form().unwrap().fields[0].key, "Continue?");
     // The preview is not repeated in the detail of a form.
     assert!(!card.detail.contains("AskUserQuestion"));
-    // A truncated preview fails closed instead of becoming a binary approval.
+    // A cut preview spells out no question: as on the web, the card is the tool's approval and
+    // shows the preview.
     let truncated = params(&json!({"content_preview": "AskUserQuestion({\"questions\":[{\"quest"}));
-    assert!(matches!(
-        truncated.unsupported_reason(),
-        Some(UnsupportedReason::Question(
-            FormError::MalformedPreview { .. }
-        ))
-    ));
+    assert_eq!(truncated.kind, DecisionKind::Approval);
+    assert!(truncated.detail.contains("AskUserQuestion("));
 }
 
 #[test]
@@ -293,13 +290,20 @@ fn malformed_question_cannot_become_approval() {
     let card = decision(fixture_json(
         "decisions/DecisionForm--MalformedQuestionCannotBecomeApproval.json",
     ));
-    assert!(matches!(
-        card.unsupported_reason(),
-        Some(UnsupportedReason::Question(
-            FormError::MalformedOptions { .. }
-        ))
-    ));
-    assert_eq!(card.form(), None);
+    // A question without options takes a typed answer, as the web offers it; never a bare
+    // approval.
+    let form = card.form().unwrap_or_else(|| panic!("{:?}", card.kind));
+    assert_eq!(
+        form.fields
+            .iter()
+            .map(|field| (field.key.as_str(), field.kind))
+            .collect::<Vec<_>>(),
+        [("Missing options", FieldKind::Text)]
+    );
+    assert_eq!(
+        card.result_for(&DecisionResponse::Approve),
+        Err(DecisionError::NotOffered)
+    );
 }
 
 #[test]
@@ -735,12 +739,12 @@ fn question_resolution_uses_requested_answer_key() {
 #[test]
 fn typed_question_never_posts_binary_approval() {
     let name = "LocalServerSessionClient--TypedQuestionNeverPostsBinaryApproval.jsonl";
-    for response in [DecisionResponse::Approve, DecisionResponse::Decline] {
-        let (result, expected) = answer_fixture(name, &response);
-        assert_eq!(result, Err(DecisionError::NotOffered));
-        assert_eq!(expected, None);
-    }
-    // Cancel is the explicit way to dismiss a form.
+    let (result, expected) = answer_fixture(name, &DecisionResponse::Approve);
+    assert_eq!(result, Err(DecisionError::NotOffered));
+    assert_eq!(expected, None);
+    // Closing a form declines it, as the web's Cancel does; a bare cancel is still allowed.
+    let (result, _) = answer_fixture(name, &DecisionResponse::Decline);
+    assert_eq!(result.unwrap().1, json!({"action": "decline"}));
     let (result, _) = answer_fixture(name, &DecisionResponse::Cancel);
     assert_eq!(result.unwrap().1, json!({"action": "cancel"}));
 }
@@ -807,7 +811,6 @@ fn question_rejects_unknown_answer_and_binary_responses_then_accepts_an_option()
     for response in [
         DecisionResponse::Answer("Everything".to_owned()),
         DecisionResponse::Approve,
-        DecisionResponse::Decline,
     ] {
         assert_eq!(
             question.prepare_resolve("decision-question", &response, false),
@@ -815,6 +818,11 @@ fn question_rejects_unknown_answer_and_binary_responses_then_accepts_an_option()
         );
     }
     assert_eq!(question, before);
+    // Closing the question without an answer declines it.
+    let declined = question
+        .prepare_resolve("decision-question", &DecisionResponse::Decline, false)
+        .unwrap();
+    assert_eq!(declined.result.action, ElicitationAction::Decline);
     let answer = DecisionResponse::Answer("Approvals first".to_owned());
     let resolve = question
         .prepare_resolve("decision-question", &answer, false)
@@ -1152,8 +1160,33 @@ fn schemas_the_native_form_cannot_express_are_refused() {
         ),
         (property(json!({})), unsupported_type("")),
         (
-            property(json!({"type": ["string", "null"]})),
+            property(json!({"type": ["string", "number"]})),
             unsupported_type("union"),
+        ),
+        // Only an optional field's `anyOf` (one type or `null`) is a field.
+        (
+            property(json!({"anyOf": [{"type": "string"}, {"type": "number"}]})),
+            unsupported("anyOf"),
+        ),
+        (
+            property(json!({"anyOf": [{"type": "null"}]})),
+            unsupported("anyOf"),
+        ),
+        (
+            property(json!({"anyOf": {"type": "string"}})),
+            unsupported("anyOf"),
+        ),
+        (
+            property(json!({"type": "string", "enum": ["a"], "const": "a"})),
+            not_applicable("const"),
+        ),
+        (
+            property(json!({"type": "string", "const": 1})),
+            malformed_options.clone(),
+        ),
+        (
+            property(json!({"type": "boolean", "const": true})),
+            not_applicable("const"),
         ),
         (
             property(json!({"type": "object"})),
@@ -1464,7 +1497,7 @@ fn answers_are_checked_against_each_kind() {
 }
 
 #[test]
-fn question_payloads_with_too_many_or_duplicate_entries_are_refused() {
+fn question_payloads_with_too_many_entries_are_refused_and_repeats_are_asked_once() {
     let question = |text: &str| json!({"question": text, "options": [{"label": "x"}]});
     let too_many: Vec<Value> = (0..=MAX_FORM_FIELDS)
         .map(|index| question(&format!("q{index}")))
@@ -1475,19 +1508,25 @@ fn question_payloads_with_too_many_or_duplicate_entries_are_refused() {
             count: MAX_FORM_FIELDS + 1
         })
     );
-    assert_eq!(
-        DecisionForm::from_questions(&json!({"questions": [question("same"), question("same")]})),
-        Err(FormError::DuplicateFieldKey)
-    );
-    assert_eq!(
-        DecisionForm::from_questions(&json!({"questions": [{
-            "question": "same",
-            "options": [{"label": "x"}, {"label": "x"}],
-        }]})),
-        Err(FormError::MalformedOptions {
-            field: "same".to_owned()
-        })
-    );
+    // The harness answers by key and by label, so a repeat is the same answer: offer it once,
+    // keeping the first.
+    let repeated = DecisionForm::from_questions(&json!({"questions": [
+        {"question": "same", "header": "First", "options": [
+            {"label": "x", "description": "first x"}, {"label": "y"}, {"label": "x"},
+        ]},
+        question("same"),
+    ]}))
+    .unwrap();
+    let [field] = repeated.fields.as_slice() else {
+        panic!("{repeated:?}");
+    };
+    assert_eq!(field.detail, "First");
+    let options: Vec<(&str, &str)> = field
+        .options
+        .iter()
+        .map(|option| (option.value.as_str(), option.detail.as_str()))
+        .collect();
+    assert_eq!(options, [("x", "first x"), ("y", "")]);
 }
 
 #[test]
@@ -1500,19 +1539,26 @@ fn a_question_without_options_takes_text_only_when_it_offers_a_typed_answer() {
         field: "Name it".to_owned(),
     });
     for question in [
-        json!({"question": "Name it"}),
         json!({"question": "Name it", "options": [], "isOther": false}),
-        json!({"question": "Name it", "options": null}),
-        json!({"question": "Name it", "options": [], "isOther": true, "multiSelect": true}),
+        json!({"question": "Name it", "isOther": false}),
         json!({"question": "Name it", "options": "free", "isOther": true}),
     ] {
         assert_eq!(first(question.clone()), malformed, "{question}");
     }
-    let text = first(json!({"question": "Name it", "options": [], "isOther": true})).unwrap();
-    assert_eq!(
-        (text.kind, text.required, text.default_value),
-        (FieldKind::Text, true, None)
-    );
+    // Without options the web offers a typed answer unless `isOther` is `false`.
+    for question in [
+        json!({"question": "Name it", "options": [], "isOther": true}),
+        json!({"question": "Name it"}),
+        json!({"question": "Name it", "options": null}),
+        json!({"question": "Name it", "options": [], "multiSelect": true}),
+    ] {
+        let text = first(question.clone()).unwrap();
+        assert_eq!(
+            (text.kind, text.required, text.default_value),
+            (FieldKind::Text, true, None),
+            "{question}"
+        );
+    }
     // Pi's editor prefills its text.
     let editor = first(json!({
         "id": "0", "question": "Name it", "options": [], "isOther": true,
@@ -1606,15 +1652,58 @@ fn a_question_with_an_empty_enum_or_a_keyword_a_yes_no_answer_ignores_is_not_an_
 }
 
 #[test]
-fn a_truncated_question_preview_fails_closed() {
-    let truncated = params(&json!({
+fn a_question_preview_is_read_as_the_web_reads_it() {
+    // Not JSON: the tool's approval, showing the preview.
+    let broken = params(&json!({
         "message": "m",
         "content_preview": "AskUserQuestion({\"questions\": [nope])",
     }));
-    assert!(
-        !matches!(truncated.kind, DecisionKind::Approval),
-        "{:?}",
-        truncated.kind
+    assert_eq!(broken.kind, DecisionKind::Approval);
+    assert!(broken.tool_input.is_some());
+    // Questions without text or options and options without labels are left out; what is left
+    // is the form.
+    let preview = json!({"questions": [
+        {"question": "No options", "options": []},
+        {"options": [{"label": "A"}]},
+        {"question": "Pick", "header": "Scope", "id": "scope", "multiSelect": true,
+         "isOther": false, "textInput": {"default": "x"},
+         "options": [{"label": ""}, {"description": "no label"}, {"label": "Mac", "preview": "▢"}]},
+    ]});
+    let card = params(&json!({"content_preview": format!("AskUserQuestion({preview})")}));
+    let form = card.form().unwrap_or_else(|| panic!("{:?}", card.kind));
+    let [field] = form.fields.as_slice() else {
+        panic!("{form:?}");
+    };
+    assert_eq!(
+        (
+            field.key.as_str(),
+            field.detail.as_str(),
+            field.kind,
+            field.allows_custom
+        ),
+        ("scope", "Scope", FieldKind::MultipleChoice, true)
+    );
+    assert_eq!(field.options.len(), 1);
+    assert_eq!(field.options[0].preview, "▢");
+    // A preview with no usable question at all is the tool's approval.
+    let none = params(&json!({
+        "content_preview": "AskUserQuestion({\"questions\": [{\"question\": \"Q\", \"options\": []}]})"
+    }));
+    assert_eq!(none.kind, DecisionKind::Approval);
+}
+
+#[test]
+fn an_empty_question_list_is_the_tools_approval() {
+    // agy and Cursor stamp `questions: []` when every question was filtered out.
+    let card = params(&json!({
+        "message": "Cursor is asking a question",
+        "ask_user_question": {"questions": []},
+        "content_preview": "AskQuestion({})",
+    }));
+    assert_eq!(card.kind, DecisionKind::Approval);
+    assert_eq!(
+        serde_json::to_value(card.result_for(&DecisionResponse::Approve).unwrap()).unwrap(),
+        json!({"action": "accept"})
     );
 }
 

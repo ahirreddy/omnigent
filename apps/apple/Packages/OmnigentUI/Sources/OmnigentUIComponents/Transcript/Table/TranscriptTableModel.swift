@@ -157,7 +157,7 @@ extension TranscriptTableRow {
     if !isCLI { footer.startup = state.section("startup") }
     if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
       footer.working = .init(
-        isBlocked: !state.pendingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))
+        isBlocked: !state.blockingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))
     }
     let failures = TranscriptFailures(state)
     footer.turnFailure = failures.turnFailure

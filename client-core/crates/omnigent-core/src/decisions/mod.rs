@@ -22,7 +22,7 @@ pub mod resolve;
 mod text_format;
 
 use omnigent_protocol::{ElicitationAction, ElicitationMode, ElicitationRequest};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 use url::Url;
 
 pub use changes::{FileChange, FileChangeKind};
@@ -423,6 +423,9 @@ pub struct Decision {
     pub phase: Option<String>,
     /// Policy name as sent.
     pub policy_name: Option<String>,
+    /// The agent keeps working while the card waits (`is_blocking: false`, as Codex's
+    /// non-blocking questions are), so the card does not mean the agent is waiting for you.
+    pub agent_keeps_working: bool,
 }
 
 impl Decision {
@@ -491,6 +494,7 @@ impl Decision {
             permissions,
             phase: params.phase.clone(),
             policy_name: params.policy_name.clone(),
+            agent_keeps_working: params.extra.get("is_blocking") == Some(&Value::Bool(false)),
         }
     }
 
@@ -620,12 +624,13 @@ fn schema_kind(schema: Option<&Value>) -> DecisionKind {
         };
     }
     // An empty or property-less object schema is a plain approval, unless it carries keywords a
-    // binary answer would ignore.
-    let only_plain_keys = schema.keys().all(|key| {
-        matches!(
-            key.as_str(),
-            "type" | "properties" | "title" | "description" | "$schema" | "additionalProperties"
-        )
+    // binary answer would ignore. An empty `required` list asks for nothing.
+    let only_plain_keys = schema.iter().all(|(key, value)| match key.as_str() {
+        "type" | "properties" | "title" | "description" | "$schema" | "additionalProperties" => {
+            true
+        }
+        "required" => value.as_array().is_some_and(Vec::is_empty),
+        _ => false,
     });
     let bad_type = schema
         .get("type")
@@ -639,33 +644,80 @@ fn schema_kind(schema: Option<&Value>) -> DecisionKind {
     DecisionKind::Approval
 }
 
-/// The `AskUserQuestion` payload: the structured extra, else a parsed `content_preview` call.
-/// `None` when neither is present; an error when the preview names the call but is not JSON.
-fn question_payload(request: &ElicitationRequest) -> Option<Result<Value, FormError>> {
-    if let Some(question) = request
-        .params
-        .extra
-        .get("ask_user_question")
-        .filter(|question| !question.is_null())
-    {
-        return Some(Ok(question.clone()));
+/// The `AskUserQuestion` payload: the structured extra when it lists questions, else the
+/// questions a `content_preview` call spells out whole. `None` when there are none: the request
+/// is then the tool's approval, as on the web.
+fn question_payload(request: &ElicitationRequest) -> Option<Value> {
+    let structured = request.params.extra.get("ask_user_question");
+    if let Some(payload) = structured.filter(|payload| {
+        payload
+            .get("questions")
+            .and_then(Value::as_array)
+            .is_some_and(|questions| !questions.is_empty())
+    }) {
+        return Some(payload.clone());
     }
-    let preview = request.params.content_preview.as_deref()?;
-    let arguments = preview.strip_prefix(ASK_USER_QUESTION_CALL)?;
-    // A truncated or malformed preview that names the call fails closed rather than falling back
-    // to a binary approval of a question.
-    Some(
-        arguments
-            .strip_suffix(')')
-            .ok_or_else(|| FormError::MalformedPreview {
-                message: "the call is not closed".to_owned(),
-            })
-            .and_then(|json| {
-                serde_json::from_str(json).map_err(|error| FormError::MalformedPreview {
-                    message: error.to_string(),
+    preview_questions(request.params.content_preview.as_deref()?)
+}
+
+/// The questions an `AskUserQuestion(...)` preview spells out, read as the web reads them: a
+/// question without text or options, and an option without a label, are left out. `None` for a
+/// cut or malformed preview, or one with no question left.
+fn preview_questions(preview: &str) -> Option<Value> {
+    let arguments = preview
+        .strip_prefix(ASK_USER_QUESTION_CALL)?
+        .strip_suffix(')')?;
+    let payload: Value = serde_json::from_str(arguments).ok()?;
+    let text = |value: &Value, key: &str| {
+        value
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned)
+    };
+    let questions: Vec<Value> = payload
+        .get("questions")?
+        .as_array()?
+        .iter()
+        .filter_map(|question| {
+            let options: Vec<Value> = question
+                .get("options")?
+                .as_array()?
+                .iter()
+                .filter_map(|option| {
+                    let mut kept = Map::new();
+                    kept.insert("label".to_owned(), Value::String(text(option, "label")?));
+                    for key in ["description", "preview"] {
+                        if let Some(value) = text(option, key) {
+                            kept.insert(key.to_owned(), Value::String(value));
+                        }
+                    }
+                    Some(Value::Object(kept))
                 })
-            }),
-    )
+                .collect();
+            if options.is_empty() {
+                return None;
+            }
+            let mut kept = Map::new();
+            kept.insert(
+                "question".to_owned(),
+                Value::String(text(question, "question")?),
+            );
+            kept.insert("options".to_owned(), Value::Array(options));
+            for key in ["header", "id"] {
+                if let Some(value) = text(question, key) {
+                    kept.insert(key.to_owned(), Value::String(value));
+                }
+            }
+            for flag in ["multiSelect", "isSecret"] {
+                if question.get(flag) == Some(&Value::Bool(true)) {
+                    kept.insert(flag.to_owned(), Value::Bool(true));
+                }
+            }
+            Some(Value::Object(kept))
+        })
+        .collect();
+    (!questions.is_empty()).then(|| json!({ "questions": questions }))
 }
 
 fn is_safe_external_url(raw: &str) -> bool {
@@ -682,7 +734,7 @@ fn request_kind(request: &ElicitationRequest) -> DecisionKind {
     // A structured question replaces whatever the schema said.
     let mut kind = question_payload(request).map_or_else(
         || schema_kind(params.requested_schema.as_ref()),
-        |payload| match payload.and_then(|payload| DecisionForm::from_questions(&payload)) {
+        |payload| match DecisionForm::from_questions(&payload) {
             Ok(form) => DecisionKind::Form(form),
             Err(error) => DecisionKind::Unsupported {
                 reason: UnsupportedReason::Question(error),

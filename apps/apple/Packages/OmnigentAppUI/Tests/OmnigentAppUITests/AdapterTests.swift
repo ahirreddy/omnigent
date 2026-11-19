@@ -127,6 +127,10 @@ struct AdapterTests {
     var codex = card
     codex.acceptsFeedback = false
     #expect(!OmnigentUIComponents.DecisionCard(codex).acceptsFeedback)
+    // A non-blocking question keeps saying so.
+    #expect(!OmnigentUIComponents.DecisionCard(card).agentKeepsWorking)
+    codex.agentKeepsWorking = true
+    #expect(OmnigentUIComponents.DecisionCard(codex).agentKeepsWorking)
   }
 
   @Test("A form's answers go to the core's validator; a card that isn't a held form has none")

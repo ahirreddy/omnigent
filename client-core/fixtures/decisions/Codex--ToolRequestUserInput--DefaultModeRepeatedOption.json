@@ -1,0 +1,90 @@
+{
+  "codex": {
+    "id": 12,
+    "method": "item/tool/requestUserInput",
+    "params": {
+      "threadId": "thread_fixture",
+      "turnId": "turn_fixture",
+      "itemId": "call_fixture",
+      "isBlocking": false,
+      "autoResolutionMs": null,
+      "questions": [
+        {
+          "id": "test_scope",
+          "header": "Tests",
+          "question": "Which tests should run before the change lands?",
+          "isOther": true,
+          "isSecret": false,
+          "options": [
+            {
+              "label": "Unit tests",
+              "description": "The core crate only."
+            },
+            {
+              "label": "Unit tests",
+              "description": "The same choice, listed again."
+            },
+            {
+              "label": "Unit and UI tests",
+              "description": "Adds the Mac flows."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_codex_fixture",
+    "params": {
+      "mode": "form",
+      "message": "Codex needs input",
+      "phase": "codex_request_user_input",
+      "policy_name": "codex_native_request_user_input",
+      "codex_method": "item/tool/requestUserInput",
+      "codex_request_id": 12,
+      "thread_id": "thread_fixture",
+      "turn_id": "turn_fixture",
+      "item_id": "call_fixture",
+      "is_blocking": false,
+      "ask_user_question": {
+        "questions": [
+          {
+            "id": "test_scope",
+            "question": "Which tests should run before the change lands?",
+            "header": "Tests",
+            "options": [
+              {
+                "label": "Unit tests",
+                "description": "The core crate only."
+              },
+              {
+                "label": "Unit tests",
+                "description": "The same choice, listed again."
+              },
+              {
+                "label": "Unit and UI tests",
+                "description": "Adds the Mac flows."
+              }
+            ],
+            "multiSelect": false,
+            "isOther": true,
+            "isSecret": false
+          }
+        ]
+      }
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": {
+      "test_scope": "Unit tests"
+    }
+  },
+  "codex_result": {
+    "answers": {
+      "test_scope": {
+        "answers": ["Unit tests"]
+      }
+    }
+  }
+}

@@ -47,7 +47,13 @@ struct DecisionPayloadView: View {
     }
     switch card.kind {
     case .approval: return first
-    case .choice, .form, .externalPage, .unsupported: return card.detail
+    case .form:
+      // A question titled by its own message ("Codex needs input", a workflow's task) says it once.
+      let titled =
+        DecisionSummary.isGeneric(card.title)
+        && card.detail == DecisionQuestionTitle.title(for: card)
+      return titled ? nil : card.detail
+    case .choice, .externalPage, .unsupported: return card.detail
     }
   }
 

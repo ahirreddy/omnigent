@@ -4223,6 +4223,30 @@ def test_stringify_tool_payload_preserves_flat_blocks_and_fallbacks() -> None:
     assert _stringify_tool_payload(unhashable_type) == json.dumps(unhashable_type)
 
 
+# Each SDK harness's tool-permission card; shared with the native app's
+# ``client-core/crates/omnigent-core/src/decisions/harness_tests.rs``.
+_SDK_PERMISSION_FIXTURES = json.loads(
+    (
+        Path(__file__).resolve().parents[3]
+        / "client-core/fixtures/decisions/SdkPermission--Harnesses.json"
+    ).read_text(encoding="utf-8")
+)
+
+
+@pytest.mark.parametrize("harness", sorted(_SDK_PERMISSION_FIXTURES))
+def test_sdk_permission_card_is_the_shared_fixture(harness: str) -> None:
+    """The binary card an SDK harness shows for a tool permission, as the native app reads it."""
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+
+    fixture = _SDK_PERMISSION_FIXTURES[harness]
+    adapter = ExecutorAdapter(executor_factory=lambda: None, harness_label=fixture["label"])
+
+    params = adapter._permission_card(fixture["tool_name"], fixture["tool_input"])
+
+    published = {key: value for key, value in params.model_dump().items() if value is not None}
+    assert published == fixture["elicitation"]["params"]
+
+
 @pytest.mark.asyncio
 async def test_ask_question_handler_returns_answers_on_accept() -> None:
     """AskUserQuestion bridge renders the clickable form and, on accept,

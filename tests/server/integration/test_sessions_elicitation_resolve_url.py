@@ -1457,15 +1457,17 @@ async def test_elicitation_page_cross_user_forbidden(
 # ── external MCP requests as elicitations ─────────────
 
 
-@pytest.mark.parametrize("kind", ["Form", "Url"])
+@pytest.mark.parametrize("kind", ["Form", "Url", "OptionalFields"])
 def test_mcp_request_becomes_the_shared_fixture_elicitation(kind: str) -> None:
-    """An MCP server's form or URL request publishes the card the native core reads.
+    """An MCP server's form or URL request publishes the card the native core reads,
+    and the native app's answer to a form passes the runner's schema check.
 
     Shared with omnigent-core's ``decisions/omni_tests.rs``.
     """
     from pathlib import Path
 
     from omnigent.server.routes._sessions.orchestration import _mcp_elicitation_params
+    from omnigent.tools._elicitation_schema import validate_content_against_schema
 
     path = (
         Path(__file__).resolve().parents[3]
@@ -1476,6 +1478,9 @@ def test_mcp_request_becomes_the_shared_fixture_elicitation(kind: str) -> None:
     params = _mcp_elicitation_params(fixture["mcp"], default_message="")
 
     assert params.model_dump() == fixture["elicitation"]["params"]
+    content = fixture["answer"].get("content")
+    if content is not None:
+        assert validate_content_against_schema(content, params.requestedSchema) == content
 
 
 def test_mcp_url_request_without_a_page_stays_url_mode() -> None:

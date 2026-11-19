@@ -2,8 +2,9 @@
 //! [`DecisionForm`], and answers are validated against it without coercion.
 //!
 //! Port of `NativeLab`'s `DecisionForm.swift`, extended to every MCP 2025-11-25 form schema:
-//! titled and untitled single and multi-select enums, `format`, and `default`. Anything the native
-//! form cannot express exactly (nested objects, `pattern`, unions, malformed constraints) is a
+//! titled and untitled single and multi-select enums, `format`, and `default`, plus the optional
+//! (`T` or `null`) and `const` fields Python MCP servers send. Anything the native form cannot
+//! express exactly (nested objects, `pattern`, other unions, malformed constraints) is a
 //! [`FormError`]: it never turns into a less restrictive form or a binary approval.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,9 +16,9 @@ use serde_json::{Map, Number, Value};
 use super::text_format::TextFormat;
 
 /// Most fields (schema properties or questions) one native form renders.
-pub const MAX_FORM_FIELDS: usize = 32;
+pub const MAX_FORM_FIELDS: usize = 100;
 /// Most options one field offers.
-pub const MAX_FIELD_OPTIONS: usize = 100;
+pub const MAX_FIELD_OPTIONS: usize = 1000;
 
 const SCHEMA_KEYS: [&str; 7] = [
     "type",
@@ -28,13 +29,14 @@ const SCHEMA_KEYS: [&str; 7] = [
     "$schema",
     "additionalProperties",
 ];
-const PROPERTY_KEYS: [&str; 16] = [
+const PROPERTY_KEYS: [&str; 17] = [
     "type",
     "title",
     "description",
     "enum",
     "enumNames",
     "oneOf",
+    "const",
     "format",
     "default",
     "minimum",
@@ -497,7 +499,12 @@ impl DecisionForm {
                         field: key.clone(),
                         type_name: "non-object property".to_owned(),
                     })?;
-                parse_property(key, property, required.contains(key))
+                let branch = without_null_branch(key, property)?;
+                parse_property(
+                    key,
+                    branch.as_ref().unwrap_or(property),
+                    required.contains(key),
+                )
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self { fields })
@@ -505,12 +512,13 @@ impl DecisionForm {
 
     /// Parses an `AskUserQuestion` payload (`{"questions": [...]}`), which Claude, Codex
     /// (`requestUserInput`) and Pi questions share. Every question is required; see
-    /// `parse_question` for which take a custom or free-text answer.
+    /// `parse_question` for which take a custom or free-text answer. A repeated option label or
+    /// question key is offered once.
     ///
     /// # Errors
     ///
-    /// [`FormError`] for a payload without questions, a question without text, a question
-    /// without options that does not take free text, or duplicate options or keys.
+    /// [`FormError`] for a payload without questions, a question without text, or a question
+    /// without options that does not take free text.
     pub fn from_questions(payload: &Value) -> Result<Self, FormError> {
         let questions = payload
             .get("questions")
@@ -522,14 +530,14 @@ impl DecisionForm {
                 count: questions.len(),
             });
         }
-        let fields = questions
-            .iter()
-            .enumerate()
-            .map(|(index, question)| parse_question(index, question))
-            .collect::<Result<Vec<_>, _>>()?;
-        let keys: BTreeSet<&str> = fields.iter().map(|field| field.key.as_str()).collect();
-        if keys.len() != fields.len() {
-            return Err(FormError::DuplicateFieldKey);
+        let mut fields: Vec<FormField> = Vec::with_capacity(questions.len());
+        for (index, question) in questions.iter().enumerate() {
+            let field = parse_question(index, question)?;
+            // The harness answers by key, so a question repeating a key gets the first one's
+            // answer either way: ask it once.
+            if !fields.iter().any(|kept| kept.key == field.key) {
+                fields.push(field);
+            }
         }
         Ok(Self { fields })
     }
@@ -619,15 +627,6 @@ pub enum FormError {
     MalformedQuestion {
         /// Zero-based question index.
         index: usize,
-    },
-    /// Two questions share a key.
-    #[error("two questions share a key")]
-    DuplicateFieldKey,
-    /// `content_preview` names an `AskUserQuestion` call whose arguments are not valid JSON.
-    #[error("the question preview is not valid JSON: {message}")]
-    MalformedPreview {
-        /// Decoder detail.
-        message: String,
     },
 }
 
@@ -852,8 +851,12 @@ fn property_kind(
     key: &str,
     property: &Map<String, Value>,
 ) -> Result<(FieldKind, Vec<FormOption>), FormError> {
+    let offers_values = ["enum", "oneOf", "const"]
+        .into_iter()
+        .filter(|keyword| property.contains_key(*keyword))
+        .count();
     let declared = match property.get("type") {
-        None if property.contains_key("enum") || property.contains_key("oneOf") => "string",
+        None if offers_values > 0 => "string",
         None => "",
         Some(Value::String(kind)) => kind.as_str(),
         Some(_) => {
@@ -864,10 +867,15 @@ fn property_kind(
         }
     };
     let (kind, options) = match declared {
-        "string" if property.contains_key("enum") && property.contains_key("oneOf") => {
+        "string" if offers_values > 1 => {
             return Err(FormError::ConstraintNotApplicable {
                 field: key.to_owned(),
-                keyword: "oneOf".to_owned(),
+                keyword: if property.contains_key("oneOf") {
+                    "oneOf"
+                } else {
+                    "const"
+                }
+                .to_owned(),
             });
         }
         "string" if property.contains_key("enum") => {
@@ -877,6 +885,19 @@ fn property_kind(
             FieldKind::SingleChoice,
             const_options(key, "oneOf", property.get("oneOf"))?,
         ),
+        // One fixed value (a `Literal` field): a choice of that value alone.
+        "string" if property.contains_key("const") => {
+            let value = property
+                .get("const")
+                .and_then(Value::as_str)
+                .ok_or_else(|| FormError::MalformedOptions {
+                    field: key.to_owned(),
+                })?;
+            (
+                FieldKind::SingleChoice,
+                vec![FormOption::plain(value.to_owned())],
+            )
+        }
         "string" => (FieldKind::Text, Vec::new()),
         "boolean" => (FieldKind::Boolean, Vec::new()),
         "number" => (FieldKind::Number, Vec::new()),
@@ -890,7 +911,7 @@ fn property_kind(
         }
     };
     // Unsupported constraints never silently turn into a less restrictive native form.
-    if let Some(keyword) = ["enum", "oneOf"]
+    if let Some(keyword) = ["enum", "oneOf", "const"]
         .into_iter()
         .find(|keyword| property.contains_key(*keyword) && kind != FieldKind::SingleChoice)
     {
@@ -944,6 +965,60 @@ fn check_applicable(
         });
     }
     Ok(())
+}
+
+/// A nullable property, as Python MCP servers write an optional field (`anyOf: [T, {"type":
+/// "null"}]`, or `type: [T, "null"]`), as its one other branch `T` with the outer title,
+/// description and default kept. The app never answers `null`, so the field asks for a `T`.
+/// `None` when the property is not nullable; an error for any other `anyOf`.
+fn without_null_branch(
+    key: &str,
+    property: &Map<String, Value>,
+) -> Result<Option<Map<String, Value>>, FormError> {
+    let is_null = |kind: &Value| kind.as_str() == Some("null");
+    if let Some(Value::Array(types)) = property.get("type") {
+        let others: Vec<&Value> = types.iter().filter(|kind| !is_null(kind)).collect();
+        return Ok(match others.as_slice() {
+            [only] if others.len() < types.len() => {
+                let mut branch = property.clone();
+                branch.insert("type".to_owned(), (*only).clone());
+                Some(branch)
+            }
+            _ => None,
+        });
+    }
+    let Some(branches) = property.get("anyOf") else {
+        return Ok(None);
+    };
+    let union = || FormError::UnsupportedKeyword {
+        field: key.to_owned(),
+        keyword: "anyOf".to_owned(),
+    };
+    let branches = branches.as_array().ok_or_else(union)?;
+    let is_null_branch = |branch: &&Value| {
+        branch
+            .as_object()
+            .is_some_and(|branch| branch.len() == 1 && branch.get("type").is_some_and(is_null))
+    };
+    let others: Vec<&Value> = branches
+        .iter()
+        .filter(|branch| !is_null_branch(branch))
+        .collect();
+    let [other] = others.as_slice() else {
+        return Err(union());
+    };
+    if others.len() == branches.len() {
+        return Err(union());
+    }
+    let mut branch: Map<String, Value> = property
+        .iter()
+        .filter(|(name, _)| name.as_str() != "anyOf")
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    for (name, value) in other.as_object().ok_or_else(union)? {
+        branch.entry(name.clone()).or_insert_with(|| value.clone());
+    }
+    Ok(Some(branch))
 }
 
 fn parse_property(
@@ -1043,7 +1118,8 @@ fn schema_default(
     property: &Map<String, Value>,
     kind: FieldKind,
 ) -> Result<Option<ElicitationValue>, FormError> {
-    let Some(value) = property.get("default") else {
+    // A `null` default (an optional field's) starts the field unanswered.
+    let Some(value) = property.get("default").filter(|value| !value.is_null()) else {
         return Ok(None);
     };
     let malformed = || FormError::MalformedConstraint {
@@ -1109,43 +1185,42 @@ fn question_options(
         .and_then(Value::as_array)
         .filter(|options| options.len() <= MAX_FIELD_OPTIONS)
         .ok_or_else(malformed_options)?;
-    let options = raw_options
-        .iter()
-        .map(|raw| {
-            let option = raw.as_object().ok_or_else(malformed_options)?;
-            let label = option
-                .get("label")
+    let mut seen = BTreeSet::new();
+    let mut options = Vec::with_capacity(raw_options.len());
+    for raw in raw_options {
+        let option = raw.as_object().ok_or_else(malformed_options)?;
+        let label = option
+            .get("label")
+            .and_then(Value::as_str)
+            .filter(|label| !label.is_empty())
+            .ok_or_else(malformed_options)?;
+        // The answer is the label, so a repeated label is the same answer: offer it once.
+        if !seen.insert(label) {
+            continue;
+        }
+        let text = |key: &str| {
+            option
+                .get(key)
                 .and_then(Value::as_str)
-                .filter(|label| !label.is_empty())
-                .ok_or_else(malformed_options)?;
-            let text = |key: &str| {
-                option
-                    .get(key)
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned()
-            };
-            Ok(FormOption {
-                value: label.to_owned(),
-                label: label.to_owned(),
-                detail: text("description"),
-                preview: text("preview"),
-            })
-        })
-        .collect::<Result<Vec<_>, FormError>>()?;
-    let distinct: BTreeSet<&str> = options.iter().map(|option| option.value.as_str()).collect();
-    if distinct.len() != options.len() {
-        return Err(malformed_options());
+                .unwrap_or_default()
+                .to_owned()
+        };
+        options.push(FormOption {
+            value: label.to_owned(),
+            label: label.to_owned(),
+            detail: text("description"),
+            preview: text("preview"),
+        });
     }
     Ok(options)
 }
 
 /// One question, always required. With options it takes one of them (several with
-/// `multiSelect`), plus a typed answer unless `isOther` is `false`. A single-select question with
-/// no options and `isOther: true` takes free text; with a `textInput` object it is an editor whose
-/// exact text, empty included, is the answer, prefilled from `textInput.default`. Without
-/// `isOther: true` it has nothing to answer with and is malformed. `acceptsNotes: true` lets the
-/// answer carry a note.
+/// `multiSelect`), plus a typed answer unless `isOther` is `false`. A question with no options
+/// takes free text, as the web offers it, unless `isOther` is `false`, which leaves nothing to
+/// answer with. With a `textInput` object it is an editor whose exact text, empty included, is
+/// the answer, prefilled from `textInput.default`. `acceptsNotes: true` lets the answer carry a
+/// note.
 fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError> {
     let malformed = || FormError::MalformedQuestion { index };
     let object = question.as_object().ok_or_else(malformed)?;
@@ -1177,7 +1252,7 @@ fn parse_question(index: usize, question: &Value) -> Result<FormField, FormError
         ..FormField::new(String::new(), String::new(), FieldKind::Text)
     };
     if has_no_options(raw_options) {
-        if is_other != Some(true) || multi {
+        if is_other == Some(false) {
             return Err(FormError::MalformedOptions {
                 field: title.to_owned(),
             });

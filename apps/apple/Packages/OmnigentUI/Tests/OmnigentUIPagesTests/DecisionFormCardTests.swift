@@ -31,7 +31,7 @@
 
     private func cancelIsLast(_ screen: OffscreenWindow<DecisionCardScreen>) throws {
       try screen.tapButton(fromEnd: 0)
-      #expect(log.responses == [.cancel])
+      #expect(log.responses == [.decline])
     }
 
     @Test("A title, its detail, and whether a field is required")
@@ -252,7 +252,7 @@
       #expect(try screen.shows("The server said no"))
       #expect(screen.buttons.count == 2)
       try screen.tapButton(fromEnd: 0)
-      #expect(log.responses == [.cancel])
+      #expect(log.responses == [.decline])
     }
 
     @Test("The validator sees the answers, and clearing the problem frees Submit")

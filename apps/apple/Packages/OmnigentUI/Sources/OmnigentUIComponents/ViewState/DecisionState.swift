@@ -247,6 +247,8 @@ nonisolated public struct DecisionCard: Hashable, Sendable, Identifiable {
   public var acceptsFeedback: Bool
   /// The user answered locally and the server has not confirmed yet.
   public var answered: Bool
+  /// The agent keeps working while the card waits (a non-blocking question).
+  public var agentKeepsWorking: Bool
 
   /// Creates a card.
   /// - Parameters:
@@ -263,11 +265,13 @@ nonisolated public struct DecisionCard: Hashable, Sendable, Identifiable {
   ///   - answered: Answered locally.
   ///   - message: The message on its own.
   ///   - toolInput: The tool input on its own.
+  ///   - agentKeepsWorking: The agent keeps working while the card waits.
   public init(
     id: String, carryingSessionId: String, targetSessionId: String? = nil, title: String,
     detail: String, kind: DecisionKind, permissions: PermissionOptions = PermissionOptions(),
     phase: String? = nil, policyName: String? = nil, acceptsFeedback: Bool = false,
-    answered: Bool = false, message: String? = nil, toolInput: String? = nil
+    answered: Bool = false, message: String? = nil, toolInput: String? = nil,
+    agentKeepsWorking: Bool = false
   ) {
     self.id = id
     self.carryingSessionId = carryingSessionId
@@ -282,6 +286,7 @@ nonisolated public struct DecisionCard: Hashable, Sendable, Identifiable {
     self.policyName = policyName
     self.acceptsFeedback = acceptsFeedback
     self.answered = answered
+    self.agentKeepsWorking = agentKeepsWorking
   }
 
   /// The card was mirrored from another (child) session.

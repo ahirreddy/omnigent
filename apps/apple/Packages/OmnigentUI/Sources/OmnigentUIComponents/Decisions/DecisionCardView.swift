@@ -367,8 +367,10 @@ extension DecisionCardView {
     }
   }
 
+  /// Closes a question or form without answering. It declines, as the web's Cancel does, so the
+  /// agent stops waiting for the answer.
   private var dismissButton: some View {
-    Button("Cancel") { act(.cancel) }
+    Button("Cancel") { act(.decline) }
       .buttonStyle(.borderless)
       .tint(.secondary)
       .font(.callout)
@@ -385,7 +387,9 @@ extension DecisionCardView {
     switch card.kind {
     case .approval: return DecisionSummary.isGeneric(card.title) ? "Approval required" : card.title
     case .choice: return "Choose an option"
-    case .form: return DecisionSummary.isGeneric(card.title) ? "Questions" : card.title
+    case .form:
+      return DecisionSummary.isGeneric(card.title)
+        ? DecisionQuestionTitle.title(for: card) : card.title
     case .externalPage, .unsupported: return card.title
     }
   }

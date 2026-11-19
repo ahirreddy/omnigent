@@ -1,0 +1,45 @@
+{
+  "claude": {
+    "session_id": "claude_session_fixture",
+    "transcript_path": "/workspace/.claude/projects/app/transcript.jsonl",
+    "cwd": "/workspace/app",
+    "permission_mode": "default",
+    "hook_event_name": "PermissionRequest",
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Which branch should the fix go to?",
+          "header": "Branch",
+          "options": [],
+          "multiSelect": false
+        }
+      ]
+    },
+    "_omnigent_elicitation_id": "elicit_claude_00000000000000000000000000000010"
+  },
+  "elicitation": {
+    "elicitation_id": "elicit_claude_00000000000000000000000000000010",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **AskUserQuestion**",
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "AskUserQuestion({\"questions\": [{\"question\": \"Which branch should the fix go to?\", \"header\": \"Branch\", \"options\": [], \"multiSelect\": false}]})",
+      "tool_name": "AskUserQuestion",
+      "cwd": "/workspace/app",
+      "permission_mode": "default"
+    }
+  },
+  "answer": {
+    "action": "accept"
+  },
+  "claude_result": {
+    "hookSpecificOutput": {
+      "hookEventName": "PermissionRequest",
+      "decision": {
+        "behavior": "allow"
+      }
+    }
+  }
+}

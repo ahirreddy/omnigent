@@ -200,6 +200,22 @@ fn a_note_on_a_question_without_notes_is_refused() {
     assert_eq!(card.result_for(&response), Err(DecisionError::NotOffered));
 }
 
+#[test]
+fn a_question_with_nothing_to_choose_is_the_tools_approval() {
+    // The server sends no `ask_user_question` for a question without options, only the
+    // preview; as on the web, the card approves the tool call and Claude asks in its terminal.
+    let (card, answer) = claude("AskUserQuestion--NoUsableQuestion");
+    assert_eq!(card.kind, DecisionKind::Approval);
+    assert!(
+        card.tool_input
+            .as_deref()
+            .is_some_and(|input| input.contains("Which branch should the fix go to?")),
+        "{:?}",
+        card.tool_input
+    );
+    assert_eq!(posted(&card, &DecisionResponse::Approve), answer);
+}
+
 // --- Tool permission requests -----------------------------------------------------------------
 
 #[test]

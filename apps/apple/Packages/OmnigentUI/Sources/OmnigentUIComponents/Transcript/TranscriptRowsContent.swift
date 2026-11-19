@@ -168,7 +168,7 @@ struct TranscriptRowsContent<Header: View>: View {
     }
     if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
       WorkingIndicator(
-        isBlocked: !state.pendingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))
+        isBlocked: !state.blockingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))
     }
     let failures = TranscriptFailures(state)
     if let failure = failures.turnFailure {

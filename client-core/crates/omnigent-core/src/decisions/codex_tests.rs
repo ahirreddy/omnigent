@@ -157,6 +157,23 @@ fn async_question_without_options_is_a_text_answer() {
     let form = card.form().unwrap();
     assert_eq!(form.fields[0].kind, FieldKind::Text);
     assert_eq!(posted(&card, &form_response(&answer)), answer);
+    // Codex keeps working while an async question waits.
+    assert!(card.agent_keeps_working);
+}
+
+#[test]
+fn a_default_mode_question_offers_a_repeated_option_once_and_keeps_codex_working() {
+    let (card, answer) = codex("ToolRequestUserInput--DefaultModeRepeatedOption");
+    let form = card.form().unwrap();
+    let scope = field(form, "test_scope");
+    assert_eq!(labels(scope), ["Unit tests", "Unit and UI tests"]);
+    assert_eq!(scope.options[0].detail, "The core crate only.");
+    assert_eq!(posted(&card, &form_response(&answer)), answer);
+    // Outside Plan mode Codex does not wait for the answer (`isBlocking: false`); a Plan-mode
+    // question does.
+    assert!(card.agent_keeps_working);
+    let (plan_mode, _) = codex("ToolRequestUserInput--OptionsWithOther");
+    assert!(!plan_mode.agent_keeps_working);
 }
 
 // --- mcpServer/elicitation/request ------------------------------------------------------------
@@ -319,6 +336,26 @@ fn mcp_form_renders_every_field_shape_with_its_constraints_and_defaults() {
             max: 10.0
         })
     );
+}
+
+#[test]
+fn mcp_confirmation_with_an_empty_required_list_is_an_approval() {
+    let (card, answer) = codex("McpServerElicitationRequest--ConfirmWithEmptyRequired");
+    assert_eq!(card.kind, DecisionKind::Approval);
+    assert_eq!(
+        card.message.as_deref(),
+        Some("Promote build 412 to staging?")
+    );
+    assert_eq!(posted(&card, &DecisionResponse::Approve), answer);
+    // A `required` list that names fields there are none of is still refused.
+    let named = Decision::from_request(
+        &ElicitationRequest::from_value(json!({"elicitation_id": "e", "params": {
+            "requestedSchema": {"type": "object", "properties": {}, "required": ["x"]}
+        }}))
+        .unwrap(),
+        "conv_a",
+    );
+    assert!(named.unsupported_reason().is_some());
 }
 
 #[test]

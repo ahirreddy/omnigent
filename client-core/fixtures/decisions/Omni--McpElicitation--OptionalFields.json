@@ -1,0 +1,64 @@
+{
+  "mcp": {
+    "message": "Which release should the changelog describe?",
+    "requestedSchema": {
+      "type": "object",
+      "title": "Release",
+      "properties": {
+        "version": { "title": "Version", "type": "string" },
+        "notes": {
+          "anyOf": [{ "type": "string" }, { "type": "null" }],
+          "default": null,
+          "title": "Notes"
+        },
+        "attempts": {
+          "anyOf": [{ "minimum": 1, "type": "integer" }, { "type": "null" }],
+          "default": null,
+          "title": "Attempts"
+        },
+        "hotfix": { "default": false, "title": "Hotfix", "type": "boolean" },
+        "channel": { "const": "beta", "default": "beta", "title": "Channel", "type": "string" }
+      },
+      "required": ["version"]
+    }
+  },
+  "elicitation": {
+    "sequence_number": null,
+    "type": "response.elicitation_request",
+    "elicitation_id": "elicit_b1c2d3e4f5061728b1c2d3e4f5061728",
+    "method": "elicitation/create",
+    "params": {
+      "mode": "form",
+      "message": "Which release should the changelog describe?",
+      "requestedSchema": {
+        "type": "object",
+        "title": "Release",
+        "properties": {
+          "version": { "title": "Version", "type": "string" },
+          "notes": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "default": null,
+            "title": "Notes"
+          },
+          "attempts": {
+            "anyOf": [{ "minimum": 1, "type": "integer" }, { "type": "null" }],
+            "default": null,
+            "title": "Attempts"
+          },
+          "hotfix": { "default": false, "title": "Hotfix", "type": "boolean" },
+          "channel": { "const": "beta", "default": "beta", "title": "Channel", "type": "string" }
+        },
+        "required": ["version"]
+      },
+      "url": null,
+      "phase": null,
+      "policy_name": null,
+      "content_preview": null,
+      "target_session_id": null
+    }
+  },
+  "answer": {
+    "action": "accept",
+    "content": { "version": "2.4.0", "notes": "Fixes the sign-in loop.", "hotfix": false, "channel": "beta" }
+  }
+}

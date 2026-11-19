@@ -42,13 +42,13 @@
       }
     }
 
-    @Test("Cancel dismisses the question")
+    @Test("Cancel declines the question, as the web does")
     func cancel() throws {
       let screen = open(question)
       defer { screen.close() }
       #expect(try screen.shows("Cancel"))
       try screen.tapButton(fromEnd: 0)
-      #expect(log.responses == [.cancel])
+      #expect(log.responses == [.decline])
     }
 
     @Test("A read-only question offers no answer")

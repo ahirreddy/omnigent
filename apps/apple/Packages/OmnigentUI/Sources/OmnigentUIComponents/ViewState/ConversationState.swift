@@ -140,6 +140,12 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
     }
   }
 
+  /// Pending cards the agent is waiting on: all of them except non-blocking questions, which it
+  /// keeps working through.
+  public var blockingDecisions: [DecisionCard] {
+    pendingDecisions.filter { !$0.agentKeepsWorking }
+  }
+
   /// Rows that belong in the transcript.
   public var transcriptRows: [Row] { rows.filter { !$0.isActivityOnly } }
 

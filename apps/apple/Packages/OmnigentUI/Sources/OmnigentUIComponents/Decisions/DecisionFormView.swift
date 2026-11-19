@@ -197,14 +197,7 @@ struct DecisionFormFields: View {
       .fixedSize()
     case .singleChoice, .multipleChoice:
       VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-        ForEach(field.options) { option in
-          OptionRow(
-            option: option, isMultiple: field.kind == .multipleChoice,
-            isSelected: draft.selection(for: field).contains(option.value)
-          ) {
-            toggle(option.value, in: field)
-          }
-        }
+        optionControls(field)
         if field.allowsCustom {
           Group {
             if field.isSecret {
@@ -289,6 +282,50 @@ struct DecisionFormFields: View {
       current.append(value)
     }
     draft.selected[field.key] = current
+  }
+
+  /// A choice's options: radio rows or checkboxes, or a pop-up menu for a long plain list.
+  @ViewBuilder
+  private func optionControls(_ field: FormField) -> some View {
+    if Self.choosesFromMenu(field) {
+      Picker(field.title, selection: menuBinding(field)) {
+        Text("Choose\u{2026}").tag(String?.none)
+        ForEach(field.options) { option in
+          Text(option.label).tag(String?.some(option.value))
+        }
+      }
+      .pickerStyle(.menu)
+      .labelsHidden()
+      .fixedSize()
+      .accessibilityLabel(field.title)
+    } else {
+      ForEach(field.options) { option in
+        OptionRow(
+          option: option, isMultiple: field.kind == .multipleChoice,
+          isSelected: draft.selection(for: field).contains(option.value)
+        ) {
+          toggle(option.value, in: field)
+        }
+      }
+    }
+  }
+
+  /// Most options a single choice lists as radio rows; a longer plain list is a pop-up menu.
+  static let menuThreshold = 10
+
+  /// A long single choice whose options are bare labels (a Pi select, a model list) picks from a
+  /// menu, as a Mac or iOS settings list would.
+  static func choosesFromMenu(_ field: FormField) -> Bool {
+    field.kind == .singleChoice && field.options.count > menuThreshold
+      && field.options.allSatisfy { $0.detail.isEmpty && $0.preview.isEmpty }
+  }
+
+  private func menuBinding(_ field: FormField) -> Binding<String?> {
+    Binding(
+      get: { draft.selection(for: field).first },
+      set: { value in
+        if let value { toggle(value, in: field) } else { draft.selected[field.key] = [] }
+      })
   }
 
   private func textBinding(_ field: FormField) -> Binding<String> {
