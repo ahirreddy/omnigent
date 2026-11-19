@@ -60,15 +60,18 @@ enum TasksAdapter {
     }
   }
 
-  /// Whether the session's work is in flight: its turn, or a background task (web
-  /// `useSessionWorking`).
+  /// Whether the session's work is in flight: its turn, a background task, or the sandbox launch
+  /// its run waits on, which hasn't failed (web `useSessionWorking`).
   static func isWorking(_ conversation: ConversationStore, summary: OmnigentCoreFFI.SessionSummary?)
     -> Bool
   {
     let background =
       conversation.sections.first { $0.id == "status" }?.details
       .first { $0.id == "background" }.flatMap { Int($0.text) } ?? 0
-    return conversation.isRunning || background > 0
+    let launching =
+      SandboxAdapter.launchNote(conversation.header?.sandboxLaunch).map { $0.standing != .failed }
+      ?? false
+    return conversation.isRunning || background > 0 || launching
       || summary.map { $0.status == .running || $0.backgroundWorkRunning } == true
   }
 

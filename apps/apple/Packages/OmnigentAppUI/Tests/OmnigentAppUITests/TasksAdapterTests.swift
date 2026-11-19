@@ -114,6 +114,27 @@ struct TasksAdapterTests {
     #expect(content.state == .empty, "a tab that no longer shows draws nothing")
   }
 
+  @MainActor
+  @Test("A run works while its sandbox launches, until the launch is up or fails")
+  func launchingCountsAsWorking() async throws {
+    let cases: [(SandboxLaunchStage?, Bool)] = [
+      (nil, false), (.provisioning, true), (.actionRequired, true), (.connecting, true),
+      (.ready, false), (.failed, false),
+    ]
+    for (stage, working) in cases {
+      let header = OmnigentCoreFFI.SessionHeader(
+        id: "conv", title: "Run", status: .idle, readOnly: false, archived: false,
+        permissionLevel: 4, failureMessage: nil, settings: nil,
+        sandboxLaunch: stage.map {
+          SandboxLaunch(stage: $0, provider: "example", details: nil, error: nil)
+        })
+      let conversation = try await ConversationFixtures.store(header: header)
+      #expect(
+        TasksAdapter.isWorking(conversation, summary: nil) == working,
+        "\(String(describing: stage))")
+    }
+  }
+
   @Test("Menu actions map both ways")
   func actions() {
     for action in [TaskMenuAction.run, .resume, .proceed, .retry, .stop] {
