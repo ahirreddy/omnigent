@@ -150,7 +150,7 @@
       #expect(try screen.shows("Instructions"))
       #expect(try !screen.shows("Run now"))
       try screen.clickElement("automation-detail-configuration")
-      #expect(try screen.shows("COST LIMIT PER RUN"))
+      #expect(try screen.shows("Cost limit per run"))
       #expect(try screen.shows("$5.00"))
       #expect(try screen.shows("The continued session may have changed settings."))
     }

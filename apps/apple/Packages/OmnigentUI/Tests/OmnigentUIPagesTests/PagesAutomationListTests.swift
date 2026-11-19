@@ -164,7 +164,8 @@
       let screen = page(AutomationsViewState(rows: [], hasAny: false), actions: actions)
       defer { screen.close() }
       #expect(screen.popUps.isEmpty)
-      #expect(screen.controlFrames.count == 1, "the tabs; the search box is a plain field")
+      let count = screen.controlFrames.count
+      #expect(count == 2, "\(count) controls, not the tabs and the search field")
       #expect(try screen.shows("No automations yet"))
     }
 
@@ -174,8 +175,8 @@
       state.templates = cards
       let screen = page(state)
       defer { screen.close() }
-      // New, the tabs, then the cards; the search box is a plain field.
-      let buttons = screen.controlFrames.dropFirst(2)
+      // New, the tabs, the search field, then the cards.
+      let buttons = screen.controlFrames.dropFirst(3)
       #expect(buttons.count == 2)
       for frame in buttons { try screen.click(CGPoint(x: frame.midX, y: frame.midY)) }
       #expect(log.entries == ["trigger jira", "trigger linear"])
@@ -302,10 +303,11 @@
       #expect(try screen.shows("Couldn\u{2019}t load automations."))
       #expect(try screen.shows("Server down"))
       #expect(try screen.shows("Can't pause"))
-      // New, the tabs, the filter, Dismiss, Retry.
-      try screen.clickControl(at: 3)
+      // The action's Dismiss, then the list's Retry, end the page's controls.
+      let count = screen.controlFrames.count
+      try screen.clickControl(at: count - 2)
       #expect(log.entries == ["dismiss"])
-      try screen.clickControl(at: 4)
+      try screen.clickControl(at: count - 1)
       #expect(log.entries == ["dismiss", "retry"])
     }
 

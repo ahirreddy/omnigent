@@ -202,9 +202,9 @@ struct AutomationsScreenTests {
     try await settle(screen, untilShowing: "1m 42s")
     #expect(try screen.shows("Host \u{00B7} None of your hosts was online."))
     // Its controls: Back, Edit, Delete, Run, Pause, Configuration, then the run's row.
-    #expect(try !screen.shows("Cost limit per run".uppercased()), "folded, as the web's")
+    #expect(try !screen.shows("Cost limit per run"), "folded, as the web's")
     try screen.clickControl(at: 5)
-    try await settle(screen, untilShowing: "Cost limit per run".uppercased())
+    try await settle(screen, untilShowing: "Cost limit per run")
     try screen.clickControl(at: 6)
     try await settle(screen, until: "the run's session") { !opened.sessions.isEmpty }
     #expect(opened.sessions == ["c2"], "the run opens its session")
@@ -382,8 +382,8 @@ extension AutomationsScreenTests {
     defer { screen.close() }
     try await settle(screen, untilShowing: "Couldn\u{2019}t load automations.")
     let reads = server.requests("GET", "/v1/scheduled-tasks").count
-    // The guide's button, New, the tabs, then Retry.
-    try screen.clickControl(at: 3)
+    // The guide's button, New, the tabs, the search field, then Retry.
+    try screen.clickControl(at: 4)
     try await settle(screen, until: "another read") {
       server.requests("GET", "/v1/scheduled-tasks").count > reads
     }
