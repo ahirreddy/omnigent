@@ -87,6 +87,31 @@
       #expect(MainLoop.settle(until: { item(screen).first?.isCollapsed == false }))
     }
 
+    @Test("The toolbar's sidebar button hides the sidebar, and shows it again")
+    func toolbarButtonHidesSidebar() async throws {
+      // Titled from the start: SwiftUI adds its button to a window that has a titlebar then.
+      let screen = OffscreenWindow(
+        AnyView(ShellHarness(spy: SidebarSpy(SidebarFixture.state))), width: 1_100, height: 700,
+        styleMask: [.titled, .resizable, .fullSizeContentView], sceneBridging: [.toolbars, .title])
+      defer { screen.close() }
+      let sidebar = try #require(item(screen).first)
+      // SwiftUI's own button: it sets the split view's visibility binding, not the item.
+      let button = {
+        toolbarItems(screen).first {
+          $0.itemIdentifier.rawValue == "com.apple.SwiftUI.navigationSplitView.toggleSidebar"
+        }
+      }
+      // The toolbar places its items in the first layout pass after the window has them.
+      screen.window.setContentSize(CGSize(width: 1_100, height: 701))
+      let isPlaced = await screen.waitUntil { button()?.isVisible == true }
+      let view = try #require(
+        isPlaced ? button()?.view : nil, "\(toolbarItems(screen).map(\.itemIdentifier.rawValue))")
+      for isHidden in [true, false] {
+        try screen.click(view)
+        #expect(MainLoop.settle(until: { sidebar.isCollapsed == isHidden }, timeout: 1))
+      }
+    }
+
     @Test("Content fills its own column: nothing draws under the sidebar")
     func detailBesideSidebar() throws {
       let spy = SidebarSpy(SidebarFixture.state)
