@@ -276,7 +276,7 @@ extension SidebarView {
     }
     let pages = ProjectFolderPages(
       project: project, sessions: sessions, paging: state.paging,
-      shown: shownInProject[project.id] ?? 0, selectedID: selection?.sessionID,
+      shown: shownInProject[project.id], selectedID: selection?.sessionID,
       load: actions.loadProjectPage, setShown: { shownInProject[project.id] = $0 })
     let layout = familyLayout(
       sessions, listedCount: pages.visibleCount, scope: .project(project.id))
@@ -288,8 +288,8 @@ extension SidebarView {
           var ids = expandedProjects
           if expanded { ids.insert(project.id) } else { ids.remove(project.id) }
           setExpandedProjects(ids)
-          // Each expansion starts at one page, as the web's, unless Show all is on.
-          if !expanded, shownInProject[project.id] != .max { shownInProject[project.id] = nil }
+          // Each expansion starts at one page, as the web's.
+          if !expanded { shownInProject[project.id] = nil }
         }),
       pages: pages,
       menu: ProjectMenu(

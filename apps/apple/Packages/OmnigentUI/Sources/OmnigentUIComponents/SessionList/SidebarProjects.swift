@@ -10,24 +10,25 @@ struct ProjectFolderPages {
   let isLoading: Bool
   /// The first page was read.
   let isLoaded: Bool
-  /// Reveal five more rows, reading the next page when the loaded ones run out.
+  /// Reveal ten more rows, reading the next page when the loaded ones run out.
   let showMore: () -> Void
   /// Read the folder's first page, or its next.
   let load: (() -> Void)?
-  /// Show all is on: every member is listed and every page read.
+  /// Show All Sessions is on: every member is listed and every page read.
   var showsAll = false
-  /// List every member, reading the pages left.
-  var showAll: () -> Void = {}
+  /// Turns Show All Sessions on or off, and keeps it.
+  var setShowsAll: (Bool) -> Void = { _ in }
 }
 
 extension ProjectFolderPages {
-  /// A folder's rows and pages: Show more lists five more and reads the next server page once
-  /// the loaded rows run out.
+  /// A folder's rows and pages: Show more lists ten more and reads the next server page once
+  /// the loaded rows run out. `shown` is nil until Show more or the menu sets it.
   @MainActor init(
-    project: SessionProject, sessions: [SessionSummary], paging: SidebarPaging, shown: Int,
+    project: SessionProject, sessions: [SessionSummary], paging: SidebarPaging, shown: Int?,
     selectedID: String?, load: (@MainActor (SessionProject) -> Void)?,
     setShown: @escaping (Int) -> Void
   ) {
+    let shown = shown ?? ProjectShowAll.shown(project.id)
     let selectedIndex = selectedID.flatMap { id in sessions.firstIndex { $0.id == id } }
     let visible = ProjectFolderPaging.visibleCount(
       count: sessions.count, shown: shown, selectedIndex: selectedIndex)
@@ -42,9 +43,10 @@ extension ProjectFolderPages {
         if next > sessions.count { loadPage?() }
       },
       load: loadPage, showsAll: shown == ProjectFolderPaging.all,
-      showAll: {
-        setShown(ProjectFolderPaging.all)
-        if paging.projectsWithMore.contains(project.id) { loadPage?() }
+      setShowsAll: { isOn in
+        ProjectShowAll.set(project.id, isOn)
+        setShown(isOn ? ProjectFolderPaging.all : 0)
+        if isOn, paging.projectsWithMore.contains(project.id) { loadPage?() }
       })
   }
 }
@@ -115,7 +117,7 @@ struct ProjectFolder<Row: View>: View {
     .onTapGesture(perform: toggle)
     .accessibilityAddTraits(.isButton)
     .onHover { isHovered = $0 }
-    .contextMenu { menu.items }
+    .contextMenu { folderMenu.items }
     .draggable(SidebarDragItem.project(project.id).payload)
     .sidebarDropTarget(drop)
     // One element for the folder, around its name, hover buttons and expand button.
@@ -163,6 +165,13 @@ struct ProjectFolder<Row: View>: View {
     .accessibilityIdentifier("sidebar-project-toggle-\(project.id)")
   }
 
+  /// The project menu, with Show All Sessions for this folder.
+  private var folderMenu: ProjectMenu {
+    var menu = menu
+    menu.showAll = Binding(get: { pages.showsAll }, set: pages.setShowsAll)
+    return menu
+  }
+
   /// Show more follows the listed rows: some are left to show, here or on the server.
   private var showsMore: Bool {
     pages.visibleCount < sessions.count || (pages.hasMore && !sessions.isEmpty)
@@ -186,7 +195,7 @@ struct ProjectFolder<Row: View>: View {
     // The click area reaches the row's edges above and below the text; the rows beside it
     // clip what reaches past.
     let reach = rowHeight / 2
-    let more = Button(action: pages.showMore) {
+    return Button(action: pages.showMore) {
       HStack {
         Text(title)
         Spacer(minLength: 4)
@@ -206,16 +215,6 @@ struct ProjectFolder<Row: View>: View {
       [title, moreMarker?.accessibilityText].compactMap(\.self).joined(separator: ", ")
     )
     .accessibilityIdentifier("project-show-more-\(project.id)")
-    return HStack(spacing: Theme.Spacing.small) {
-      more
-      if !isWaiting {
-        Button("Show all", action: pages.showAll)
-          .buttonStyle(.borderless)
-          .foregroundStyle(.secondary)
-          .help("List every session in this project")
-          .accessibilityIdentifier("project-show-all-\(project.id)")
-      }
-    }
   }
 
   @ViewBuilder private var hoverButtons: some View {
@@ -228,7 +227,7 @@ struct ProjectFolder<Row: View>: View {
         .accessibilityIdentifier("project-new-session")
       }
       Menu {
-        menu.items
+        folderMenu.items
       } label: {
         Label("Project actions", systemImage: "ellipsis")
       }
@@ -252,6 +251,8 @@ struct ProjectMenu {
   let actions: SidebarActions
   let rename: () -> Void
   let confirmDelete: () -> Void
+  /// Whether the open folder lists every session; offered where the folder sets it.
+  var showAll: Binding<Bool>?
 
   @ViewBuilder var items: some View {
     if let newSession = actions.newSessionInProject {
@@ -265,6 +266,9 @@ struct ProjectMenu {
     }
     if let setSort = actions.setGroupSort {
       GroupSortPicker(sort: sort) { setSort(.project(project.id), $0) }
+    }
+    if let showAll {
+      Toggle("Show All Sessions", isOn: showAll)
     }
     if let reorder = actions.reorderProjects, projects.count > 1 {
       MoveMenu(items: { projects }, id: project.id, save: reorder)

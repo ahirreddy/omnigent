@@ -53,3 +53,28 @@ nonisolated enum ProjectFolderPaging {
     return min(count, limit)
   }
 }
+
+/// The projects whose open folder lists every session (the project menu's Show All Sessions),
+/// kept across launches.
+nonisolated enum ProjectShowAll {
+  static let key = "omnigent:sidebar-show-all-projects"
+
+  static func shows(_ projectID: String, in defaults: UserDefaults = .standard) -> Bool {
+    ids(in: defaults).contains(projectID)
+  }
+
+  /// The rows a folder lists before any Show more: all of them, or one page.
+  static func shown(_ projectID: String, in defaults: UserDefaults = .standard) -> Int {
+    shows(projectID, in: defaults) ? ProjectFolderPaging.all : 0
+  }
+
+  static func set(_ projectID: String, _ isOn: Bool, in defaults: UserDefaults = .standard) {
+    var ids = ids(in: defaults)
+    if isOn { ids.insert(projectID) } else { ids.remove(projectID) }
+    defaults.set(ids.sorted().joined(separator: "\n"), forKey: key)
+  }
+
+  private static func ids(in defaults: UserDefaults) -> Set<String> {
+    Set((defaults.string(forKey: key) ?? "").split(separator: "\n").map(String.init))
+  }
+}
