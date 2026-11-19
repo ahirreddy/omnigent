@@ -4441,6 +4441,89 @@ async def test_mcp_elicitation_roundtrip_real_executor_hook_through_adapter_brid
 
 
 @pytest.mark.asyncio
+async def test_codex_question_roundtrip_real_executor_through_adapter_bridge() -> None:
+    """A real CodexExecutor hands the adapter's form bridge to its app-server session, so a
+    Codex question becomes the turn's elicitation and the card's answer reaches Codex.
+
+    Without that seam the SDK harness never replied and Codex held the turn forever.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock, Mock
+
+    from omnigent.inner.codex_executor import CodexExecutor, _CodexAppServerSession
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.runtime.harnesses._scaffold import TurnContext
+    from omnigent.server.schemas import (
+        CreateResponseRequest,
+        ElicitationRequestEvent,
+        ElicitationResult,
+    )
+
+    question = {
+        "id": 5,
+        "method": "item/tool/requestUserInput",
+        "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "itemId": "call-1",
+            "questions": [
+                {
+                    "id": "env",
+                    "question": "Which environment?",
+                    "options": [{"label": "staging"}, {"label": "prod"}],
+                }
+            ],
+        },
+    }
+    written: list[dict[str, Any]] = []
+
+    async def write_to_codex(payload: dict[str, Any]) -> None:
+        written.append(payload)
+
+    def started_session(**kwargs: Any) -> _CodexAppServerSession:
+        session = _CodexAppServerSession(**kwargs)
+        session.start = AsyncMock()  # type: ignore[method-assign]
+        session._proc = Mock()
+        session.thread_id = "thread-1"
+        session._request = AsyncMock(  # type: ignore[method-assign]
+            return_value={"result": {"turn": {"id": "turn-1"}}}
+        )
+        session._send_message = write_to_codex  # type: ignore[method-assign]
+        session._events.put_nowait(question)
+        session._events.put_nowait(
+            {"method": "turn/completed", "params": {"turn": {"id": "turn-1"}}}
+        )
+        return session
+
+    executor = CodexExecutor(codex_path="/bin/echo", app_session_factory=started_session)
+    adapter = ExecutorAdapter(executor_factory=lambda: executor)
+    events: asyncio.Queue[Any] = asyncio.Queue()
+    ctx = TurnContext("resp_codex_question", events, asyncio.Event())
+
+    async def user_picks_prod() -> ElicitationRequestEvent:
+        while not isinstance(event := await events.get(), ElicitationRequestEvent):
+            pass
+        ctx._complete_elicitation(
+            event.elicitation_id, ElicitationResult(action="accept", content={"env": "prod"})
+        )
+        return event
+
+    answering = asyncio.create_task(user_picks_prod())
+    try:
+        async with asyncio.timeout(10):
+            await adapter.run_turn(CreateResponseRequest(model="agent", input="deploy it"), ctx)
+            card = await answering
+    finally:
+        answering.cancel()
+
+    shown = card.params.model_dump()
+    assert shown["phase"] == "codex_request_user_input"
+    assert shown["ask_user_question"]["questions"][0]["id"] == "env"
+    assert written == [{"id": 5, "result": {"answers": {"env": {"answers": ["prod"]}}}}]
+    assert not ctx.cancelled.is_set()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("action", "content", "applied", "cancelled"),
     [

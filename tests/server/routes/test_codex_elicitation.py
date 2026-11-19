@@ -107,6 +107,57 @@ class TestParseCodexElicitationRequest:
         with pytest.raises(OmnigentError, match="Unsupported"):
             parse_codex_elicitation_request({"id": 1, "method": "unknown/method", "params": {}})
 
+    @pytest.mark.parametrize(
+        ("params", "reason"),
+        [
+            pytest.param(
+                {
+                    "mode": "openai/form",
+                    "message": "Select a template",
+                    "requestedSchema": {
+                        "type": "object",
+                        "properties": {"template": {"type": "openai/imagePicker", "items": []}},
+                    },
+                },
+                "declares OpenAI's form extension",
+                id="openai-form",
+            ),
+            pytest.param(
+                {
+                    "mode": "openaiForm",
+                    "message": "Pick a size",
+                    "requestedSchema": {
+                        "type": "object",
+                        "properties": {"size": {"type": "string", "enum": ["S", "M"]}},
+                    },
+                },
+                "declares OpenAI's form extension",
+                id="openai-elicitation-form",
+            ),
+            pytest.param(
+                {
+                    "mode": "openai/userVerification",
+                    "title": "Confirm the payment",
+                    "description": "Verify it is you.",
+                    "challenge": "challenge-fixture",
+                },
+                "proof signed by an enrolled device credential",
+                id="user-verification",
+            ),
+        ],
+    )
+    def test_openai_only_mcp_mode_is_refused_with_its_reason(
+        self, params: dict[str, Any], reason: str
+    ) -> None:
+        """Codex's OpenAI-only MCP modes never become a card, even one MCP could show."""
+        with pytest.raises(OmnigentError) as raised:
+            parse_codex_elicitation_request(
+                {"id": 1, "method": "mcpServer/elicitation/request", "params": params}
+            )
+
+        assert f"mode {params['mode']!r} is not supported" in raised.value.message
+        assert reason in raised.value.message
+
     def test_valid_mcp_form_request(self) -> None:
         req = parse_codex_elicitation_request(
             {

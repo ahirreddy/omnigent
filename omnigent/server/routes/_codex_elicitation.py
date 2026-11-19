@@ -20,6 +20,21 @@ _CODEX_PERMISSIONS_REQUEST_APPROVAL_METHOD = "item/permissions/requestApproval"
 _CODEX_EXEC_COMMAND_APPROVAL_METHOD = "execCommandApproval"
 _CODEX_APPLY_PATCH_APPROVAL_METHOD = "applyPatchApproval"
 
+# Codex MCP elicitation modes outside MCP itself (``v2/mcp.rs``), and why no card answers them.
+_OPENAI_FORM_REASON = (
+    "Codex sends it only to a client that declares OpenAI's form extension (openai/form or "
+    "openai/elicitation), which Omnigent does not, and its schema may use OpenAI form "
+    "widgets the web and native apps do not have."
+)
+_CODEX_UNSUPPORTED_MCP_MODES: dict[str, str] = {
+    "openai/form": _OPENAI_FORM_REASON,
+    "openaiForm": _OPENAI_FORM_REASON,
+    "openai/userVerification": (
+        "the answer must carry a proof signed by an enrolled device credential, which no "
+        "Omnigent client can produce."
+    ),
+}
+
 _CodexParamsBuilder = Callable[[Any, str, dict[str, Any]], ElicitationRequestParams]
 _CodexResponseBuilder = Callable[[ElicitationResult, str, dict[str, Any]], dict[str, Any]]
 
@@ -493,10 +508,17 @@ def _codex_mcp_elicitation_params(
         ``"mcpServer/elicitation/request"``.
     :param params: Codex MCP elicitation params.
     :returns: AP/MCP-shaped elicitation params.
-    :raises OmnigentError: If required MCP fields are malformed.
+    :raises OmnigentError: If required MCP fields are malformed, or the
+        mode is one of Codex's OpenAI-only modes no client can answer.
     """
     mode = params.get("mode")
     message = params.get("message")
+    unsupported_reason = _CODEX_UNSUPPORTED_MCP_MODES.get(mode) if isinstance(mode, str) else None
+    if unsupported_reason is not None:
+        raise OmnigentError(
+            f"Codex MCP elicitation mode {mode!r} is not supported: {unsupported_reason}",
+            code=ErrorCode.INVALID_INPUT,
+        )
     if mode not in {"form", "url"}:
         raise OmnigentError(
             "Codex MCP elicitation params.mode must be 'form' or 'url'.",
@@ -879,3 +901,6 @@ _CODEX_ELICITATION_ADAPTERS: dict[str, _CodexElicitationAdapter] = {
         build_response=_codex_apply_patch_approval_response,
     ),
 }
+
+#: Codex app-server requests that become an Omnigent card and get the user's answer back.
+CODEX_ELICITATION_METHODS: frozenset[str] = frozenset(_CODEX_ELICITATION_ADAPTERS)
