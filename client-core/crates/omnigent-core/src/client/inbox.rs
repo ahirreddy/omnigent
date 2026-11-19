@@ -27,7 +27,8 @@ pub struct LatestOutput {
     pub full_text: Option<String>,
 }
 
-fn assistant_text(data: &ItemData) -> Option<String> {
+/// An assistant message's output text, trimmed; `None` for any other item or an empty reply.
+fn reply_text(data: &ItemData) -> Option<String> {
     match data {
         ItemData::Message(message) if message.role == MessageRole::Assistant => {
             let text: String = message
@@ -44,6 +45,13 @@ fn assistant_text(data: &ItemData) -> Option<String> {
             let text = text.trim();
             (!text.is_empty()).then(|| text.to_owned())
         }
+        _ => None,
+    }
+}
+
+fn assistant_text(data: &ItemData) -> Option<String> {
+    match data {
+        ItemData::Message(_) => reply_text(data),
         ItemData::Error(error) if error.level != Some(ErrorLevel::Info) => {
             [error.title.as_deref(), Some(error.message.as_str())]
                 .into_iter()
@@ -88,7 +96,28 @@ pub fn latest_output(items: &[ConversationItem]) -> Option<LatestOutput> {
     })
 }
 
+/// The newest assistant reply among `items` (oldest first), errors and tool calls aside: what a
+/// board card previews (the web's `fetchLastAssistantMessage`).
+#[must_use]
+pub fn last_reply(items: &[ConversationItem]) -> Option<String> {
+    items.iter().rev().find_map(|item| reply_text(&item.data))
+}
+
 impl<T: HttpTransport> ClientCore<T> {
+    /// `session_id`'s last agent reply, from its newest items; `None` when they hold none.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::history_page`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn last_reply(&self, session_id: &str) -> Result<Option<String>, SessionError> {
+        let page = self.history_page(session_id, None, SCAN_ITEMS).await?;
+        Ok(last_reply(&page.items))
+    }
+
     /// `session_id`'s latest agent output, from its newest items.
     ///
     /// # Errors
@@ -125,6 +154,19 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(latest_output(&[item]).unwrap().preview, "said");
+    }
+
+    #[test]
+    fn the_last_reply_skips_errors_and_tool_calls() {
+        let items: Vec<ConversationItem> = serde_json::from_value(serde_json::json!([
+            {"id": "a", "type": "message", "role": "assistant",
+             "content": [{"type": "output_text", "text": " Fixed it. "}]},
+            {"id": "b", "type": "error", "code": "x", "message": "Runner exited", "level": "error"},
+            {"id": "c", "type": "function_call", "name": "ls", "call_id": "c1", "arguments": "{}"},
+        ]))
+        .unwrap();
+        assert_eq!(last_reply(&items).as_deref(), Some("Fixed it."));
+        assert_eq!(last_reply(&items[1..]), None);
     }
 
     #[test]

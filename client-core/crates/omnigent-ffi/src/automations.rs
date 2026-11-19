@@ -68,6 +68,9 @@ pub struct ServerPages {
     /// New project can start from a repository (`project_repository_creation`).
     #[uniffi(default)]
     pub project_repository_creation: bool,
+    /// A project opens its sessions board (`project_kanban`).
+    #[uniffi(default)]
+    pub project_kanban: bool,
     /// Hosts and continued sessions run schedules under an hour (`scheduled_task_subhour`).
     #[uniffi(default)]
     pub automation_subhour: bool,
@@ -880,6 +883,7 @@ impl ClientCore {
             sharing_read_only: pages.sharing_read_only,
             sharing_restricted: pages.sharing_restricted,
             project_repository_creation: pages.project_repository_creation,
+            project_kanban: pages.project_kanban,
             automation_subhour: pages.automation_subhour,
             automation_trigger_headers: pages.automation_trigger_headers,
             automation_trigger_poll_minutes: pages.automation_trigger_poll_minutes,
