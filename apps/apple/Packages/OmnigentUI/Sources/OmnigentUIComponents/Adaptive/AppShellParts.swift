@@ -1,5 +1,9 @@
 public import SwiftUI
 
+#if os(macOS)
+  import AppKit
+#endif
+
 // The parts of the shell that read what the window shows, each in a body of its own: the
 // selection and the tabs then render the part that shows them, and not the shell.
 
@@ -19,15 +23,31 @@ public struct ShellTabs {
 }
 
 /// Where the shell keeps the sidebar's visibility, for the split view's binding to read and
-/// write. It is not observed: the shell's body renders for a toggle only when it made the
-/// toggle itself, and the views that show the visibility read
+/// write. It is not observed: the shell's body renders for a change only when the split view
+/// has yet to show it, and the views that show the visibility read
 /// ``TitlebarStripSpace/isSidebarHidden``.
 @MainActor
 final class ShellColumns {
   var visibility: NavigationSplitViewVisibility
+  #if os(macOS)
+    /// The split view's sidebar, once the shell is in a window (``SidebarSlideAnchor``).
+    weak var sidebar: NSSplitViewItem?
+  #endif
 
   init(_ visibility: NavigationSplitViewVisibility) {
     self.visibility = visibility
+  }
+
+  /// Whether the split view shows `visibility` already, as when AppKit collapsed the sidebar
+  /// and tells the binding. SwiftUI's own sidebar button sets the binding first, and the split
+  /// view takes the value only as the shell renders.
+  func splitViewShows(_ visibility: NavigationSplitViewVisibility) -> Bool {
+    #if os(macOS)
+      guard let sidebar else { return false }
+      return sidebar.isCollapsed == (visibility == .detailOnly)
+    #else
+      return false
+    #endif
   }
 }
 

@@ -23,10 +23,11 @@
 
   extension View {
     /// On Mac, shows and hides the sidebar of the split view holding this view as
-    /// ``SidebarSlideMode`` says.
+    /// ``SidebarSlideMode`` says, and gives `columns` that split view's sidebar.
+    /// - Parameter columns: The shell's sidebar visibility.
     /// - Returns: The view.
-    func sidebarSlide() -> some View {
-      background { SidebarSlideAnchor(mode: SidebarSlideMode.launchValue) }
+    func sidebarSlide(_ columns: ShellColumns) -> some View {
+      background { SidebarSlideAnchor(mode: SidebarSlideMode.launchValue, columns: columns) }
     }
 
     /// Animates nothing under this view while a collapse lays the window out at its new widths
@@ -39,20 +40,24 @@
     }
   }
 
-  /// Finds the split view controller holding it and has its sidebar slide as `mode` says.
+  /// Finds the split view controller holding it, gives `columns` its sidebar, and has the
+  /// sidebar slide as `mode` says.
   struct SidebarSlideAnchor: NSViewRepresentable {
     let mode: SidebarSlideMode
+    let columns: ShellColumns
 
-    func makeNSView(context: Context) -> AnchorView { AnchorView(mode: mode) }
+    func makeNSView(context: Context) -> AnchorView { AnchorView(mode: mode, columns: columns) }
 
     func updateNSView(_ view: AnchorView, context: Context) {}
 
     final class AnchorView: NSView {
       let mode: SidebarSlideMode
+      let columns: ShellColumns
       private(set) var slide: SidebarSlide?
 
-      init(mode: SidebarSlideMode) {
+      init(mode: SidebarSlideMode, columns: ShellColumns) {
         self.mode = mode
+        self.columns = columns
         super.init(frame: .zero)
       }
 
@@ -65,9 +70,11 @@
 
       override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard mode != .animated, unsafe window != nil,
-          let controller = SidebarSlide.controller(holding: self)
-        else {
+        let controller = unsafe window == nil ? nil : SidebarSlide.controller(holding: self)
+        if let sidebar = controller?.splitViewItems.first(where: { $0.behavior == .sidebar }) {
+          columns.sidebar = sidebar
+        }
+        guard mode != .animated, let controller else {
           slide = nil
           return
         }

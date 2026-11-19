@@ -26,8 +26,8 @@ public struct AppShell<Detail: View>: View {
   /// The sidebar's visibility, which the body never reads: a collapse the split view makes
   /// renders only the strip and the peek, which read ``TitlebarStripSpace/isSidebarHidden``.
   @State private var columns = ShellColumns(SidebarLaunchState.current == nil ? .all : .detailOnly)
-  /// Counts the toggles the shell makes itself (``SidebarToggle``), each of which renders it
-  /// once, so the split view takes the new visibility.
+  /// Counts the visibility changes the split view has yet to show (SwiftUI's sidebar button,
+  /// ``SidebarToggle``), each of which renders the shell once, so the split view takes it.
   @State private var shellToggles = 0
   @State private var stripSpace = TitlebarStripSpace(
     isSidebarHidden: SidebarLaunchState.current != nil)
@@ -83,14 +83,7 @@ public struct AppShell<Detail: View>: View {
   public var body: some View {
     _ = shellToggles
     let columns = settledColumns
-    let toggles = $shellToggles
-    sidebarToggle?.toggle = {
-      columns.wrappedValue = SidebarToggle.toggled(columns.wrappedValue)
-      // The split view takes the new visibility as the shell renders, laid out at once as the
-      // binding's own changes are.
-      toggles.wrappedValue += 1
-      Self.layOutVisibleWindows()
-    }
+    sidebarToggle?.toggle = { columns.wrappedValue = SidebarToggle.toggled(columns.wrappedValue) }
     return NavigationSplitView(columnVisibility: columns) {
       sidebarColumn
         .navigationSplitViewColumnWidth(
@@ -117,7 +110,7 @@ public struct AppShell<Detail: View>: View {
       // A shown sidebar takes its width from the content (split panes too) on Mac.
       .detailBesideSidebar()
       #if os(macOS)
-        .sidebarSlide()
+        .sidebarSlide(self.columns)
       #endif
       .environment(tabDrag)
       .onGeometryChange(for: CGFloat.self) {
@@ -188,9 +181,11 @@ extension AppShell {
   /// The sidebar's visibility, with the window laid out on each side of a change on Mac. An
   /// animated change that meets a resize in one layout pass animates the window's root view, and
   /// SwiftUI then resizes the window to that size in every later pass until AppKit throws.
+  /// A change the split view has yet to show renders the shell, so the split view takes it.
   private var settledColumns: Binding<NavigationSplitViewVisibility> {
     let columns = columns
     let space = stripSpace
+    let toggles = $shellToggles
     return Binding {
       columns.visibility
     } set: { visibility, transaction in
@@ -200,7 +195,10 @@ extension AppShell {
       #if os(macOS)
         if SidebarSlide.holdsAnimations { transaction.disablesAnimations = true }
       #endif
-      withTransaction(transaction) { space.isSidebarHidden = visibility == .detailOnly }
+      withTransaction(transaction) {
+        space.isSidebarHidden = visibility == .detailOnly
+        if !columns.splitViewShows(visibility) { toggles.wrappedValue += 1 }
+      }
       Self.layOutVisibleWindows()
     }
   }
