@@ -45,7 +45,11 @@ struct PullRequestCommentsView: View {
         Text("Some commit and push history is unavailable.")
         if let url = URL(string: state.url) {
           Button("View on \(state.providerName)") { open?(url) }
-            .buttonStyle(.link)
+            #if os(macOS)
+              .buttonStyle(.link)
+            #else
+              .buttonStyle(.borderless)
+            #endif
         }
       }
       .font(.callout)
@@ -164,7 +168,11 @@ struct PullRequestTimelineRowView: View {
   @ViewBuilder private var commit: some View {
     if let url = event.url {
       Button(event.sha.map(Self.short) ?? "View event") { open?(url) }
-        .buttonStyle(.link)
+        #if os(macOS)
+          .buttonStyle(.link)
+        #else
+          .buttonStyle(.borderless)
+        #endif
         .monospaced()
         .help("Open on \(providerName)")
     } else if let sha = event.sha {

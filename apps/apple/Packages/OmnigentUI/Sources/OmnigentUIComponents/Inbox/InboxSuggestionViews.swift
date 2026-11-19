@@ -26,7 +26,11 @@ struct InboxSuggestionDetail: View {
       Text("Source").font(.caption.weight(.medium)).foregroundStyle(.secondary)
       ForEach(suggestion.links) { link in
         Button(link.title) { actions.openLink?(link) }
-          .buttonStyle(.link)
+          #if os(macOS)
+            .buttonStyle(.link)
+          #else
+            .buttonStyle(.borderless)
+          #endif
           .lineLimit(1)
           .disabled(actions.openLink == nil)
           .accessibilityIdentifier("inbox-suggestion-link-\(link.id)")
@@ -39,7 +43,11 @@ struct InboxSuggestionDetail: View {
     HStack(spacing: Theme.Spacing.extraSmall) {
       Text("Posted from").foregroundStyle(.secondary)
       Button(suggestion.sourceTitle) { actions.openSource?(item) }
-        .buttonStyle(.link)
+        #if os(macOS)
+          .buttonStyle(.link)
+        #else
+          .buttonStyle(.borderless)
+        #endif
         .disabled(actions.openSource == nil)
         .accessibilityIdentifier("inbox-suggestion-source-\(item.id)")
       if !item.agentName.isEmpty, item.agentName != suggestion.sourceTitle {
