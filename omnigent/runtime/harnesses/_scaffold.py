@@ -377,23 +377,30 @@ class ApprovalEvent(BaseModel):
     :param content: Optional form data when ``action == "accept"``
         and the prompt requested fields. Values restricted to JSON
         scalars and string lists, mirroring MCP.
+    :param meta: The answer's ``_meta``, e.g. ``{"notes": {"Layout?":
+        "Keep it collapsible."}}`` for notes on Claude's questions.
     """
 
     type: Literal["approval"]
     elicitation_id: str
     action: Literal["accept", "decline", "cancel"]
     content: dict[str, str | int | float | bool | list[str] | None] | None = None
+    meta: dict[str, Any] | None = Field(default=None, alias="_meta")
+
+    model_config = ConfigDict(populate_by_name=True)
 
     def to_elicitation_result(self) -> ElicitationResult:
         """
         Adapt this event onto the legacy :class:`ElicitationResult`.
 
         :returns: An :class:`ElicitationResult` with the same
-            ``action`` / ``content`` so
+            ``action`` / ``content`` / ``_meta`` so
             :meth:`HarnessApp._resolve_elicitation` can resolve
             the parked Future.
         """
-        return ElicitationResult(action=self.action, content=self.content)
+        return ElicitationResult.model_validate(
+            {"action": self.action, "content": self.content, "_meta": self.meta}
+        )
 
 
 class PolicyVerdictEvent(BaseModel):

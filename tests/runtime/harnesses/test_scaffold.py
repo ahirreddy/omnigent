@@ -65,6 +65,30 @@ def test_default_idle_watchdog_allows_one_hour_progress_free_calls() -> None:
     assert _scaffold._DEFAULT_TURN_IDLE_TIMEOUT_S == 3600.0
 
 
+def test_approval_event_keeps_the_answers_meta() -> None:
+    """An answer's ``_meta`` (notes on Claude's questions) reaches the parked elicitation."""
+    from pydantic import TypeAdapter
+
+    from omnigent.runtime.harnesses._scaffold import ApprovalEvent, InboundEventRequest
+
+    notes = {"notes": {"Which layout?": "Keep the list collapsible."}}
+    event = TypeAdapter(InboundEventRequest).validate_python(
+        {
+            "type": "approval",
+            "elicitation_id": "elicit_q",
+            "action": "accept",
+            "content": {"Which layout?": "Sidebar"},
+            "_meta": notes,
+        }
+    )
+    assert isinstance(event, ApprovalEvent)
+    result = event.to_elicitation_result()
+    assert (result.content, result.meta) == ({"Which layout?": "Sidebar"}, notes)
+    # An answer without ``_meta`` stays without one.
+    bare = ApprovalEvent(type="approval", elicitation_id="elicit_q", action="decline")
+    assert bare.to_elicitation_result().model_dump() == {"action": "decline", "content": None}
+
+
 @dataclass
 class _ParsedSSEEvent:
     """
