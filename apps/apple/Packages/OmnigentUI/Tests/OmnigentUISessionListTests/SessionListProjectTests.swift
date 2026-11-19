@@ -111,7 +111,7 @@
       #expect(MainLoop.settle(until: { expanded()?.isEmpty == true }))
     }
 
-    @Test("the outline doesn't indent a project's sessions: the rows draw their own step")
+    @Test("the outline doesn't indent a project's sessions: its box marks them")
     func noOutlineIndent() throws {
       let spy = spy()
       let key = SidebarNavigationOrder.expandedProjectsKey

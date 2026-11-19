@@ -34,14 +34,16 @@
     }
 
     /// The runs of columns from `start` to `end`, leading to trailing, where a pixel within the
-    /// heights `band` differs from the most common color there: the background, or a row's fill.
+    /// heights `bands` differs from the most common color there: the background, or a row's fill.
     /// Each run ends where the first blank column starts.
-    func inkRuns(from start: CGFloat, to end: CGFloat, band: ClosedRange<CGFloat>)
+    func inkRuns(from start: CGFloat, to end: CGFloat, bands: [ClosedRange<CGFloat>])
       -> [ClosedRange<CGFloat>]
     {
       let pixel = 1 / scale
       let columns = Array(stride(from: (start * scale).rounded(.down) * pixel, to: end, by: pixel))
-      let heights = Array(stride(from: band.lowerBound, through: band.upperBound, by: pixel))
+      let heights = bands.flatMap { band in
+        Array(stride(from: band.lowerBound, through: band.upperBound, by: pixel))
+      }
       let grid = columns.map { column in
         heights.compactMap { color(CGPoint(x: column, y: $0)) }
       }
@@ -92,11 +94,18 @@
     let frame: CGRect
     /// The marks within 8 points of the row's middle, leading to trailing.
     let marks: [ClosedRange<CGFloat>]
+    /// The same, leaving out the row's middle 4 points, where a nested row's connector turns
+    /// toward its icon in a line as wide as an icon.
+    /// An icon stays wide above and below the middle; the line does not.
+    let solid: [ClosedRange<CGFloat>]
 
-    /// The row's icon, a session's harness mark or a folder: its first mark wider than 13
-    /// points, past a chevron or a connector's turn, which are narrower.
+    /// The row's icon, a session's harness mark or a folder: its first mark wider than 13 points
+    /// that is solid too, past a chevron, which is narrower, and a connector, which is a line.
     var icon: ClosedRange<CGFloat>? {
-      marks.first { $0.upperBound - $0.lowerBound > 13 }
+      marks.first { mark in
+        mark.upperBound - mark.lowerBound > 13
+          && solid.contains { $0.upperBound - $0.lowerBound >= 8 && mark.contains($0.lowerBound) }
+      }
     }
 
     /// Where the title starts: the first mark after the icon.
@@ -105,7 +114,7 @@
       return marks.first { $0.lowerBound >= icon.upperBound + 2 }?.lowerBound
     }
 
-    /// The marks before the icon: a chevron, or a connector's turn.
+    /// The marks before the icon: a chevron, or a connector.
     var lead: [ClosedRange<CGFloat>] {
       guard let icon else { return marks }
       return marks.filter { $0.upperBound <= icon.lowerBound }
@@ -141,8 +150,12 @@
     ) throws -> DrawnRow {
       let list = try #require(list)
       let frame = list.convert(list.rect(ofRow: index), to: host)
-      let marks = picture.inkRuns(from: start, to: end, band: (frame.midY - 8)...(frame.midY + 8))
-      return DrawnRow(frame: frame, marks: marks)
+      let marks = picture.inkRuns(
+        from: start, to: end, bands: [(frame.midY - 8)...(frame.midY + 8)])
+      let solid = picture.inkRuns(
+        from: start, to: end,
+        bands: [(frame.midY - 8)...(frame.midY - 2), (frame.midY + 2)...(frame.midY + 8)])
+      return DrawnRow(frame: frame, marks: marks, solid: solid)
     }
   }
 #endif

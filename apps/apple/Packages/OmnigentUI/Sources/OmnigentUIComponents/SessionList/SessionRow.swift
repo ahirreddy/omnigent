@@ -32,25 +32,21 @@ struct SessionRow: View {
   /// How it sits in its session family: a head's chevron fills its gutter, a nested row sits a
   /// step in.
   var family = SessionRowFamily.standalone
-  /// In a project folder: a step in from the folder's row, as the folder's other rows are.
-  var isInFolder = false
 
   @State private var isHovered = false
   @Environment(\.defaultMinListRowHeight) private var rowHeight
 
   var body: some View {
-    Group {
-      let row = HStack(spacing: SessionFamilyMetrics.gutterSpacing) {
-        gutter
-        content
-      }
-      if case .nested(let continues) = family {
-        row.sessionFamilyConnector(rowHeight: rowHeight, continues: continues)
-      } else {
-        row
-      }
+    let row = HStack(spacing: SessionFamilyMetrics.gutterSpacing) {
+      gutter
+      content
     }
-    .padding(.leading, family.indent(inFolder: isInFolder))
+    .padding(.leading, family.indent)
+    if case .nested(let continues) = family {
+      row.sessionFamilyConnector(rowHeight: rowHeight, continues: continues)
+    } else {
+      row
+    }
   }
 
   /// The family chevron's place, empty on a row without one, so every row's icon and title line
