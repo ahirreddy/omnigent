@@ -251,8 +251,8 @@ pub(crate) struct Inner {
     pub(crate) sockets: Option<Arc<dyn WebSocketTransport>>,
     demo: Option<Arc<DemoTransport>>,
     pub(crate) auth: Mutex<AuthState>,
-    /// This device's saved copy of sessions, which the engine reads and writes; tests flush it.
-    #[cfg(test)]
+    /// This device's saved copy of sessions, which the engine reads and writes; a connect reads
+    /// the server's saved API root from it, and tests flush it.
     cache: Option<Arc<MessageCache>>,
 }
 
@@ -375,6 +375,32 @@ impl Inner {
         phase
     }
 
+    /// The API root `server_url`'s manifest named on an earlier connect, as this device saved it.
+    fn saved_endpoint(&self, server_url: &str) -> Option<String> {
+        let cache = self.cache.as_ref()?;
+        let server = core::message_cache::server_key(server_url)?;
+        match cache.read_endpoint(&server) {
+            Ok(base_url) => base_url,
+            Err(error) => {
+                self.post(Msg::Saved(SavedMsg::Failed {
+                    failure: crate::message_cache::CacheFailureScope::Connection,
+                    error,
+                }));
+                None
+            }
+        }
+    }
+
+    /// Saves the API root `server_url`'s manifest names, for the next connect.
+    fn save_endpoint(&self, server_url: &str, base_url: &str) {
+        let Some(cache) = self.cache.as_ref() else {
+            return;
+        };
+        if let Some(server) = core::message_cache::server_key(server_url) {
+            cache.save_endpoint(&server, base_url, self.host.unix_ms());
+        }
+    }
+
     pub(crate) fn fail(&self, server_url: &str, error: CoreError) -> CoreError {
         // Ahead of the phase, so the app shows the saved copy instead of the failure screen.
         if error.is_unreachable() {
@@ -473,12 +499,14 @@ impl Inner {
         }
         // The manifest the discovery before this connect read is not read again.
         let recent = lock(&self.auth).recent_manifest.take();
+        let saved_base_url = self.saved_endpoint(server_url);
         let resolved = match connection::resolve(
             &self.transport,
             server_url,
             self.config.url_policy,
             recent,
             self.host.now_ms(),
+            saved_base_url.clone(),
         )
         .await
         {
@@ -489,6 +517,9 @@ impl Inner {
             }
         };
         self.check_generation(generation)?;
+        if saved_base_url.as_deref() != Some(resolved.endpoint.base_url()) {
+            self.save_endpoint(server_url, resolved.endpoint.base_url());
+        }
         lock(&self.auth).resolved = Some(resolved.clone());
         // The server's auth mode decides, never the host: `resolve_mode` reports the local
         // runtime (`none` or `header` plus `single_user`) as `LocalSingleUser`, and an accounts or
@@ -1752,7 +1783,6 @@ impl ClientCore {
                 sockets,
                 demo,
                 auth: Mutex::new(AuthState::default()),
-                #[cfg(test)]
                 cache,
             }),
         })

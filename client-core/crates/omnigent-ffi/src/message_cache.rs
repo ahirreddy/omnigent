@@ -42,6 +42,11 @@ enum Job {
         scope: CacheScope,
         at_ms: u64,
     },
+    Endpoint {
+        server_key: String,
+        base_url: String,
+        at_ms: u64,
+    },
     Touch {
         scope: CacheScope,
         session_id: String,
@@ -189,6 +194,31 @@ impl MessageCache {
             .inspect_err(|_| {
                 self.discard(path, CacheFailureScope::Connection, cache::ACCOUNT_ROLE);
             })
+    }
+
+    /// The API root the manifest of the server of `server_key` named last, `None` when none
+    /// was saved.
+    ///
+    /// # Errors
+    ///
+    /// The file could not be read, or did not decode (it is then discarded).
+    pub(crate) fn read_endpoint(&self, server_key: &str) -> Result<Option<String>, CacheError> {
+        let path = cache::endpoint_path(server_key);
+        let Some(bytes) = self.read(&path, cache::ENDPOINT_ROLE)? else {
+            return Ok(None);
+        };
+        cache::decode_endpoint(&bytes).map(Some).inspect_err(|_| {
+            self.discard(path, CacheFailureScope::Connection, cache::ENDPOINT_ROLE);
+        })
+    }
+
+    /// Records `base_url` as the API root the manifest of the server of `server_key` names.
+    pub(crate) fn save_endpoint(&self, server_key: &str, base_url: &str, at_ms: u64) {
+        self.send(Job::Endpoint {
+            server_key: server_key.to_owned(),
+            base_url: base_url.to_owned(),
+            at_ms,
+        });
     }
 
     fn read(&self, relative: &str, what: &str) -> Result<Option<Vec<u8>>, CacheError> {
@@ -386,6 +416,18 @@ impl Writer {
                         self.write(&path, &bytes, at_ms, cache::ACCOUNT_ROLE)
                             .map(|_| ())
                     });
+                self.outcome(CacheFailureScope::Connection, result);
+            }
+            Job::Endpoint {
+                server_key,
+                base_url,
+                at_ms,
+            } => {
+                let path = cache::endpoint_path(&server_key);
+                let result = cache::encode_endpoint(&base_url, at_ms).and_then(|bytes| {
+                    self.write(&path, &bytes, at_ms, cache::ENDPOINT_ROLE)
+                        .map(|_| ())
+                });
                 self.outcome(CacheFailureScope::Connection, result);
             }
             Job::Touch {
