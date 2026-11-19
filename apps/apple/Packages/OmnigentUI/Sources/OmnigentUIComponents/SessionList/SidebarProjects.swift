@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The paging of one folder: its members are read from the server a page at a time (the web's
-/// `?project=` read), and listed five more per Show more.
+/// `?project=` read), and listed ten more per Show more, or all of them.
 struct ProjectFolderPages {
   /// Rows listed.
   let visibleCount: Int
@@ -10,7 +10,7 @@ struct ProjectFolderPages {
   let isLoading: Bool
   /// The first page was read.
   let isLoaded: Bool
-  /// Reveal five more rows, reading the next page when the loaded ones run out.
+  /// Reveal ten more rows, reading the next page when the loaded ones run out.
   let showMore: () -> Void
   /// Read the folder's first page, or its next.
   let load: (() -> Void)?
@@ -18,17 +18,22 @@ struct ProjectFolderPages {
   var offersBoard = false
   /// Its board is shown.
   var isBoardShown = false
+  /// Show All Sessions is on: every member is listed and every page read.
+  var showsAll = false
+  /// Turns Show All Sessions on or off, and keeps it.
+  var setShowsAll: (Bool) -> Void = { _ in }
 }
 
 extension ProjectFolderPages {
-  /// A folder's rows and pages: Show more lists five more and reads the next server page once
-  /// the loaded rows run out.
+  /// A folder's rows and pages: Show more lists ten more and reads the next server page once
+  /// the loaded rows run out. `shown` is nil until Show more or the menu sets it.
   @MainActor init(
-    project: SessionProject, sessions: [SessionSummary], paging: SidebarPaging, shown: Int,
+    project: SessionProject, sessions: [SessionSummary], paging: SidebarPaging, shown: Int?,
     selection: SidebarDestination?, boards: Bool = false,
     load: (@MainActor (SessionProject) -> Void)?, setShown: @escaping (Int) -> Void
   ) {
     let selectedID = selection?.sessionID
+    let shown = shown ?? ProjectShowAll.shown(project.id)
     let selectedIndex = selectedID.flatMap { id in sessions.firstIndex { $0.id == id } }
     let visible = ProjectFolderPaging.visibleCount(
       count: sessions.count, shown: shown, selectedIndex: selectedIndex)
@@ -42,7 +47,13 @@ extension ProjectFolderPages {
         setShown(next)
         if next > sessions.count { loadPage?() }
       },
-      load: loadPage, offersBoard: boards, isBoardShown: selection == .project(project.id))
+      load: loadPage, offersBoard: boards, isBoardShown: selection == .project(project.id),
+      showsAll: shown == ProjectFolderPaging.all,
+      setShowsAll: { isOn in
+        ProjectShowAll.set(project.id, isOn)
+        setShown(isOn ? ProjectFolderPaging.all : 0)
+        if isOn, paging.projectsWithMore.contains(project.id) { loadPage?() }
+      })
   }
 }
 
@@ -117,7 +128,7 @@ struct ProjectFolder<Row: View>: View {
         isBoardShown: pages.isBoardShown, box: isExpanded ? .top : .single, toggle: toggle)
     )
     .onHover { isHovered = $0 }
-    .contextMenu { menu.items }
+    .contextMenu { folderMenu.items }
     .draggable(SidebarDragItem.project(project.id).payload)
     .sidebarDropTarget(drop)
     // One element for the folder, around its name, hover buttons and expand button.
@@ -131,6 +142,12 @@ struct ProjectFolder<Row: View>: View {
     // An expanded folder reads its own first page, as the web's (collapsed ones cost nothing).
     .task(id: isExpanded && !pages.isLoaded) {
       if isExpanded, !pages.isLoaded { pages.load?() }
+    }
+    // Show all reads the folder's remaining pages, one after another.
+    .task(
+      id: "\(isExpanded) \(pages.showsAll) \(pages.hasMore) \(pages.isLoading) \(sessions.count)"
+    ) {
+      if isExpanded, pages.showsAll, pages.hasMore, !pages.isLoading { pages.load?() }
     }
   }
 
@@ -156,6 +173,13 @@ struct ProjectFolder<Row: View>: View {
     .accessibilityLabel(label)
     .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
     .accessibilityIdentifier("sidebar-project-toggle-\(project.id)")
+  }
+
+  /// The project menu, with Show All Sessions for this folder.
+  private var folderMenu: ProjectMenu {
+    var menu = menu
+    menu.showAll = Binding(get: { pages.showsAll }, set: pages.setShowsAll)
+    return menu
   }
 
   /// Show more follows the listed rows: some are left to show, here or on the server.
@@ -213,7 +237,7 @@ struct ProjectFolder<Row: View>: View {
         .accessibilityIdentifier("project-new-session")
       }
       Menu {
-        menu.items
+        folderMenu.items
       } label: {
         Label("Project actions", systemImage: "ellipsis")
       }
@@ -261,6 +285,8 @@ struct ProjectMenu {
   let actions: SidebarActions
   let rename: () -> Void
   let confirmDelete: () -> Void
+  /// Whether the open folder lists every session; offered where the folder sets it.
+  var showAll: Binding<Bool>?
 
   @ViewBuilder var items: some View {
     if let newSession = actions.newSessionInProject {
@@ -274,6 +300,9 @@ struct ProjectMenu {
     }
     if let setSort = actions.setGroupSort {
       GroupSortPicker(sort: sort) { setSort(.project(project.id), $0) }
+    }
+    if let showAll {
+      Toggle("Show All Sessions", isOn: showAll)
     }
     if let reorder = actions.reorderProjects, projects.count > 1 {
       MoveMenu(items: { projects }, id: project.id, save: reorder)
