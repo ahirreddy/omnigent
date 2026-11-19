@@ -88,7 +88,8 @@ struct PullRequestLabelsSection: View {
           .popover(isPresented: $picking, arrowEdge: .bottom) {
             PullRequestChoiceList(
               title: "Labels", choices: extras.labelChoices, selected: Set(labels.map(\.id)),
-              toggle: { name, add in actions.setLabel?(name, add) })
+              toggle: { name, add in actions.setLabel?(name, add) },
+              truncatedNoun: extras.labelsTruncated ? "labels" : nil)
           }
         }
       }
@@ -132,6 +133,8 @@ struct PullRequestChoiceList: View {
   let choices: PullRequestChoices
   let selected: Set<String>
   let toggle: (String, Bool) -> Void
+  /// What the list holds, when the provider had more than were read ("labels").
+  var truncatedNoun: String?
 
   @State private var filter = ""
 
@@ -157,6 +160,10 @@ struct PullRequestChoiceList: View {
         }
         .listStyle(.plain)
         .frame(minHeight: 160)
+        if let truncatedNoun {
+          Text("Showing the first \(items.count) \(truncatedNoun).")
+            .font(.caption).foregroundStyle(.secondary)
+        }
       }
     }
     .padding(Theme.Spacing.medium)

@@ -4,11 +4,13 @@ import OmnigentStores
 import OmnigentUIComponents
 
 /// The Share sheet over a ``ShareStore``: general access (restricted, or anyone with the link
-/// can view), and people with Read or Edit access. The owner's own grant is not listed.
+/// can view, or edit where the server allows), and people with Read or Edit access. The owner's
+/// own grant is not listed.
 @MainActor
 enum ShareAdapter {
   static let restricted = "Restricted"
   static let anyoneWithLink = "Anyone with the link can view"
+  static let anyoneCanEdit = "Anyone with the link can edit"
 
   /// Why Share shows disabled: the web's wording for a server whose admin turned sharing off;
   /// `nil` where Share works or is hidden (single-user servers, pages not read yet).
@@ -52,10 +54,14 @@ enum ShareAdapter {
     // As the web: a public link is offered where the server allows one, and an existing one
     // can still be turned off.
     let offersPublic = (policy?.publicSharing ?? true) && blockedReason == nil
+    var options = offersPublic || store.isPublic ? [restricted, anyoneWithLink] : [restricted]
+    // Public Edit only up to the server's cap, never under read-only sharing; one already
+    // granted stays listed.
+    let offersPublicEdit =
+      offersPublic && policy?.publicEdit == true && policy?.sharingReadOnly != true
+    if offersPublicEdit || store.publicLevel == 2 { options.append(anyoneCanEdit) }
     var state = ShareViewState(
-      generalAccessOptions: offersPublic || store.isPublic
-        ? [restricted, anyoneWithLink] : [restricted],
-      generalAccess: store.isPublic ? anyoneWithLink : restricted,
+      generalAccessOptions: options, generalAccess: generalAccess(store.publicLevel),
       grants: grants.map { grant in
         ShareGrant(
           id: grant.userId, principal: grant.userId, role: grant.level >= 2 ? .edit : .read)
@@ -70,6 +76,15 @@ enum ShareAdapter {
     return state
   }
 
+  /// The general access choice for what the link grants.
+  static func generalAccess(_ publicLevel: UInt8?) -> String {
+    switch publicLevel {
+    case nil: restricted
+    case 1: anyoneWithLink
+    default: anyoneCanEdit
+    }
+  }
+
   /// The wire level for a role.
   static func level(_ role: ShareGrant.Role) -> UInt8 { role == .edit ? 2 : 1 }
 
@@ -79,7 +94,13 @@ enum ShareAdapter {
   static func actions(_ store: ShareStore) -> ShareActions {
     ShareActions(
       setGeneralAccess: { access in
-        Task { await store.setPublic(access == anyoneWithLink) }
+        let level: UInt8? =
+          switch access {
+          case anyoneWithLink: 1
+          case anyoneCanEdit: 2
+          default: nil
+          }
+        Task { await store.setPublicLevel(level) }
       },
       addGrant: { person, role in
         Task { await store.grant(person, level: level(role)) }

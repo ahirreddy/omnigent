@@ -65,6 +65,9 @@ pub struct ServerPages {
     /// Home and root folders are not shared (`sharing_mode` `restricted_read_only`).
     #[uniffi(default)]
     pub sharing_restricted: bool,
+    /// A public link may let anyone with it edit (`public_sharing_max_level` `edit`).
+    #[uniffi(default)]
+    pub public_edit: bool,
     /// New project can start from a repository (`project_repository_creation`).
     #[uniffi(default)]
     pub project_repository_creation: bool,
@@ -879,6 +882,7 @@ impl ClientCore {
             public_sharing: pages.public_sharing,
             sharing_read_only: pages.sharing_read_only,
             sharing_restricted: pages.sharing_restricted,
+            public_edit: pages.public_edit,
             project_repository_creation: pages.project_repository_creation,
             automation_subhour: pages.automation_subhour,
             automation_trigger_headers: pages.automation_trigger_headers,

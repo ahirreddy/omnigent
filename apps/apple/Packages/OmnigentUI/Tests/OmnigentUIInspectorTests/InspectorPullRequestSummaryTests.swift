@@ -329,6 +329,15 @@
       let failed = list(.failed("boom"))
       defer { failed.close() }
       #expect(try failed.shows("boom"))
+      // The provider had more labels than were read.
+      let truncated = OffscreenWindow(
+        AnyView(
+          PullRequestChoiceList(
+            title: "Labels", choices: .loaded([PullRequestChip(id: "bug", title: "bug")]),
+            selected: [], toggle: { _, _ in }, truncatedNoun: "labels")),
+        width: 300, height: 340)
+      defer { truncated.close() }
+      #expect(try truncated.shows("Showing the first 1 labels."))
     }
 
     @Test("Choices filter by name or detail, and toggling one reports it")

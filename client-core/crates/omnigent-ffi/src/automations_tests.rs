@@ -357,6 +357,7 @@ fn server_pages_map_each_flag_to_its_own_field() {
         public_sharing: true,
         sharing_read_only: false,
         sharing_restricted: false,
+        public_edit: false,
         project_repository_creation: false,
         automation_subhour: false,
         automation_trigger_headers: false,
