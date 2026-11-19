@@ -132,6 +132,15 @@ struct SearchField {
       return view
     }
 
+    /// The width offered and the field's own height: a text field otherwise stretches to the
+    /// height a stack offers it.
+    func sizeThatFits(
+      _ proposal: ProposedViewSize, uiView view: UISearchTextField, context: Context
+    ) -> CGSize? {
+      let natural = view.intrinsicContentSize
+      return CGSize(width: proposal.width ?? natural.width, height: natural.height)
+    }
+
     func updateUIView(_ view: UISearchTextField, context: Context) {
       context.coordinator.field = self
       if view.text != text { view.text = text }
