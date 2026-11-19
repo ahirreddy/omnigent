@@ -18,6 +18,19 @@ public struct ShellTabs {
   }
 }
 
+/// Where the shell keeps the sidebar's visibility, for the split view's binding to read and
+/// write. It is not observed: the shell's body renders for a toggle only when it made the
+/// toggle itself, and the views that show the visibility read
+/// ``TitlebarStripSpace/isSidebarHidden``.
+@MainActor
+final class ShellColumns {
+  var visibility: NavigationSplitViewVisibility
+
+  init(_ visibility: NavigationSplitViewVisibility) {
+    self.visibility = visibility
+  }
+}
+
 /// What the detail column is built from.
 enum ShellDetail<Detail: View> {
   /// A detail for the selected destination.
@@ -41,7 +54,6 @@ struct SelectedDetail<Detail: View>: View {
 struct TitlebarTabs: ViewModifier {
   let tabs: ShellTabs?
   let space: TitlebarStripSpace
-  let isSidebarHidden: Bool
 
   @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -86,7 +98,7 @@ struct TitlebarTabs: ViewModifier {
   @ToolbarContentBuilder
   private func stripItems(_ tabs: @escaping () -> TabStripContent) -> some ToolbarContent {
     ToolbarItem(placement: .navigation) {
-      TitlebarTabStrip(tabs: tabs, space: space, isSidebarHidden: isSidebarHidden)
+      TitlebarTabStrip(tabs: tabs, space: space)
     }
     .sharedBackgroundVisibility(.hidden)
     ToolbarSpacer(.flexible)

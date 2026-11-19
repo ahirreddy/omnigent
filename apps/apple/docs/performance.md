@@ -1776,6 +1776,68 @@ animation block, so the transcript's collection view takes the new width in one 
 (`TranscriptCollectionController.viewportResized`) and Core Animation moves the columns; round
 4's iPad sidebar row (1.4 s of main-thread CPU) is that single relayout, not one a frame.
 
+### A slide drawn by Core Animation (November 2026)
+
+The sidebar now shows and hides in one layout pass at the final widths, and the render server
+draws the slide (`SidebarSlide`; `-omnigent:sidebar-slide prerendered`, the default):
+
+- **One pass.** The sidebar item's `collapsed` animation takes no time
+  (`NSSplitViewItem.animations`), so AppKit collapses or expands it at once and the window lays
+  out at its new widths once. The transcript takes that width exactly, with no hold
+  (`SidebarSlide.collapsesAtOnce`).
+- **Nothing else animates.** AppKit's `toggleSidebar(_:)`, which the View menu,
+  Control-Command-S and the toolbar's button send, collapses inside an animation group that
+  animates every frame changed in it, so the toolbar's items and the hosting views still laid
+  out again at every frame of the 0.25 s with the collapse itself at once. As the collapse
+  starts the slide sets that group to no duration and no implicit animation, and gives it back
+  its settings once the window is laid out. SwiftUI reports the collapse with an animated
+  transaction too; while it lays out, the shell animates nothing (`sidebarSlideTransactions()`).
+- **Pictures, then motion.** As the collapse starts (`isCollapsed`'s prior change) the slide
+  draws what will go: the sidebar when it hides, the column's two edges when it shows (what
+  the sidebar sliding in and the column's moving end uncover, at one pixel a point), and the
+  titlebar. Once the window is laid out, before that frame is committed, Core Animation moves
+  the column from where its middle was to where it is (`transform.translation.x` on the
+  column's layer, clipped to its split view item), slides the sidebar's picture out or the live
+  sidebar in from the window's edge, and fades the old titlebar out over the new one. Nothing
+  lays out during the slide or as it ends: the views were at their final widths all along.
+- **Input.** Keys go to the live views throughout. Clicks in the window during the slide are
+  dropped, since the views are where they will be, not where they show.
+- **The shell does not render for a collapse the split view makes.** It keeps the visibility in
+  `ShellColumns`, which its body does not read, and the strip and the sidebar's peek read
+  `TitlebarStripSpace.isSidebarHidden`; a toggle the shell makes itself (`SidebarToggle`) still
+  renders it once, so the split view takes the value.
+
+`-omnigent:sidebar-slide animated` is AppKit's animation, as before; `instant` collapses at once
+with no motion. The same build and job, each way:
+
+```sh
+~/src/omnigent-vm/vmq submit --priority high --only laptop-w1 --tree "$PWD" --label "slide" -- \
+  bash apps/apple/Tools/perf/scroll-bench.sh --scenarios sidebar-toggles,sidebar-toggles-mid \
+  --passes --variant "prerendered=" --variant "animated=-omnigent:sidebar-slide animated"
+```
+
+| Six toggles (warm pass; medians of 3) | Passes > 8.3 ms | > 16.7 ms | Worst | Dropped frames | Busy |
+| --- | --- | --- | --- | --- | --- |
+| Chat at the end, AppKit's animation | 67 | 42 | 93 ms | 29 | 1.72 s |
+| Chat at the end, drawn by Core Animation | 9 | 9 | 112 ms | 39 | 0.75 s |
+| Chat mid-transcript, AppKit's animation | 61 | 42 | 107 ms | 36 | 1.75 s |
+| Chat mid-transcript, drawn by Core Animation | 9 | 9 | 98 ms | 34 | 0.72 s |
+| CLI at the end, AppKit's animation | 47 | 42 | 82 ms | 65 | 1.60 s |
+| CLI at the end, drawn by Core Animation | 9 | 9 | 105 ms | 38 | 0.78 s |
+| CLI mid-transcript, AppKit's animation | 56 | 41 | 80 ms | 79 | 2.03 s |
+| CLI mid-transcript, drawn by Core Animation | 9 | 9 | 112 ms | 39 | 0.79 s |
+
+The cold passes match (9-11 passes over 8.3 ms and 9 over 16.7 ms, 0.70-0.83 s busy, against
+39-46 and 1.66-2.17 s), and the reader stays where they were through every toggle. No frame
+of the slide itself runs on the main thread, so each toggle's cost is one pass before it starts,
+80-130 ms: the window's layout at its new widths (60-90 ms with no pictures, `instant`; about a
+tenth of it SwiftUI rebuilding the toolbar items' menu forms as the strip resizes) and the
+pictures (20-40 ms; drawing the column's edges at one pixel a point took a show's from about
+50 ms).
+That pass is the main thread's dropped frames, and its worst is above AppKit's worst frame,
+which spreads the same layout over the slide. A show is followed 350 ms later by a pass of
+40-50 ms in every mode, `instant` too, not yet looked at.
+
 ## Where the time still goes
 
 - **Switching tabs** renders the detail and the tab that shows once, 50-80 ms in Release to a
