@@ -183,6 +183,8 @@
     var selection: SidebarDestination?
     var search = ""
     var state: SidebarViewState
+    /// Deleting a session an automation runs from deletes the automation too.
+    var deletesSourceAutomations = false
 
     init(_ state: SidebarViewState) {
       self.state = state
@@ -194,6 +196,7 @@
 
     var sessionActions: SessionListActions {
       var actions = SessionListActions()
+      actions.deletesSourceAutomations = deletesSourceAutomations
       actions.setPinned = { [self] in calls.append("pin \($0.id) \($1)") }
       actions.setArchived = { [self] in calls.append("archive \($0.id) \($1)") }
       actions.rename = { [self] in calls.append("rename \($0.id) \($1)") }

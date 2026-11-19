@@ -59,15 +59,18 @@ struct SessionDialogs: ViewModifier {
   private func deleteDialogs(_ content: some View) -> some View {
     content
       .confirmationDialog(
-        "Delete this session?",
+        automationNotice(confirmingDelete.map { [$0] } ?? []) == nil
+          ? "Delete this session?" : "Delete session and automation?",
         isPresented: Binding(
           get: { confirmingDelete.map { !offersBranches([$0]) } ?? false },
           set: { if !$0 { confirmingDelete = nil } }),
         presenting: confirmingDelete
       ) { session in
         Button("Delete", role: .destructive) { actions.delete?(session) }
-      } message: { _ in
-        Text("This permanently deletes the session and its history.")
+      } message: { session in
+        Text(
+          ["This permanently deletes the session and its history.", automationNotice([session])]
+            .compactMap(\.self).joined(separator: " "))
       }
       .confirmationDialog(
         bulkTitle,
@@ -80,8 +83,10 @@ struct SessionDialogs: ViewModifier {
           for session in sessions { actions.delete?(session) }
           deletedMany()
         }
-      } message: { _ in
-        Text("This permanently deletes the sessions and their history.")
+      } message: { sessions in
+        Text(
+          ["This permanently deletes the sessions and their history.", automationNotice(sessions)]
+            .compactMap(\.self).joined(separator: " "))
       }
       .sheet(item: branchDeletion) { pending in
         DeleteSessionsSheet(
@@ -93,13 +98,20 @@ struct SessionDialogs: ViewModifier {
             if pending.isBulk { deletedMany() }
             dismissBranchDeletion()
           },
-          cancel: dismissBranchDeletion)
+          cancel: dismissBranchDeletion, automationNotice: automationNotice(pending.sessions))
       }
       .stopSessionConfirmation(
         $confirmingStop, runsOnHost: { rowInfo[$0.id]?.runsOnHost == true }, stop: actions.stop)
   }
 
   private var trimmed: String { renameText.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+  /// That deleting `sessions` also deletes the automations that run from them.
+  private func automationNotice(_ sessions: [SessionSummary]) -> String? {
+    guard actions.deletesSourceAutomations else { return nil }
+    return DeleteSessionsSheet.automationNotice(
+      count: sessions.filter { $0.automationSourceID != nil }.count, total: sessions.count)
+  }
 
   /// The web's branch cleanup applies when the host can delete branches and one has a branch.
   private func offersBranches(_ sessions: [SessionSummary]) -> Bool {

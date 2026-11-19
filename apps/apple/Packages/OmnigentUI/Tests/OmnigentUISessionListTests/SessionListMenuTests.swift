@@ -105,6 +105,23 @@
       #expect(spy.calls == ["delete beta"])
     }
 
+    @Test("Deleting a session an automation runs from says the automation goes too")
+    func deleteAutomationSource() throws {
+      var state = SidebarFixture.state
+      state.list.sessions[1].automationSourceID = "task_1"
+      let spy = SidebarSpy(state)
+      spy.deletesSourceAutomations = true
+      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 700)
+      defer { screen.close() }
+      SystemSideEffects.answer(alert: .alertSecondButtonReturn)
+      try choose("Delete\u{2026}", row: SidebarFixture.betaRow, screen)
+      #expect(SystemSideEffects.record.alertMessages == ["Delete session and automation?"])
+      #expect(
+        DeleteSessionsSheet.automationNotice(count: 2, total: 3)
+          == "2 of these sessions run automations. Deleting them also deletes the automations.")
+      #expect(DeleteSessionsSheet.automationNotice(count: 0, total: 3) == nil)
+    }
+
     @Test("Stop asks first and only shows for a session that can stop")
     func stop() throws {
       var state = SidebarFixture.state

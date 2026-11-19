@@ -50,6 +50,12 @@ extension ConnectedServerView {
   }
 
   /// Deletes or leaves a session; its tabs close once it is gone.
+  /// The automation deleting `summary` also deletes; none where automations are off, which
+  /// leaves the automation to fail its next run and pause, as on the web.
+  func deletedAutomation(_ summary: OmnigentUIComponents.SessionSummary) -> String? {
+    connection.pages?.offered?.automations == true ? summary.automationSourceID : nil
+  }
+
   func removeSession(
     _ sessionID: String, _ operation: @escaping @MainActor (String) async -> Bool
   ) {

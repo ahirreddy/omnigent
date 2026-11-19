@@ -11,6 +11,8 @@ struct DeleteSessionsSheet: View {
   /// Deletes, with the ids whose branch to delete.
   let delete: @MainActor (_ branchIDs: Set<String>) -> Void
   let cancel: @MainActor () -> Void
+  /// That automations running from some of these sessions are deleted too.
+  var automationNotice: String?
 
   @State private var chosen: Set<String> = []
 
@@ -25,6 +27,12 @@ struct DeleteSessionsSheet: View {
           + "\(sessions.count == 1 ? "its" : "their") history. This cannot be undone."
       )
       .foregroundStyle(.secondary)
+      if let automationNotice {
+        Label(automationNotice, systemImage: "exclamationmark.triangle.fill")
+          .symbolRenderingMode(.multicolor)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("delete-sessions-automation-notice")
+      }
       if !withBranch.isEmpty { branchTable }
       HStack {
         Spacer()
@@ -38,6 +46,19 @@ struct DeleteSessionsSheet: View {
     .padding(Theme.Spacing.large)
     .frame(width: 460)
     .accessibilityIdentifier("delete-sessions-sheet")
+  }
+
+  /// The web's warning that deleting sessions an automation runs from deletes the automations:
+  /// `count` of the `total` sessions run one; `nil` when none does.
+  static func automationNotice(count: Int, total: Int) -> String? {
+    switch count {
+    case 0: nil
+    case _ where total == 1:
+      "This session runs an automation. Deleting it also deletes the automation."
+    case 1: "1 of these sessions runs an automation. Deleting it also deletes the automation."
+    default:
+      "\(count) of these sessions run automations. Deleting them also deletes the automations."
+    }
   }
 
   private var branchTable: some View {

@@ -1095,4 +1095,17 @@ impl ClientCore {
             .await
             .map_err(CoreError::from)
     }
+
+    /// Deletes the automation that runs from a session about to be deleted; one already gone
+    /// counts as deleted.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`; the write errors other than 404.
+    pub async fn delete_source_automation(&self, id: String) -> Result<(), CoreError> {
+        self.sessions()
+            .delete_source_automation(&id)
+            .await
+            .map_err(CoreError::from)
+    }
 }

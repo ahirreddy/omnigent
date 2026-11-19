@@ -50,6 +50,16 @@ struct SessionListWriteTests {
     #expect(await list.delete("conv_a", deleteBranch: true))
     let delete = try #require(server.requests(to: "/v1/sessions/conv_a", method: "DELETE").last)
     #expect(delete.url.contains("delete_branch=true"))
+
+    // The automation that runs from a session goes first; a refusal keeps the session.
+    server.route("/v1/scheduled-tasks/task_1", method: "DELETE", .json("", status: 204))
+    #expect(await list.delete("conv_a", automation: "task_1"))
+    #expect(server.requests(to: "/v1/scheduled-tasks/task_1", method: "DELETE").count == 1)
+    let deletes = server.requests(to: "/v1/sessions/conv_a", method: "DELETE").count
+    server.route("/v1/scheduled-tasks/task_2", method: "DELETE", .json("{}", status: 409))
+    #expect(await !list.delete("conv_a", automation: "task_2"))
+    #expect(list.editError != nil)
+    #expect(server.requests(to: "/v1/sessions/conv_a", method: "DELETE").count == deletes)
   }
 
   @Test("Moving into a label-only project promotes it first; a failed promotion moves nothing")
