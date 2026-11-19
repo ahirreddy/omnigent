@@ -127,7 +127,9 @@ struct BrowserOmniboxField: View {
         ) {
           model.toggleBookmark()
         }
-        .foregroundStyle(model.isBookmarked ? Color.accentColor : Color.secondary)
+        .foregroundStyle(
+          model.isBookmarked ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(Color.secondary)
+        )
         .accessibilityIdentifier("browser.bookmarkStar")
       }
     }
@@ -135,7 +137,7 @@ struct BrowserOmniboxField: View {
     .padding(.vertical, 5)
     .background(.quaternary.opacity(focused ? 0.9 : 0.6), in: Capsule())
     .overlay {
-      if focused { Capsule().strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1.5) }
+      if focused { Capsule().strokeBorder(TintShapeStyle.tint.opacity(0.6), lineWidth: 1.5) }
     }
   }
 
@@ -258,7 +260,8 @@ struct BrowserOmniboxSuggestionList: View {
           .padding(.vertical, 5)
           .contentShape(Rectangle())
           .background(
-            index == selected ? Color.accentColor.opacity(0.18) : Color.clear,
+            index == selected
+              ? AnyShapeStyle(TintShapeStyle.tint.opacity(0.18)) : AnyShapeStyle(Color.clear),
             in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)

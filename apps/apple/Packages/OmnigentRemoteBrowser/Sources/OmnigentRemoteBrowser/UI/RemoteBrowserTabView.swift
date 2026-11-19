@@ -164,7 +164,7 @@ public struct RemoteBrowserTabView: View {
       .padding(.vertical, 5)
       .background(.quaternary.opacity(focused ? 0.9 : 0.6), in: Capsule())
       .overlay {
-        if focused { Capsule().strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1.5) }
+        if focused { Capsule().strokeBorder(TintShapeStyle.tint.opacity(0.6), lineWidth: 1.5) }
       }
       .onChange(of: url, initial: true) { revert() }
       .onChange(of: focused) { _, isFocused in

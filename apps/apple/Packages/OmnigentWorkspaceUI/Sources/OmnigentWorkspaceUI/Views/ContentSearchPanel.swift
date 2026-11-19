@@ -240,7 +240,9 @@ private struct MatchRow: View {
     }
     .padding(.horizontal, 10)
     .padding(.vertical, 3)
-    .background(isSelected ? Color.accentColor.opacity(0.22) : .clear)
+    .background(
+      isSelected ? AnyShapeStyle(TintShapeStyle.tint.opacity(0.22)) : AnyShapeStyle(.clear)
+    )
     .accessibilityElement(children: .combine)
     .accessibilityLabel("Line \(match.line): \(match.text)")
   }

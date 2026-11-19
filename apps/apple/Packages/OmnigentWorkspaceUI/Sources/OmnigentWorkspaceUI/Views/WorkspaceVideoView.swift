@@ -237,7 +237,8 @@ private struct ChapterList: View {
             .padding(8)
             .contentShape(Rectangle())
             .background(
-              index == current ? Color.accentColor.opacity(0.15) : .clear,
+              index == current
+                ? AnyShapeStyle(TintShapeStyle.tint.opacity(0.15)) : AnyShapeStyle(.clear),
               in: RoundedRectangle(cornerRadius: 6))
           }
           .buttonStyle(.plain)

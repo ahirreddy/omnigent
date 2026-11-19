@@ -156,12 +156,16 @@ private struct CommentCard: View {
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
-      isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.06),
+      isSelected
+        ? AnyShapeStyle(TintShapeStyle.tint.opacity(0.10))
+        : AnyShapeStyle(Color.secondary.opacity(0.06)),
       in: .rect(cornerRadius: 8)
     )
     .overlay {
       RoundedRectangle(cornerRadius: 8)
-        .strokeBorder(isSelected ? Color.accentColor : Color.secondary.opacity(0.2))
+        .strokeBorder(
+          isSelected
+            ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(Color.secondary.opacity(0.2)))
     }
     .contentShape(.rect)
     .onTapGesture { if !editing { select() } }

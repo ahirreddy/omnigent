@@ -206,7 +206,7 @@ struct PullRequestChangesSincePicker: View {
           .font(.caption.weight(.medium))
           .foregroundStyle(.white)
           .padding(.horizontal, Theme.Spacing.extraSmall)
-          .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 4))
+          .background(ThemeColor.controlTint, in: RoundedRectangle(cornerRadius: 4))
       }
       Text(commit.shortSha).font(.caption.monospaced()).foregroundStyle(.secondary)
       Text(commit.title.isEmpty ? commit.sha : commit.title).lineLimit(1)
