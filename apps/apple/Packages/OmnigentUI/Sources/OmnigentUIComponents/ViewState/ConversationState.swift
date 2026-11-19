@@ -244,6 +244,11 @@ nonisolated public struct PullRequestSummary: Hashable, Sendable, Identifiable {
   public var status: Status
   /// A second line, for example how the PR joined the session.
   public var detail: String?
+  /// What precedes the number: `#`, or `!` for a GitLab merge request.
+  public var numberPrefix = "#"
+
+  /// The number as its provider writes it: `#12`, or `!12`.
+  public var numberLabel: String { "\(numberPrefix)\(number)" }
 
   /// Creates a pull request summary.
   /// - Parameters:

@@ -36,6 +36,9 @@ struct ServerSettingsPaneTests {
 
   @Test("Admin panes are grouped apart from the rest")
   func adminPanes() {
-    #expect(ServerSettingsPane.allCases.filter(\.isAdmin) == [.members, .policies, .sharing])
+    #expect(
+      ServerSettingsPane.allCases.filter(\.isAdmin) == [
+        .adminGeneral, .members, .policies, .sharing,
+      ])
   }
 }

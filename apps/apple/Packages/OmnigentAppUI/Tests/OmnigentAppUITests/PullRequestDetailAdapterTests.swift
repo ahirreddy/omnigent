@@ -184,6 +184,20 @@ struct PullRequestDetailAdapterTests {
     #expect(stored.hint == "To load the PR details, please reconnect the session\u{2019}s host.")
   }
 
+  @Test func aGitLabMergeRequestKeepsItsNumberPrefixInRowsTheChipAndTheStoredDetail() {
+    var request = SessionPullRequest(
+      url: url, host: "gitlab.example.com", repository: "o/r", number: 7, title: nil,
+      relationship: "created", providerName: "GitLab", numberPrefix: "!", status: .open,
+      stateCheckedAt: nil)
+    let row = PullRequestAdapter.summary(request)
+    #expect(row.numberLabel == "!7")
+    #expect(row.title == "Pull request !7")
+    #expect(PullRequestDetailAdapter.stored(request).numberLabel == "!7")
+    #expect(PullRequestDetailAdapter.stored(request).title == "o/r !7")
+    request.numberPrefix = "#"
+    #expect(PullRequestAdapter.summary(request).numberLabel == "#7")
+  }
+
   @Test func aLiveConditionColorsAnOpenRowButNotAMergedOne() {
     let open = SessionPullRequest(
       url: url, host: "github.com", repository: "o/r", number: 7, title: "Fix",

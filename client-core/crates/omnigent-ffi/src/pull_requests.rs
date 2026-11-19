@@ -90,6 +90,9 @@ pub struct SessionPullRequest {
     pub relationship: String,
     /// The git provider's display name ("GitHub"), when known.
     pub provider_name: Option<String>,
+    /// What precedes the number: `#`, or `!` for a GitLab merge request.
+    #[uniffi(default = "#")]
+    pub number_prefix: String,
     /// Where it stands.
     pub status: PullRequestStatus,
     /// Epoch seconds of the fetch that read the state.
@@ -109,6 +112,7 @@ impl From<core::SessionPullRequest> for SessionPullRequest {
             title: pr.title,
             relationship: pr.relationship,
             provider_name: pr.provider_name,
+            number_prefix: pr.number_prefix,
             status: pr.status.into(),
             state_checked_at: pr.state_checked_at,
             provider: pr.provider,

@@ -82,6 +82,35 @@ struct ServerSettingsAdapterTests {
     #expect(ServerSettingsAdapter.update(.publicSharing(false)).mode == nil)
   }
 
+  @Test("Admin › General shows where nested agents start, for admins and a single-user owner")
+  func adminGeneral() {
+    var owner = info(admin: false, singleUser: true)
+    owner.nestedAgents = true
+    #expect(
+      ServerSettingsAdapter.panes(owner)
+        == [.harnesses, .git, .importSessions, .adminGeneral, .archived])
+    var member = info(admin: false)
+    member.nestedAgents = true
+    #expect(!ServerSettingsAdapter.panes(member).contains(.adminGeneral))
+    var record = SharingSettingsRecord(
+      mode: "on", modeEditable: true, modeOptions: ["on"], publicSharing: false,
+      publicSharingEditable: false, publicMaxLevel: nil, publicMaxLevelEditable: false,
+      publicMaxLevelOptions: [], defaultPublicSessions: nil, defaultPublicSessionsEditable: false,
+      defaultPublicSessionsOptions: [])
+    record.nestedAgentDestinations = "any_host"
+    record.nestedAgentDestinationsEditable = true
+    record.nestedAgentDestinationsOptions = ["current_host", "any_host"]
+    let state = ServerSettingsAdapter.sharing(record)
+    #expect(state.nestedAgentDestinations == "any_host")
+    #expect(
+      state.nestedAgentDestinationChoices.map(\.title) == [
+        "Current host only", "Any available host",
+      ])
+    #expect(
+      ServerSettingsAdapter.update(.nestedAgentDestinations("current_host"))
+        .nestedAgentDestinations == "current_host")
+  }
+
   @Test("an import tally reads as one line")
   func importSummary() {
     let result = ImportResultRecord(

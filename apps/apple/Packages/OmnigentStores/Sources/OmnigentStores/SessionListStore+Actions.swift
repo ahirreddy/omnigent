@@ -86,26 +86,36 @@ extension SessionListStore {
     await perform { core in try await core.stopSession(sessionId: sessionID) }
   }
 
-  /// Deletes `sessionID` and its history (owner).
-  /// - Parameter sessionID: The session.
+  /// Deletes `sessionID` and its history (owner), after the automation that runs from it.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - automation: The automation that runs from it, deleted first; a failure keeps the
+  ///     session.
   /// - Returns: Whether it was deleted.
   @discardableResult
-  public func delete(_ sessionID: String) async -> Bool {
+  public func delete(_ sessionID: String, automation: String? = nil) async -> Bool {
     await whileDeparting([sessionID]) {
-      await perform { core in try await core.deleteSession(sessionId: sessionID) }
+      await perform { core in
+        if let automation { try await core.deleteSourceAutomation(id: automation) }
+        try await core.deleteSession(sessionId: sessionID)
+      }
     }
   }
 
   /// Deletes `sessionID` and its history, and with `deleteBranch` its worktree's local git
-  /// branch (irreversible).
+  /// branch (irreversible), after the automation that runs from it.
   /// - Parameters:
   ///   - sessionID: The session.
   ///   - deleteBranch: Also delete the branch.
+  ///   - automation: The automation that runs from it, deleted first.
   /// - Returns: Whether it was deleted.
   @discardableResult
-  public func delete(_ sessionID: String, deleteBranch: Bool) async -> Bool {
+  public func delete(_ sessionID: String, deleteBranch: Bool, automation: String? = nil) async
+    -> Bool
+  {
     await whileDeparting([sessionID]) {
       await perform { core in
+        if let automation { try await core.deleteSourceAutomation(id: automation) }
         try await core.deleteSessionWithBranch(sessionId: sessionID, deleteBranch: deleteBranch)
       }
     }

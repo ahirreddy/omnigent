@@ -1248,6 +1248,25 @@ impl<T: HttpTransport> ClientCore<T> {
         result
     }
 
+    /// Deletes the automation that runs from a session about to be deleted (the web's
+    /// `useDeleteSourceAutomations`); one already gone counts as deleted.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; the write errors other than 404, which keep the session.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn delete_source_automation(&self, id: &str) -> Result<(), SessionError> {
+        let result = match self.automation_write("DELETE", id, "").await {
+            Err(SessionError::Rejected { status: 404, .. }) => Ok(()),
+            other => other,
+        };
+        self.dispatch();
+        result
+    }
+
     /// One page of the automations other users shared with the caller
     /// (`GET /v1/scheduled-tasks/shared`), after `after`'s cursor.
     ///

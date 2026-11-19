@@ -47,6 +47,11 @@ struct NewProjectRepositoryTests {
     #expect(view.newProjectRunChoices.map(\.id) == ["mac", "__sandbox__:modal"])
     #expect(view.newProjectRunChoices.last?.isSandbox == true)
     #expect(view.repositoryProjectActions().create != nil)
+    // The repository comes from the web's picker: one, from GitHub or a URL.
+    let picker = try #require(view.repositoryProjectActions().repositoryPicker)
+    let state = picker([SandboxRepoChoice(url: "https://github.com/org/app", branch: "main")])
+    #expect(state.maxRepos == 1)
+    #expect(state.repos.map(\.branch) == ["main"])
 
     let (plain, _) = try await opened(features: "")
     #expect(plain.newProjectRunChoices.isEmpty)

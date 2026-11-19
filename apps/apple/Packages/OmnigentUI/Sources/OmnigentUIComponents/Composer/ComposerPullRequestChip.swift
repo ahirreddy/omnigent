@@ -91,7 +91,7 @@ struct ComposerPullRequestPreview: View {
       PullRequestStatusIcon(status: request.status)
       VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
         HStack(alignment: .firstTextBaseline) {
-          Text("\(request.repo) #\(request.number)")
+          Text("\(request.repo) \(request.numberLabel)")
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)

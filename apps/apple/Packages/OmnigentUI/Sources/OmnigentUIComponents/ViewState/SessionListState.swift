@@ -54,6 +54,8 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
   public var isNestedMember: Bool
   /// The nested-agent family it belongs to; `nil` for a session on its own or someone else's.
   public var family: SessionFamilyInfo?
+  /// The automation whose runs start from a copy of it; deleting the session deletes it too.
+  public var automationSourceID: String?
 
   /// Creates a summary.
   /// - Parameters:
@@ -231,6 +233,9 @@ public struct SessionListActions {
   public var stop: (@MainActor (SessionSummary) -> Void)?
   /// Delete (after confirmation).
   public var delete: (@MainActor (SessionSummary) -> Void)?
+  /// Deleting a session an automation runs from deletes the automation too, so the
+  /// confirmation says so (automations are on).
+  public var deletesSourceAutomations = false
   /// Delete, also removing the session's worktree branch when `true` (irreversible). When set,
   /// the delete confirmation offers the cleanup for sessions with a branch.
   public var deleteWithBranch: (@MainActor (SessionSummary, _ deleteBranch: Bool) -> Void)?

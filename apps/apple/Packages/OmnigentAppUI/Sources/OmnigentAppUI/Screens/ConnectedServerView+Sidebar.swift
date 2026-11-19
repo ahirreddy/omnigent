@@ -226,7 +226,10 @@ extension ConnectedServerView {
         move(summary.id, to: project.map(ProjectSummary.init))
       },
       stop: { summary in Task { await list.stop(summary.id) } },
-      delete: { summary in removeSession(summary.id) { await list.delete($0) } },
+      delete: { summary in
+        let automation = deletedAutomation(summary)
+        removeSession(summary.id) { await list.delete($0, automation: automation) }
+      },
       leave: { summary in removeSession(summary.id) { await list.leave($0) } },
       openInNewWindow: openInWindow,
       webURL: { SidebarAdapter.webURL(server: server, sessionID: $0.id) },
@@ -235,8 +238,12 @@ extension ConnectedServerView {
         if connection.isOffline { session.reconnect() } else { connection.refreshSessions() }
       })
     actions.deleteWithBranch = { summary, deleteBranch in
-      removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
+      let automation = deletedAutomation(summary)
+      removeSession(summary.id) {
+        await list.delete($0, deleteBranch: deleteBranch, automation: automation)
+      }
     }
+    actions.deletesSourceAutomations = connection.pages?.offered?.automations == true
     actions.isUnread = { list.isUnread($0) }
     if NestedAgentGate.offered(connection) {
       actions.addNestedAgent = { addNestedAgent(beside: $0.id) }

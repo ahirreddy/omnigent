@@ -66,11 +66,14 @@ enum PullRequestAdapter {
     let status = live.map(PullRequestDetailAdapter.status).flatMap { settled ? nil : $0 } ?? stored
     let detail = [relationship(pullRequest.relationship), checked(pullRequest, now: now)]
       .compactMap(\.self).joined(separator: " \u{00B7} ")
-    return PullRequestSummary(
+    let number = "\(pullRequest.numberPrefix)\(pullRequest.number)"
+    var summary = PullRequestSummary(
       id: pullRequest.url, number: Int(clamping: pullRequest.number),
-      title: pullRequest.title ?? "Pull request #\(pullRequest.number)",
+      title: pullRequest.title ?? "Pull request \(number)",
       repo: pullRequest.repository, url: pullRequest.url, status: status,
       detail: detail.isEmpty ? nil : detail)
+    summary.numberPrefix = pullRequest.numberPrefix
+    return summary
   }
 
   private static func relationship(_ relationship: String) -> String? {

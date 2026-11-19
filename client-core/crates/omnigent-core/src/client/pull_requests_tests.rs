@@ -80,8 +80,10 @@ fn session_pull_requests_page_through_the_list_and_map_states() {
             r#"{"object":"list","data":[
                 {"url":"https://github.com/o/r/pull/2","host":"github.com","repository":"o/r",
                  "number":2,"title":" ","relationship":"inferred","state":"MERGED"},
-                {"url":"https://github.com/o/r/pull/3","host":"github.com","repository":"o/r",
-                 "number":3,"relationship":"attached","state":null}],
+                {"url":"https://gitlab.example.com/o/r/-/merge_requests/3","host":"gitlab.example.com",
+                 "repository":"o/r","number":3,"relationship":"attached","state":null,
+                 "provider":"gitlab",
+                 "provider_display":{"display_name":"GitLab","number_prefix":"!"}}],
               "last_id":"https://github.com/o/r/pull/3","has_more":false,"synced":true}"#,
         ),
     );
@@ -100,6 +102,11 @@ fn session_pull_requests_page_through_the_list_and_map_states() {
     );
     assert_eq!(list.pull_requests[1].status, PullRequestStatus::Merged);
     assert_eq!(list.pull_requests[2].status, PullRequestStatus::Unknown);
+    assert_eq!(
+        first.number_prefix, "#",
+        "GitHub, or a server that predates the prefix"
+    );
+    assert_eq!(list.pull_requests[2].number_prefix, "!");
     let requests = core.transport().taken();
     let reads: Vec<_> = requests.iter().filter(|r| r.url.contains(PATH)).collect();
     assert_eq!(reads.len(), 2);

@@ -118,6 +118,9 @@ enum ServerSettingsAdapter {
     if !info.connections.isEmpty { panes.append(.integrations) }
     if info.sessionTitleInstructions { panes.append(.sessions) }
     panes += [.git, .importSessions]
+    // As the web's Admin › General: admins and a single-user owner pick where nested agents
+    // start.
+    if info.nestedAgents, info.isAdmin || info.singleUser { panes.append(.adminGeneral) }
     // Members and Sharing mean nothing without other users.
     if info.isAdmin, !info.singleUser { panes.append(.members) }
     if info.isAdmin { panes.append(.policies) }
@@ -202,7 +205,7 @@ enum ServerSettingsAdapter {
   }
 
   static func sharing(_ sharing: SharingSettingsRecord) -> SharingViewState {
-    SharingViewState(
+    var state = SharingViewState(
       mode: sharing.mode, modeChoices: choices(sharing.modeOptions, current: sharing.mode),
       modeEditable: sharing.modeEditable, publicSharing: sharing.publicSharing,
       publicSharingEditable: sharing.publicSharingEditable, publicLevel: sharing.publicMaxLevel,
@@ -212,6 +215,11 @@ enum ServerSettingsAdapter {
       defaultPublicChoices: choices(
         sharing.defaultPublicSessionsOptions, current: sharing.defaultPublicSessions),
       defaultPublicEditable: sharing.defaultPublicSessionsEditable)
+    state.nestedAgentDestinations = sharing.nestedAgentDestinations
+    state.nestedAgentDestinationChoices = choices(
+      sharing.nestedAgentDestinationsOptions, current: sharing.nestedAgentDestinations)
+    state.nestedAgentDestinationsEditable = sharing.nestedAgentDestinationsEditable
+    return state
   }
 
   /// The menu choices, keeping the current value listed when the options omit it.
@@ -221,18 +229,18 @@ enum ServerSettingsAdapter {
     return values.map { SettingChoice(id: $0, title: sharingTitle($0)) }
   }
 
+  /// The web's words for the sharing and nested-agent settings' values.
+  private static let sharingTitles = [
+    "on": "Anyone can share", "read_only": "Read-only sharing",
+    "restricted_read_only": "Read-only, with people on this server", "off": "Off",
+    "read": "Read", "edit": "Edit", "sandbox": "Cloud sandbox sessions", "all": "All sessions",
+    "current_host": "Current host only",
+    "current_host_or_new_sandbox": "Current host or new sandbox",
+    "any_host": "Any available host",
+  ]
+
   static func sharingTitle(_ value: String) -> String {
-    switch value {
-    case "on": "Anyone can share"
-    case "read_only": "Read-only sharing"
-    case "restricted_read_only": "Read-only, with people on this server"
-    case "off": "Off"
-    case "read": "Read"
-    case "edit": "Edit"
-    case "sandbox": "Cloud sandbox sessions"
-    case "all": "All sessions"
-    default: value.replacingOccurrences(of: "_", with: " ").capitalized
-    }
+    sharingTitles[value] ?? value.replacingOccurrences(of: "_", with: " ").capitalized
   }
 
   /// The SharingUpdate for one change.
@@ -242,6 +250,7 @@ enum ServerSettingsAdapter {
     case .publicSharing(let enabled): SharingUpdateRecord(publicSharing: enabled)
     case .publicLevel(let level): SharingUpdateRecord(publicMaxLevel: level)
     case .defaultPublic(let value): SharingUpdateRecord(defaultPublicSessions: value)
+    case .nestedAgentDestinations(let value): SharingUpdateRecord(nestedAgentDestinations: value)
     }
   }
 

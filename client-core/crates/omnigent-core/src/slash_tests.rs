@@ -24,6 +24,7 @@ const NO_OPTIONS: SlashOptions = SlashOptions {
     claude_sdk_clears: false,
     rewinds: false,
     goal: false,
+    workflows: false,
 };
 
 fn act(
@@ -47,6 +48,30 @@ fn names(commands: &[SlashCommand]) -> Vec<String> {
         .iter()
         .map(|command| format!("{}{}", command.prefix, command.name))
         .collect()
+}
+
+#[test]
+fn workflow_skills_show_only_while_workflows_are_on() {
+    let skills = [skill("workflow"), skill("save-workflow"), skill("triage")];
+    let claude = session("claude-native");
+    let skill_names = |options: &SlashOptions| {
+        let commands = slash_commands(&claude, &skills, options);
+        let skill_rows: Vec<SlashCommand> = commands
+            .into_iter()
+            .filter(|command| command.is_skill)
+            .collect();
+        names(&skill_rows)
+    };
+    assert_eq!(skill_names(&NO_OPTIONS), ["/triage"]);
+    let on = SlashOptions {
+        workflows: true,
+        ..NO_OPTIONS
+    };
+    assert_eq!(skill_names(&on), ["/workflow", "/save-workflow", "/triage"]);
+    assert!(is_workflow_skill("save-workflow") && !is_workflow_skill("triage"));
+    let info = json!({"features": {"workflows": true}});
+    assert!(SlashOptions::from_info(&info).unwrap().workflows);
+    assert!(!SlashOptions::from_info(&json!({})).unwrap().workflows);
 }
 
 #[test]

@@ -179,6 +179,9 @@
         showChat(sessionID)
       case .page(let page):
         selection = DeepLinkDestinations.selection(for: page)
+      case .automation(let id):
+        session?.connection.pages?.requestedAutomationID = id
+        selection = .automations
       case .settings(let section):
         // The screen shows the scene's own server.
         openSettingsAt?(DeepLinkDestinations.settings(section: section, server: nil))

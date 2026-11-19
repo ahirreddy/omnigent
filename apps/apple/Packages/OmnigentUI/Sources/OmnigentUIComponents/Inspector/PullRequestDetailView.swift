@@ -13,6 +13,7 @@ struct PullRequestDetailView: View {
   @State private var tab: PullRequestDetailTab = .summary
   @State private var linking = false
   @State private var descriptionDraft: PullRequestDescriptionDraft?
+  @State private var commentDraft = ""
 
   private var actions: PullRequestPanelActions { extras.actions }
 
@@ -119,7 +120,8 @@ struct PullRequestDetailView: View {
         PullRequestSummaryView(
           state: state, extras: extras, open: open, draft: $descriptionDraft)
       case .comments:
-        PullRequestCommentsView(state: state, extras: extras, open: open)
+        PullRequestCommentsView(
+          state: state, extras: extras, open: open, keptDraft: $commentDraft)
       case .changes:
         if let changes = extras.changes {
           changes
@@ -131,7 +133,10 @@ struct PullRequestDetailView: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .onChange(of: state.url) { descriptionDraft = nil }
+    .onChange(of: state.url) {
+      descriptionDraft = nil
+      commentDraft = ""
+    }
     .onChange(of: extras.opensChanges, initial: true) { _, opens in
       guard opens else { return }
       tab = .changes

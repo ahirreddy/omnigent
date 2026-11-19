@@ -75,7 +75,12 @@ pub fn directory_failure_message(reason: &str) -> &'static str {
         "That folder already exists. Choose a different folder."
     } else if says(&["permission denied", "not your host"]) {
         "You can\u{2019}t create folders there. Reconnect your host or choose another location."
-    } else if says(&["host not found", "host is offline", "host unavailable", "disconnected"]) {
+    } else if says(&[
+        "host not found",
+        "host is offline",
+        "host unavailable",
+        "disconnected",
+    ]) {
         "The host is offline. Reconnect it and try again."
     } else if says(&["timeout", "timed out"]) {
         "The host didn\u{2019}t respond. Check its connection and try again."
@@ -297,12 +302,13 @@ impl<T: HttpTransport> ClientCore<T> {
                     config.insert("workspace".into(), json!(workspace));
                 }
             }
-            let mut body = json!({"name": name});
+            let mut body = Map::new();
+            body.insert("name".into(), json!(name));
             if !config.is_empty() {
-                body["config"] = Value::Object(config);
+                body.insert("config".into(), Value::Object(config));
             }
             let created = self
-                .write_json("POST", "/v1/projects", &body)
+                .write_json("POST", "/v1/projects", &Value::Object(body))
                 .await
                 .map_err(|error| rejected(project_failure_message(&error)))?;
             project_from(&created).map_err(|detail| SessionError::DeliveryUncertain {

@@ -48,6 +48,27 @@ extension ConnectedServerView {
       case .failure(let error): return error.message
       }
     }
+    addFolderActions(to: &actions)
+    actions.problem = { url, branch in projectRepositoryProblem(url: url, branch: branch) }
+    let sandboxes = connection.sandboxes()
+    addRepositoryPicker(to: &actions, sandboxes: sandboxes)
+    actions.cloneDestination = { defaultCloneDestination(url: $0) }
+    actions.loadChoices = {
+      Task {
+        if let creation = connection.creation(), creation.catalog.value == nil {
+          await creation.loadCatalog()
+        }
+        if let sandboxes, connection.creationStore?.catalog.value?.githubConnection == true {
+          await sandboxes.loadGithubRepos()
+        }
+      }
+    }
+    return actions
+  }
+
+  /// A Folder project: made on the chosen host, in a folder picked or created there.
+  private func addFolderActions(to actions: inout ProjectCreationActions) {
+    let connection = connection
     actions.createFolderProject = { name, icon, draft in
       let hostID = draft.namesHost ? draft.targetID : nil
       let made = await connection.sessionList.createFolderProject(
@@ -71,12 +92,23 @@ extension ConnectedServerView {
         .map(NewSessionAdapter.listing)
         .mapError { FolderBrowseError(message: $0.message) }
     }
-    actions.problem = { url, branch in projectRepositoryProblem(url: url, branch: branch) }
-    actions.cloneDestination = { defaultCloneDestination(url: $0) }
-    actions.loadChoices = {
-      guard let creation = connection.creation(), creation.catalog.value == nil else { return }
-      Task { await creation.loadCatalog() }
+  }
+
+  /// The web's repository picker: the caller's GitHub repositories, or a URL; one repository.
+  private func addRepositoryPicker(
+    to actions: inout ProjectCreationActions, sandboxes: SandboxStore?
+  ) {
+    let connection = connection
+    actions.repositoryPicker = { repos in
+      var choices = SandboxChoices()
+      choices.repos = repos
+      var state = choices.repositoriesState(
+        connection.creationStore?.catalog.value, sandboxes: sandboxes)
+      state.maxRepos = 1
+      return state
     }
-    return actions
+    actions.repositoryPickerActions = { set in
+      SandboxChoices.repositoryActions(sandboxes, set: set)
+    }
   }
 }

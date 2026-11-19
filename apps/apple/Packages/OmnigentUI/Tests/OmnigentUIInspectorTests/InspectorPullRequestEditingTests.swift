@@ -70,6 +70,25 @@
       #expect(try !screen.shows("No comments yet."))
     }
 
+    @Test("A kept comment draft shows again, and one over the limit says why it can't post")
+    func keptCommentDraft() throws {
+      var state = PullRequestFixture.detail
+      state.canComment = true
+      var extras = PullRequestPanelExtras()
+      extras.actions.comment = { _, done in done(true) }
+      extras.actions.commentProblem = {
+        $0.count > 5 ? "A comment can be at most 5 characters." : nil
+      }
+      let screen = OffscreenWindow(
+        AnyView(
+          PullRequestCommentsView(
+            state: state, extras: extras, open: nil, keptDraft: .constant("Looks too long"))),
+        width: 600, height: 300)
+      defer { screen.close() }
+      #expect(screen.firstTextField?.stringValue == "Looks too long")
+      #expect(try screen.shows("A comment can be at most 5 characters."))
+    }
+
     /// Holds the description draft the detail view would.
     private struct DescriptionHost: View {
       let state: PullRequestDetailViewState

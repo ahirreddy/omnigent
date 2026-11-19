@@ -18,6 +18,8 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
   case git
   /// Import local sessions from a host.
   case importSessions
+  /// Admin › General: where nested agents may start (admin, or a single-user owner).
+  case adminGeneral
   /// Members (admin).
   case members
   /// Policies (admin).
@@ -44,6 +46,7 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
     case .members: "Members"
     case .policies: "Policies"
     case .sharing: "Sharing"
+    case .adminGeneral: "General"
     case .archived: "Archived Sessions"
     }
   }
@@ -62,12 +65,13 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
     case .members: "person.2"
     case .policies: "hand.raised"
     case .sharing: "person.badge.plus"
+    case .adminGeneral: "gearshape.2"
     case .archived: "archivebox"
     }
   }
 
   /// Admin panes are grouped under Admin.
-  public var isAdmin: Bool { [.members, .policies, .sharing].contains(self) }
+  public var isAdmin: Bool { [.adminGeneral, .members, .policies, .sharing].contains(self) }
 }
 
 /// A harness the server knows.
@@ -272,6 +276,12 @@ nonisolated public struct SharingViewState: Hashable, Sendable {
   public var defaultPublicChoices: [SettingChoice]
   /// The default can be changed.
   public var defaultPublicEditable: Bool
+  /// Where a nested agent may start; `nil` on a server that predates the setting.
+  public var nestedAgentDestinations: String?
+  /// Destinations.
+  public var nestedAgentDestinationChoices: [SettingChoice] = []
+  /// The destinations can be changed.
+  public var nestedAgentDestinationsEditable = false
 
   /// Creates sharing state.
   /// - Parameters:
@@ -317,4 +327,6 @@ nonisolated public enum SharingChange: Hashable, Sendable {
   case publicLevel(String)
   /// Which new sessions start public.
   case defaultPublic(String)
+  /// Where nested agents may start.
+  case nestedAgentDestinations(String)
 }

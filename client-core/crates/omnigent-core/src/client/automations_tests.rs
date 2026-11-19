@@ -339,6 +339,30 @@ fn an_incomplete_draft_or_bad_id_sends_nothing() {
 }
 
 #[test]
+fn a_sessions_automation_already_gone_counts_as_deleted() {
+    let core = connected(RouteTransport::local());
+    core.transport().respond(
+        Some("DELETE"),
+        "/v1/scheduled-tasks/gone",
+        None,
+        Reply::json(404, r#"{"detail":"Not found","code":"not_found"}"#),
+    );
+    core.transport().respond(
+        Some("DELETE"),
+        "/v1/scheduled-tasks/stuck",
+        None,
+        Reply::json(409, r#"{"detail":"busy"}"#),
+    );
+    core.transport().ok("/v1/scheduled-tasks/t1", "{}");
+    block_on(core.delete_source_automation("t1")).unwrap();
+    block_on(core.delete_source_automation("gone")).unwrap();
+    assert!(matches!(
+        block_on(core.delete_source_automation("stuck")),
+        Err(SessionError::Rejected { status: 409, .. })
+    ));
+}
+
+#[test]
 fn pages_follow_what_the_server_advertises() {
     let current = json!({"automations_enabled": true, "scheduled_task_session_modes": true,
         "features": {"usage_page": true, "canvas": true}, "archive_worktree_cleanup": true,

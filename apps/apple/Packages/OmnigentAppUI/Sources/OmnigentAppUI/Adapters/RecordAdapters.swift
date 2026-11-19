@@ -180,6 +180,7 @@ nonisolated extension OmnigentUIComponents.SessionSummary {
       attention: OmnigentUIComponents.SessionAttentionState(attention.state),
       canStop: summary.canStop, isNestedMember: summary.isNestedMember,
       family: summary.family.map(SessionFamilyInfo.init))
+    automationSourceID = summary.automationSourceId
   }
 }
 

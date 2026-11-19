@@ -22,11 +22,11 @@ extension PullRequestDetailAdapter {
       let date = Date(timeIntervalSince1970: seconds)
       return "Last sync time: \(date.formatted(date: .abbreviated, time: .shortened)). "
     }
+    let number = "\(pullRequest.numberPrefix)\(pullRequest.number)"
     return PullRequestStoredViewState(
       url: pullRequest.url,
-      title: title.flatMap { $0.isEmpty ? nil : $0 }
-        ?? "\(pullRequest.repository) #\(pullRequest.number)",
-      numberLabel: "#\(pullRequest.number)", repository: pullRequest.repository,
+      title: title.flatMap { $0.isEmpty ? nil : $0 } ?? "\(pullRequest.repository) \(number)",
+      numberLabel: number, repository: pullRequest.repository,
       status: PullRequestAdapter.summary(pullRequest).status,
       providerName: pullRequest.providerName ?? "GitHub",
       hint: (synced ?? "") + "To load the PR details, please reconnect the session\u{2019}s host.")

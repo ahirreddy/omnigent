@@ -96,6 +96,12 @@ public struct ProjectCreationActions {
   /// Lists a host's folders, for Browse.
   public var browse:
     (@MainActor (String, String?) async -> Result<FolderListing, FolderBrowseError>)?
+  /// The repository picker's state for the chosen repository: the caller's GitHub
+  /// repositories and their branches. `nil` keeps the URL and branch fields.
+  public var repositoryPicker: (@MainActor ([SandboxRepoChoice]) -> SandboxRepositoriesState)?
+  /// The picker's actions; the closure stores the chosen repository.
+  public var repositoryPickerActions:
+    (@MainActor (@escaping @MainActor ([SandboxRepoChoice]) -> Void) -> SandboxRepositoriesActions)?
 
   /// Creates actions; every one is optional.
   public init() {}
@@ -224,12 +230,25 @@ struct ProjectRepositoryFields: View {
 
   private var repository: some View {
     Section {
-      TextField("Repository URL", text: $draft.url, prompt: Text("https://github.com/org/repo"))
-        .autocorrectionDisabled()
-        .accessibilityIdentifier("project-repository-url")
-      TextField("Branch", text: $draft.branch, prompt: Text("Default branch"))
-        .autocorrectionDisabled()
-        .accessibilityIdentifier("project-repository-branch")
+      if let picker = actions.repositoryPicker, let pickerActions = actions.repositoryPickerActions
+      {
+        // As the web's SandboxRepositoryPicker: the caller's GitHub repositories or a URL.
+        let chosen =
+          draft.url.isEmpty ? [] : [SandboxRepoChoice(url: draft.url, branch: draft.branch)]
+        SandboxRepositoriesEditor(
+          state: picker(chosen),
+          actions: pickerActions { repos in
+            draft.url = repos.first?.url ?? ""
+            draft.branch = repos.first?.branch ?? ""
+          })
+      } else {
+        TextField("Repository URL", text: $draft.url, prompt: Text("https://github.com/org/repo"))
+          .autocorrectionDisabled()
+          .accessibilityIdentifier("project-repository-url")
+        TextField("Branch", text: $draft.branch, prompt: Text("Default branch"))
+          .autocorrectionDisabled()
+          .accessibilityIdentifier("project-repository-branch")
+      }
       if !isSandbox {
         HStack(spacing: Theme.Spacing.small) {
           TextField(

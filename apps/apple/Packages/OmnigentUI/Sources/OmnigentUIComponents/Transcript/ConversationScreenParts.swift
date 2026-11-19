@@ -173,20 +173,29 @@ struct SessionMenuDialogs: ViewModifier {
 
   private var offersBranch: Bool { branch != nil && actions.deleteWithBranch != nil }
 
+  /// That deleting `session` also deletes the automation that runs from it.
+  private func automationNotice(_ session: SessionSummary?) -> String? {
+    guard actions.deletesSourceAutomations, session?.automationSourceID != nil else { return nil }
+    return DeleteSessionsSheet.automationNotice(count: 1, total: 1)
+  }
+
   func body(content: Content) -> some View {
     content
       .stopSessionConfirmation($confirmingStop, runsOnHost: { _ in false }, stop: actions.stop)
       .sessionRenamePrompt($renaming, text: $renameText, rename: actions.rename)
       .confirmationDialog(
-        "Delete this session?",
+        automationNotice(confirmingDelete) == nil
+          ? "Delete this session?" : "Delete session and automation?",
         isPresented: Binding(
           get: { confirmingDelete != nil && !offersBranch },
           set: { if !$0 { confirmingDelete = nil } }),
         presenting: confirmingDelete
       ) { session in
         Button("Delete", role: .destructive) { actions.delete?(session) }
-      } message: { _ in
-        Text("This permanently deletes the session and its history.")
+      } message: { session in
+        Text(
+          ["This permanently deletes the session and its history.", automationNotice(session)]
+            .compactMap(\.self).joined(separator: " "))
       }
       .sheet(
         item: Binding(
@@ -198,7 +207,7 @@ struct SessionMenuDialogs: ViewModifier {
             actions.deleteWithBranch?(session, branchIDs.contains(session.id))
             confirmingDelete = nil
           },
-          cancel: { confirmingDelete = nil })
+          cancel: { confirmingDelete = nil }, automationNotice: automationNotice(session))
       }
       .confirmationDialog(
         "Leave this session?",
