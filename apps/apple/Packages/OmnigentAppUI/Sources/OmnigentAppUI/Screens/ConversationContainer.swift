@@ -16,6 +16,10 @@ struct ConversationContainer: View {
   let workspace: WorkspaceBrowserModel?
   /// The right panel's server data (panel features, pull requests).
   let panel: SessionPanelStore?
+  /// The Tasks tab's journal.
+  var tasks: SessionTasksStore?
+  /// The window's message focus, where a task's Show in the chat scrolls.
+  var transcriptFocus: TranscriptFocus?
   /// The file changes that reached this chat's workspace, read by ``ChangedFilesFollower`` and
   /// not here.
   let changedFilesRevision: @MainActor () -> Int
@@ -79,6 +83,9 @@ struct ConversationContainer: View {
   // The liveness row's open sheet; a send can open Resume on a Machine.
   // swiftlint:disable:next private_swiftui_state
   @State var livenessSheets = SessionLivenessSheets()
+  // One object for the chat's task markers, so the environment holding it stays the same.
+  // swiftlint:disable:next private_swiftui_state
+  @State var markerLinks = TaskMarkerLinks()
 
   /// The session's grants once read, for author badges.
   var loadedGrants: [OmnigentCoreFFI.SessionGrant] { shareStore?.grants.value ?? [] }
@@ -103,6 +110,8 @@ struct ConversationContainer: View {
       .modifier(TerminalPageFocus(surface: harnessSurface))
     }
     .modifier(MessageMediaEnvironment(fileLinks: fileLinks, conversation: conversation))
+    .environment(\.taskMarkerLinks, taskMarkerLinks)
+    .task(id: conversation.sessionID) { await tasks?.load() }
     .task(id: (linkedWorkspace ?? workspace).map(ObjectIdentifier.init)) {
       fileLinks = (linkedWorkspace ?? workspace).map(MarkdownLinksAdapter.links)
     }
@@ -229,6 +238,16 @@ struct ConversationContainer: View {
         showPullRequests()
         Task { await panel?.showPullRequest(url) }
       })
+  }
+
+  /// Shows the right panel on the Tasks tab: the window's, or this chat's own.
+  func showTasks() {
+    if let panel = tabRoutes?.windowPanel {
+      panel.show(.tasks)
+    } else {
+      inspectorTab = .tasks
+      panelRoute.choice = .open
+    }
   }
 
   /// Attaches the harness TUI once ready (the store keeps it), applying the default view.

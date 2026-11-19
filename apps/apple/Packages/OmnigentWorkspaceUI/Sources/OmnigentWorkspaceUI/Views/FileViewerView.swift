@@ -1,7 +1,7 @@
 public import SwiftUI
 
 /// A file: monospaced text with line numbers and light syntax highlighting, an image with its
-/// size, or a note for binary files. Notices say when the core clipped the text or the server
+/// size, a PDF's pages, a video player, or a note for binary files. Notices say when the core clipped the text or the server
 /// truncated the file. `line` scrolls to and marks a 1-based line, for search results. With an
 /// editor the text can be edited (the Edit mode), and with a review context lines and
 /// selections offer comments and agent actions.
@@ -62,6 +62,15 @@ public struct FileViewerView: View {
         withComments(content(text))
       case .image(let format, let data):
         ImagePreview(format: format, data: data, byteCount: file.byteCount)
+      case .pdf(let data, let truncated):
+        PDFPreviewView(data: data, truncated: truncated)
+      case .video:
+        ScrollView {
+          WorkspaceVideoView(path: file.path, source: source, download: actions.download)
+            .padding(16)
+            .frame(maxWidth: .infinity)
+        }
+        .defaultScrollAnchor(.center)
       case .binary(let reason):
         ContentUnavailableView {
           Label("No Preview", systemImage: "doc.questionmark")
@@ -226,6 +235,11 @@ private struct FileHeader: View {
       parts.append(text.lineEnding.rawValue)
     } else if case .image(let format, _) = file.preview {
       parts.append(format.rawValue)
+    } else if case .pdf = file.preview {
+      parts.append("PDF")
+    } else if case .video = file.preview {
+      // A video is streamed, not read, so its size is not known here.
+      return "Video"
     }
     parts.append(file.byteCount.formatted(.byteCount(style: .file)))
     return parts.joined(separator: "  ")

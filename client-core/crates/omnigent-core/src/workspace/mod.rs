@@ -7,8 +7,10 @@
 //! - [`request`]: [`WorkspaceRequest`], a validated request for one route, built into an
 //!   `HttpRequest` and decoded from the `HttpResponse` with the workspace status policy.
 //! - [`model`], [`content`] and [`search`]: the decoded records: directory pages with cursors,
-//!   file content with binary, image and syntax detection, path search, content search with
-//!   UTF-16 and UTF-8 match ranges, changed files, environments and session files.
+//!   file content with binary, image, PDF, video and syntax detection ([`media`]), path search,
+//!   content search with UTF-16 and UTF-8 match ranges, changed files, environments and session
+//!   files.
+//! - [`download`]: a file's raw bytes, whole or one byte range, without the read cap.
 //! - [`diff`]: a unified-diff model computed from the server's before/after text (pure Rust
 //!   Myers) or parsed from a patch, with hunks, stats and side-by-side rows.
 //! - [`error`]: [`WorkspaceError`], which keeps the server's reason for every failure.
@@ -25,7 +27,9 @@
 mod client;
 pub mod content;
 pub mod diff;
+pub mod download;
 pub mod error;
+pub mod media;
 pub mod model;
 pub mod path;
 pub mod request;
@@ -39,7 +43,12 @@ pub use diff::{
     DiffHunk, DiffLine, DiffLineKind, DiffOptions, DiffParseError, DiffStats, FileChangeKind,
     FileDiff, SplitCell, SplitRow, diff_texts, parse_unified,
 };
+pub use download::{ByteRange, FileDownload};
 pub use error::WorkspaceError;
+pub use media::{
+    CHAPTERS_SUFFIX, VideoChapter, allowed_video_type, is_pdf_file, is_video_file,
+    parse_video_chapters,
+};
 pub use model::{
     ChangeStatus, ChangeTotals, ChangedFileEntry, ChangesList, DirectoryPage, EntryKind,
     FileDiffContent, FileSave, FileWritten, PathSearchResult, SessionFile, SessionFilesPage,
@@ -47,8 +56,8 @@ pub use model::{
 };
 pub use path::{MAX_PATH_BYTES, PathError, WorkspacePath, absolute_location};
 pub use request::{
-    DEFAULT_ENVIRONMENT_ID, DirectoryQuery, FileWrite, MAX_DIRECTORY_LIMIT, SessionFilesQuery,
-    WorkspaceOperation, WorkspaceRequest, WorkspaceResponse,
+    DEFAULT_ENVIRONMENT_ID, DirectoryQuery, FileDownloadQuery, FileWrite, MAX_DIRECTORY_LIMIT,
+    SessionFilesQuery, WorkspaceOperation, WorkspaceRequest, WorkspaceResponse,
 };
 pub use search::{
     ContentMatch, ContentSearchFile, ContentSearchQuery, ContentSearchResult, MAX_QUERY_CHARS,

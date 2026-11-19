@@ -7,9 +7,10 @@ import SwiftUI
   import AppKit
 #endif
 
-/// The workspace panel's host hooks: Reveal in Finder and Open in Editor when the session's
-/// folder is on this Mac, Share and Quick Look on iPhone and iPad (the file is read through the
-/// workspace, wherever the session runs), and the conversation's Markdown for file previews.
+/// The workspace panel's host hooks: Download on the Mac, Reveal in Finder and Open in Editor
+/// when the session's folder is on this Mac, Share and Quick Look on iPhone and iPad (downloads
+/// read the whole file through the workspace, wherever the session runs), and the
+/// conversation's Markdown for file previews.
 enum WorkspaceActionsAdapter {
   #if os(macOS)
     /// Opens a file in its default app, or says it couldn't.
@@ -33,6 +34,11 @@ enum WorkspaceActionsAdapter {
   ) -> WorkspaceActions {
     var actions = WorkspaceActions(mention: mention)
     #if os(macOS)
+      // Download reads through the workspace, so it works wherever the session runs.
+      let source = workspace.source
+      actions.download = { path in
+        Task { await WorkspaceFileSaver.save(path, from: source, report: report) }
+      }
       // A remote host's paths mean nothing here; only a folder this Mac can see is offered.
       guard let root = workspace.source.absoluteLocation(of: ""), isLocalFolder(root) else {
         return actions

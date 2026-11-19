@@ -442,6 +442,132 @@ fn workspace_reads_decode_preview_and_diff_in_the_core() {
     );
 }
 
+/// The runner's `_fs_download` answer: the bytes with `Content-Disposition`, and for a range
+/// `206` with `Content-Range`.
+fn download(status: u16, content_range: Option<&str>, body: &[u8]) -> crate::http::HttpResponse {
+    let header = |name: &str, value: &str| crate::http::HttpHeader {
+        name: name.into(),
+        value: value.into(),
+    };
+    let mut headers = vec![
+        header("Content-Type", "video/mp4"),
+        header("Content-Disposition", "attachment; filename=\"demo.mp4\""),
+        header("Accept-Ranges", "bytes"),
+    ];
+    if let Some(range) = content_range {
+        headers.push(header("Content-Range", range));
+    }
+    crate::http::HttpResponse {
+        status,
+        headers,
+        body: body.to_vec(),
+    }
+}
+
+#[test]
+fn a_video_streams_by_range_and_a_download_reads_the_whole_file() {
+    let mut harness = connected();
+    let path = format!(
+        "/v1/sessions/{WORKSPACE_SESSION}/resources/environments/default/filesystem/rec/demo.mp4"
+    );
+    let core = Arc::clone(&harness.core);
+    let file = harness
+        .run(async move {
+            core.read_workspace_file(
+                WORKSPACE_SESSION.into(),
+                "default".into(),
+                "rec/demo.mp4".into(),
+            )
+            .await
+        })
+        .unwrap();
+    assert_eq!(file.preview, FilePreview::Video);
+    assert_eq!(
+        harness.http.count(&path),
+        0,
+        "a video is not read through the envelope"
+    );
+
+    harness
+        .http
+        .route(&path, download(206, Some("bytes 2-4/10"), b"cde"));
+    let core = Arc::clone(&harness.core);
+    let part = harness
+        .run(async move {
+            core.download_workspace_file(
+                WORKSPACE_SESSION.into(),
+                "default".into(),
+                "rec/demo.mp4".into(),
+                Some(2),
+                Some(3),
+            )
+            .await
+        })
+        .unwrap();
+    assert_eq!(
+        (part.offset, part.total_length, part.bytes.as_slice()),
+        (2, Some(10), &b"cde"[..])
+    );
+    assert_eq!(part.content_type.as_deref(), Some("video/mp4"));
+    let sent = lock(&harness.http.requests).last().cloned().unwrap();
+    assert!(
+        sent.url.ends_with("/rec/demo.mp4?download=true"),
+        "{}",
+        sent.url
+    );
+    assert!(
+        sent.headers
+            .iter()
+            .any(|header| header.name == "Range" && header.value == "bytes=2-4"),
+        "{:?}",
+        sent.headers
+    );
+
+    harness
+        .http
+        .route(&path, download(200, None, b"0123456789"));
+    let core = Arc::clone(&harness.core);
+    let whole = harness
+        .run(async move {
+            core.download_workspace_file(
+                WORKSPACE_SESSION.into(),
+                "default".into(),
+                "rec/demo.mp4".into(),
+                None,
+                None,
+            )
+            .await
+        })
+        .unwrap();
+    assert_eq!((whole.offset, whole.total_length), (0, Some(10)));
+    let sent = lock(&harness.http.requests).last().cloned().unwrap();
+    assert!(!sent.headers.iter().any(|header| header.name == "Range"));
+
+    let core = Arc::clone(&harness.core);
+    let half = harness
+        .run(async move {
+            core.download_workspace_file(
+                WORKSPACE_SESSION.into(),
+                "default".into(),
+                "rec/demo.mp4".into(),
+                Some(2),
+                None,
+            )
+            .await
+        })
+        .unwrap_err();
+    assert!(
+        matches!(
+            half,
+            CoreError::Workspace {
+                kind: WorkspaceErrorKind::InvalidInput,
+                ..
+            }
+        ),
+        "{half:?}"
+    );
+}
+
 #[test]
 fn changed_files_invalidation_is_reported_as_an_event() {
     let mut harness = connected();
@@ -497,6 +623,82 @@ fn changed_files_invalidation_is_reported_as_an_event() {
         panic!("{update:?}");
     };
     assert_eq!(files[0].path, "src/a.rs");
+}
+
+#[test]
+fn a_pushed_journal_entry_reaches_the_tasks_tab_and_its_view() {
+    let mut harness = connected();
+    let session = "facbcc05b00f4321b98b1929d217abc5";
+    harness.http.route(
+        &format!("/v1/sessions/{session}"),
+        json(
+            200,
+            &envelope_response("sessions/recorded-session-get-no-items.json"),
+        ),
+    );
+    harness.http.route(
+        &format!("/v1/sessions/{session}/items"),
+        json(200, r#"{"object":"list","data":[],"has_more":false}"#),
+    );
+    harness.core.open_session(session.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(
+        200,
+        vec![crate::http::HttpHeader {
+            name: "Content-Type".into(),
+            value: "text/event-stream".into(),
+        }],
+    );
+    sink.chunk(b"event: session.heartbeat\ndata: {\"type\":\"session.heartbeat\"}\n\n".to_vec());
+    harness.pump();
+    // `SessionJournalAppendedEvent` as main's server sends it.
+    let frame = format!(
+        "event: session.journal.appended\ndata: {{\"type\":\"session.journal.appended\",\"conversation_id\":\"{session}\",\"entry\":{{\"id\":\"p1\",\"position\":0,\"created_at\":1795080000,\"scheduled_task_run_id\":null,\"step\":null,\"author\":{{\"type\":\"agent\"}},\"kind\":\"plan\",\"content\":{{\"version\":1,\"name\":\"Ship\",\"steps\":[{{\"id\":\"a\",\"name\":\"A\",\"goal\":null,\"depends_on\":[]}}],\"graph_revision\":\"r1\"}},\"workflow_id\":null}}}}\n\n"
+    );
+    sink.chunk(frame.into_bytes());
+    harness.pump();
+    let entry = harness
+        .events
+        .all()
+        .into_iter()
+        .find_map(|event| match event {
+            CoreEvent::SessionJournalAppended { session_id, entry } if session_id == session => {
+                Some(entry)
+            }
+            _ => None,
+        })
+        .expect("the entry was reported")
+        .expect("the entry was read");
+    assert_eq!(entry.kind, "plan");
+    assert_eq!(entry.steps[0].id, "a");
+    assert_eq!(
+        entry.graph_revision,
+        Some(crate::session_journal::GraphRevision::Text { value: "r1".into() })
+    );
+    let merged = crate::session_journal::merge_journal_entries(vec![], vec![entry]);
+    let view = crate::session_journal::tasks_view(
+        merged,
+        vec![],
+        vec![],
+        crate::session_journal::TasksContext {
+            session_working: false,
+            awaiting_user: false,
+            can_send: true,
+            journal_read: true,
+        },
+    );
+    assert_eq!(view.plan_name.as_deref(), Some("Ship"));
+    assert_eq!(view.rows[0].state_label, "Ready");
+    assert_eq!(view.rows[0].action_title.as_deref(), Some("Run"));
+    assert_eq!(view.paused.as_deref(), Some("Stopped"));
+    assert!(
+        crate::session_journal::task_action_message(
+            crate::session_journal::TaskAction::Run,
+            "A".into()
+        )
+        .is_some_and(|message| message.starts_with("Run the task \"A\""))
+    );
 }
 
 /// The domain the core classifies as a Databricks workspace.

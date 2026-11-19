@@ -289,20 +289,6 @@ extension SessionListStore {
     }
   }
 
-  /// Re-reads the project list (empty on a server without projects) and its sort mode.
-  public func loadProjects() async {
-    guard let core else { return }
-    do {
-      let projects = try await core.projects()
-      if projects != self.projects { self.projects = projects }
-      let mode = try await core.projectSortMode()
-      if mode != projectSortMode { projectSortMode = mode }
-      if projectsError != nil { projectsError = nil }
-    } catch {
-      projectsError = coreError(error)
-    }
-  }
-
   /// The visible session ids in each project, in display order: sessions the viewer owns that
   /// carry the project's id or legacy label (the core's `projectMembers`).
   /// - Parameter sessions: The sessions to group, in display order.

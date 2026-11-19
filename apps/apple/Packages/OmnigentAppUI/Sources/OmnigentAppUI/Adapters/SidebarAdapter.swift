@@ -150,7 +150,7 @@ enum SidebarAdapter {
       let groups = members(sessions.filter { !pinned.contains($0.id) })
       folders = zip(projects, groups).map { project, ids in
         SessionProject(
-          id: project.id ?? "label:\(project.name)", name: project.name, sessionIds: ids,
+          id: projectFolderId(project: project), name: project.name, sessionIds: ids,
           projectID: project.id, icon: project.icon)
       }
     } else {

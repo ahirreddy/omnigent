@@ -675,6 +675,15 @@ impl Engine {
                 args_json: request.args_json,
             });
         }
+        if let Some(entry) = applied.effects.journal_entry {
+            let entry = omnigent_core::session_journal::JournalEntry::from_value(&entry)
+                .ok()
+                .map(Into::into);
+            self.emit(CoreEvent::SessionJournalAppended {
+                session_id: session_id.to_owned(),
+                entry,
+            });
+        }
         if let Some(environment) = applied.effects.changed_files_environment {
             let sessions = Arc::clone(&self.sessions);
             let id = session_id.to_owned();

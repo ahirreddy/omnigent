@@ -50,6 +50,8 @@ pub struct Effects {
     pub changed_files_environment: Option<String>,
     /// `browser.action_request`: an agent browser action a capable host may claim and run.
     pub browser_action: Option<BrowserActionRequest>,
+    /// `session.journal.appended`: the new entry, for the Tasks tab.
+    pub journal_entry: Option<Value>,
 }
 
 /// One agent browser action the server asked a desktop client to perform.

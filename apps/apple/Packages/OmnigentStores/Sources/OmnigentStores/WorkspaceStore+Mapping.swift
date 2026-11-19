@@ -59,6 +59,10 @@ nonisolated public enum WorkspaceMapping {
       return .text(textPreview(text))
     case .image(let format, let data):
       return .image(format: imageFormat(format), data: data)
+    case .pdf(let data, let truncated):
+      return .pdf(data: data, truncated: truncated)
+    case .video:
+      return .video
     case .binary(let reason, _):
       let mapped: OmnigentWorkspaceUI.BinaryReason =
         switch reason {

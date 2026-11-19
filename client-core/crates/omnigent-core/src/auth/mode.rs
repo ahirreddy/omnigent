@@ -243,19 +243,38 @@ pub fn resolve_mode(
 ///
 /// # Errors
 ///
-/// The status checks of [`check_json_response`], then [`ServerInfo::from_json`].
+/// As [`info_from_response`].
 pub fn discovery_from_info_response(
     endpoint: &ServerEndpoint,
     manifest_auth: Option<&ManifestAuth>,
     response: &HttpResponse,
 ) -> Result<AuthenticationDiscovery, HostedAuthError> {
+    let info = info_from_response(response)?;
+    Ok(discovery_from_info(endpoint, manifest_auth, &info))
+}
+
+/// The `/v1/info` response's auth fields.
+///
+/// # Errors
+///
+/// The status checks of [`check_json_response`], then [`ServerInfo::from_json`].
+pub fn info_from_response(response: &HttpResponse) -> Result<ServerInfo, HostedAuthError> {
     check_json_response(response, false)?;
-    let info = ServerInfo::from_json(&response.body)?;
-    Ok(AuthenticationDiscovery {
-        mode: resolve_mode(endpoint, manifest_auth, &info),
+    ServerInfo::from_json(&response.body)
+}
+
+/// The discovery result `info` gives for `endpoint`.
+#[must_use]
+pub fn discovery_from_info(
+    endpoint: &ServerEndpoint,
+    manifest_auth: Option<&ManifestAuth>,
+    info: &ServerInfo,
+) -> AuthenticationDiscovery {
+    AuthenticationDiscovery {
+        mode: resolve_mode(endpoint, manifest_auth, info),
         base_url: endpoint.base_url().to_owned(),
         needs_setup: info.needs_setup,
-    })
+    }
 }
 
 /// `NativeLab`'s response policy for auth endpoints: 200 (and 202 when `allow_pending`) with a JSON

@@ -51,6 +51,8 @@ pub(crate) fn json(status: u16, body: &str) -> HttpResponse {
 pub(crate) struct FakeHttp {
     routes: Mutex<HashMap<String, HttpResponse>>,
     method_routes: Mutex<HashMap<(String, String), HttpResponse>>,
+    /// Answers for a path whose query carries one `name=value` pair, before any other route.
+    query_routes: Mutex<HashMap<(String, String, String), HttpResponse>>,
     gates: Mutex<HashMap<String, VecDeque<oneshot::Receiver<()>>>>,
     failures: Mutex<HashMap<String, VecDeque<TransportError>>>,
     pub(crate) requests: Mutex<Vec<HttpRequest>>,
@@ -65,6 +67,14 @@ impl FakeHttp {
 
     pub(crate) fn route_method(&self, method: &str, path: &str, response: HttpResponse) {
         lock(&self.method_routes).insert((method.to_owned(), path.to_owned()), response);
+    }
+
+    /// Answers requests to `path` whose query has `name=value` with `response`.
+    pub(crate) fn route_query(&self, path: &str, name: &str, value: &str, response: HttpResponse) {
+        lock(&self.query_routes).insert(
+            (path.to_owned(), name.to_owned(), value.to_owned()),
+            response,
+        );
     }
 
     /// The next request to `path` waits for the returned sender (a dropped sender also frees it).
@@ -93,6 +103,20 @@ impl FakeHttp {
             .count()
     }
 
+    /// `GET /v1/sessions` page reads: every one but the pinned read beside each reload's page.
+    pub(crate) fn list_reads(&self) -> usize {
+        lock(&self.requests)
+            .iter()
+            .filter(|request| {
+                let url = url::Url::parse(&request.url).unwrap();
+                url.path() == "/v1/sessions"
+                    && !url
+                        .query_pairs()
+                        .any(|(name, value)| name == "pinned" && value == "true")
+            })
+            .count()
+    }
+
     /// Requests sent as `METHOD path`.
     pub(crate) fn lines(&self) -> Vec<String> {
         lock(&self.requests)
@@ -118,7 +142,16 @@ impl FakeHttp {
 #[async_trait::async_trait]
 impl HttpTransport for FakeHttp {
     async fn send(&self, request: HttpRequest) -> Result<HttpResponse, TransportError> {
-        let path = url::Url::parse(&request.url).unwrap().path().to_owned();
+        let url = url::Url::parse(&request.url).unwrap();
+        let path = url.path().to_owned();
+        let query_route = {
+            let routes = lock(&self.query_routes);
+            url.query_pairs().find_map(|(name, value)| {
+                routes
+                    .get(&(path.clone(), name.into_owned(), value.into_owned()))
+                    .cloned()
+            })
+        };
         let method = request.method.clone();
         lock(&self.requests).push(request);
         let gate = lock(&self.gates)
@@ -138,6 +171,9 @@ impl HttpTransport for FakeHttp {
             return Err(TransportError::Offline {
                 message: "the network is down".into(),
             });
+        }
+        if let Some(response) = query_route {
+            return Ok(response);
         }
         if let Some(response) = lock(&self.method_routes).get(&(method, path.clone())) {
             return Ok(response.clone());

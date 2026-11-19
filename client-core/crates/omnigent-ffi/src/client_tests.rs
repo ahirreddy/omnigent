@@ -2082,6 +2082,85 @@ fn a_server_that_cannot_be_reached_ends_requests_to_the_old_one_too() {
     assert_no_request_reaches_the_old_server(&mut harness);
 }
 
+/// The requests before the first list read, as `METHOD path`.
+fn requests_before_the_list(harness: &Harness) -> Vec<String> {
+    harness
+        .http
+        .lines()
+        .into_iter()
+        .take_while(|line| line != "GET /v1/sessions")
+        .collect()
+}
+
+#[test]
+fn a_connect_after_discovery_reads_the_manifest_and_info_once_each() {
+    let mut harness = Harness::new(UrlPolicy::Development);
+    harness.local_server();
+    harness
+        .call(|core| async move { core.discover_server(SERVER.into()).await })
+        .unwrap();
+    assert!(matches!(
+        connect(&mut harness).unwrap(),
+        ConnectionPhase::Connected { .. }
+    ));
+    // Three round trips in a row before the sessions: what to sign in with, then who.
+    assert_eq!(
+        requests_before_the_list(&harness),
+        [
+            "GET /.well-known/omnigent.json",
+            "GET /v1/info",
+            "GET /v1/me"
+        ]
+    );
+}
+
+#[test]
+fn a_discovery_that_is_old_or_of_another_server_is_read_again() {
+    let mut harness = Harness::new(UrlPolicy::Development);
+    harness.local_server();
+    let manifests = |harness: &Harness| harness.http.count("/.well-known/omnigent.json");
+    harness
+        .call(|core| async move { core.discover_server(SERVER.into()).await })
+        .unwrap();
+    harness.advance(connection::RECENT_READ_MS);
+    connect(&mut harness).unwrap();
+    assert_eq!(manifests(&harness), 2, "an old discovery is read again");
+
+    harness
+        .call(|core| async move { core.discover_server("http://127.0.0.1:6798".into()).await })
+        .unwrap();
+    connect(&mut harness).unwrap();
+    assert_eq!(
+        manifests(&harness),
+        4,
+        "another server's discovery is not this one's"
+    );
+
+    // A discovery serves one connect; the next connect reads the manifest again.
+    connect(&mut harness).unwrap();
+    assert_eq!(manifests(&harness), 5);
+}
+
+#[test]
+fn a_sign_in_soon_after_the_connect_reuses_its_info_and_a_later_one_reads_it() {
+    let mut harness = oidc_server();
+    sign_in_oidc(&mut harness);
+    assert_eq!(harness.http.count("/v1/info"), 1);
+
+    let mut harness = oidc_server();
+    connect(&mut harness).unwrap();
+    harness.advance(connection::RECENT_READ_MS);
+    let challenge = harness.core.begin_oidc_sign_in(REDIRECT.into()).unwrap();
+    let callback = callback_for(&challenge);
+    harness
+        .call(|core| async move {
+            core.complete_oidc_sign_in(challenge.attempt_id, callback)
+                .await
+        })
+        .unwrap();
+    assert_eq!(harness.http.count("/v1/info"), 2);
+}
+
 #[test]
 fn an_offline_sample_that_does_not_load_is_a_decode_error() {
     assert_eq!(

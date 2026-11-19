@@ -435,6 +435,7 @@ impl Engine {
         self.saved_connected(&server);
         self.start_realtime();
         self.refresh_list();
+        self.read_projects();
     }
 
     /// Stops every connection, then reports `phase`.

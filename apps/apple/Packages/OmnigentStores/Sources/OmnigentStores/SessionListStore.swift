@@ -47,9 +47,9 @@ public final class SessionListStore {
   public var searchText = "" {
     didSet { if searchText != oldValue { queryChanged() } }
   }
-  /// Which sessions show.
+  /// Which sessions show. The list holds archived sessions only while they show, as the web's.
   public var filter: SessionFilter = .all {
-    didSet { if filter != oldValue { queryChanged() } }
+    didSet { if filter != oldValue { filterChanged(from: oldValue) } }
   }
   /// Counts the changes that can move a row in a list of the sessions: the visible sessions or
   /// their order changed, or a session's facts beyond what its own row says (its `placement`).
@@ -245,7 +245,6 @@ public final class SessionListStore {
       serverSessions = Dictionary(
         sessions.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
       expectations = [:]
-      paging.listReset()
       refresh(known.union(serverSessions.keys), resetting: true)
     case .upsert(let sessions):
       for session in sessions {
@@ -364,7 +363,7 @@ public final class SessionListStore {
     tellFollowers()
   }
 
-  private func queryChanged() {
+  func queryChanged() {
     settle(index.setQuery(text: searchText, filter: filter))
   }
 }

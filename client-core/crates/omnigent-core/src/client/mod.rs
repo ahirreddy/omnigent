@@ -49,6 +49,7 @@ pub mod inbox;
 pub mod inbox_items;
 mod intent_lanes;
 pub mod items;
+mod journal;
 pub(crate) mod json;
 pub mod pin_order;
 pub mod policy_registry;
@@ -88,6 +89,7 @@ use crate::attachments::{AttachmentDraftStore, FilesystemAttachments};
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
 use crate::auth::hosted::{ConnectedServer, HostedConnection};
+use crate::auth::mode::ServerInfo;
 use crate::discovery::{ServerDiscovery, discovery_from_response, manifest_request};
 use crate::error::CoreError;
 use crate::http::HttpTransport;
@@ -494,8 +496,29 @@ impl<T: HttpTransport> ClientCore<T> {
         bearer: Option<SecretString>,
         expected_user_id: Option<String>,
     ) -> Result<ConnectedServer, SessionError> {
+        self.connect_knowing(endpoint, bearer, expected_user_id, None)
+            .await
+    }
+
+    /// As [`Self::connect`], with the server's `/v1/info` when the caller read it a moment ago,
+    /// which saves the connect that round trip.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::connect`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn connect_knowing(
+        &self,
+        endpoint: ServerEndpoint,
+        bearer: Option<SecretString>,
+        expected_user_id: Option<String>,
+        info: Option<ServerInfo>,
+    ) -> Result<ConnectedServer, SessionError> {
         let connection = HostedConnection::new(endpoint, bearer, expected_user_id)?;
-        let result = self.run_connect(connection).await;
+        let result = self.run_connect(connection, info).await;
         self.dispatch();
         result
     }
@@ -516,7 +539,7 @@ impl<T: HttpTransport> ClientCore<T> {
             .connection
             .take()
             .ok_or(SessionError::NotConnected)?;
-        let result = self.run_connect(connection).await;
+        let result = self.run_connect(connection, None).await;
         self.dispatch();
         result
     }
@@ -528,6 +551,7 @@ impl<T: HttpTransport> ClientCore<T> {
     async fn run_connect(
         &self,
         mut connection: HostedConnection,
+        info: Option<ServerInfo>,
     ) -> Result<ConnectedServer, SessionError> {
         let epoch = {
             let mut state = lock(&self.state);
@@ -541,7 +565,7 @@ impl<T: HttpTransport> ClientCore<T> {
             }
             state.epoch
         };
-        let result = connection.connect(&self.transport).await;
+        let result = connection.connect_knowing(&self.transport, info).await;
         let mut state = lock(&self.state);
         if state.epoch != epoch {
             return Err(SessionError::NotConnected);
@@ -620,6 +644,17 @@ impl<T: HttpTransport> ClientCore<T> {
     /// The cached summary of `session_id`.
     pub fn cached_summary(&self, session_id: &str) -> Option<SessionSummary> {
         lock(&self.state).summaries.get(session_id).cloned()
+    }
+
+    /// The rows of `ids`, in order, as the list shows them now: their cached summaries with any
+    /// pending edit applied. An id without one, or whose row an edit hides, is left out.
+    pub fn shown_summaries(&self, ids: &[String]) -> Vec<SessionSummary> {
+        let state = lock(&self.state);
+        let rows = ids
+            .iter()
+            .filter_map(|id| state.summaries.get(id).cloned())
+            .collect();
+        state.shown_rows(rows)
     }
 
     /// Every cached summary, by id.
@@ -716,3 +751,7 @@ mod pull_requests_tests;
 #[cfg(test)]
 #[path = "pull_request_detail_tests.rs"]
 mod pull_request_detail_tests;
+
+#[cfg(test)]
+#[path = "journal_tests.rs"]
+mod journal_tests;

@@ -135,7 +135,8 @@ struct LastPathsTests {
     let connection = try await signedInStore(server)
     let list = connection.sessionList
     try await eventually("the list") { list.isLoaded }
-    await list.paging.loadProject(ProjectSummary(id: "p1", name: "Alpha", icon: nil), id: "p1")
+    list.paging.loadProject(ProjectSummary(id: "p1", name: "Alpha", icon: nil))
+    try await eventually("the folder") { list.paging.projects["p1"]?.isLoaded == true }
     let paging = SidebarAdapter.paging(list.paging)
     #expect(paging.loadedProjects == ["p1"])
     #expect(paging.projectsWithMore == ["p1"])

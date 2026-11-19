@@ -203,8 +203,12 @@ impl LiveReducer {
                 state.background_tasks = Some(tasks.background_tasks.clone());
                 changed()
             }
-            // The web's Tasks tab reads the journal; the transcript's task markers arrive as items.
-            E::SessionJournalAppended(_) => Effects::default(),
+            // The Tasks tab adds the entry to the journal it read; the transcript's task markers
+            // arrive as items.
+            E::SessionJournalAppended(appended) => Effects {
+                journal_entry: Some(appended.entry.to_value()),
+                ..Effects::default()
+            },
             E::SessionCodexApprovalMode(mode) => {
                 self.state().approval_mode = Some(mode.approval_mode.as_str().to_owned());
                 changed()

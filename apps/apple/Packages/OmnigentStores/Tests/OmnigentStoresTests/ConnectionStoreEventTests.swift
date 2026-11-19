@@ -131,7 +131,7 @@ struct ConnectionStoreEventTests {
     #expect(store.unknownUpdates.first == "frame5")
   }
 
-  @Test("Host and project changes bump their revisions and read the lists again")
+  @Test("Host and project changes bump their revisions; the hosts are read again here")
   func serverLists() async throws {
     let server = RouteServer()
     let store = try await connectedStore(server)
@@ -142,12 +142,11 @@ struct ConnectionStoreEventTests {
     try await eventually("the hosts to reload") {
       server.requests(to: "/v1/hosts").count > hostReads
     }
+    // The core reads the projects itself on the socket's frame; this event only counts.
     let projectReads = server.requests(to: "/v1/sessions/projects").count
     store.apply(.projectsChanged)
     #expect(store.projectsRevision == 1)
-    try await eventually("the projects to reload") {
-      server.requests(to: "/v1/sessions/projects").count > projectReads
-    }
+    #expect(server.requests(to: "/v1/sessions/projects").count == projectReads)
   }
 
   @Test("Hosts changing while signed out reads nothing")

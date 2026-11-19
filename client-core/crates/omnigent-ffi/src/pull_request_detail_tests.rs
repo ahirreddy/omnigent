@@ -554,6 +554,7 @@ fn stored_pull_requests_and_panel_features_map_every_field() {
             content_search: false,
             pull_requests: true,
             comment_anchors: false,
+            session_journal: false,
         }
     );
     assert_eq!(
@@ -561,11 +562,13 @@ fn stored_pull_requests_and_panel_features_map_every_field() {
             content_search: true,
             pull_requests: false,
             comment_anchors: true,
+            session_journal: true,
         }),
         PanelFeatures {
             content_search: true,
             pull_requests: false,
             comment_anchors: true,
+            session_journal: true,
         }
     );
 
