@@ -30,8 +30,10 @@ final class MacProjectFolderFlowUITests: XCTestCase {
   private static let places: [Place] = [
     .pill, .gap, .pillAfterItsTooltip, .topEdge, .pill, .bottomEdge, .text,
   ]
+  /// A folder's page in the sidebar.
+  private static let pageSize = 10
   /// A page listed and three under Show more: one click lists all.
-  private static let sessionCount = 13
+  private static let sessionCount = pageSize + 3
   /// The newest sessions, renamed over and over; the others wait on a request.
   private static let renamedCount = 3
 
@@ -77,7 +79,8 @@ final class MacProjectFolderFlowUITests: XCTestCase {
     while tally.clicks < 8 || Date().timeIntervalSince(start) < 75 {
       try toggle(folder, live: live, app: app)
       XCTAssertTrue(
-        live.waitUntil(timeout: 15) { rows.count == 5 }, "the folder lists \(rows.count)")
+        live.waitUntil(timeout: 15) { rows.count == Self.pageSize },
+        "the folder lists \(rows.count)")
       if tally.clicks == 0 { live.shot(app, "the folder open") }
       try await showAll(showMore, rows: rows, tally: &tally, live: live, app: app)
       try toggle(folder, live: live, app: app)
