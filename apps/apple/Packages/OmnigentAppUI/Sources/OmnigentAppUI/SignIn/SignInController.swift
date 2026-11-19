@@ -241,10 +241,10 @@ public final class SignInController {
     let host = store.connectedServer.map { ServerIdentity.hostLabel($0.baseUrl) }
     if let server = store.connectedServer { accounts.forget(server.baseUrl) }
     Task {
-      let before = store.issues.count
-      await store.signOut()
-      if store.issues.count > before, let issue = store.issues.last {
-        flowError = SignInError(issue.error)
+      // The sign-out's own failure, not the issues its events report on the way (a revoke the
+      // server refused still signs out).
+      if let failure = await store.signOut() {
+        flowError = SignInError(failure)
       } else {
         notice = host.map { "You\u{2019}re signed out of \($0)." } ?? "You\u{2019}re signed out."
       }

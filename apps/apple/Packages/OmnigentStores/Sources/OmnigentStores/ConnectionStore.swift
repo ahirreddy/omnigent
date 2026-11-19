@@ -260,13 +260,20 @@ public final class ConnectionStore {
   }
 
   /// Signs out and forgets the saved credential.
-  public func signOut() async {
-    guard let core else { return }
+  /// - Returns: Why signing out failed, also recorded in ``issues``; `nil` once signed out. A
+  ///   sign-in the server could not revoke still signs out here, and is reported only in
+  ///   ``issues``.
+  @discardableResult
+  public func signOut() async -> CoreError? {
+    guard let core else { return nil }
     forgetAccount()
     do {
       try await core.signOut()
+      return nil
     } catch {
-      record(scope: .connection, coreError(error))
+      let failure = coreError(error)
+      record(scope: .connection, failure)
+      return failure
     }
   }
 
