@@ -62,9 +62,11 @@ extension PullRequestChangesAdapter {
     return find
   }
 
-  static func commitRows(_ commits: [PullRequestCommit]) -> [PullRequestCommitRow] {
+  static func commitRows(_ commits: [PullRequestCommit], numberPrefix: String = "#")
+    -> [PullRequestCommitRow]
+  {
     commits.map { commit in
-      let numbers = commit.headOf.map { "#\($0.number)" }
+      let numbers = commit.headOf.map { "\(numberPrefix)\($0.number)" }
       return PullRequestCommitRow(
         sha: commit.sha, title: commit.title, author: commit.author,
         date: commit.date.flatMap { try? Date($0, strategy: .iso8601) },
@@ -81,7 +83,8 @@ extension PullRequestChangesAdapter {
     case .loading: state.isLoading = true
     case .failed(let error): state.error = error.message
     case .loaded(let commits):
-      state.commits = commitRows(commits.commits)
+      state.commits = commitRows(
+        commits.commits, numberPrefix: panel.detail.value?.numberPrefix ?? "#")
       state.hasMore = commits.hasMore
     }
     return state

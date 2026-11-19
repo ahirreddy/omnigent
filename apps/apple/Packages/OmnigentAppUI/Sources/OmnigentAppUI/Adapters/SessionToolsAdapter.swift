@@ -217,7 +217,7 @@ enum SessionToolsAdapter {
     guard case .loaded(let list) = panel?.pullRequests else { return nil }
     switch list.pullRequests.count {
     case 0: return nil
-    case 1: return list.pullRequests.first.map { "#\($0.number)" }
+    case 1: return list.pullRequests.first.map { "\($0.numberPrefix)\($0.number)" }
     case let count: return "\(count) PRs"
     }
   }

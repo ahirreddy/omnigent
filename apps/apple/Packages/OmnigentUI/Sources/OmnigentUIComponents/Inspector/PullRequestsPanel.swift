@@ -158,7 +158,7 @@ struct PullRequestList: View {
         Text(request.title).lineLimit(2)
         HStack(spacing: Theme.Spacing.small) {
           Text(request.status.title).foregroundStyle(PullRequestStatusIcon.color(request.status))
-          Text("\(request.repo) #\(request.number)").foregroundStyle(.secondary)
+          Text("\(request.repo) \(request.numberLabel)").foregroundStyle(.secondary)
         }
         .font(.caption)
         if let detail = request.detail {

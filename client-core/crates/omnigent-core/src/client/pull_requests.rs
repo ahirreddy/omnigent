@@ -105,6 +105,8 @@ pub struct SessionPullRequest {
     pub relationship: String,
     /// The git provider's display name ("GitHub"), when the server knows the provider.
     pub provider_name: Option<String>,
+    /// What precedes the number: `#`, or `!` for a GitLab merge request.
+    pub number_prefix: String,
     /// Where it stands.
     pub status: PullRequestStatus,
     /// Epoch seconds of the fetch that read the state.
@@ -124,8 +126,13 @@ impl SessionPullRequest {
         let number = opt_u64(object, "number")?.ok_or_else(|| "`number` is missing".to_owned())?;
         let state = opt_str(object, "state")?;
         let is_draft = opt_bool(object, "is_draft")?.unwrap_or(false);
-        let provider_name = match opt_object(object, "provider_display")? {
+        let display = opt_object(object, "provider_display")?;
+        let provider_name = match display {
             Some(display) => opt_str(display, "display_name")?,
+            None => None,
+        };
+        let number_prefix = match display {
+            Some(display) => opt_str(display, "number_prefix")?,
             None => None,
         };
         Ok(Self {
@@ -136,6 +143,9 @@ impl SessionPullRequest {
             title: opt_str(object, "title")?.filter(|title| !title.trim().is_empty()),
             relationship: opt_str(object, "relationship")?.unwrap_or_default(),
             provider_name,
+            number_prefix: number_prefix
+                .filter(|prefix| !prefix.is_empty())
+                .unwrap_or_else(|| "#".to_owned()),
             status: PullRequestStatus::of(state.as_deref(), is_draft),
             state_checked_at: opt_f64(object, "state_checked_at")?,
             provider: opt_str(object, "provider")?.unwrap_or_else(|| "github".to_owned()),
