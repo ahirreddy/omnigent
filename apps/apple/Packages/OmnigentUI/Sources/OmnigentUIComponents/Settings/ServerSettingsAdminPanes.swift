@@ -249,3 +249,41 @@ struct SharingPane: View {
     .disabled(!editable || actions.changeSharing == nil)
   }
 }
+
+/// Admin › General (the web's `AdminGeneralPage`): where a nested agent may start.
+struct AdminGeneralPane: View {
+  let sharing: SharingViewState?
+  let actions: ServerSettingsActions
+
+  var body: some View {
+    if let sharing, let destinations = sharing.nestedAgentDestinations {
+      Section("Nested agent destinations") {
+        Picker(
+          selection: Binding(
+            get: { destinations },
+            set: { actions.changeSharing?(.nestedAgentDestinations($0)) })
+        ) {
+          ForEach(sharing.nestedAgentDestinationChoices) { Text($0.title).tag($0.id) }
+        } label: {
+          Text("Nested agents start on")
+          if let detail = Self.description(destinations) { Text(detail) }
+        }
+        .disabled(!sharing.nestedAgentDestinationsEditable || actions.changeSharing == nil)
+        .accessibilityIdentifier("settings-nested-agent-destinations")
+      }
+    }
+  }
+
+  /// The web's explanation of each destination.
+  static func description(_ destinations: String) -> String? {
+    switch destinations {
+    case "current_host":
+      "New agents must run on the same host as the session they are added from."
+    case "current_host_or_new_sandbox":
+      "New agents can use the current host or start in a fresh managed sandbox."
+    case "any_host":
+      "New agents can use the current host, another connected host, or a fresh managed sandbox."
+    default: nil
+    }
+  }
+}

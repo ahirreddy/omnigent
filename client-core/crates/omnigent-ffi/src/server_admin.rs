@@ -45,6 +45,9 @@ pub struct ServerSettingsInfo {
     /// The caller can save guidance for automatic session titles.
     #[uniffi(default)]
     pub session_title_instructions: bool,
+    /// Sessions can have nested agents, so Admin › General says where they may start.
+    #[uniffi(default)]
+    pub nested_agents: bool,
 }
 
 impl From<core::ServerSettingsInfo> for ServerSettingsInfo {
@@ -62,6 +65,7 @@ impl From<core::ServerSettingsInfo> for ServerSettingsInfo {
             agent_detail: info.agent_detail,
             agent_config_edit: info.agent_config_edit,
             session_title_instructions: info.session_title_instructions,
+            nested_agents: info.nested_agents,
         }
     }
 }
@@ -145,6 +149,15 @@ pub struct SharingSettingsRecord {
     pub default_public_sessions_editable: bool,
     /// Defaults.
     pub default_public_sessions_options: Vec<String>,
+    /// Where a nested agent may start; `None` on a server that predates the setting.
+    #[uniffi(default)]
+    pub nested_agent_destinations: Option<String>,
+    /// The destinations can be changed here.
+    #[uniffi(default)]
+    pub nested_agent_destinations_editable: bool,
+    /// Destinations, as the server lists them.
+    #[uniffi(default)]
+    pub nested_agent_destinations_options: Vec<String>,
 }
 
 impl From<CoreSharing> for SharingSettingsRecord {
@@ -161,6 +174,9 @@ impl From<CoreSharing> for SharingSettingsRecord {
             default_public_sessions: sharing.default_public_sessions,
             default_public_sessions_editable: sharing.default_public_sessions_editable,
             default_public_sessions_options: sharing.default_public_sessions_options,
+            nested_agent_destinations: sharing.nested_agent_destinations,
+            nested_agent_destinations_editable: sharing.nested_agent_destinations_editable,
+            nested_agent_destinations_options: sharing.nested_agent_destinations_options,
         }
     }
 }
@@ -180,6 +196,9 @@ pub struct SharingUpdateRecord {
     /// A new default for new sessions.
     #[uniffi(default)]
     pub default_public_sessions: Option<String>,
+    /// Where nested agents may start.
+    #[uniffi(default)]
+    pub nested_agent_destinations: Option<String>,
 }
 
 /// One MCP registry service.
@@ -493,6 +512,7 @@ impl ClientCore {
             public_sharing: update.public_sharing,
             public_max_level: update.public_max_level,
             default_public_sessions: update.default_public_sessions,
+            nested_agent_destinations: update.nested_agent_destinations,
         };
         self.sessions()
             .update_sharing(&update)

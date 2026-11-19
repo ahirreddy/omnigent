@@ -226,9 +226,10 @@ public struct ServerSettingsView: View {
     }
   }
 
-  /// Members, Policies and Sharing.
+  /// General, Members, Policies and Sharing.
   @ViewBuilder private func adminPane(_ pane: ServerSettingsPane) -> some View {
     switch pane {
+    case .adminGeneral: AdminGeneralPane(sharing: state.sharing, actions: actions)
     case .members:
       MembersPane(members: state.members, actions: actions, errorMessage: state.errorMessage)
     case .policies:

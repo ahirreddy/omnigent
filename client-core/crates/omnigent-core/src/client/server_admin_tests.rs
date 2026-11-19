@@ -21,7 +21,7 @@ fn info_reads_admin_mode_and_known_connections() {
         r#"{"single_user":false,"accounts_enabled":true,"archive_worktree_cleanup":true,
             "login_url":"/login","enabled_connections":["mcp","github","slack","databricks"],
             "agent_install":true,"agent_detail":true,"agent_config_edit":true,
-            "session_title_instructions":true}"#,
+            "session_title_instructions":true,"sibling_sessions":true}"#,
     );
     assert_eq!(
         block_on(core.server_settings_info()).unwrap(),
@@ -38,6 +38,7 @@ fn info_reads_admin_mode_and_known_connections() {
             agent_detail: true,
             agent_config_edit: true,
             session_title_instructions: true,
+            nested_agents: true,
         }
     );
 
@@ -47,7 +48,7 @@ fn info_reads_admin_mode_and_known_connections() {
     assert!(info.single_user && !info.mcp_registry && info.connections.is_empty());
     assert!(!info.archive_worktree_cleanup && !info.has_login_session);
     assert!(!info.custom_agents && !info.agent_detail && !info.agent_config_edit);
-    assert!(!info.session_title_instructions);
+    assert!(!info.session_title_instructions && !info.nested_agents);
 
     // The retired `custom_agents_settings_ui` flag no longer matters: `agent_install` alone
     // shows the page, as on the web.
@@ -260,10 +261,36 @@ fn sharing_reads_and_sends_only_the_changed_fields() {
         ..SharingUpdate::default()
     };
     block_on(core.update_sharing(&update)).unwrap();
+    let destinations = SharingUpdate {
+        nested_agent_destinations: Some("current_host".into()),
+        ..SharingUpdate::default()
+    };
+    block_on(core.update_sharing(&destinations)).unwrap();
     assert_eq!(
         core.transport().write_bodies(),
-        [json!({"public_sharing": true})]
+        [
+            json!({"public_sharing": true}),
+            json!({"sibling_session_destinations": "current_host"}),
+        ]
     );
+}
+
+#[test]
+fn sharing_reads_where_nested_agents_may_start() {
+    let state = r#"{"object":"sharing","sharing_mode":"on",
+        "sibling_session_destinations":"any_host","sibling_session_destinations_editable":true,
+        "sibling_session_destinations_options":["current_host","current_host_or_new_sandbox",
+        "any_host"]}"#;
+    let transport = RouteTransport::local();
+    transport.ok("/v1/sharing", state);
+    let core = connected(transport);
+    let sharing = block_on(core.sharing_settings()).unwrap();
+    assert_eq!(
+        sharing.nested_agent_destinations.as_deref(),
+        Some("any_host")
+    );
+    assert!(sharing.nested_agent_destinations_editable);
+    assert_eq!(sharing.nested_agent_destinations_options.len(), 3);
 }
 
 #[test]

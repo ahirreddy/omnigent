@@ -51,6 +51,7 @@ fn settings_info_maps_each_capability_to_its_own_field() {
             agent_detail: false,
             agent_config_edit: true,
             session_title_instructions: true,
+            nested_agents: false,
         }
     );
     harness.http.route(

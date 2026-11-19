@@ -56,6 +56,9 @@ pub struct ServerSettingsInfo {
     /// The caller can save guidance for automatic session titles
     /// (`session_title_instructions`).
     pub session_title_instructions: bool,
+    /// Sessions can have nested agents (`sibling_sessions`), so Admin › General says where
+    /// they may start.
+    pub nested_agents: bool,
 }
 
 impl ServerSettingsInfo {
@@ -85,6 +88,7 @@ impl ServerSettingsInfo {
             agent_config_edit: opt_bool(info, "agent_config_edit")?.unwrap_or(false),
             session_title_instructions: opt_bool(info, "session_title_instructions")?
                 .unwrap_or(false),
+            nested_agents: crate::session_families::sibling_sessions_enabled(info),
         })
     }
 }
@@ -148,6 +152,13 @@ pub struct SharingSettings {
     pub default_public_sessions_editable: bool,
     /// Defaults.
     pub default_public_sessions_options: Vec<String>,
+    /// Where a nested agent may start: `current_host`, `current_host_or_new_sandbox` or
+    /// `any_host` (Admin › General); `None` on a server that predates the setting.
+    pub nested_agent_destinations: Option<String>,
+    /// The destinations can be changed here.
+    pub nested_agent_destinations_editable: bool,
+    /// Destinations, as the server lists them.
+    pub nested_agent_destinations_options: Vec<String>,
 }
 
 /// A partial `PUT /v1/sharing`; at least one field must be set.
@@ -161,6 +172,8 @@ pub struct SharingUpdate {
     pub public_max_level: Option<String>,
     /// A new default for new sessions.
     pub default_public_sessions: Option<String>,
+    /// Where nested agents may start.
+    pub nested_agent_destinations: Option<String>,
 }
 
 /// One MCP registry service (`GET /v1/mcp-registry/services`).
@@ -344,6 +357,16 @@ pub fn sharing_from(value: &Value) -> Result<SharingSettings, String> {
         default_public_sessions_editable: opt_bool(object, "default_public_sessions_editable")?
             .unwrap_or(false),
         default_public_sessions_options: string_list(object, "default_public_sessions_options")?,
+        nested_agent_destinations: opt_str(object, "sibling_session_destinations")?,
+        nested_agent_destinations_editable: opt_bool(
+            object,
+            "sibling_session_destinations_editable",
+        )?
+        .unwrap_or(false),
+        nested_agent_destinations_options: string_list(
+            object,
+            "sibling_session_destinations_options",
+        )?,
     })
 }
 
@@ -710,6 +733,9 @@ impl<T: HttpTransport> ClientCore<T> {
         }
         if let Some(default) = &update.default_public_sessions {
             body.insert("default_public_sessions".into(), json!(default));
+        }
+        if let Some(destinations) = &update.nested_agent_destinations {
+            body.insert("sibling_session_destinations".into(), json!(destinations));
         }
         if body.is_empty() {
             return Err(invalid_input("No sharing settings to update."));

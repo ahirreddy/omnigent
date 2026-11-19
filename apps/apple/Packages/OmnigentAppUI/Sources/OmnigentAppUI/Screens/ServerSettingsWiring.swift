@@ -82,7 +82,7 @@ struct ServerSettingsWiring {
     case .policies:
       await store.loadPolicies()
       await store.loadPolicyRegistry()
-    case .sharing: await store.loadSharing()
+    case .sharing, .adminGeneral: await store.loadSharing()
     case .archived: await store.loadArchived()
     case .sessions: await store.loadTitleInstructions()
     case .account, .harnesses, .customAgents, .git: break
