@@ -12,8 +12,10 @@ enum LookFixtures {
 
   // MARK: Decisions
 
-  static func card(_ card: DecisionCard, draft: FormDraft = FormDraft()) -> some View {
-    LookDecision(card: card, draft: draft)
+  static func card(
+    _ card: DecisionCard, draft: FormDraft = FormDraft(), context: String = "Claude Code"
+  ) -> some View {
+    LookDecision(card: card, draft: draft, context: context)
   }
 
   static var questionDraft: FormDraft {
@@ -234,16 +236,18 @@ enum LookFixtures {
 /// A decision card holding its own draft, as the dock does.
 private struct LookDecision: View {
   let card: DecisionCard
+  let context: String
   @State private var draft: FormDraft
 
-  init(card: DecisionCard, draft: FormDraft) {
+  init(card: DecisionCard, draft: FormDraft, context: String) {
     self.card = card
+    self.context = context
     _draft = State(initialValue: draft)
   }
 
   var body: some View {
     DecisionCardView(
-      card: card, phase: .pending, isReadOnly: false, context: "Claude Code",
+      card: card, phase: .pending, isReadOnly: false, context: context,
       respond: { _ in }, validate: { PreviewData.validate(card, $0) }, draft: $draft
     )
     .padding(Theme.Spacing.medium)

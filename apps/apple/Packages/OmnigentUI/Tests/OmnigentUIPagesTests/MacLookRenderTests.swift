@@ -25,6 +25,11 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case decisionsPage = "decisions-page"
   case decisionsSuggestion = "decisions-suggestion"
   case decisionsPlanModes = "decisions-plan-modes"
+  case decisionsCodexQuestion = "decisions-codex-question"
+  case decisionsOptionalFields = "decisions-optional-fields"
+  case decisionsLongSelect = "decisions-long-select"
+  case decisionsQuestionFallback = "decisions-question-fallback"
+  case decisionsWorkflowQuestion = "decisions-workflow-question"
   case markersChat = "markers-chat"
   case composerRewind = "composer-rewind"
   case composerMcp = "composer-mcp"
@@ -96,6 +101,19 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .decisionsPage: return AnyView(Fixture.card(PreviewData.externalPage))
     case .decisionsSuggestion: return AnyView(Fixture.card(PreviewData.claudeSuggestion))
     case .decisionsPlanModes: return AnyView(Fixture.card(PreviewData.planReviewModes))
+    case .decisionsCodexQuestion:
+      return AnyView(
+        Fixture.card(Fixture.codexQuestion, draft: Fixture.codexQuestionDraft, context: "Codex"))
+    case .decisionsOptionalFields:
+      return AnyView(
+        Fixture.card(
+          Fixture.optionalFields, draft: Fixture.optionalFieldsDraft, context: "Release notes"))
+    case .decisionsLongSelect:
+      return AnyView(
+        Fixture.card(Fixture.longSelect, draft: Fixture.longSelectDraft, context: "Pi"))
+    case .decisionsQuestionFallback: return AnyView(Fixture.card(Fixture.questionFallback))
+    case .decisionsWorkflowQuestion:
+      return AnyView(Fixture.card(Fixture.workflowQuestion, context: "Omnigent"))
     case .markersChat: return AnyView(LookMarkers())
     case .composerRewind: return AnyView(Fixture.rewind)
     case .composerMcp: return AnyView(Fixture.mcpBar)

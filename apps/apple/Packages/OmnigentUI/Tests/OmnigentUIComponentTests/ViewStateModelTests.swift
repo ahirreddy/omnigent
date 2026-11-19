@@ -263,3 +263,25 @@ struct ViewStateModelTests {
     #expect(label([one, SandboxRepoChoice(url: "https://x/z")]) == "2 repositories")
   }
 }
+
+/// Which pending cards mean the agent is waiting for the user.
+@Suite("View state: blocking decisions")
+struct BlockingDecisionsTests {
+  @Test("A question the agent keeps working through still needs you but does not block the agent")
+  func nonBlockingQuestions() {
+    let approval = DecisionCard(
+      id: "approve", carryingSessionId: "s", title: "T", detail: "", kind: .approval)
+    let background = DecisionCard(
+      id: "async", carryingSessionId: "s", title: "T", detail: "",
+      kind: .form(fields: [FormField(key: "0", title: "Which customer?", kind: .text)]),
+      agentKeepsWorking: true)
+    let both = ConversationViewState(
+      header: SessionHeader(id: "s", title: "S"), decisions: [approval, background])
+    #expect(both.pendingDecisions.map(\.id) == ["approve", "async"])
+    #expect(both.blockingDecisions.map(\.id) == ["approve"])
+    let onlyBackground = ConversationViewState(
+      header: SessionHeader(id: "s", title: "S"), decisions: [background])
+    #expect(onlyBackground.pendingDecisions.count == 1)
+    #expect(onlyBackground.blockingDecisions.isEmpty)
+  }
+}

@@ -12,7 +12,7 @@ nonisolated extension OmnigentUIComponents.DecisionCard {
       kind: OmnigentUIComponents.DecisionKind(card.kind),
       permissions: OmnigentUIComponents.PermissionOptions(card.permissions), phase: card.phase,
       policyName: card.policyName, acceptsFeedback: card.acceptsFeedback, answered: card.answered,
-      message: card.message, toolInput: card.toolInput)
+      message: card.message, toolInput: card.toolInput, agentKeepsWorking: card.agentKeepsWorking)
   }
 }
 
