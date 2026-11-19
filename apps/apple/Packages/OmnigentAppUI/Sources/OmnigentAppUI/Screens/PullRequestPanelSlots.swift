@@ -68,6 +68,7 @@ enum PullRequestPanelSlots {
       Task { await panel.mergePullRequest(method) }
     }
     actions.disableAutoMerge = { Task { await panel.disableAutoMerge() } }
+    actions.commentProblem = { reviewCommentProblem(body: $0) }
     actions.comment = { body, done in
       Task { done(await panel.postComment(body)) }
     }

@@ -6,8 +6,22 @@ struct PullRequestCommentsView: View {
   let state: PullRequestDetailViewState
   let extras: PullRequestPanelExtras
   let open: (@MainActor (URL) -> Void)?
+  /// The comment being written, kept by the detail view across tab switches; without it the
+  /// view keeps its own.
+  var keptDraft: Binding<String>?
 
-  @State private var draft = ""
+  @State private var ownDraft = ""
+
+  private var draft: String {
+    get { keptDraft?.wrappedValue ?? ownDraft }
+    nonmutating set {
+      if let keptDraft { keptDraft.wrappedValue = newValue } else { ownDraft = newValue }
+    }
+  }
+
+  private var draftBinding: Binding<String> {
+    keptDraft ?? $ownDraft
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -66,10 +80,16 @@ struct PullRequestCommentsView: View {
     _ post: @escaping @MainActor (String, @escaping @MainActor (Bool) -> Void) -> Void
   ) -> some View {
     HStack(alignment: .bottom, spacing: Theme.Spacing.small) {
-      TextField("Leave a comment", text: $draft, axis: .vertical)
-        .textFieldStyle(.roundedBorder)
-        .lineLimit(1...6)
-        .accessibilityIdentifier("pr-comment")
+      VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
+        TextField("Leave a comment", text: draftBinding, axis: .vertical)
+          .textFieldStyle(.roundedBorder)
+          .lineLimit(1...6)
+          .accessibilityIdentifier("pr-comment")
+        if let problem = extras.actions.commentProblem?(draft) {
+          Text(problem).font(.caption).foregroundStyle(Theme.failure)
+            .accessibilityIdentifier("pr-comment-problem")
+        }
+      }
       Button("Comment") {
         let body = draft
         post(body) { posted in
@@ -78,7 +98,9 @@ struct PullRequestCommentsView: View {
       }
       .keyboardShortcut(.return, modifiers: .command)
       .primaryActionStyle()
-      .disabled(extras.isBusy || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      .disabled(
+        extras.isBusy || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          || extras.actions.commentProblem?(draft) != nil)
     }
     .padding(Theme.Spacing.small)
   }

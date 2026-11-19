@@ -294,6 +294,8 @@ public struct PullRequestPanelActions {
   public var disableAutoMerge: (@MainActor () -> Void)?
   /// Posts a comment; the callback says whether it was posted.
   public var comment: (@MainActor (String, @escaping @MainActor (Bool) -> Void) -> Void)?
+  /// Why a comment can't be posted as written (too long), or `nil`.
+  public var commentProblem: (@MainActor (String) -> String?)?
   /// Replaces the title and/or the description (`nil` keeps one); the callback says whether it
   /// was saved.
   public var editDetails:
