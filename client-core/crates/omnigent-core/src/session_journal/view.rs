@@ -10,6 +10,7 @@ use super::tasks::{
     is_plan_complete, is_restart, paused_label, session_task_list, tally, task_marker_target,
 };
 use super::{JournalEntry, JournalEntryKind, StepStatus, plan_graph_revision, plan_workflow_id};
+use crate::markdown_preview::markdown_preview_text;
 
 /// What a task's menu asks for (`taskMenuAction`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -42,7 +43,8 @@ impl TaskAction {
 /// The line under a task's name (`stepDetail`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskDetail {
-    /// Plain text: the goal, the newest status text, or what the agent says it is doing.
+    /// Plain text: the start of the goal, the newest status text, or what the agent says it is
+    /// doing.
     Text(String),
     /// "Can't start · A and B failed".
     CantStart {
@@ -51,7 +53,7 @@ pub enum TaskDetail {
     },
     /// "Ready · goal".
     Ready {
-        /// The goal.
+        /// The start of the goal, as plain text.
         goal: Option<String>,
     },
     /// "Waiting for you · text".
@@ -98,7 +100,7 @@ pub struct TaskRow {
     pub native: bool,
     /// The line under its name; `None` for none.
     pub detail: Option<TaskDetail>,
-    /// Its goal.
+    /// Its whole goal, in Markdown, for its history.
     pub goal: Option<String>,
     /// When a done or failed task ended, in epoch seconds.
     pub ended_at: Option<i64>,
@@ -178,15 +180,22 @@ pub fn list_names(names: &[String]) -> String {
     }
 }
 
+/// The start of a step's Markdown goal as one line of plain text, for a row that shows only
+/// that; `None` without a goal or when no text remains.
+fn goal_preview(item: &StepProgress) -> Option<String> {
+    let preview = markdown_preview_text(item.step.goal.as_deref()?);
+    (!preview.is_empty()).then_some(preview)
+}
+
 fn detail(item: &StepProgress, failed: &[String]) -> Option<TaskDetail> {
     let text = item.status.as_ref().and_then(|status| status.text.clone());
     Some(match item.state {
-        StepState::Waiting if failed.is_empty() => TaskDetail::Text(item.step.goal.clone()?),
+        StepState::Waiting if failed.is_empty() => TaskDetail::Text(goal_preview(item)?),
         StepState::Waiting => TaskDetail::CantStart {
             failed: list_names(failed),
         },
         StepState::Ready => TaskDetail::Ready {
-            goal: item.step.goal.clone(),
+            goal: goal_preview(item),
         },
         StepState::NeedsInput => TaskDetail::WaitingForYou {
             text: text.unwrap_or_else(|| "Respond in the chat".to_owned()),

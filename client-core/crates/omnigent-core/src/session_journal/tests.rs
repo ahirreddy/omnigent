@@ -448,3 +448,25 @@ fn a_replan_from_a_saved_workflow_keeps_its_workflow() {
     let other = plan("p3", 1, json!([{"id": "z", "name": "Z", "depends_on": []}]));
     assert_eq!(plan_workflow_id(&[start, other]), None);
 }
+
+#[test]
+fn a_rows_line_previews_its_markdown_goal_and_its_history_keeps_all_of_it() {
+    let goal = "**Inputs:** the change.\n\n- Fix the tests\n- Send it";
+    let steps = json!([{"id": "a", "name": "A", "goal": goal, "depends_on": []},
+                       {"id": "b", "name": "B", "goal": "**Waits** on `a`", "depends_on": ["a"]},
+                       {"id": "c", "name": "C", "goal": "---", "depends_on": ["a"]}]);
+    let view = tasks_view(&[plan("p", 0, steps)], &[], &BTreeSet::new(), IDLE);
+    assert_eq!(
+        view.rows[0].detail,
+        Some(TaskDetail::Ready {
+            goal: Some("Inputs: the change. Fix the tests · Send it".into())
+        })
+    );
+    assert_eq!(view.rows[0].goal.as_deref(), Some(goal));
+    assert_eq!(
+        view.rows[1].detail,
+        Some(TaskDetail::Text("Waits on a".into()))
+    );
+    // A goal with no text left after its syntax shows no line.
+    assert_eq!(view.rows[2].detail, None);
+}
