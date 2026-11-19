@@ -126,8 +126,7 @@ struct SessionFamilyChevron: View {
 enum SessionFamilyMetrics {
   /// The gutter: the chevron's square hit box.
   static let gutter: CGFloat = 12
-  /// The chevron itself, at the gutter's leading edge: where the Mac outline draws a folder's
-  /// disclosure triangle, so every chevron sits on the same grid.
+  /// The chevron itself, at the gutter's leading edge.
   static let chevronWidth: CGFloat = 6
   /// Between the gutter and the row's icon.
   static let gutterSpacing = Theme.Spacing.extraSmall

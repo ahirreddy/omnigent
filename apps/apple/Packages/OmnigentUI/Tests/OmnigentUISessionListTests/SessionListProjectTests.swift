@@ -103,15 +103,15 @@
       defer { screen.close() }
       #expect(spy.calls.isEmpty)
       let rowsBefore = try #require(screen.list).numberOfRows
-      try #require(screen.disclosures.first).performClick(nil)
+      try screen.clickListElement("sidebar-project-toggle-p1")
       #expect(MainLoop.settle(until: { screen.list?.numberOfRows == rowsBefore + 1 }))
       #expect(spy.calls == ["load project p1"])
       #expect(expanded() == "p1")
-      try #require(screen.disclosures.first).performClick(nil)
+      try screen.clickListElement("sidebar-project-toggle-p1")
       #expect(MainLoop.settle(until: { expanded()?.isEmpty == true }))
     }
 
-    @Test("the outline doesn't indent a project's sessions: its box marks them")
+    @Test("a project's sessions are rows of the outline's top level: its box marks them")
     func noOutlineIndent() throws {
       let spy = spy()
       let key = SidebarNavigationOrder.expandedProjectsKey
@@ -122,7 +122,7 @@
       defer { screen.close() }
       let outline = try #require(screen.list as? NSOutlineView)
       // Rows: 6 the pinned session, 8 Work, 9 beta inside it.
-      #expect(outline.level(forRow: 9) > outline.level(forRow: 6))
+      #expect(outline.level(forRow: 9) == outline.level(forRow: 6))
       #expect(
         outline.frameOfCell(atColumn: 0, row: 9).minX
           == outline.frameOfCell(atColumn: 0, row: 6).minX)
@@ -234,6 +234,29 @@
           MainLoop.settle(until: { table.numberOfRows == before + 1 }),
           "a click on the \(place) shows more")
       }
+    }
+
+    @Test("A click on a folder's row or on its chevron shows and hides its sessions")
+    func folderRowClickToggles() throws {
+      let ids = (0..<3).map { "s\($0)" }
+      var state = SidebarFixture.state
+      state.list.sessions += ids.map { SessionSummary(id: $0, title: $0) }
+      state.projects = [SessionProject(id: "big", name: "Big", sessionIds: ids)]
+      state.paging.loadedProjects = ["big"]
+      UserDefaults.standard.removeObject(forKey: SidebarNavigationOrder.expandedProjectsKey)
+      let screen = OffscreenWindow(
+        SidebarHarness(spy: SidebarSpy(state)), width: 300, height: 900)
+      defer { screen.close() }
+      let table = try #require(screen.list)
+      let closed = table.numberOfRows
+      // Rows: 7 Projects, 8 Big; a point left of the middle, past its name.
+      let folder = table.convert(table.rect(ofRow: 8), to: screen.host)
+      try screen.click(CGPoint(x: folder.midX - 20, y: folder.midY))
+      #expect(
+        MainLoop.settle(until: { table.numberOfRows == closed + ids.count }),
+        "a click on the row opens it")
+      try screen.clickListElement("sidebar-project-toggle-big")
+      #expect(MainLoop.settle(until: { table.numberOfRows == closed }), "its chevron closes it")
     }
 
     @Test("hovering a folder offers New session and its menu")

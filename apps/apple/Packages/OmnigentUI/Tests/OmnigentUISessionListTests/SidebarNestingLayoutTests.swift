@@ -156,23 +156,23 @@
       #expect(abs(text - sessions.lowerBound) <= 1.5, "Show more at \(text)")
     }
 
-    @Test("A head's chevron sits on the grid of the folders' disclosure triangles")
-    func chevronsMeetTheFolderTriangles() throws {
+    @Test("A folder's chevron trails its row, its gutter left empty; a head's chevron leads")
+    func folderChevronTrails() throws {
       let screen = try sidebar()
       defer { screen.close() }
-      let rows = try drawn(
-        screen, sessions: ["rollout", "monitor"], folders: ["gateway", "tools"])
-      let lead = { (id: String) throws -> ClosedRange<CGFloat> in
-        try #require(rows[id]?.lead.first, "\(id) draws a chevron")
+      let folders = ["gateway", "tools"]
+      let rows = try drawn(screen, sessions: ["rollout", "monitor"], folders: folders)
+      for head in ["rollout", "monitor"] {
+        #expect(rows[head]?.lead.count == 1, "\(head) leads with its chevron")
       }
-      // Expanded: Release Rollout in Pinned and the Gateway folder, both at the top level.
-      let open = middle(try lead("rollout"))
-      let folder = middle(try lead("gateway"))
-      #expect(abs(open - folder) <= 1.5, "chevron at \(open), triangle at \(folder)")
-      // Collapsed: Monitor Job, in Gateway, and the Tooling folder.
-      let closed = middle(try lead("monitor"))
-      let tooling = middle(try lead("tools"))
-      #expect(abs(closed - tooling) <= 1.5, "chevron at \(closed), triangle at \(tooling)")
+      let chevrons = try screen.withAccessibilityTree {
+        try folders.map { try screen.listElementFrame("sidebar-project-toggle-\($0)") }
+      }
+      for (id, chevron) in zip(folders, chevrons) {
+        let row = try #require(rows[id], "\(id) is drawn")
+        #expect(row.lead.isEmpty, "\(id)'s gutter draws \(row.lead)")
+        #expect(chevron.minX > row.frame.midX, "\(id)'s chevron at \(chevron) trails its row")
+      }
     }
 
     @Test("Each level is one step in: a member under its head, inside a folder and out")

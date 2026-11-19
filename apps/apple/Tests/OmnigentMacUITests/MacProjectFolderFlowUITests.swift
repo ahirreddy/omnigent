@@ -214,8 +214,8 @@ final class MacProjectFolderFlowUITests: XCTestCase {
     target.click()
   }
 
-  /// Opens or closes the folder on its disclosure triangle, the one level with its row, first
-  /// bringing the row back where the list scrolled it away above.
+  /// Opens or closes the folder on its chevron, first bringing the row back where the list
+  /// scrolled it away above.
   @MainActor
   private func toggle(_ folder: XCUIElement, live: MacLiveUITestSupport, app: XCUIApplication)
     throws
@@ -228,12 +228,11 @@ final class MacProjectFolderFlowUITests: XCTestCase {
       _ = live.waitUntil(timeout: 1) { folder.exists }
     }
     live.scrollIntoView(folder)
-    let row = folder.frame
-    let triangle = try XCTUnwrap(
-      app.disclosureTriangles.allElementsBoundByIndex.first {
-        abs($0.frame.midY - row.midY) < row.height / 2
-      }, "no disclosure triangle beside the folder\n\(app.debugDescription)")
-    triangle.click()
+    let id = folder.identifier.replacingOccurrences(
+      of: "sidebar-project-", with: "sidebar-project-toggle-")
+    let chevron = app.buttons[id].firstMatch
+    XCTAssertTrue(chevron.exists, "no chevron on the folder\n\(app.debugDescription)")
+    chevron.click()
   }
 
   /// Asks a question in `sessionID`, so it needs you until the test ends.

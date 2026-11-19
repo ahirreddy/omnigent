@@ -64,7 +64,8 @@ struct ProjectFolder<Row: View>: View {
   @Environment(\.defaultMinListRowHeight) private var rowHeight
 
   var body: some View {
-    DisclosureGroup(isExpanded: $isExpanded) {
+    folderRow
+    if isExpanded {
       if sessions.isEmpty {
         Group {
           if pages.isLoading || (pages.load != nil && !pages.isLoaded) {
@@ -82,41 +83,71 @@ struct ProjectFolder<Row: View>: View {
       if showsMore {
         showMore.listRowBackground(SidebarProjectBox(part: .bottom))
       }
-    } label: {
-      HStack(spacing: Theme.Spacing.tiny) {
-        HStack(spacing: Theme.Spacing.small) {
-          folderIcon.frame(width: SessionFamilyMetrics.markWidth)
-          Text(project.name).lineLimit(1)
-        }
-        Spacer(minLength: 4)
-        if isHovered {
-          hoverButtons
-        } else {
-          folderMarker
-        }
+    }
+  }
+
+  /// The folder's own row: its name, its hover buttons or hidden marker, and its chevron.
+  private var folderRow: some View {
+    HStack(spacing: Theme.Spacing.tiny) {
+      HStack(spacing: Theme.Spacing.small) {
+        folderIcon.frame(width: SessionFamilyMetrics.markWidth)
+        Text(project.name).lineLimit(1)
       }
-      // The gutter, where the Mac outline draws the folder's disclosure triangle (iOS's trails),
-      // so the folder's icon and name line up with the session rows' in and outside it.
-      .padding(.leading, SessionFamilyMetrics.lead)
-      .contentShape(Rectangle())
-      .onHover { isHovered = $0 }
-      .contextMenu { menu.items }
-      .draggable(SidebarDragItem.project(project.id).payload)
-      .sidebarDropTarget(drop)
-      // One element for the folder, as its label was, around its name and hover buttons.
-      .accessibilityElement(children: .contain)
-      .accessibilityActions {
-        if let newSession = menu.actions.newSessionInProject {
-          Button("New session in project") { newSession(project) }
-        }
+      Spacer(minLength: 4)
+      if isHovered {
+        hoverButtons
+      } else {
+        folderMarker
       }
-      .accessibilityIdentifier("sidebar-project-\(project.id)")
-      .listRowBackground(SidebarProjectBox(part: isExpanded ? .top : .single))
-      // An expanded folder reads its own first page, as the web's (collapsed ones cost nothing).
-      .task(id: isExpanded && !pages.isLoaded) {
-        if isExpanded, !pages.isLoaded { pages.load?() }
+      chevron
+    }
+    // An empty gutter, as a childless session row's, so the folder's icon and name line up with
+    // the session rows' in and outside it.
+    .padding(.leading, SessionFamilyMetrics.lead)
+    .contentShape(Rectangle())
+    // A click on the row shows or hides its sessions, as the web's project header.
+    .onTapGesture(perform: toggle)
+    .accessibilityAddTraits(.isButton)
+    .onHover { isHovered = $0 }
+    .contextMenu { menu.items }
+    .draggable(SidebarDragItem.project(project.id).payload)
+    .sidebarDropTarget(drop)
+    // One element for the folder, around its name, hover buttons and chevron.
+    .accessibilityElement(children: .contain)
+    .accessibilityActions {
+      if let newSession = menu.actions.newSessionInProject {
+        Button("New session in project") { newSession(project) }
       }
     }
+    .accessibilityIdentifier("sidebar-project-\(project.id)")
+    .listRowBackground(SidebarProjectBox(part: isExpanded ? .top : .single))
+    // An expanded folder reads its own first page, as the web's (collapsed ones cost nothing).
+    .task(id: isExpanded && !pages.isLoaded) {
+      if isExpanded, !pages.isLoaded { pages.load?() }
+    }
+  }
+
+  private func toggle() {
+    withAnimation { isExpanded.toggle() }
+  }
+
+  /// Shows or hides the folder's sessions. It trails the row, as a system sidebar section's, so
+  /// it reads apart from the chevron that leads a session family.
+  private var chevron: some View {
+    let label = isExpanded ? "Collapse project" : "Expand project"
+    return Button(action: toggle) {
+      Image(systemName: "chevron.right")
+        .font(.system(size: 10, weight: .semibold))
+        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+        .frame(width: SessionFamilyMetrics.gutter, height: SessionFamilyMetrics.gutter)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.borderless)
+    .foregroundStyle(.secondary)
+    .help(label)
+    .accessibilityLabel(label)
+    .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+    .accessibilityIdentifier("sidebar-project-toggle-\(project.id)")
   }
 
   /// Show more follows the listed rows: some are left to show, here or on the server.

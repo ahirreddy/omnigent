@@ -27,12 +27,6 @@
         .filter { button in !searchFields.contains { button.isDescendant(of: $0) } }
     }
 
-    /// Disclosure triangles of the list's outline rows, top to bottom.
-    var disclosures: [NSButton] {
-      allViews.compactMap { $0 as? NSButton }
-        .filter { Swift.type(of: $0) == NSButton.self && $0.accessibilityLabel() == nil }
-    }
-
     /// A list row's middle, from the top left of the view.
     func center(ofRow row: Int) throws -> CGPoint {
       let list = try #require(list)
