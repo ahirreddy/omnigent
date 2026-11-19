@@ -196,19 +196,39 @@ pub(crate) async fn discover(
 }
 
 /// The manifest (`recent`'s, when it is for this URL and recent), then `/v1/info`, then the
-/// mode. `now_ms` is the monotonic clock.
+/// mode. `now_ms` is the monotonic clock. With `saved_base_url`, the API root the manifest
+/// named last time, `/v1/info` is read there beside the manifest, and again only when the
+/// manifest now names another.
 pub(crate) async fn resolve(
     transport: &CoreTransport,
     raw: &str,
     policy: UrlPolicy,
     recent: Option<RecentManifest>,
     now_ms: u64,
+    saved_base_url: Option<String>,
 ) -> Result<Resolved, CoreError> {
     let url = normalize(raw, policy)?;
     let known = recent.and_then(|recent| recent.reusable(&url, now_ms));
-    let (url, discovery) = match known {
-        Some(discovery) => (url, discovery),
-        None => discover(transport, raw, policy).await?,
+    let early_info = saved_base_url
+        .filter(|_| known.is_none() && !server_url::is_databricks_workspace(&url))
+        .and_then(|base_url| ServerEndpoint::new(&base_url).ok());
+    let (url, discovery, info_read) = match (known, early_info) {
+        (Some(discovery), _) => (url, discovery, None),
+        (None, Some(saved)) => {
+            let info_request = mode::info_request(&saved).map_err(CoreError::from)?;
+            let (manifest, info) = futures::future::join(
+                discover(transport, raw, policy),
+                transport.send(info_request),
+            )
+            .await;
+            let (url, discovery) = manifest?;
+            let same = discovery.base_url == saved.base_url();
+            (url, discovery, same.then_some(info))
+        }
+        (None, None) => {
+            let (url, discovery) = discover(transport, raw, policy).await?;
+            (url, discovery, None)
+        }
     };
     let endpoint = ServerEndpoint::new(&discovery.base_url).map_err(CoreError::from)?;
     if server_url::is_databricks_workspace(&url) {
@@ -227,10 +247,15 @@ pub(crate) async fn resolve(
         session_cookie: None,
         native_redirect_uris: discovery.native_redirect_uris.clone(),
     });
-    let response = transport
-        .send(mode::info_request(&endpoint).map_err(CoreError::from)?)
-        .await
-        .map_err(CoreError::from)?;
+    let response = match info_read {
+        Some(read) => read,
+        None => {
+            transport
+                .send(mode::info_request(&endpoint).map_err(CoreError::from)?)
+                .await
+        }
+    }
+    .map_err(CoreError::from)?;
     let info = mode::info_from_response(&response).map_err(CoreError::from)?;
     let resolved = mode::discovery_from_info(&endpoint, manifest_auth.as_ref(), &info);
     Ok(Resolved {

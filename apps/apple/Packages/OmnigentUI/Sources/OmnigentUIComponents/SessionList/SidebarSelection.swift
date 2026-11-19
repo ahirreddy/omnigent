@@ -148,25 +148,45 @@ struct SidebarSelectionBackground: View {
         // `superview` is `unowned(unsafe)` in AppKit. Each step reads it on the main thread
         // while this view is in the hierarchy, so every ancestor is alive.
         var ancestor = unsafe superview
-        while let view = ancestor, !(view is NSTableView) { ancestor = unsafe view.superview }
+        var rowView: NSTableRowView?
+        while let view = ancestor, !(view is NSTableView) {
+          if rowView == nil, let row = view as? NSTableRowView { rowView = row }
+          ancestor = unsafe view.superview
+        }
         guard let table = ancestor as? NSTableView else { return }
         if table.selectionHighlightStyle != .none { table.selectionHighlightStyle = .none }
         guard let outline = table as? NSOutlineView else { return }
-        // The rows draw their own indent (`SessionFamilyMetrics`).
-        if outline.indentationPerLevel != 0 { outline.indentationPerLevel = 0 }
-        Self.placeMisplacedRows(of: outline)
+        // The rows draw their own indent (`SessionFamilyMetrics`). Taking SwiftUI's away leaves
+        // the rows laid out with it misplaced, so all are checked then; otherwise a row checks
+        // only itself, since every row asks as it updates and a check of all walks every row.
+        if outline.indentationPerLevel != 0 {
+          outline.indentationPerLevel = 0
+          Self.placeMisplacedRows(of: outline)
+        } else if let rowView, Self.isMisplaced(rowView, in: outline) {
+          Self.placeRowsAgain(of: outline)
+        }
       }
 
       /// A row laid out while the list still had SwiftUI's indent keeps it, 9 points in: a new
       /// window's first rows, now and then. A column width change places every row's cells again.
       private static func placeMisplacedRows(of outline: NSOutlineView) {
         var misplaced = false
-        outline.enumerateAvailableRowViews { rowView, row in
-          guard let cell = rowView.view(atColumn: 0) as? NSView else { return }
-          let place = rowView.convert(outline.frameOfCell(atColumn: 0, row: row), from: outline)
-          if abs(cell.frame.minX - place.minX) > 0.5 { misplaced = true }
+        outline.enumerateAvailableRowViews { rowView, _ in
+          if isMisplaced(rowView, in: outline) { misplaced = true }
         }
-        guard misplaced, let column = outline.tableColumns.first else { return }
+        if misplaced { placeRowsAgain(of: outline) }
+      }
+
+      private static func isMisplaced(_ rowView: NSTableRowView, in outline: NSOutlineView) -> Bool
+      {
+        let row = outline.row(for: rowView)
+        guard row >= 0, let cell = rowView.view(atColumn: 0) as? NSView else { return false }
+        let place = rowView.convert(outline.frameOfCell(atColumn: 0, row: row), from: outline)
+        return abs(cell.frame.minX - place.minX) > 0.5
+      }
+
+      private static func placeRowsAgain(of outline: NSOutlineView) {
+        guard let column = outline.tableColumns.first else { return }
         column.width -= 1
         column.width += 1
       }

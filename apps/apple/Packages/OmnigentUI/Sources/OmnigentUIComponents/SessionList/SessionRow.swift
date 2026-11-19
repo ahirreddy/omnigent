@@ -114,7 +114,7 @@ struct SessionRow: View {
             .help(session.isArchived ? "Unarchive" : "Archive")
           }
           Menu {
-            menu.items
+            SessionRowMenuItems(menu: menu)
           } label: {
             Label("More", systemImage: "ellipsis")
           }
@@ -140,7 +140,7 @@ struct SessionRow: View {
       )
     #endif
     .help(tooltip)
-    .contextMenu { menu.items }
+    .contextMenu { SessionRowMenuItems(menu: menu) }
     // One element for the row, except while its title is edited in place: a combined row
     // would hide the field from VoiceOver and from keyboard access.
     .accessibilityElement(children: Self.accessibilityChildren(isRenaming: inlineRename != nil))

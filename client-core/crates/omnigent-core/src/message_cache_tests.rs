@@ -239,6 +239,14 @@ fn files_are_named_by_hashes_per_server_and_account() {
         decode_last_account(&encode_last_account(typed.account_key(), 5).unwrap()).unwrap();
     assert_eq!(account, typed.account_key());
     assert!(decode_last_account(&encode_last_account("../escape", 5).unwrap()).is_err());
+    let endpoint = endpoint_path(typed.server_key());
+    assert!(!endpoint.contains("127.0.0.1"), "{endpoint}");
+    let api = "https://omnigent.example.com/api";
+    assert_eq!(
+        decode_endpoint(&encode_endpoint(api, 5).unwrap()).unwrap(),
+        api
+    );
+    assert!(decode_endpoint(&encode_endpoint("", 5).unwrap()).is_err());
 }
 
 #[test]

@@ -1,5 +1,16 @@
 import SwiftUI
 
+/// A row menu's items as a view of their own. A row's body builds only this value; the items,
+/// with what they read (the session's web link, the nests it can join, every project), are built
+/// when the menu opens, not for every row the list draws.
+struct SessionRowMenuItems: View {
+  let menu: SessionRowMenu
+
+  var body: some View {
+    menu.items.countsRenders("session row menu")
+  }
+}
+
 /// The row menu in the web's order, shared by the context menu and the hover menu.
 struct SessionRowMenu {
   let session: SessionSummary

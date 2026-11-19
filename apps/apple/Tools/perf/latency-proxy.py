@@ -411,7 +411,9 @@ def report(args: argparse.Namespace) -> None:
 def summarize(marks: list[dict], launched: float, last_read_ms: float) -> None:
     """Prints when the sidebar first had rows and when it had the whole list, from launch, and
     the main thread's time to each."""
-    builds = [mark for mark in marks if mark["name"] == "sidebar state"]
+    # When each state was drawn (the main queue's turn after its pass), else when it was built.
+    drawn = [mark for mark in marks if mark["name"] == "sidebar drawn"]
+    builds = drawn or [mark for mark in marks if mark["name"] == "sidebar state"]
 
     def since_launch(mark: dict) -> float:
         return (mark["at"] - launched) * 1000
@@ -438,6 +440,20 @@ def summarize(marks: list[dict], launched: float, last_read_ms: float) -> None:
             f"{mark['detail'].get('cpu', '?')} ms CPU since launch, {spent:.0f} ms in "
             f"{len(until)} list events and sidebar builds"
         )
+    # A saved list's swap for the server's: the reset applied once the last read landed, which
+    # draws nothing new when the rows are the same.
+    swap = next(
+        (
+            mark
+            for mark in marks
+            if mark["name"] == "list event"
+            and mark["message"].startswith("reset")
+            and since_launch(mark) >= last_read_ms
+        ),
+        None,
+    )
+    if swap is not None:
+        print(f"server's list applied: {since_launch(swap):.0f} ms")
     counts = collections.Counter(mark["name"] for mark in marks)
     print(
         f"sidebar builds: {counts['sidebar state']}, list events applied: "

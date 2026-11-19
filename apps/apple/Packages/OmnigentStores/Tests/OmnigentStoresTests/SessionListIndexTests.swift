@@ -105,6 +105,26 @@ struct SessionListIndexTests {
     #expect(store.contents.unreadIDs.isEmpty)
   }
 
+  @Test("a watch's news of a row's host and runner redraws the row, not the list")
+  func livenessIsNoMove() {
+    let store = SessionListStore()
+    var row = summary("a", updatedAt: 1)
+    row.configuration = SessionConfiguration(
+      agentId: "agent", harness: "claude-sdk", wrapper: nil, modelOverride: nil, baseModel: nil,
+      effort: nil, modelReported: true, effortReported: true, models: [], hostId: "host",
+      hostOnline: nil, runnerOnline: nil, runnerBound: nil, hostResumable: nil, parentId: nil,
+      routingMode: nil)
+    store.apply(.reset(sessions: [row]))
+    let revision = store.placementRevision
+    // The list reads leave liveness out; the snapshot of the watch tells it.
+    row.configuration?.hostOnline = true
+    row.configuration?.runnerOnline = true
+    row.configuration?.runnerBound = true
+    store.apply(.upsert(sessions: [row]))
+    #expect(store.placementRevision == revision)
+    #expect(store.session("a")?.configuration?.runnerOnline == true)
+  }
+
   @Test("a row's own text, status and marks do not count as a move; order, pins and search do")
   func placementCountsOnlyMoves() {
     let store = SessionListStore()

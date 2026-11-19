@@ -36,6 +36,9 @@ pub const CONVERSATIONS_DIR: &str = "conversations";
 pub const LIST_FILE: &str = "sessions.json";
 /// The last-connected account's file in a server's folder.
 pub const LAST_ACCOUNT_FILE: &str = "last-account.json";
+/// The API root the server's manifest last named, in its folder: a connect reads `/v1/info`
+/// there beside the manifest, and again only when the manifest names another.
+pub const ENDPOINT_FILE: &str = "endpoint.json";
 
 /// Why the saved copy could not be used. Messages name the part of a file and the failure,
 /// never what the file holds.
@@ -81,6 +84,8 @@ pub const CONVERSATION_ROLE: &str = "a session";
 pub const LIST_ROLE: &str = "the session list";
 /// The role of the last-account file, for messages.
 pub const ACCOUNT_ROLE: &str = "the last signed-in account";
+/// The role of the endpoint file, for messages.
+pub const ENDPOINT_ROLE: &str = "the server's API address";
 
 /// Lower-case hex of the first 16 bytes of `text`'s SHA-256: a file name that reveals nothing.
 fn hashed(text: &str) -> String {
@@ -121,6 +126,12 @@ pub fn account_key(user_id: &str) -> String {
 #[must_use]
 pub fn last_account_path(server_key: &str) -> String {
     format!("{server_key}/{LAST_ACCOUNT_FILE}")
+}
+
+/// The API root the manifest of the server whose key is `server_key` named last.
+#[must_use]
+pub fn endpoint_path(server_key: &str) -> String {
+    format!("{server_key}/{ENDPOINT_FILE}")
 }
 
 /// One account on one server: where its saved copy lives under the cache root.
@@ -562,6 +573,30 @@ pub fn decode_last_account(bytes: &[u8]) -> Result<String, CacheError> {
             Ok(account)
         }
         _ => Err(corrupt(what, "no account folder")),
+    }
+}
+
+/// The endpoint file naming `base_url`.
+///
+/// # Errors
+///
+/// [`CacheError::Encode`] when it does not encode.
+pub fn encode_endpoint(base_url: &str, saved_at_ms: u64) -> Result<Vec<u8>, CacheError> {
+    let mut fields = envelope(saved_at_ms);
+    fields.insert("base_url".to_owned(), Value::String(base_url.to_owned()));
+    to_bytes(ENDPOINT_ROLE, fields)
+}
+
+/// The API root an endpoint file names.
+///
+/// # Errors
+///
+/// [`CacheError::Corrupt`] for a file that is not this format or names no address.
+pub fn decode_endpoint(bytes: &[u8]) -> Result<String, CacheError> {
+    let (mut fields, _) = open_envelope(ENDPOINT_ROLE, bytes)?;
+    match fields.remove("base_url") {
+        Some(Value::String(base_url)) if !base_url.is_empty() => Ok(base_url),
+        _ => Err(corrupt(ENDPOINT_ROLE, "no address")),
     }
 }
 

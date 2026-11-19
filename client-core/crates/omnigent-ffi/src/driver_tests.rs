@@ -303,7 +303,8 @@ fn the_updates_socket_watches_sessions_and_applies_frames() {
             .starts_with("ws://127.0.0.1:6767/v1/sessions/updates")
     );
     sink.opened();
-    harness.pump();
+    // The first page's rows join the watch a moment after it lands.
+    harness.advance(crate::engine::WATCH_COALESCE_MS);
     let sent = lock(&socket.sent).clone();
     let watch: serde_json::Value = serde_json::from_str(sent.last().unwrap()).unwrap();
     assert_eq!(watch["type"], "watch");
@@ -2122,7 +2123,7 @@ fn more_open_sessions_than_the_watch_cap_still_updates_the_watch() {
     harness.events.take();
     let before = lock(&socket.sent).len();
     harness.core.refresh_sessions();
-    harness.pump();
+    harness.advance(crate::engine::WATCH_COALESCE_MS);
     let events = harness.events.take();
     assert_eq!(list_errors(&events), [], "{}", events.len());
     let sent = lock(&socket.sent).clone();
@@ -2144,7 +2145,7 @@ fn a_session_id_the_watch_refuses_leaves_the_others_watched() {
     harness.pump();
     harness.events.take();
     harness.core.refresh_sessions();
-    harness.pump();
+    harness.advance(crate::engine::WATCH_COALESCE_MS);
     assert_eq!(list_errors(&harness.events.take()), []);
     let sent = lock(&socket.sent).clone();
     let watch: serde_json::Value = serde_json::from_str(sent.last().unwrap()).unwrap();

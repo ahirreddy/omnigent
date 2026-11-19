@@ -26,6 +26,9 @@ use crate::sidebar::ProjectSortMode;
 
 /// How many sessions one folder page reads, as the web's folder.
 const PROJECT_PAGE_LIMIT: u32 = 20;
+/// How many sessions a folder's later pages read: Show more lists ten at a time from the loaded
+/// rows, and Show All Sessions reads every page one after another, so each takes more.
+const PROJECT_NEXT_PAGE_LIMIT: u32 = 100;
 
 /// The id of `project`'s sidebar folder: its first-class id, else its name for a label-only
 /// project.
@@ -325,12 +328,17 @@ impl Engine {
             .then(|| pages.next_cursor.clone())
             .flatten();
         pages.reading = Some((token, read != FolderRead::Again));
+        let limit = if read == FolderRead::Next {
+            PROJECT_NEXT_PAGE_LIMIT
+        } else {
+            PROJECT_PAGE_LIMIT
+        };
         let sessions = Arc::clone(&self.sessions);
         let tx = self.sender();
         let folder = folder.to_owned();
         self.host.spawn(async move {
             let result = sessions
-                .project_session_page(&project.name, after.as_deref(), PROJECT_PAGE_LIMIT)
+                .project_session_page(&project.name, after.as_deref(), limit)
                 .await;
             post(
                 &tx,

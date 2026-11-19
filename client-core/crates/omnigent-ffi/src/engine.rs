@@ -46,6 +46,8 @@ const INVENTORY_REFRESH_DELAY_MS: u64 = 3_000;
 pub(crate) const DEMO_TICK_MS: u64 = 120;
 /// The most sessions the updates socket watches.
 const MAX_WATCHED: usize = core::realtime::MAX_WATCHED_SESSIONS;
+/// How long a changed watch waits for the next change before it is sent.
+pub(crate) const WATCH_COALESCE_MS: u64 = 200;
 
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -175,6 +177,8 @@ pub(crate) enum Msg {
     AttentionDue,
     /// The demo should stream its next word.
     DemoTick,
+    /// A changed watch has waited long enough: send it.
+    WatchDue,
     /// The demo started a reply.
     DemoKick,
     /// The app returned to the foreground.
@@ -267,6 +271,8 @@ pub(crate) struct Engine {
     pub(crate) unread: BTreeSet<String>,
     pub(crate) list: crate::list_driver::ListWindow,
     pub(crate) demo_ticker: Option<AbortHandle>,
+    /// A changed watch waits on this ([`WATCH_COALESCE_MS`]).
+    pub(crate) watch_timer: Option<AbortHandle>,
     /// This device's saved copy; absent in the demo and without a cache folder.
     pub(crate) cache: Option<Arc<crate::message_cache::MessageCache>>,
     pub(crate) saved: crate::cache_driver::SavedState,
@@ -304,6 +310,7 @@ impl Engine {
                 unread: BTreeSet::new(),
                 list: crate::list_driver::ListWindow::default(),
                 demo_ticker: None,
+                watch_timer: None,
                 cache: None,
                 saved: crate::cache_driver::SavedState::default(),
             },
@@ -388,6 +395,7 @@ impl Engine {
             Msg::NotificationsAllowed(allowed) => self.attention.can_notify = allowed,
             Msg::AttentionDue => self.attention_due(),
             Msg::DemoTick => self.demo_tick(),
+            Msg::WatchDue => self.send_watch(),
             Msg::DemoKick => self.demo_kick(),
             Msg::Foreground => self.foreground(),
             Msg::Emit(event) => self.emit(event),
@@ -622,8 +630,23 @@ impl Engine {
         }));
     }
 
-    /// Watches every known session, most recently updated first, up to the server's cap.
+    /// Watches every known session a moment from now, so the reads of one load (a page, the
+    /// pins, each folder) send one watch and the server one snapshot, not one each.
     pub(crate) fn update_watch(&mut self) {
+        if self.is_demo() || !self.is_connected() || self.watch_timer.is_some() {
+            return;
+        }
+        let tx = self.sender();
+        self.watch_timer = Some(self.host.after(WATCH_COALESCE_MS, move || {
+            post(&tx, Msg::WatchDue);
+        }));
+    }
+
+    /// Watches every known session now, most recently updated first, up to the server's cap.
+    pub(crate) fn send_watch(&mut self) {
+        if let Some(timer) = self.watch_timer.take() {
+            timer.abort();
+        }
         if self.is_demo() || !self.is_connected() {
             return;
         }
@@ -638,11 +661,12 @@ impl Engine {
         let open = self.drivers.keys().cloned();
         let known = summaries.into_iter().map(|summary| summary.id);
         let mut ids: Vec<String> = Vec::new();
+        let mut seen: BTreeSet<String> = BTreeSet::new();
         for id in open.chain(known) {
             if ids.len() >= MAX_WATCHED {
                 break;
             }
-            if core::realtime::updates::is_valid_session_id(&id) && !ids.contains(&id) {
+            if core::realtime::updates::is_valid_session_id(&id) && seen.insert(id.clone()) {
                 ids.push(id);
             }
         }

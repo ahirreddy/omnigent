@@ -126,7 +126,10 @@ fn a_launch_shows_the_saved_list_and_folders_before_any_read_answers() {
     let core = Arc::clone(&second.core);
     let connected = second.start(async move { core.connect(SERVER.into(), None).await });
     let shown = second.events.take();
-    assert_eq!(sent(&second), ["/.well-known/omnigent.json"]);
+    // The info is read at the API root the manifest named last time, beside the manifest.
+    let mut early = sent(&second);
+    early.sort();
+    assert_eq!(early, ["/.well-known/omnigent.json", "/v1/info"]);
     // With the account it was read for, so its own rows file into their folders at once.
     assert!(shown.contains(&saved_list_shown()));
     let projects = shown.iter().find_map(|event| match event {

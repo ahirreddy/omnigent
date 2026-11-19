@@ -131,8 +131,9 @@ struct OfflineSavedCopyTests {
       conversation.isHydrated && conversation.rows.count == 2
     }
     #expect(!conversation.isOffline)
-    // The list, the account and the session are written in the background.
-    try await eventually("the saved copy") { savedFiles(cache) == 3 }
+    // The list, the account, the server's API address and the session are written in the
+    // background.
+    try await eventually("the saved copy") { savedFiles(cache) == 4 }
 
     let offline = try store(
       FakeHttpTransport { _ throws(TransportError) in

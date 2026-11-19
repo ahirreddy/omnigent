@@ -31,7 +31,7 @@ impl Engine {
             return;
         }
         self.updates_input(UpdatesInput::Start);
-        self.update_watch();
+        self.send_watch();
     }
 
     /// Like [`Self::start_updates`], and also makes a pending reconnect now and replaces a
@@ -41,10 +41,13 @@ impl Engine {
             return;
         }
         self.updates_input(UpdatesInput::Resume);
-        self.update_watch();
+        self.send_watch();
     }
 
     pub(crate) fn stop_updates(&mut self) {
+        if let Some(timer) = self.watch_timer.take() {
+            timer.abort();
+        }
         self.updates_input(UpdatesInput::Stop);
         for timer in self.updates_timers.values() {
             timer.abort();
