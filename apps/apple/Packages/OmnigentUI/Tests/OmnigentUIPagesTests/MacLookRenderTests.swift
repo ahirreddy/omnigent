@@ -45,6 +45,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case settingsSessions = "settings-sessions"
   case settingsHarness = "settings-harness"
   case settingsPlugin = "settings-plugin"
+  case settingsAdminGeneral = "settings-admin-general"
+  case sessionsDeleteAutomation = "sessions-delete-automation"
   case tasksPlan = "tasks-plan"
   case tasksStopping = "tasks-stopping"
   case tasksHistory = "tasks-history"
@@ -76,10 +78,13 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .composerMcp, .markersChat, .viewersPDF, .viewersVideo, .viewersChatVideo: 736
     case .composerRewind, .tasksPlan, .tasksStopping, .prFileHeader: 480
     case .tasksHistory: 420
+    case .sessionsDeleteAutomation: 460
     case .automationsLegacyShare: 900
     case .automationsNew: 600
     case .projectsNewFolder, .projectsNewRepository: 460
-    case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 640
+    case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin,
+      .settingsAdminGeneral:
+      640
     default: 640
     }
   }
@@ -149,6 +154,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .settingsSessions: return AnyView(Fixture.settings { Fixture.sessions })
     case .settingsHarness: return AnyView(Fixture.settings { Fixture.harness })
     case .settingsPlugin: return AnyView(Fixture.settings { Fixture.pluginPage })
+    case .settingsAdminGeneral: return AnyView(Fixture.settings { Fixture.adminGeneral })
+    case .sessionsDeleteAutomation: return AnyView(Fixture.deleteAutomationSource)
     case .tasksPlan: return AnyView(Fixture.tasks)
     case .tasksStopping: return AnyView(Fixture.tasksStopping)
     case .tasksHistory: return AnyView(Fixture.taskHistory)

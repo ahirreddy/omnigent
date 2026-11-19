@@ -79,6 +79,30 @@ extension LookFixtures {
         create: {}, edit: { _ in }, save: { _ in }, remove: { _, _ in }, closeEditor: {}))
   }
 
+  /// Deleting a worktree session an automation runs from.
+  static var deleteAutomationSource: some View {
+    let session = SessionSummary(id: "s1", title: "Nightly dependency bump")
+    return DeleteSessionsSheet(
+      sessions: [session], branches: ["s1": "deps/nightly"], delete: { _ in }, cancel: {},
+      automationNotice: DeleteSessionsSheet.automationNotice(count: 1, total: 1))
+  }
+
+  static var adminGeneral: some View {
+    var sharing = SharingViewState(
+      mode: "on", modeChoices: [], modeEditable: true, publicSharing: false,
+      publicSharingEditable: true)
+    sharing.nestedAgentDestinations = "current_host_or_new_sandbox"
+    sharing.nestedAgentDestinationChoices = [
+      SettingChoice(id: "current_host", title: "Current host only"),
+      SettingChoice(id: "current_host_or_new_sandbox", title: "Current host or new sandbox"),
+      SettingChoice(id: "any_host", title: "Any available host"),
+    ]
+    sharing.nestedAgentDestinationsEditable = true
+    var actions = ServerSettingsActions()
+    actions.changeSharing = { _ in }
+    return AdminGeneralPane(sharing: sharing, actions: actions)
+  }
+
   @ViewBuilder static var sessions: some View {
     SessionTitleInstructionsPane(
       state: .ready(saved: "Start every title with the ticket id.", maxChars: 500),
