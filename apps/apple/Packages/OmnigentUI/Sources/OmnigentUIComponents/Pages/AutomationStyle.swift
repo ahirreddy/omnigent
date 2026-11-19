@@ -110,33 +110,44 @@ extension View {
 
     func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
 
-    func makeUIView(context: Context) -> UISearchBar {
-      let bar = UISearchBar()
-      bar.placeholder = prompt
-      bar.searchBarStyle = .minimal
-      bar.delegate = context.coordinator
-      bar.accessibilityIdentifier = "automations-search"
-      return bar
+    func makeUIView(context: Context) -> UISearchTextField {
+      let field = UISearchTextField()
+      field.placeholder = prompt
+      field.returnKeyType = .search
+      field.delegate = context.coordinator
+      field.addTarget(
+        context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
+      field.accessibilityIdentifier = "automations-search"
+      return field
     }
 
-    func updateUIView(_ bar: UISearchBar, context: Context) {
+    func updateUIView(_ field: UISearchTextField, context: Context) {
       context.coordinator.text = $text
-      if bar.text != text { bar.text = text }
+      if field.text != text { field.text = text }
     }
 
-    final class Coordinator: NSObject, UISearchBarDelegate {
+    /// The offered width at the field's own height, as the system's search bar.
+    func sizeThatFits(
+      _ proposal: ProposedViewSize, uiView field: UISearchTextField, context: Context
+    ) -> CGSize? {
+      let natural = field.intrinsicContentSize
+      return CGSize(width: proposal.width ?? natural.width, height: max(natural.height, 36))
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
       var text: Binding<String>
 
       init(text: Binding<String>) {
         self.text = text
       }
 
-      func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        text.wrappedValue = searchText
+      @objc func textChanged(_ field: UISearchTextField) {
+        text.wrappedValue = field.text ?? ""
       }
 
-      func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        searchBar.resignFirstResponder()
+      func textFieldShouldReturn(_ field: UITextField) -> Bool {
+        field.resignFirstResponder()
+        return true
       }
     }
   }

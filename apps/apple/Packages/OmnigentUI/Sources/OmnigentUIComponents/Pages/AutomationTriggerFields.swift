@@ -125,17 +125,23 @@ struct AutomationTriggerHeader: View {
             }
             .accessibilityIdentifier("automation-trigger-details")
         }
-        FlowLayout(spacing: Theme.Spacing.small) {
-          mcpTag
-          AutomationTag(
-            label: "Untrusted source", systemImage: "exclamationmark.triangle.fill",
-            message: copy.sourceWarning, tint: .orange
-          )
-          .accessibilityIdentifier("automation-trigger-untrusted")
+        // In a row, or stacked when the row is too narrow.
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: Theme.Spacing.small) { tags }
+          VStack(alignment: .leading, spacing: Theme.Spacing.small) { tags }
         }
       }
     }
     .padding(.vertical, Theme.Spacing.extraSmall)
+  }
+
+  @ViewBuilder private var tags: some View {
+    mcpTag
+    AutomationTag(
+      label: "Untrusted source", systemImage: "exclamationmark.triangle.fill",
+      message: copy.sourceWarning, tint: .orange
+    )
+    .accessibilityIdentifier("automation-trigger-untrusted")
   }
 
   /// The service's MCP: used, offered to add, or needed.
@@ -148,7 +154,9 @@ struct AutomationTriggerHeader: View {
       )
       .accessibilityIdentifier("automation-trigger-mcp")
     } else if let mcp {
+      // Bordered, so a form row's tap doesn't press it.
       Button("Add \(mcp.title) MCP", systemImage: "powerplug") { usesMcp = true }
+        .buttonStyle(.bordered)
         .controlSize(.small)
         .disabled(!mcp.isConnected)
         .help(

@@ -70,15 +70,18 @@ struct AutomationTag: View {
   var tint: Color = .secondary
 
   var body: some View {
-    Label(label, systemImage: systemImage)
-      .font(.caption)
-      .foregroundStyle(tint)
-      .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.tiny)
-      .background(tint.opacity(0.12), in: Capsule())
-      .fixedSize()
-      .help(message)
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel("\(label): \(message)")
+    HStack(spacing: Theme.Spacing.extraSmall) {
+      Image(systemName: systemImage)
+      Text(label)
+    }
+    .font(.caption)
+    .foregroundStyle(tint)
+    .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.tiny)
+    .background(tint.opacity(0.12), in: Capsule())
+    .fixedSize()
+    .help(message)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(label): \(message)")
   }
 }
 
