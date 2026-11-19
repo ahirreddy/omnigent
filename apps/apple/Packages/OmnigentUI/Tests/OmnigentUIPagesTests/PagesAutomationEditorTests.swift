@@ -266,8 +266,12 @@
       #expect(draft.value.projectID == "p1")
       let defaults = screen.popUps.filter { $0.title == "Default" }
       #expect(defaults.count == 2, "model and effort")
-      try screen.choose("Opus", inPopUp: defaults[0])
-      try screen.choose("High", inPopUp: defaults[1])
+      // A form's pop-ups aren't in layout order among the window's views: pick by what each offers.
+      for choice in ["Opus", "High"] {
+        let offering = try #require(
+          try defaults.first { try screen.titles(inPopUp: $0).contains(choice) })
+        try screen.choose(choice, inPopUp: offering)
+      }
       #expect([draft.value.model, draft.value.effort] == ["opus", "high"])
       try screen.choose("Default", inPopUp: try popUp(screen, showing: "Opus"))
       #expect(draft.value.model.isEmpty)
@@ -361,8 +365,9 @@
         #expect(above.maxY <= below.minY + 1, "\(above) is above \(below)")
       }
       let save = try #require(frames.last)
+      let advanced = try #require(frames.dropLast().last)
       #expect(save.maxX > screen.host.bounds.width - 40, "Create sits at the bottom right")
-      #expect(save.minY > try #require(frames.dropLast().last).maxY)
+      #expect(save.minY > advanced.maxY)
     }
 
     @Test("the frequency is a pop-up menu, and a kept rule offers a new schedule")
