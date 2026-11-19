@@ -141,9 +141,9 @@ enum SessionFamilyMetrics {
   /// A folder's rows that are no session (loading, No sessions, Show more): a step in, past
   /// the gutter, so their text starts at the icons of the folder's sessions.
   static let folderNoteIndent = step * 2
-  /// Where a nested row's connector runs down, from its gutter's leading edge: the gutter's
-  /// middle, under its parent's icon.
-  static let connectorX = gutter / 2
+  /// Where a nested row's connector runs down, from its gutter's leading edge: under the middle
+  /// of its parent's icon, which starts where the nested row's gutter does.
+  static let connectorX = markWidth / 2
   /// Where the connector ends, just short of the nested row's icon.
   static let connectorEnd = step - Theme.Spacing.extraSmall
   /// The connector's corner, where it turns toward the nested row.
