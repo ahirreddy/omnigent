@@ -154,6 +154,7 @@ struct SidebarSelectionBackground: View {
           ancestor = unsafe view.superview
         }
         guard let table = ancestor as? NSTableView else { return }
+        if unsafe window != nil { SidebarRowShownSignpost.rowsShown(table.numberOfRows) }
         if table.selectionHighlightStyle != .none { table.selectionHighlightStyle = .none }
         guard let outline = table as? NSOutlineView else { return }
         // The rows draw their own indent (`SessionFamilyMetrics`). Taking SwiftUI's away leaves
