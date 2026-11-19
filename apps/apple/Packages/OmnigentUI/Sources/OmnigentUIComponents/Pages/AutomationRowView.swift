@@ -60,6 +60,7 @@ struct AutomationRowView: View {
       } label: {
         // Only the mark hides: the menu itself stays reachable by click and by keyboard.
         Image(systemName: "ellipsis")
+          .foregroundStyle(.secondary)
           .opacity(showsMenu ? 1 : 0)
           .frame(width: Theme.Control.target, height: Theme.Control.target)
           .contentShape(Rectangle())
