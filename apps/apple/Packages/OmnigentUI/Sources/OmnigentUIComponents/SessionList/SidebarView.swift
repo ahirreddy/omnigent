@@ -301,9 +301,9 @@ extension SidebarView {
         },
         confirmDelete: { confirmingProjectDelete = project }),
       drop: { item in drop(item, on: .project(project)) },
-      row: { session in
+      row: { session, box in
         let place = rowPlace(session, in: project, layout: layout)
-        row(session, target: place.target, family: place.family, inFolder: true)
+        row(session, target: place.target, family: place.family, box: box)
       },
       folderMarker: expandedProjects.contains(project.id) ? nil : marker(sessions[...]),
       moreMarker: pages.visibleCount < sessions.count
@@ -313,20 +313,18 @@ extension SidebarView {
   /// A session's row; a nested member is no drag source, its family moving with its head.
   private func row(
     _ session: SessionSummary, target: SidebarDropTarget?, family: SessionRowFamily,
-    inFolder: Bool = false
+    box: SidebarBoxPart? = nil
   ) -> some View {
     let destination = state.destination(of: session)
     let isOpen = selection == destination
     return SidebarLiveRow(
       snapshot: state.rowContent(session), live: actions.live, showsDraft: !isOpen
     ) { row in
-      sessionRow(
-        row, reorder: dropHandler.move(in: target?.group), family: family, inFolder: inFolder)
+      sessionRow(row, reorder: dropHandler.move(in: target?.group), family: family)
     }
     .tag(destination)
     .sidebarSelection(
-      bulk.isActive ? bulk.ids.contains(session.id) : isOpen,
-      indent: family.indent(inFolder: inFolder)
+      bulk.isActive ? bulk.ids.contains(session.id) : isOpen, indent: family.indent, box: box
     )
     .sidebarDraggable(
       family.movesWithFamily(session) ? nil : SidebarDragItem.session(session.id).payload
@@ -336,7 +334,7 @@ extension SidebarView {
 
   /// A row and its menu for the session as it is now.
   private func sessionRow(
-    _ row: SidebarRowContent, reorder: SessionRowMove?, family: SessionRowFamily, inFolder: Bool
+    _ row: SidebarRowContent, reorder: SessionRowMove?, family: SessionRowFamily
   ) -> some View {
     let session = row.session
     var sessionActions = state.rowActions(session, actions.sessions)
@@ -373,7 +371,7 @@ extension SidebarView {
       inlineRename: inlineEdit.session?.id == session.id
         ? SidebarInlineEdit.field($inlineEdit, rename: actions.sessions.rename) : nil,
       beginInlineRename: canRenameInline(session, info: row.info)
-        ? { inlineEdit.begin(session) } : nil, family: family, isInFolder: inFolder
+        ? { inlineEdit.begin(session) } : nil, family: family
     )
     #if os(iOS)
       .modifier(SessionSwipeActions(session: session, isUnread: row.isUnread, menu: menu))

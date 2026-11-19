@@ -42,7 +42,8 @@ extension ProjectFolderPages {
 }
 
 /// One project folder, as the web's: the label with New session in project and the project
-/// menu on hover (and in the context menu), then its sessions, five until Show more.
+/// menu on hover (and in the context menu), then its sessions, five until Show more. A box drawn
+/// around the folder's rows groups them; they sit where sessions outside a folder do.
 struct ProjectFolder<Row: View>: View {
   let project: SessionProject
   let sessions: [SessionSummary]
@@ -50,7 +51,8 @@ struct ProjectFolder<Row: View>: View {
   let pages: ProjectFolderPages
   let menu: ProjectMenu
   let drop: (SidebarDragItem) -> Bool
-  @ViewBuilder let row: (SessionSummary) -> Row
+  /// A session's row, with its part of the folder's box.
+  @ViewBuilder let row: (SessionSummary, SidebarBoxPart) -> Row
   /// The strongest state of its sessions, while it is collapsed.
   var folderMarker: SidebarHiddenMarker?
   /// The strongest state of the sessions under Show more.
@@ -59,6 +61,7 @@ struct ProjectFolder<Row: View>: View {
   let listed: [SessionSummary]
 
   @State private var isHovered = false
+  @Environment(\.defaultMinListRowHeight) private var rowHeight
 
   var body: some View {
     DisclosureGroup(isExpanded: $isExpanded) {
@@ -71,12 +74,13 @@ struct ProjectFolder<Row: View>: View {
           }
         }
         .padding(.leading, SessionFamilyMetrics.folderNoteIndent)
+        .listRowBackground(SidebarProjectBox(part: .bottom))
       }
       ForEach(listed) { session in
-        row(session)
+        row(session, session.id == listed.last?.id && !showsMore ? .bottom : .middle)
       }
-      if pages.visibleCount < sessions.count || (pages.hasMore && !sessions.isEmpty) {
-        showMore.padding(.leading, SessionFamilyMetrics.folderNoteIndent)
+      if showsMore {
+        showMore.listRowBackground(SidebarProjectBox(part: .bottom))
       }
     } label: {
       HStack(spacing: Theme.Spacing.tiny) {
@@ -92,8 +96,8 @@ struct ProjectFolder<Row: View>: View {
         }
       }
       // The gutter, where the Mac outline draws the folder's disclosure triangle (iOS's trails),
-      // so the folder's icon and name line up with the session rows' outside it.
-      .padding(.leading, SessionFamilyMetrics.step)
+      // so the folder's icon and name line up with the session rows' in and outside it.
+      .padding(.leading, SessionFamilyMetrics.lead)
       .contentShape(Rectangle())
       .onHover { isHovered = $0 }
       .contextMenu { menu.items }
@@ -107,6 +111,7 @@ struct ProjectFolder<Row: View>: View {
         }
       }
       .accessibilityIdentifier("sidebar-project-\(project.id)")
+      .listRowBackground(SidebarProjectBox(part: isExpanded ? .top : .single))
       // An expanded folder reads its own first page, as the web's (collapsed ones cost nothing).
       .task(id: isExpanded && !pages.isLoaded) {
         if isExpanded, !pages.isLoaded { pages.load?() }
@@ -114,29 +119,47 @@ struct ProjectFolder<Row: View>: View {
     }
   }
 
+  /// Show more follows the listed rows: some are left to show, here or on the server.
+  private var showsMore: Bool {
+    pages.visibleCount < sessions.count || (pages.hasMore && !sessions.isEmpty)
+  }
+
   /// The folder's emoji, else a folder; decorative, as its name says which folder it is.
   @ViewBuilder private var folderIcon: some View {
     if let icon = project.icon {
       Text(icon).accessibilityHidden(true)
     } else {
-      // The navigation rows' color, not the platform tint (system blue on iOS).
-      Image(systemName: "folder").foregroundStyle(ThemeColor.primary).accessibilityHidden(true)
+      Image(systemName: "folder").foregroundStyle(SidebarBoxMetrics.folderTint)
+        .accessibilityHidden(true)
     }
   }
 
   private var showMore: some View {
     // Waiting on the next server page, with no loaded rows left to reveal.
     let isWaiting = pages.isLoading && pages.visibleCount >= sessions.count
+    let title = isWaiting ? "Loading\u{2026}" : "Show more"
+    // The click area reaches the row's edges above and below the text; the rows beside it
+    // clip what reaches past.
+    let reach = rowHeight / 2
     return Button(action: pages.showMore) {
       HStack {
-        Text(isWaiting ? "Loading\u{2026}" : "Show more")
+        Text(title)
         Spacer(minLength: 4)
-        moreMarker
+        // Drawn only: the button takes its clicks and says its state.
+        moreMarker?.inButton()
       }
+      .padding(.leading, SessionFamilyMetrics.folderNoteIndent)
+      .padding(.vertical, reach)
+      .contentShape(Rectangle())
     }
+    .padding(.vertical, -reach)
+    .help(moreMarker?.help ?? "")
     .buttonStyle(.borderless)
     .foregroundStyle(.secondary)
     .disabled(isWaiting)
+    .accessibilityLabel(
+      [title, moreMarker?.accessibilityText].compactMap(\.self).joined(separator: ", ")
+    )
     .accessibilityIdentifier("project-show-more-\(project.id)")
   }
 

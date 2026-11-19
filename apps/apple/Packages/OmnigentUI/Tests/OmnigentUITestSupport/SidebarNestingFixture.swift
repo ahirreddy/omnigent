@@ -84,3 +84,59 @@ enum SidebarNestingFixture {
   /// A row nested in a family inside the folder.
   static let nestedInProject = ["plan"]
 }
+
+/// A sidebar shaped like a real one with several projects: two childless pins; Gateway with an
+/// expanded family of two members and a family with one; Docs with one session; Tooling
+/// collapsed; Infra with two childless sessions; then Shared and Sessions.
+enum SidebarProjectsFixture {
+  static let gateway = SessionProject(
+    id: "gateway", name: "Gateway",
+    sessionIds: ["spokes", "plan", "load", "monitor", "monitor-run"])
+  static let docs = SessionProject(id: "docs", name: "Docs", sessionIds: ["guide"])
+  static let tooling = SessionProject(id: "tools", name: "Tooling", sessionIds: ["lint"])
+  static let infra = SessionProject(id: "infra", name: "Infra", sessionIds: ["rotate", "images"])
+  /// The folders open in the fixture: all but Tooling.
+  static let expanded = ["gateway", "docs", "infra"]
+
+  private static let spokesFamily = SessionFamilyInfo(
+    id: "spokes", representativeID: "spokes", representativeTitle: "Spoke Tests")
+  private static let monitorFamily = SessionFamilyInfo(
+    id: "monitor", representativeID: "monitor", representativeTitle: "Monitor Job")
+
+  /// The sessions, most recent first.
+  static var sessions: [SessionSummary] {
+    let member = { (id: String, title: String, family: SessionFamilyInfo, updatedAt: Int64) in
+      FamilyFixture.member(id, title, updatedAt: updatedAt, family: family)
+    }
+    return [
+      SessionSummary(id: "rollout", title: "Rollout Plan", updatedAt: 990, isPinned: true),
+      SessionSummary(id: "incident", title: "Incident Review", updatedAt: 980, isPinned: true),
+      member("spokes", "Spoke Tests", spokesFamily, 970),
+      member("plan", "Plan Review", spokesFamily, 960),
+      member("load", "Load Check", spokesFamily, 955),
+      member("monitor", "Monitor Job", monitorFamily, 950),
+      member("monitor-run", "Monitor Run", monitorFamily, 940),
+      SessionSummary(id: "guide", title: "Write Guide", updatedAt: 930),
+      SessionSummary(id: "lint", title: "Lint Rules", updatedAt: 920),
+      SessionSummary(id: "rotate", title: "Rotate Keys", updatedAt: 910),
+      SessionSummary(id: "images", title: "Bump Images", updatedAt: 900),
+      SessionSummary(id: "shared", title: "Shared Review", updatedAt: 890),
+      SessionSummary(id: "loose", title: "Loose Notes", updatedAt: 880),
+      SessionSummary(id: "scratch", title: "Scratch Pad", updatedAt: 870),
+    ]
+  }
+
+  /// The sidebar, a minute after the newest update.
+  static var state: SidebarViewState {
+    var state = SidebarViewState(
+      list: SessionListViewState(sessions: sessions, now: Date(timeIntervalSince1970: 1050)))
+    state.projects = [gateway, docs, tooling, infra]
+    var info: [String: SessionRowInfo] = [:]
+    for (index, session) in sessions.enumerated() {
+      info[session.id] = SessionRowInfo(harness: "claude", createdAt: Int64(100 + index))
+    }
+    info["shared"]?.isShared = true
+    state.rowInfo = info
+    return state
+  }
+}

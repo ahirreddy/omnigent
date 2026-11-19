@@ -243,7 +243,32 @@ struct MacLiveUITestSupport {
   /// trailing edge, and the row's own click point then lands on More, which opens a menu.
   func clickTitle(of row: XCUIElement, _ name: String, timeout: TimeInterval = 10) {
     XCTAssertTrue(row.appears(within: timeout), "\(name) is missing")
+    scrollIntoView(row)
     row.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
+  }
+
+  /// Scrolls the list under `row` until the row sits clear of its window's top and bottom edges:
+  /// a click at a point past them lands outside the window, where a crowded sidebar lists it.
+  /// The top keeps clear of the sidebar's title and search field too. A list that can scroll no
+  /// further leaves the row where it is.
+  func scrollIntoView(_ row: XCUIElement) {
+    let window = XCUIApplication().windows.firstMatch
+    // Accessibility frames run down from the screen's top.
+    let edges = window.frame
+    let clear = CGRect(
+      x: edges.minX, y: edges.minY + 130, width: edges.width, height: max(0, edges.height - 190))
+    var stuck = 0
+    for _ in 0..<30 where stuck < 2 && row.exists {
+      let frame = row.frame
+      // A row the list has not laid out reads an empty frame, which says nothing of where it is.
+      if frame.isEmpty || (clear.minY < frame.minY && frame.maxY < clear.maxY) { return }
+      window.coordinate(withNormalizedOffset: .zero)
+        .withOffset(CGVector(dx: frame.midX - edges.minX, dy: edges.height / 2))
+        .scroll(byDeltaX: 0, deltaY: frame.midY > clear.midY ? -40 : 40)
+      // A frame read straight after a scroll can be the old one: wait for it to land.
+      let moved = waitUntil(timeout: 1) { !row.exists || row.frame.minY != frame.minY }
+      stuck = moved ? 0 : stuck + 1
+    }
   }
 
   /// Fails when the app is no longer running in front: a crash or a hang that killed it.

@@ -22,10 +22,8 @@ enum SessionRowFamily {
     isNested || session.isNestedMember
   }
 
-  /// How far the row sits in: a step inside a project folder, and a step more when nested.
-  func indent(inFolder: Bool) -> CGFloat {
-    SessionFamilyMetrics.step * CGFloat((inFolder ? 1 : 0) + (isNested ? 1 : 0))
-  }
+  /// How far the row sits in: a step when nested. A project's box, not an indent, marks its rows.
+  var indent: CGFloat { isNested ? SessionFamilyMetrics.step : 0 }
 }
 
 /// A family's rows in one section or folder: which rows show, which head leads with a chevron
@@ -123,8 +121,8 @@ struct SessionFamilyChevron: View {
 }
 
 /// The sidebar's nesting grid. Every session row and project folder leads with a gutter for its
-/// chevron, left empty on a row without one, so a head and its childless siblings line up; each
-/// level of nesting is one step in, which puts a row's gutter under its parent's icon.
+/// chevron, left empty on a row without one, so a head and its childless siblings line up; a
+/// family's members sit one small step in. A project's rows don't indent: its box marks them.
 enum SessionFamilyMetrics {
   /// The gutter: the chevron's square hit box.
   static let gutter: CGFloat = 12
@@ -133,25 +131,28 @@ enum SessionFamilyMetrics {
   static let chevronWidth: CGFloat = 6
   /// Between the gutter and the row's icon.
   static let gutterSpacing = Theme.Spacing.extraSmall
-  /// One level of nesting: the gutter and its spacing.
-  static let step = gutter + gutterSpacing
+  /// From a row's leading edge to its icon: the gutter and its spacing.
+  static let lead = gutter + gutterSpacing
+  /// One level of nesting, a family's members under its head.
+  static let step = Theme.Spacing.small
   /// A session row's harness mark; a folder's icon takes the same width so its name lines up
   /// with the session titles.
   static let markWidth: CGFloat = 16
-  /// A folder's rows that are no session (loading, No sessions, Show more): a step in, past
-  /// the gutter, so their text starts at the icons of the folder's sessions.
-  static let folderNoteIndent = step * 2
-  /// Where a nested row's connector runs down, from its gutter's leading edge: under the middle
-  /// of its parent's icon, which starts where the nested row's gutter does.
-  static let connectorX = markWidth / 2
+  /// A folder's rows that are no session (loading, No sessions, Show more): past the gutter, so
+  /// their text starts at the icons of the folder's sessions.
+  static let folderNoteIndent = lead
+  /// Where a nested row's connector runs down, from its family's leading edge: under the middle
+  /// of its head's chevron, clear of the member's own gutter and icon.
+  static let connectorX = chevronWidth / 2
   /// Where the connector ends, just short of the nested row's icon.
-  static let connectorEnd = step - Theme.Spacing.extraSmall
+  static let connectorEnd = step + lead - Theme.Spacing.extraSmall
   /// The connector's corner, where it turns toward the nested row.
   static let connectorRadius: CGFloat = 5
 }
 
-/// The connector beside a nested row, in its gutter: a line from the row's top that turns toward
-/// the row at its mark's midline, and runs on to the row's bottom when another member follows.
+/// The connector beside a nested row, under its head's chevron: a line from the row's top that
+/// turns toward the row at its mark's midline, and runs on to the row's bottom when another
+/// member follows.
 nonisolated struct SessionFamilyConnector: Shape {
   /// Where the line turns, from the top of its frame.
   let turn: CGFloat
@@ -197,8 +198,9 @@ extension View {
     }
   }
 
-  /// A nested row's connector, down its gutter from the row's top to its mark's midline (its
-  /// middle while the title is edited), and on down when it `continues`.
+  /// A nested row's connector, laid on the row from its family's leading edge (before its
+  /// step): down from the row's top to its mark's midline (its middle while the title is
+  /// edited), and on down when it `continues`.
   func sessionFamilyConnector(rowHeight: CGFloat, continues: Bool) -> some View {
     overlayPreferenceValue(SessionMarkAnchor.self, alignment: .topLeading) { anchor in
       GeometryReader { proxy in

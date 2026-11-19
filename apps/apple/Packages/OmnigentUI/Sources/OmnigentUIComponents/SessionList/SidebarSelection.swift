@@ -12,11 +12,13 @@ extension View {
   /// actions and the Delete command work as before.
   /// - Parameters:
   ///   - isSelected: Whether this row is the list's selection.
-  ///   - indent: How far the row sits in (in a folder, or nested in its family); its fill
-  ///     starts there.
+  ///   - indent: How far the row sits in, nested in its family; its fill starts there.
+  ///   - box: Its part of its project's box, drawn behind it; `nil` outside a project.
   /// - Returns: The row.
-  func sidebarSelection(_ isSelected: Bool, indent: CGFloat = 0) -> some View {
-    modifier(SidebarSelectionModifier(isSelected: isSelected, indent: indent))
+  func sidebarSelection(
+    _ isSelected: Bool, indent: CGFloat = 0, box: SidebarBoxPart? = nil
+  ) -> some View {
+    modifier(SidebarSelectionModifier(isSelected: isSelected, indent: indent, box: box))
   }
 
   /// A sidebar row's icon in the text color. The iOS sidebar style tints icons with the system
@@ -35,6 +37,7 @@ extension View {
 private struct SidebarSelectionModifier: ViewModifier {
   let isSelected: Bool
   let indent: CGFloat
+  let box: SidebarBoxPart?
   @State private var isHovered = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -51,9 +54,12 @@ private struct SidebarSelectionModifier: ViewModifier {
         .onHover { isHovered = $0 }
       #endif
       .listRowBackground(
-        SidebarSelectionBackground(isSelected: isSelected, isHovered: isHovered)
-          .padding(.leading, indent)
-          .animation(reduceMotion ? nil : Theme.Motion.feedback, value: isHovered))
+        ZStack {
+          if let box { SidebarProjectBox(part: box) }
+          SidebarSelectionBackground(isSelected: isSelected, isHovered: isHovered, box: box)
+            .padding(.leading, indent)
+        }
+        .animation(reduceMotion ? nil : Theme.Motion.feedback, value: isHovered))
   }
 }
 
@@ -63,15 +69,17 @@ private struct SidebarSelectionModifier: ViewModifier {
 struct SidebarSelectionBackground: View {
   let isSelected: Bool
   var isHovered = false
+  /// Its row's part of a project's box: the fill keeps the box's padding inside it.
+  var box: SidebarBoxPart?
   #if os(macOS)
     @Environment(\.appearsActive) private var appearsActive
-    private var cornerRadius: CGFloat { Theme.Radius.small }
-    private var inset: CGFloat { Theme.Spacing.medium }
+    private static let cornerRadius = Theme.Radius.small
+    private static let inset = Theme.Spacing.medium
   #else
     // The system's own sidebar selection shape: the full row, rounder.
     private let appearsActive = true
-    private let cornerRadius = Theme.Radius.large
-    private let inset: CGFloat = 0
+    private static let cornerRadius = Theme.Radius.large
+    private static let inset: CGFloat = 0
   #endif
   @Environment(\.colorSchemeContrast) private var contrast
 
@@ -87,8 +95,23 @@ struct SidebarSelectionBackground: View {
           }
         }
         .padding(.horizontal, inset)
-        .padding(.vertical, 1)
+        .padding(.top, edge(box?.opens == true))
+        .padding(.bottom, edge(box?.closes == true))
     }
+  }
+
+  /// Inside a box, the corners follow the box's and the fill keeps its padding from each edge.
+  private var cornerRadius: CGFloat {
+    box == nil ? Self.cornerRadius : SidebarBoxMetrics.radius - SidebarBoxMetrics.padding
+  }
+
+  private var inset: CGFloat {
+    box == nil ? Self.inset : SidebarBoxMetrics.inset + SidebarBoxMetrics.padding
+  }
+
+  /// Above or below the fill: past the box's own gap where the box ends there.
+  private func edge(_ boxEnds: Bool) -> CGFloat {
+    boxEnds ? SidebarBoxMetrics.gap + SidebarBoxMetrics.padding : 1
   }
 
   private var fill: ThemeColor {
@@ -129,7 +152,7 @@ struct SidebarSelectionBackground: View {
         guard let table = ancestor as? NSTableView else { return }
         if table.selectionHighlightStyle != .none { table.selectionHighlightStyle = .none }
         guard let outline = table as? NSOutlineView else { return }
-        // The rows draw their own indent, one step per level (`SessionFamilyMetrics`).
+        // The rows draw their own indent (`SessionFamilyMetrics`).
         if outline.indentationPerLevel != 0 { outline.indentationPerLevel = 0 }
         Self.placeMisplacedRows(of: outline)
       }

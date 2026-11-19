@@ -32,25 +32,21 @@ struct SessionRow: View {
   /// How it sits in its session family: a head's chevron fills its gutter, a nested row sits a
   /// step in.
   var family = SessionRowFamily.standalone
-  /// In a project folder: a step in from the folder's row, as the folder's other rows are.
-  var isInFolder = false
 
   @State private var isHovered = false
   @Environment(\.defaultMinListRowHeight) private var rowHeight
 
   var body: some View {
-    Group {
-      let row = HStack(spacing: SessionFamilyMetrics.gutterSpacing) {
-        gutter
-        content
-      }
-      if case .nested(let continues) = family {
-        row.sessionFamilyConnector(rowHeight: rowHeight, continues: continues)
-      } else {
-        row
-      }
+    let row = HStack(spacing: SessionFamilyMetrics.gutterSpacing) {
+      gutter
+      content
     }
-    .padding(.leading, family.indent(inFolder: isInFolder))
+    .padding(.leading, family.indent)
+    if case .nested(let continues) = family {
+      row.sessionFamilyConnector(rowHeight: rowHeight, continues: continues)
+    } else {
+      row
+    }
   }
 
   /// The family chevron's place, empty on a row without one, so every row's icon and title line
@@ -309,9 +305,17 @@ private struct InlineTitleField: View {
 /// The pink "Needs you" capsule, with the request count when there is more than one.
 struct NeedsYouCapsule: View {
   let requests: Int
+  /// Shows its own tooltip. Inside a button, the button shows ``help(requests:)`` instead: on the
+  /// Mac a tooltip takes the clicks on what it covers.
+  var showsHelp = true
+
+  /// The tooltip.
+  static func help(requests: Int) -> String {
+    requests > 1 ? "\(requests) requests need your response" : "Needs your response"
+  }
 
   var body: some View {
-    HStack(spacing: Theme.Spacing.tiny) {
+    let capsule = HStack(spacing: Theme.Spacing.tiny) {
       Text("Needs you")
       if requests > 1 {
         Text("\(requests)").monospacedDigit()
@@ -324,9 +328,13 @@ struct NeedsYouCapsule: View {
     // An opaque base, so a selected row's tint never lowers the text's contrast.
     .background(ThemeColor.attentionFill, in: Capsule())
     .background(ThemeColor.surface, in: Capsule())
-    .help(requests > 1 ? "\(requests) requests need your response" : "Needs your response")
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(requests > 1 ? "Needs you, \(requests) requests" : "Needs you")
+    if showsHelp {
+      capsule.help(Self.help(requests: requests))
+    } else {
+      capsule
+    }
   }
 }
 

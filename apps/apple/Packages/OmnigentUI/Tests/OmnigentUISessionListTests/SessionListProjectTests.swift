@@ -111,7 +111,7 @@
       #expect(MainLoop.settle(until: { expanded()?.isEmpty == true }))
     }
 
-    @Test("the outline doesn't indent a project's sessions: the rows draw their own step")
+    @Test("the outline doesn't indent a project's sessions: its box marks them")
     func noOutlineIndent() throws {
       let spy = spy()
       let key = SidebarNavigationOrder.expandedProjectsKey
@@ -186,6 +186,54 @@
       #expect(table.numberOfRows == before + 1)
       // Five more runs past the two left, so the next server page is read.
       #expect(spy.calls == ["load project big"])
+    }
+
+    @Test(
+      "Show more takes a click anywhere on its row, and its marker is drawn only",
+      arguments: [SessionAttentionState.needsYou, .working])
+    func showMoreRowTakesClicks(hidden: SessionAttentionState) throws {
+      let ids = (0..<7).map { "s\($0)" }
+      var state = SidebarFixture.state
+      state.list.sessions += ids.map {
+        SessionSummary(id: $0, title: $0, attention: $0 == "s6" ? hidden : nil)
+      }
+      state.projects = [SessionProject(id: "big", name: "Big", sessionIds: ids)]
+      state.paging.loadedProjects = ["big"]
+      // Rows: 7 Projects, 8 Big, 9 to 13 its first five, 14 Show more with s6's marker.
+      for place in ["gap", "marker", "top edge", "bottom edge"] {
+        let spy = SidebarSpy(state)
+        UserDefaults.standard.set("big", forKey: SidebarNavigationOrder.expandedProjectsKey)
+        let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 900)
+        defer { screen.close() }
+        let table = try #require(screen.list)
+        let before = table.numberOfRows
+        let row = table.convert(table.rect(ofRow: 14), to: screen.host)
+        // A progress control would stand in for the button, in accessibility and for clicks.
+        #expect(
+          !screen.allViews.contains { view in
+            view is NSProgressIndicator
+              && view.convert(view.bounds, to: screen.host).intersects(row)
+          })
+        // The marker is all that draws in the row's right half, against the gap's color.
+        let picture = try Snapshot(screen)
+        let gap = CGPoint(x: row.midX - 20, y: row.midY)
+        let marker = stride(from: row.midX, to: row.maxX - 4, by: 0.5).filter {
+          picture.inks(CGPoint(x: $0, y: row.midY), against: gap)
+        }
+        let left = try #require(marker.first, "the marker draws")
+        let right = try #require(marker.last)
+        let point =
+          switch place {
+          case "marker": CGPoint(x: (left + right) / 2, y: row.midY)
+          case "top edge": CGPoint(x: gap.x, y: row.minY + 2)
+          case "bottom edge": CGPoint(x: gap.x, y: row.maxY - 2)
+          default: gap
+          }
+        try screen.click(point)
+        #expect(
+          MainLoop.settle(until: { table.numberOfRows == before + 1 }),
+          "a click on the \(place) shows more")
+      }
     }
 
     @Test("hovering a folder offers New session and its menu")

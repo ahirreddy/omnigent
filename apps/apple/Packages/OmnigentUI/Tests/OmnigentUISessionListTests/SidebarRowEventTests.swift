@@ -65,7 +65,7 @@
         menu: ProjectMenu(
           project: home, projects: [home], sort: .recent, actions: spy.actions, rename: {},
           confirmDelete: {}),
-        drop: { _ in false }, row: { _ in EmptyView() }, listed: [])
+        drop: { _ in false }, row: { _, _ in EmptyView() }, listed: [])
       let screen = OffscreenWindow(folder.frame(width: 280), width: 300, height: 80)
       defer { screen.close() }
       try screen.withAccessibilityTree {
