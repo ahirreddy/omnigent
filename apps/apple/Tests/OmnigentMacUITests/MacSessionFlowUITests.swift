@@ -140,7 +140,7 @@ final class MacSessionFlowUITests: XCTestCase {
     defer { app.terminate() }
     let row = live.row("demo-question", in: app)
 
-    live.contextMenu(row, choose: "Archive", in: app)
+    archiveWorking(row, live, app)
     XCTAssertTrue(row.disappears(within: 10), "the archived row stayed")
     live.click(live.element("undo-action", in: app), "Undo")
     XCTAssertTrue(row.appears(within: 10), "Undo did not restore the session")
@@ -156,7 +156,7 @@ final class MacSessionFlowUITests: XCTestCase {
     defer { app.terminate() }
     let row = live.row("demo-question", in: app)
 
-    live.contextMenu(row, choose: "Archive", in: app)
+    archiveWorking(row, live, app)
     XCTAssertTrue(row.disappears(within: 10), "the archived row stayed")
     live.click(live.element("undo-view-archived", in: app), "View archived")
     XCTAssertTrue(row.appears(within: 10), "the archived list does not show it")
@@ -168,6 +168,19 @@ final class MacSessionFlowUITests: XCTestCase {
     XCTAssertTrue(row.disappears(within: 10), "it stayed in the archived list")
     live.showDisplayScope("All sessions", in: app)
     XCTAssertTrue(row.appears(within: 10), "it did not return to the main list")
+  }
+
+  /// Archives `row`'s session, whose agent waits on a question: as on the web, a working
+  /// session's Archive asks first.
+  @MainActor
+  private func archiveWorking(
+    _ row: XCUIElement, _ live: MacLiveUITestSupport, _ app: XCUIApplication
+  ) {
+    live.contextMenu(row, choose: "Archive", in: app)
+    XCTAssertTrue(
+      live.text(containing: "Archive running session?", in: app).appears(within: 10),
+      "Archive did not ask about the working agent")
+    live.clickDialogButton("Archive", in: app)
   }
 
   /// Delete asks first: Cancel keeps the session and Delete removes it.
