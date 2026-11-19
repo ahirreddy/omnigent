@@ -52,6 +52,7 @@ from omnigent.util.json_types import JsonObject as _JsonObject
 
 _DEFAULT_KIRO_COMMAND = "kiro-cli"
 _KIRO_PATH_ENV = "OMNIGENT_KIRO_PATH"
+_KIRO_SIGNED_OUT_MESSAGE = "Kiro isn't signed in; run `kiro-cli login`, then try again."
 _AGENT_NAME = "kiro-native-ui"
 
 _TERMINAL_NAME = "kiro"
@@ -129,13 +130,54 @@ def resolve_kiro_executable(
     return resolved
 
 
+def _require_kiro_cli_login(
+    executable: str,
+    *,
+    env: Mapping[str, str] | None,
+    timeout_s: float,
+) -> None:
+    """Raise unless ``kiro-cli whoami`` reports a signed-in account.
+
+    Signed out, ``kiro-cli chat`` opens a browser sign-in and blocks, while
+    ``whoami`` exits 1 with ``{"account": null}`` and opens nothing.
+
+    :raises click.ClickException: When Kiro is signed out or ``whoami`` fails.
+    """
+    completed = subprocess.run(
+        [executable, "whoami", "--format", "json"],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=timeout_s,
+        env=dict(env) if env is not None else None,
+    )
+    if completed.returncode == 0:
+        return
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict) and "account" in payload and payload["account"] is None:
+        raise click.ClickException(_KIRO_SIGNED_OUT_MESSAGE)
+    error_lines = (completed.stderr or completed.stdout).strip().splitlines()
+    detail = f": {error_lines[0]}" if error_lines else ""
+    raise click.ClickException(
+        f"Could not check the Kiro sign-in: kiro-cli whoami exited {completed.returncode}{detail}"
+    )
+
+
 def list_kiro_cli_model_options(
     *,
     env: Mapping[str, str] | None = None,
     timeout_s: float = 10.0,
 ) -> list[_JsonObject]:
-    """Discover Kiro picker options from the installed CLI."""
+    """Discover Kiro picker options from the installed CLI.
+
+    :raises click.ClickException: When kiro-cli is missing or signed out.
+    """
     executable = resolve_kiro_executable(env=env)
+    _require_kiro_cli_login(executable, env=env, timeout_s=timeout_s)
     completed = subprocess.run(
         [executable, "chat", "--list-models", "--format", "json"],
         check=True,

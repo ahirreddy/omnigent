@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -574,7 +576,10 @@ def test_list_kiro_cli_model_options_maps_live_metadata(monkeypatch: pytest.Monk
 
     options = list_kiro_cli_model_options()
 
-    assert captured == [["/opt/kiro-cli", "chat", "--list-models", "--format", "json"]]
+    assert captured == [
+        ["/opt/kiro-cli", "whoami", "--format", "json"],
+        ["/opt/kiro-cli", "chat", "--list-models", "--format", "json"],
+    ]
     assert options == [
         {
             "id": "auto",
@@ -621,6 +626,59 @@ def test_list_kiro_cli_model_options_allows_no_matching_default(
             "isDefault": False,
         }
     ]
+
+
+def _write_fake_kiro_cli(
+    tmp_path: Path, *, whoami_exit: int, whoami_stdout: str, whoami_stderr: str
+) -> tuple[Path, Path]:
+    """Write a fake ``kiro-cli`` that records every argv and answers ``whoami``.
+
+    Any other command prints a valid model list, so a probe that lists anyway
+    succeeds instead of raising.
+    """
+    calls = tmp_path / "kiro-calls.txt"
+    models = json.dumps({"models": [{"model_id": "auto"}], "default_model": "auto"})
+    script = tmp_path / "kiro-cli"
+    script.write_text(
+        "#!/bin/sh\n"
+        f'echo "$*" >> {shlex.quote(str(calls))}\n'
+        'if [ "$1" = whoami ]; then\n'
+        f"  printf '%s' {shlex.quote(whoami_stdout)}\n"
+        f"  printf '%s' {shlex.quote(whoami_stderr)} >&2\n"
+        f"  exit {whoami_exit}\n"
+        "fi\n"
+        f"printf '%s' {shlex.quote(models)}\n"
+    )
+    script.chmod(0o755)
+    return script, calls
+
+
+@pytest.mark.parametrize(
+    ("whoami_exit", "whoami_stdout", "whoami_stderr", "message"),
+    [
+        (1, '{"account":null}', "", "Kiro isn't signed in; run `kiro-cli login`"),
+        (2, "", "keychain locked\nmore", "kiro-cli whoami exited 2: keychain locked"),
+    ],
+)
+def test_list_kiro_cli_model_options_never_lists_without_a_login(
+    tmp_path: Path,
+    whoami_exit: int,
+    whoami_stdout: str,
+    whoami_stderr: str,
+    message: str,
+) -> None:
+    """Signed out, ``chat --list-models`` opens a browser sign-in, so it never runs."""
+    fake_cli, calls = _write_fake_kiro_cli(
+        tmp_path,
+        whoami_exit=whoami_exit,
+        whoami_stdout=whoami_stdout,
+        whoami_stderr=whoami_stderr,
+    )
+
+    with pytest.raises(ClickException, match=re.escape(message)):
+        list_kiro_cli_model_options(env={_KIRO_PATH_ENV: str(fake_cli)})
+
+    assert calls.read_text().splitlines() == ["whoami --format json"]
 
 
 def test_list_kiro_cli_model_options_rejects_empty_catalog(
