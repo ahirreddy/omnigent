@@ -79,6 +79,9 @@
         toggleViewMode: log.log("view mode"), openChanges: log.log("changes"))
       actions.rename = log.log("rename")
       actions.toggleUnread = log.log("toggle unread")
+      actions.togglePin = log.log("pin")
+      actions.fork = log.log("fork")
+      actions.archive = log.log("archive")
       actions.addNestedAgent = log.log("nested agent")
       actions.chooseModel = log.log("choose model")
       actions.cycleModel = log.log("next model")
@@ -96,6 +99,9 @@
         .init("Stop Agent", AppShortcuts.stopAgent, "stop"),
         .init("Rename Session\u{2026}", AppShortcuts.renameSession, "rename"),
         .init("Mark Unread or Read", AppShortcuts.toggleUnread, "toggle unread"),
+        .init("Pin or Unpin Session", AppShortcuts.togglePin, "pin"),
+        .init("Fork Session", AppShortcuts.forkSession, "fork"),
+        .init("Archive Session", AppShortcuts.archiveSession, "archive"),
         .init("Add Nested Agent", AppShortcuts.addNestedAgent, "nested agent"),
         .init("Focus Composer", AppShortcuts.focusComposer, "composer"),
         .init("Jump to Latest", AppShortcuts.jumpToLatest, "latest"),
@@ -120,7 +126,7 @@
         defer { screen.close() }
         let enabled = try screen.items.items.filter { !$0.isSeparatorItem && $0.isEnabled }
         #expect(enabled.isEmpty)
-        #expect(try screen.items.titles.count == 14)
+        #expect(try screen.items.titles.count == 17)
       }
     }
 

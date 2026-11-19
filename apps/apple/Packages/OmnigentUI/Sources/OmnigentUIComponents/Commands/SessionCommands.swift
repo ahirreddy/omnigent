@@ -26,6 +26,12 @@ public struct SessionCommandActions {
   public var rename: (@MainActor () -> Void)?
   /// Mark the session unread, or read again (Option-Command-U).
   public var toggleUnread: (@MainActor () -> Void)?
+  /// Pin or unpin the session (Option-Command-P).
+  public var togglePin: (@MainActor () -> Void)?
+  /// Archive the session (Shift-Command-A).
+  public var archive: (@MainActor () -> Void)?
+  /// Fork the session (Option-Command-F).
+  public var fork: (@MainActor () -> Void)?
   /// Open the Add nested agent composer beside the session (Option-Command-A).
   public var addNestedAgent: (@MainActor () -> Void)?
   /// Open the model picker (Control-Shift-M).
@@ -132,6 +138,15 @@ struct ConversationMenuItems: View {
     Button("Mark Unread or Read") { actions?.toggleUnread?() }
       .keyboardShortcut(AppShortcuts.toggleUnread)
       .disabled(actions?.toggleUnread == nil)
+    Button("Pin or Unpin Session") { actions?.togglePin?() }
+      .keyboardShortcut(AppShortcuts.togglePin)
+      .disabled(actions?.togglePin == nil)
+    Button("Fork Session") { actions?.fork?() }
+      .keyboardShortcut(AppShortcuts.forkSession)
+      .disabled(actions?.fork == nil)
+    Button("Archive Session") { actions?.archive?() }
+      .keyboardShortcut(AppShortcuts.archiveSession)
+      .disabled(actions?.archive == nil)
     Button("Add Nested Agent") { actions?.addNestedAgent?() }
       .keyboardShortcut(AppShortcuts.addNestedAgent)
       .disabled(actions?.addNestedAgent == nil)
