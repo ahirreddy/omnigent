@@ -156,6 +156,53 @@
       #expect(AuthorAvatar.color(for: "Ada") == color)
     }
 
+    @Test(
+      "A reply to an agent's questions shows each answer under its quoted question",
+      arguments: [MessageTextRenderer.swiftUI, .textKit])
+    func questionReply(renderer: MessageTextRenderer) throws {
+      let view = transcriptScreen(
+        MessageRowView(row: Fixture.questionReply("u"), decoration: MessageDecoration())
+          .environment(\.messageTextRenderer, renderer))
+      defer { view.close() }
+      let shown = try view.shownText()
+      #expect(shown.contains("\u{21AA} Re: Color?"))
+      #expect(shown.contains("Blue"))
+      #expect(shown.contains("Large"))
+      #expect(!shown.contains { $0.contains("Color?\nBlue") }, "the question is a line of its own")
+    }
+
+    @Test("Renders a reply to an agent's questions where OMNIGENT_UI_RENDER_DIR says, by eye")
+    func questionReplyRenders() throws {
+      guard RenderSupport.outputDirectory != nil else { return }
+      let question = Fixture.answer("a", "Which color, and which size?")
+      let state = ConversationViewState(
+        header: Fixture.header, rows: [question, Fixture.questionReply("u")])
+      for renderer in [MessageTextRenderer.swiftUI, .textKit] {
+        for scheme in [ColorScheme.light, .dark] {
+          let rendered = try RenderSupport.render(
+            TranscriptView(state: state, actions: ConversationActions())
+              .environment(\.messageTextRenderer, renderer).themeCanvas().omnigentTheme(.omni),
+            width: 760, height: 260, scheme: scheme, layout: .regular)
+          let look = scheme == .dark ? "dark" : "light"
+          try RenderSupport.write(rendered, name: "question-reply-\(renderer.rawValue)-\(look)")
+        }
+      }
+    }
+
+    @Test("Copy and Edit and resend on a reply to an agent's questions take the web's text")
+    func questionReplyActions() throws {
+      var edited: [String] = []
+      var actions = ConversationActions()
+      actions.editSentMessage = { edited.append($0.text) }
+      let view = message(Fixture.questionReply("u"), actions: actions)
+      defer { view.close() }
+      let menu = try #require(try view.firstContextMenu())
+      try view.choose("Copy", in: menu)
+      #expect(copied == "\u{21AA} Re: Color?\nBlue\n\nLarge")
+      try view.choose("Edit and Resend", in: menu)
+      #expect(edited == ["\u{21AA} Re: Color?\nBlue\n\nLarge"])
+    }
+
     @Test("Given initials are capped at two, and a blank one is a question mark")
     func avatarGivenInitials() throws {
       let long = transcriptScreen(AuthorAvatar(name: "Ada", initials: "abc", isIdle: true))

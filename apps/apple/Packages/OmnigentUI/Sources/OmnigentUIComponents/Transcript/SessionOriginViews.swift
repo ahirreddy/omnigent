@@ -132,7 +132,11 @@ extension MessageRowView {
         }
         // Attachments lead the message, as on the web.
         AttachmentStrip(attachments: row.attachments)
-        if !row.text.isEmpty { UserPromptBody(text: row.text) }
+        if let reply = QuestionReplyMarkdown.text(row.questionReplies) {
+          QuestionReplyBody(source: reply)
+        } else if !row.text.isEmpty {
+          UserPromptBody(text: row.text)
+        }
         if let activity = row.activity {
           UnsupportedContentView(activity: activity, rowID: row.id)
         }

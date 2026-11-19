@@ -194,6 +194,15 @@
       Row(id: id, role: .user, text: text)
     }
 
+    /// A reply to two Codex async questions, the second unnamed, as the core shows it.
+    static func questionReply(_ id: String) -> Row {
+      Row(
+        id: id, role: .user, text: "\u{21AA} Re: Color?\nBlue\n\nLarge",
+        questionReplies: [
+          QuestionReply(question: "Color?", answer: "Blue"), QuestionReply(answer: "Large"),
+        ])
+    }
+
     static func answer(_ id: String, _ text: String = "An answer", responseID: String = "resp-1")
       -> Row
     {

@@ -47,6 +47,36 @@ struct UserPromptTests {
     #expect(UserPrompt.runs("a -> b") == [UserPrompt.Run(text: "a -> b", isQuote: false)])
   }
 
+  @Test("a reply to an agent's questions draws from its replies: each quoted question, its answer")
+  func questionReplies() throws {
+    let replies = [
+      QuestionReply(question: "Color?", answer: "Blue"), QuestionReply(answer: "**Large**"),
+    ]
+    let source = try #require(QuestionReplyMarkdown.text(replies))
+    #expect(QuestionReplyMarkdown.replies(in: source) == replies)
+    #expect(QuestionReplyMarkdown.text([]) == nil)
+    let shown = "\u{21AA} Re: Color?\nBlue\n\n**Large**"
+    #expect(QuestionReplyMarkdown.replies(in: shown).isEmpty, "the text the core shows is a prompt")
+    // The question is one small quoted line; the answers are markdown, a small gap under it.
+    let blocks = MarkdownParser.parse(source)
+    try #require(blocks.count == 3)
+    guard case .paragraph(let quote) = blocks[0] else {
+      Issue.record("\(blocks) starts with the quoted question")
+      return
+    }
+    #expect(quote.isQuestionReplyQuote)
+    #expect(String(quote.characters) == "\u{21AA} Re: Color?")
+    let answers = MarkdownParser.parse("Blue") + MarkdownParser.parse("**Large**")
+    #expect(Array(blocks.dropFirst()) == answers)
+    #expect(TypeRamp.spacing(above: blocks[1], after: blocks[0]) == TypeRamp.questionQuoteBelow)
+    #expect(TypeRamp.spacing(above: blocks[2], after: blocks[1]) == TypeRamp.paragraphSpacing)
+    let marksQuote = MarkdownParser.parse(shown).contains { block in
+      guard case .paragraph(let text) = block else { return false }
+      return text.isQuestionReplyQuote
+    }
+    #expect(!marksQuote, "typed text never draws as a quoted question")
+  }
+
   @Test("Share counts one button width in the titlebar beside the session menu")
   func titlebarShare() {
     // The right-panel toggle and the group's margins, then each button.

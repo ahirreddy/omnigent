@@ -15,7 +15,10 @@ nonisolated extension OmnigentUIComponents.Row {
       responseId: row.responseId, interrupted: row.interrupted, author: row.author,
       agent: row.agent, isEphemeral: row.isEphemeral, isActivityOnly: row.isActivityOnly,
       createdAt: row.createdAt.map { Date(timeIntervalSince1970: TimeInterval($0)) },
-      originSessionId: row.originSessionId)
+      originSessionId: row.originSessionId,
+      questionReplies: row.questionReplies.map {
+        OmnigentUIComponents.QuestionReply(question: $0.question, answer: $0.answer)
+      })
   }
 }
 

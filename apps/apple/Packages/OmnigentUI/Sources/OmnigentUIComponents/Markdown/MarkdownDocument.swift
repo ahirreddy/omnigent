@@ -61,7 +61,10 @@ nonisolated enum MarkdownParser {
   /// Quotes and lists deeper than this draw as text: each level costs layout and width.
   static let maxNesting = 16
 
+  /// The blocks of `text`; a reply's text (``QuestionReplyMarkdown``) gives its replies' blocks.
   static func parse(_ text: String) -> [MarkdownBlock] {
+    let replies = QuestionReplyMarkdown.replies(in: text)
+    if !replies.isEmpty { return QuestionReplyMarkdown.blocks(replies) }
     let document = Document(parsing: MarkdownMath.delimited(text), options: [.disableSmartOpts])
     return blocks(document.children)
   }
