@@ -25,6 +25,8 @@ enum AutomationEditorMapping {
     var switchTriggerEvent: (@MainActor (String) -> Void)?
     /// Replaces a trigger's hidden schedule.
     var replaceSchedule: (@MainActor (ScheduleChoice) -> Void)?
+    /// Switches a new automation between a schedule and an integration.
+    var switchTriggerType: (@MainActor (String?) -> Void)?
   }
 
   /// Claude Code's version-agnostic model aliases, offered when the host lists none (the web's
@@ -92,6 +94,11 @@ enum AutomationEditorMapping {
     mcp(&context, pages: pages, draft: draft)
     if draft.trigger != nil || draft.isTrigger {
       triggerSchedule(&context, pages: pages, inputs: inputs)
+    }
+    // As the web's Trigger type: a new automation can watch an integration instead.
+    if inputs.saved == nil, draft.sourceSessionID == nil, offered?.automationTriggers == true {
+      context.triggerTypes = AutomationTriggerMapping.types
+      context.switchTriggerType = inputs.switchTriggerType
     }
     if let trigger = draft.trigger, let source = AutomationTriggerMapping.source(trigger.source) {
       let budget = budget(pages: pages, draft: draft, saved: inputs.saved)

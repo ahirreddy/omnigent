@@ -60,19 +60,20 @@
       ]
     }
 
-    /// The All / Active / Paused filter, after the tabs.
-    private func filter<Content>(_ screen: OffscreenWindow<Content>) throws -> NSSegmentedControl {
-      try #require(screen.segmentedControls.dropFirst().first)
+    /// Clicks one of the All / Active / Paused pills.
+    private func pick<Content>(_ filter: AutomationsFilter, _ screen: OffscreenWindow<Content>)
+      throws
+    {
+      try screen.clickElement("automations-filter-\(filter.rawValue)")
     }
 
     @Test("the filter and search report both values as they change")
     func filterAndSearch() throws {
       let screen = page(AutomationsViewState(rows: [row("a")], hasAny: true))
       defer { screen.close() }
-      let filter = try filter(screen)
-      try screen.click(segment: 1, of: filter)
+      try pick(.active, screen)
       #expect(log.entries == ["filter active []"])
-      try screen.click(segment: 2, of: filter)
+      try pick(.paused, screen)
       #expect(log.entries.last == "filter paused []")
       let search = try #require(screen.textFields.first)
       try screen.replaceText(in: search, with: "br")
@@ -86,7 +87,7 @@
       let screen = page(state)
       defer { screen.close() }
       #expect(try screen.shows("Suggested"))
-      try screen.click(segment: 1, of: try filter(screen))
+      try pick(.active, screen)
       #expect(try !screen.shows("Suggested"))
     }
 
@@ -157,7 +158,7 @@
       let screen = page(AutomationsViewState(rows: [], hasAny: false), actions: actions)
       defer { screen.close() }
       #expect(screen.popUps.isEmpty)
-      #expect(screen.controlFrames.count == 2, "the tabs and the search field")
+      #expect(screen.controlFrames.count == 1, "the tabs; the search box is a plain field")
       #expect(try screen.shows("No automations yet"))
     }
 
@@ -167,8 +168,8 @@
       state.templates = cards
       let screen = page(state)
       defer { screen.close() }
-      // New, the tabs, search, then the cards.
-      let buttons = screen.controlFrames.dropFirst(3)
+      // New, the tabs, then the cards; the search box is a plain field.
+      let buttons = screen.controlFrames.dropFirst(2)
       #expect(buttons.count == 2)
       for frame in buttons { try screen.click(CGPoint(x: frame.midX, y: frame.midY)) }
       #expect(log.entries == ["trigger jira", "trigger linear"])
@@ -295,10 +296,10 @@
       #expect(try screen.shows("Couldn\u{2019}t load automations."))
       #expect(try screen.shows("Server down"))
       #expect(try screen.shows("Can't pause"))
-      // New, the tabs, search, filter, Dismiss, Retry.
-      try screen.clickControl(at: 4)
-      #expect(log.entries == ["dismiss"])
+      // New, the tabs, the three filter pills, Dismiss, Retry.
       try screen.clickControl(at: 5)
+      #expect(log.entries == ["dismiss"])
+      try screen.clickControl(at: 6)
       #expect(log.entries == ["dismiss", "retry"])
     }
 
@@ -317,10 +318,11 @@
     }
 
     @Test("nothing to filter when there are no automations at all")
-    func noFilterWhenEmpty() {
+    func noFilterWhenEmpty() throws {
       let screen = page(AutomationsViewState(rows: [], hasAny: false))
       defer { screen.close() }
       #expect(screen.segmentedControls.count == 1, "only the tabs")
+      #expect(try !screen.shows("Paused"), "no filter pills")
     }
 
     @Test("every button stays in the window at a narrow width, even with a long name")
@@ -336,6 +338,47 @@
       for frame in screen.controlFrames {
         #expect(frame.minX >= 0 && frame.maxX <= 520, "\(frame)")
       }
+    }
+
+    @Test("the page reads as the web's: title and New, tabs, search, filter, cards, Suggested")
+    func layout() throws {
+      var state = AutomationsViewState(rows: [row("a"), row("b")], hasAny: true)
+      state.templates = cards
+      var actions = actions
+      let log = log
+      actions.showIntro = { log.record("intro") }
+      let screen = page(state, actions: actions)
+      defer { screen.close() }
+      let identifiers = [
+        "automations-intro-button", "automations-new", "automations-tabs", "automations-search",
+        "automations-filter-all", "automation-a", "automation-b", "automations-trigger-jira",
+        "automations-trigger-linear",
+      ]
+      let frames = try screen.withAccessibilityTree {
+        try identifiers.reduce(into: [String: CGRect]()) {
+          $0[$1] = try screen.accessibilityFrame($1)
+        }
+      }
+      func frame(_ id: String) throws -> CGRect { try #require(frames[id]) }
+      let intro = try frame("automations-intro-button")
+      let new = try frame("automations-new")
+      #expect(abs(intro.midY - new.midY) < 8, "the guide's button and New share the title's line")
+      #expect(new.minX > 600, "New sits at the right")
+      let tabs = try frame("automations-tabs")
+      let search = try frame("automations-search")
+      let filter = try frame("automations-filter-all")
+      #expect(new.maxY <= tabs.minY && tabs.maxY <= search.minY && search.maxY <= filter.minY)
+      #expect(search.width > 600, "the search box spans the page")
+      let first = try frame("automation-a")
+      let second = try frame("automation-b")
+      #expect(filter.maxY <= first.minY)
+      #expect(second.minY - first.maxY < 12, "cards stack with a small gap")
+      let jira = try frame("automations-trigger-jira")
+      let linear = try frame("automations-trigger-linear")
+      #expect(second.maxY + 24 <= jira.minY, "Suggested sits past a rule")
+      #expect(abs(jira.midY - linear.midY) < 2, "two template columns")
+      try screen.clickElement("automations-intro-button")
+      #expect(log.entries == ["intro"])
     }
   }
 #endif

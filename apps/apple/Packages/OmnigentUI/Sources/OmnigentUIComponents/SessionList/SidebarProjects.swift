@@ -80,8 +80,8 @@ struct ProjectFolder<Row: View>: View {
       }
     } label: {
       HStack(spacing: Theme.Spacing.tiny) {
-        HStack(spacing: SessionFamilyMetrics.gutterSpacing) {
-          folderIcon.frame(width: SessionFamilyMetrics.gutter)
+        HStack(spacing: Theme.Spacing.small) {
+          folderIcon.frame(width: SessionFamilyMetrics.markWidth)
           Text(project.name).lineLimit(1)
         }
         Spacer(minLength: 4)

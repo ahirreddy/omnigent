@@ -60,8 +60,10 @@
       for level in levels {
         let first = try icon(rows[level[0]], level[0])
         let title = try #require(rows[level[0]]?.title, "\(level[0])'s title draws")
-        // The title follows the icon by the row's spacing.
-        #expect(abs(title - first.lowerBound - step) <= 2, "\(level[0])'s title at \(title)")
+        // The title follows the icon by the mark's width and the row's spacing.
+        let markAndSpacing = SessionFamilyMetrics.markWidth + Theme.Spacing.small
+        #expect(
+          abs(title - first.lowerBound - markAndSpacing) <= 2, "\(level[0])'s title at \(title)")
         for id in level {
           let mark = try icon(rows[id], id)
           #expect(abs(mark.lowerBound - first.lowerBound) <= 1, "\(id)'s icon at \(mark)")

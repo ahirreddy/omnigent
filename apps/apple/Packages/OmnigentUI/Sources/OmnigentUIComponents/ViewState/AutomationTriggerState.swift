@@ -138,11 +138,14 @@ nonisolated public struct AutomationTriggerTemplate: Hashable, Sendable {
     public var hiddenFields: [String]
     /// The inline value it names: word, label, placeholder, whether required.
     public var target: Target?
+    /// Who can write what it watches, e.g. "create a ticket in this project".
+    public var authorAction: String
 
     /// Creates an event.
     public init(
       description: String, scopeLabel: String, scopePlaceholder: String, scopePrefix: String = "",
-      isGroup: Bool = false, hiddenFields: [String] = [], target: Target? = nil
+      isGroup: Bool = false, hiddenFields: [String] = [], target: Target? = nil,
+      authorAction: String = ""
     ) {
       self.description = description
       self.scopeLabel = scopeLabel
@@ -151,6 +154,7 @@ nonisolated public struct AutomationTriggerTemplate: Hashable, Sendable {
       self.isGroup = isGroup
       self.hiddenFields = hiddenFields
       self.target = target
+      self.authorAction = authorAction
     }
   }
 
@@ -197,6 +201,12 @@ nonisolated public struct AutomationTriggerTemplate: Hashable, Sendable {
   public var linkBackLabel: String
   /// The longest instructions, in characters.
   public var maxInstructions: Int
+  /// The service's name, e.g. "Jira".
+  public var serviceName = ""
+  /// What the agent needs where it runs to reach the service, e.g. "a Jira MCP server".
+  public var toolsExample = ""
+  /// The service's SF Symbol.
+  public var systemImage = "bolt"
 
   /// Creates a template.
   public init(

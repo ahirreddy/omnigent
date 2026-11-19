@@ -36,7 +36,7 @@
       return OffscreenWindow(
         AutomationEditorSheet(
           draft: draft.binding, context: context, save: { log.record("save") },
-          cancel: { log.record("cancel") }), width: 700, height: 1_500)
+          cancel: { log.record("cancel") }), width: 720, height: 1_500)
     }
 
     /// Where the footer's buttons are. A disabled Save isn't a control, but it sits just after Cancel.
@@ -46,7 +46,7 @@
       let bottom = screen.host.bounds.height - 80
       let cancel = try #require(screen.controlFrames.first { $0.minY > bottom })
       return (
-        CGPoint(x: cancel.midX, y: cancel.midY), CGPoint(x: cancel.maxX + 40, y: cancel.midY)
+        CGPoint(x: cancel.midX, y: cancel.midY), CGPoint(x: cancel.maxX + 30, y: cancel.midY)
       )
     }
 
@@ -61,11 +61,12 @@
       let draft = EditedValue(AutomationDraftState())
       let screen = sheet(draft, context: context())
       defer { screen.close() }
-      #expect(try screen.shows("Create automation"))
+      #expect(try screen.shows("Create"))
       try screen.click(try footer(screen).save)
       #expect(log.entries.isEmpty, "nothing to save yet")
 
-      let name = try #require(screen.textFields.first { $0.placeholderString == "daily-brief" })
+      let name = try #require(
+        screen.textFields.first { $0.placeholderString == "Name your automation" })
       try screen.replaceText(in: name, with: "Brief")
       #expect(draft.value.name == "Brief")
       let prompt = try #require(
@@ -117,7 +118,10 @@
       try screen.click(try footer(screen).save)
       #expect(log.entries.isEmpty)
       if kind == "blocker" { #expect(try screen.shows("Pick a host before pinning")) }
-      if kind == "schedule" { #expect(try screen.shows("Choose a day.")) }
+      if kind == "schedule" {
+        #expect(try screen.shows("Choose a day."))
+        #expect(try screen.shows("Needs attention"), "the schedule button says so, as the web's")
+      }
     }
 
     @Test("a failed save shows why")
@@ -131,21 +135,21 @@
       #expect(try screen.shows("Save changes"))
     }
 
-    @Test("choosing a session mode explains it, and offers the reset when editing")
+    @Test("Session continuity waits under Advanced settings, and offers the reset when editing")
     func sessionMode() throws {
       var context = context(editing: true)
       context.hasContinuingSession = true
       let draft = EditedValue(AutomationDraftState(name: "Brief", prompt: "Go", agentID: "a1"))
       let screen = sheet(draft, context: context)
       defer { screen.close() }
-      #expect(try screen.shows("Each run starts a new session."))
-      #expect(screen.switches.isEmpty)
+      #expect(screen.popUps.allSatisfy { $0.title != "New session each run" }, "folded away")
+      try screen.clickElement("automation-advanced")
+      #expect(try !screen.shows("Start a new session on the next run"))
       try screen.choose(
-        "Continue in the same session", inPopUp: try popUp(screen, showing: "New session each run"))
+        "Continue one session", inPopUp: try popUp(screen, showing: "New session each run"))
       #expect(draft.value.continuesSession)
-      #expect(try screen.shows("The first run starts a session"))
-      let reset = try #require(screen.switches.first)
-      try screen.click(reset)
+      #expect(try screen.shows("Start a new session on the next run"))
+      try screen.clickElement("automation-start-new-session")
       #expect(draft.value.startNewSession)
     }
 
@@ -156,45 +160,44 @@
       let draft = EditedValue(AutomationDraftState())
       let screen = sheet(draft, context: context)
       defer { screen.close() }
+      try screen.clickElement("automation-advanced")
       #expect(screen.popUps.allSatisfy { $0.title != "New session each run" })
     }
 
-    @Test("a rule the form can't edit stays until a new schedule is chosen")
-    func keptRule() throws {
+    @Test("an edit's schedule sits under Advanced settings, by its summary")
+    func editedSchedule() throws {
       let draft = EditedValue(AutomationDraftState(schedule: nil, keptRule: "Every 3rd Tuesday"))
       let screen = sheet(draft, context: context(editing: true))
       defer { screen.close() }
+      #expect(try !screen.shows("Every 3rd Tuesday"), "folded away")
+      try screen.clickElement("automation-advanced")
       #expect(try screen.shows("Every 3rd Tuesday"))
-      #expect(try screen.shows("Choose a frequency to replace it."))
-      #expect(screen.popUps.allSatisfy { $0.title != "Every day" })
-      // Choose a new schedule, then Cancel; Save is disabled.
-      try screen.clickButton(at: 0)
-      #expect(draft.value.schedule == ScheduleChoice())
-      #expect(try screen.shows("Summary of Every day"))
+      #expect(screen.popUps.allSatisfy { $0.title != "Every day" }, "no frequency outside its menu")
     }
 
-    @Test("the summary follows the schedule")
+    @Test("a new automation's schedule button shows the summary as it changes")
     func summaryFollows() throws {
       let draft = EditedValue(AutomationDraftState())
       let screen = sheet(draft, context: context())
       defer { screen.close() }
       #expect(try screen.shows("Summary of Every day"))
-      try screen.choose("Every hour", inPopUp: try popUp(screen, showing: "Every day"))
+      draft.value.schedule?.preset = .hourly
+      screen.settle()
       #expect(try screen.shows("Summary of Every hour"))
     }
 
-    @Test("picking a host offers a folder; picking a sandbox clears both")
+    @Test("picking a host pins it and enables the folder; picking a sandbox clears both")
     func placement() throws {
       let draft = EditedValue(AutomationDraftState())
       let screen = sheet(draft, context: context())
       defer { screen.close() }
-      #expect(try screen.shows("Pick the host this automation runs on."))
-      #expect(screen.textFields.allSatisfy { $0.placeholderString != "Home folder" })
+      try screen.clickElement("automation-advanced")
+      let folder = try #require(screen.textFields.first { $0.placeholderString == "No workspace" })
+      #expect(!folder.isEnabled, "no host to pin a folder on yet")
       try screen.choose("Build Mac", inPopUp: try popUp(screen, showing: "Pick a host"))
       #expect(draft.value.hostID == "h1")
-      #expect(try screen.shows("A run fails while the host is offline."))
-      let folder = try #require(screen.textFields.first { $0.placeholderString == "Home folder" })
-      try screen.replaceText(in: folder, with: "/work")
+      let pinned = try #require(screen.textFields.first { $0.placeholderString == "No workspace" })
+      try screen.replaceText(in: pinned, with: "/work")
       #expect(draft.value.workspace == "/work")
 
       try screen.choose("New Sandbox", inPopUp: try popUp(screen, showing: "Build Mac"))
@@ -202,6 +205,7 @@
       #expect(draft.value.hostID.isEmpty)
       #expect(draft.value.workspace.isEmpty)
       #expect(try screen.shows("Provisions a fresh sandbox for each run."))
+      #expect(screen.textFields.allSatisfy { $0.placeholderString != "No workspace" })
 
       try screen.choose("Build Mac", inPopUp: try popUp(screen, showing: "New Sandbox"))
       #expect(!draft.value.runsInSandbox)
@@ -240,13 +244,14 @@
         models: [AutomationOption(id: "m1", name: "Opus")], efforts: [], permissionModes: [])
       let screen = sheet(EditedValue(seed), context: context)
       defer { screen.close() }
+      try screen.clickElement("automation-advanced")
       let titles = screen.popUps.map(\.title)
       for title in ["gone-agent", "gone-host", "Project unavailable", "gone-model"] {
         #expect(titles.contains(title), "\(titles)")
       }
     }
 
-    @Test("project, model, effort and permission mode write back, and Default clears")
+    @Test("permissions sit beside the agent; project, model and effort under Advanced settings")
     func overrides() throws {
       var context = context()
       let option = { (name: String) in [AutomationOption(id: name.lowercased(), name: name)] }
@@ -255,19 +260,16 @@
       let draft = EditedValue(AutomationDraftState())
       let screen = sheet(draft, context: context)
       defer { screen.close() }
-      #expect(try screen.shows("will wait for approval that never comes"))
-      #expect(try !screen.shows("default model, effort, and permission settings"))
+      try screen.choose("Auto", inPopUp: try popUp(screen, showing: "Default permissions"))
+      #expect(draft.value.permissionMode == "auto")
+      try screen.clickElement("automation-advanced")
       try screen.choose("Docs", inPopUp: try popUp(screen, showing: "No project"))
       #expect(draft.value.projectID == "p1")
       let defaults = screen.popUps.filter { $0.title == "Default" }
-      #expect(defaults.count == 3)
+      #expect(defaults.count == 2, "model and effort")
       try screen.choose("Opus", inPopUp: defaults[0])
       try screen.choose("High", inPopUp: defaults[1])
-      try screen.choose("Auto", inPopUp: defaults[2])
-      #expect(
-        [draft.value.model, draft.value.effort, draft.value.permissionMode] == [
-          "opus", "high", "auto",
-        ])
+      #expect([draft.value.model, draft.value.effort] == ["opus", "high"])
       try screen.choose("Default", inPopUp: try popUp(screen, showing: "Opus"))
       #expect(draft.value.model.isEmpty)
     }
@@ -279,9 +281,30 @@
       let screen = sheet(EditedValue(AutomationDraftState(agentID: "a1")), context: context)
       defer { screen.close() }
       #expect(try screen.shows("Switching agents starts a new session."))
-      #expect(try screen.shows("default model, effort, and permission settings"))
     }
 
+  }
+
+  extension PagesAutomationEditorTests {
+    @Test("a new automation switches its trigger type through the context, and says when none")
+    func triggerType() throws {
+      var context = context()
+      context.triggerTypes = [AutomationOption(id: "jira", name: "Jira")]
+      let log = log
+      context.switchTriggerType = { log.record("type \($0 ?? "schedule")") }
+      let screen = sheet(EditedValue(AutomationDraftState()), context: context)
+      defer { screen.close() }
+      try screen.choose("Jira", inPopUp: try popUp(screen, showing: "Schedule"))
+      #expect(log.entries == ["type jira"])
+      #expect(try !screen.shows("Integration triggers aren\u{2019}t available on this server."))
+
+      let bare = sheet(EditedValue(AutomationDraftState()), context: self.context())
+      defer { bare.close() }
+      #expect(try bare.shows("Integration triggers aren\u{2019}t available on this server."))
+      let edited = sheet(EditedValue(AutomationDraftState()), context: self.context(editing: true))
+      defer { edited.close() }
+      #expect(edited.popUps.allSatisfy { $0.title != "Schedule" }, "an edit keeps its type")
+    }
   }
 
   extension PagesAutomationEditorTests {
@@ -302,15 +325,75 @@
       defer { screen.close() }
       #expect(try screen.shows("Starts from"))
       #expect(try screen.shows("Release notes"))
-      #expect(try screen.shows("Additional instructions"))
-      #expect(try screen.shows("Not signed in"))
       #expect(try screen.shows("Enter a cost limit greater than zero, or leave it blank."))
       #expect(try screen.shows("Sign in to each selected MCP service, or turn it off."))
+      #expect(try screen.shows("No MCPs"), "the problems opened Advanced settings")
       let cost = try #require(screen.textFields.first { $0.placeholderString == "No limit" })
       try screen.replaceText(in: cost, with: "2.5")
       #expect(draft.value.maxCost == "2.5")
-      let session = try #require(screen.popUps.first { $0.title == "New session each run" })
-      #expect(!session.isEnabled, "a session copy starts each run anew")
+      let services = try screen.titles(inPopUp: try popUp(screen, showing: "No MCPs"))
+      #expect(services.contains("GitHub"))
+      try screen.choose("GitHub", inPopUp: try popUp(screen, showing: "No MCPs"))
+      #expect(draft.value.mcpServices == ["github"])
+      #expect(
+        screen.popUps.allSatisfy { $0.title != "New session each run" },
+        "a session copy starts each run anew")
+    }
+
+    @Test("the dialog reads as the web's: title, type and schedule, prompt, run row, Advanced")
+    func layout() throws {
+      var context = context()
+      context.triggerTypes = [AutomationOption(id: "jira", name: "Jira")]
+      context.switchTriggerType = { _ in }
+      context.overrides = AutomationOverrideOptions(
+        models: [], efforts: [], permissionModes: [AutomationOption(id: "auto", name: "Auto")])
+      let screen = sheet(
+        EditedValue(AutomationDraftState(name: "Brief", agentID: "a1")), context: context)
+      defer { screen.close() }
+      let frames = try screen.withAccessibilityTree {
+        try [
+          "automation-name", "automation-trigger-type", "automation-schedule", "automation-prompt",
+          "automation-host", "automation-agent", "automation-permission-mode",
+          "automation-advanced", "automation-save",
+        ].reduce(into: [String: CGRect]()) { $0[$1] = try screen.accessibilityFrame($1) }
+      }
+      func frame(_ id: String) throws -> CGRect { try #require(frames[id]) }
+      let type = try frame("automation-trigger-type")
+      let schedule = try frame("automation-schedule")
+      let name = try frame("automation-name")
+      #expect(name.maxY <= type.minY, "the name leads, as the title")
+      #expect(abs(type.midY - schedule.midY) < 2, "type and schedule share a row")
+      #expect(type.maxX <= schedule.minX, "the type, then the schedule")
+      let prompt = try frame("automation-prompt")
+      #expect(type.maxY <= prompt.minY)
+      #expect(prompt.height >= 120, "a large field, as the web's")
+      let host = try frame("automation-host")
+      let agent = try frame("automation-agent")
+      let permissions = try frame("automation-permission-mode")
+      #expect(prompt.maxY <= host.minY)
+      #expect(abs(host.midY - agent.midY) < 2 && abs(agent.midY - permissions.midY) < 2)
+      #expect(host.maxX <= agent.minX && agent.maxX <= permissions.minX)
+      let advanced = try frame("automation-advanced")
+      let save = try frame("automation-save")
+      #expect(host.maxY <= advanced.minY)
+      #expect(advanced.maxY <= save.minY)
+    }
+
+    @Test("the schedule menu lists the frequencies, and offers to replace a kept rule")
+    func scheduleMenu() throws {
+      SystemSideEffects.reset()
+      let draft = EditedValue(AutomationDraftState(schedule: nil, keptRule: "Every 3rd Tuesday"))
+      let screen = OffscreenWindow(
+        AutomationScheduleMenu(draft: draft.binding, context: context()), width: 360, height: 500)
+      defer { screen.close() }
+      #expect(try screen.shows("Every 3rd Tuesday"))
+      #expect(try screen.shows("Choose a frequency to replace it."))
+      try screen.clickButton(at: 0)
+      #expect(draft.value.schedule == ScheduleChoice())
+      #expect(screen.popUps.allSatisfy { $0.title != "Every day" }, "no pop-up for them")
+      for frequency in ["Interval", "Every hour", "Every weekday", "Custom schedule"] {
+        #expect(try screen.shows(frequency), "the frequencies are a list, as the web's menu")
+      }
     }
   }
 #endif

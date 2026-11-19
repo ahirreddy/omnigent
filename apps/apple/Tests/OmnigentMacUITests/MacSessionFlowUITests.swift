@@ -45,9 +45,11 @@ final class MacSessionFlowUITests: XCTestCase {
     live.openDemo("demo-notes", in: app)
     let notice = live.element("composer-unavailable", in: app)
     XCTAssertTrue(notice.appears(within: 10), "no read-only notice")
+    // The notice can show before its text settles; read it until it says why.
     XCTAssertTrue(
-      (notice.value as? String ?? notice.label).contains("read this session but not send"),
-      "the notice says \(notice.value ?? notice.label)")
+      live.waitUntil(timeout: 5) {
+        (notice.value as? String ?? notice.label).contains("read this session but not send")
+      }, "the notice says \(notice.value ?? notice.label)")
     // Typing proves it: the editor reports itself disabled to accessibility even when it is not.
     live.focusComposer(in: app)
     app.typeText("locked")
@@ -140,7 +142,7 @@ final class MacSessionFlowUITests: XCTestCase {
     defer { app.terminate() }
     let row = live.row("demo-question", in: app)
 
-    live.contextMenu(row, choose: "Archive", in: app)
+    archiveWorking(row, live, app)
     XCTAssertTrue(row.disappears(within: 10), "the archived row stayed")
     live.click(live.element("undo-action", in: app), "Undo")
     XCTAssertTrue(row.appears(within: 10), "Undo did not restore the session")
@@ -156,7 +158,7 @@ final class MacSessionFlowUITests: XCTestCase {
     defer { app.terminate() }
     let row = live.row("demo-question", in: app)
 
-    live.contextMenu(row, choose: "Archive", in: app)
+    archiveWorking(row, live, app)
     XCTAssertTrue(row.disappears(within: 10), "the archived row stayed")
     live.click(live.element("undo-view-archived", in: app), "View archived")
     XCTAssertTrue(row.appears(within: 10), "the archived list does not show it")
@@ -168,6 +170,19 @@ final class MacSessionFlowUITests: XCTestCase {
     XCTAssertTrue(row.disappears(within: 10), "it stayed in the archived list")
     live.showDisplayScope("All sessions", in: app)
     XCTAssertTrue(row.appears(within: 10), "it did not return to the main list")
+  }
+
+  /// Archives `row`'s session, whose agent waits on a question: as on the web, a working
+  /// session's Archive asks first.
+  @MainActor
+  private func archiveWorking(
+    _ row: XCUIElement, _ live: MacLiveUITestSupport, _ app: XCUIApplication
+  ) {
+    live.contextMenu(row, choose: "Archive", in: app)
+    XCTAssertTrue(
+      live.text(containing: "Archive running session?", in: app).appears(within: 10),
+      "Archive did not ask about the working agent")
+    live.clickDialogButton("Archive", in: app)
   }
 
   /// Delete asks first: Cancel keeps the session and Delete removes it.
@@ -219,22 +234,49 @@ final class MacSessionFlowUITests: XCTestCase {
     XCTAssertFalse(
       live.element("header-project-tag", in: app).exists, "the folder button is in the toolbar")
 
-    live.openSessionMenu(in: app)
-    live.clickMenuItem("Add to project", in: app)
-    live.clickMenuItem(name, in: app)
-    let filed = try await live.projectOf(session, becomes: projectID)
+    let filed = try await live.chooseInSessionMenu(
+      "Add to project", name, filing: session, becomes: projectID, in: app)
     XCTAssertEqual(filed, projectID, "the session menu did not file the session")
 
-    live.openSessionMenu(in: app)
-    live.clickMenuItem("Move session", in: app)
-    live.clickMenuItem("Remove from project", in: app)
-    let unfiled = try await live.projectOf(session, becomes: nil)
+    let unfiled = try await live.chooseInSessionMenu(
+      "Move session", "Remove from project", filing: session, becomes: nil, in: app)
     XCTAssertNil(unfiled, "Remove from project left the session filed")
     _ = try await live.serverJSON("DELETE", "/v1/projects/\(projectID)")
   }
 }
 
 extension MacLiveUITestSupport {
+  /// Chooses `item` from the session menu's `submenu` until the server files `session` as
+  /// `expected`. The pointer enters the submenu beside its row and then moves down inside it:
+  /// a straight line to a low item crosses the menu's other rows, which closes the submenu. A
+  /// pass that still misses closes the menu and tries again.
+  @MainActor
+  func chooseInSessionMenu(
+    _ submenu: String, _ item: String, filing session: String, becomes expected: String?,
+    in app: XCUIApplication
+  ) async throws -> String? {
+    var filed: String?
+    for _ in 0..<3 {
+      openSessionMenu(in: app)
+      let rows = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", submenu))
+      guard let row = hittable(rows) else {
+        XCTFail("no menu item \(submenu)\n\(app.debugDescription)")
+        return filed
+      }
+      row.click()
+      let items = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", item))
+      if let target = hittable(items) {
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+          .withOffset(CGVector(dx: target.frame.midX - row.frame.minX, dy: 0)).hover()
+        target.click()
+        filed = try await projectOf(session, becomes: expected)
+        if filed == expected { return filed }
+      }
+      let open = app.menuItems.matching(NSPredicate(format: "title == %@", submenu))
+      if hittable(open, timeout: 1) != nil { app.typeKey(.escape, modifierFlags: []) }
+    }
+    return filed
+  }
   /// Sends a request to the local server the flows run on and reads its JSON object; an empty
   /// `body` (whose values may nest) sends none.
   func serverJSON(

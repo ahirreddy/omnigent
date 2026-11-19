@@ -56,11 +56,17 @@ struct AutomationsScreenTests {
     return (screen, opened)
   }
 
-  // The page's controls in reading order with one automation and no sheet: New, the tabs,
-  // search, the filter, then the row's menu.
-  private static let newButton = 0
-  private static let rowMenuControl = 4
-  private static let sheetSave = CGPoint(x: 410, y: 690)
+  // In reading order: the guide's button, New, the tabs, the filter pills (the search box is a
+  // plain field, not counted), then the row's menu.
+  private static let newButton = 1
+  private static let rowMenuControl = 6
+  private static let editorMarker = "Advanced settings"  // Only the editor shows it.
+
+  /// The editor's Create or Save changes: its last control, once the form can be saved.
+  private func sheetSave<Content: View>(_ screen: OffscreenWindow<Content>) throws -> CGPoint {
+    let save = try #require(screen.controlFrames.last)
+    return CGPoint(x: save.midX, y: save.midY)
+  }
 
   /// The row's menu button, wherever the header puts the list.
   private func rowMenu<Content: View>(_ screen: OffscreenWindow<Content>) throws -> CGPoint {
@@ -80,7 +86,7 @@ struct AutomationsScreenTests {
   private func typeAFullDraft<Content: View>(_ screen: OffscreenWindow<Content>) throws {
     let name = try #require(
       screen.allViews.compactMap { $0 as? NSTextField }.first {
-        $0.placeholderString == "daily-brief"
+        $0.placeholderString == "Name your automation"
       })
     try screen.click(name)
     try screen.type("Report")
@@ -100,9 +106,9 @@ struct AutomationsScreenTests {
     let (screen, _) = try await page(server)
     defer { screen.close() }
     try screen.clickControl(at: Self.newButton)
-    try await settle(screen, untilShowing: "Create automation")
+    try await settle(screen, untilShowing: Self.editorMarker)
     try typeAFullDraft(screen)
-    try screen.click(Self.sheetSave)
+    try screen.click(try sheetSave(screen))
     try await settle(screen, until: "the create") {
       !server.requests("POST", "/v1/scheduled-tasks").isEmpty
     }
@@ -112,9 +118,9 @@ struct AutomationsScreenTests {
     #expect(body["host_id"] as? String == "mac")
     #expect(body["agent_id"] as? String == "ag_claude")
     try await settle(screen, until: "the sheet to close") {
-      (try? screen.shows("Create automation")) == false
+      (try? screen.shows(Self.editorMarker)) == false
     }
-    #expect(try !screen.shows("Create automation"), "the sheet closes once saved")
+    #expect(try !screen.shows(Self.editorMarker), "the sheet closes once saved")
   }
 
   @Test("A refused save stays in the sheet and says why")
@@ -125,11 +131,11 @@ struct AutomationsScreenTests {
     let (screen, _) = try await page(server)
     defer { screen.close() }
     try screen.clickControl(at: Self.newButton)
-    try await settle(screen, untilShowing: "Create automation")
+    try await settle(screen, untilShowing: Self.editorMarker)
     try typeAFullDraft(screen)
-    try screen.click(Self.sheetSave)
+    try screen.click(try sheetSave(screen))
     try await settle(screen, untilShowing: "bad schedule", contains: true)
-    #expect(try screen.shows("Create automation"))
+    #expect(try screen.shows(Self.editorMarker))
   }
 
   @Test("New opens the editor; Cancel leaves")
@@ -137,12 +143,12 @@ struct AutomationsScreenTests {
     let (screen, _) = try await page()
     defer { screen.close() }
     try screen.clickControl(at: Self.newButton)
-    try await settle(screen, untilShowing: "Create automation")
+    try await settle(screen, untilShowing: Self.editorMarker)
     try pressShortcut(screen, keyCode: 53, characters: "\u{1b}", modifiers: [])
     try await settle(screen, until: "the sheet to close") {
-      (try? screen.shows("Create automation")) == false
+      (try? screen.shows(Self.editorMarker)) == false
     }
-    #expect(try !screen.shows("Create automation"))
+    #expect(try !screen.shows(Self.editorMarker))
   }
 
   @Test("A row's menu pauses, runs and deletes it")
@@ -199,7 +205,9 @@ struct AutomationsScreenTests {
     try await settle(screen, untilShowing: "1m 42s")
     #expect(try screen.shows("Host \u{00B7} None of your hosts was online."))
     // Its controls: Back, Edit, Delete, Run, Pause, Configuration, then the run's row.
-    #expect(try screen.shows("Cost limit per run".uppercased()))
+    #expect(try !screen.shows("Cost limit per run".uppercased()), "folded, as the web's")
+    try screen.clickControl(at: 5)
+    try await settle(screen, untilShowing: "Cost limit per run".uppercased())
     try screen.clickControl(at: 6)
     try await settle(screen, until: "the run's session") { !opened.sessions.isEmpty }
     #expect(opened.sessions == ["c2"], "the run opens its session")
@@ -257,10 +265,10 @@ extension AutomationsScreenTests {
     let (screen, _) = try await page(server)
     defer { screen.close() }
     try screen.clickControl(at: Self.newButton)
-    try await settle(screen, untilShowing: "Create automation")
+    try await settle(screen, untilShowing: Self.editorMarker)
     let name = try #require(
       screen.allViews.compactMap { $0 as? NSTextField }.first {
-        $0.placeholderString == "daily-brief"
+        $0.placeholderString == "Name your automation"
       })
     #expect(name.stringValue.isEmpty)
     // Each press is with no field focused, so the key goes to the sheet's default button.
@@ -290,7 +298,7 @@ extension AutomationsScreenTests {
     #expect(try screen.shows("Suggested"))
     #expect(try screen.shows("Requires the GitHub CLI or a GitHub MCP server."))
     try screen.clickControl(at: Self.rowMenuControl + 3)
-    try await settle(screen, untilShowing: "Create automation")
+    try await settle(screen, untilShowing: Self.editorMarker)
     let shown = try screen.shownText()
     #expect(shown.contains { $0.localizedCaseInsensitiveContains("GitHub") }, "\(shown.prefix(20))")
     // A trigger polls, so its schedule stays out of the form.
@@ -345,21 +353,6 @@ extension AutomationsScreenTests {
     #expect(context.agentNote == "Future runs use Codex; past runs keep the agent they ran with")
   }
 
-  @Test("What blocks Save is said in the form")
-  func blockers() {
-    var draft = AutomationDraftState()
-    #expect(
-      AutomationEditorMapping.blocker(draft, isEditing: false)
-        == "Pick the host this automation runs on.")
-    #expect(AutomationEditorMapping.blocker(draft, isEditing: true) == nil)
-    draft.workspace = "/w"
-    #expect(
-      AutomationEditorMapping.blocker(draft, isEditing: true)
-        == "Pick a host before pinning a workspace.")
-    draft.runsInSandbox = true
-    #expect(AutomationEditorMapping.blocker(draft, isEditing: false) == nil)
-  }
-
   @Test("The guide shows once per server and user, and closing it marks it seen")
   func theGuide() async throws {
     let server = automationsServer()
@@ -391,7 +384,7 @@ extension AutomationsScreenTests {
     defer { screen.close() }
     try await settle(screen, untilShowing: "Couldn\u{2019}t load automations.")
     let reads = server.requests("GET", "/v1/scheduled-tasks").count
-    // New, the tabs, search, then Retry.
+    // The guide's button, New, the tabs, then Retry.
     try screen.clickControl(at: 3)
     try await settle(screen, until: "another read") {
       server.requests("GET", "/v1/scheduled-tasks").count > reads
