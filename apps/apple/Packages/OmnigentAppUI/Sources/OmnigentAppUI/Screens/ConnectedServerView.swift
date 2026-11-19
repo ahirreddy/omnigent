@@ -177,7 +177,7 @@ public struct ConnectedServerView: View {
       $0 == .manual ? .manual : .alphabetical
     }
     state.account = signOutAccount
-    state.offlineNotice = SidebarAdapter.offlineNotice(connection)
+    state.savedListNotice = SidebarAdapter.savedListNotice(connection)
     return state
   }
 

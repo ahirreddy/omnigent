@@ -52,6 +52,7 @@ nonisolated public enum SidebarLoadSignposts {
     case .sessionListChanged(let change): kind(of: change)
     case .sessionListLoaded: "loaded"
     case .offlineChanged(let url): "offline \(url != nil)"
+    case .savedListShown(let url): "saved list \(url != nil)"
     case .projectsLoaded(let projects, _): "projects \(projects.count)"
     case .projectFoldersChanged(let folders): "folders \(folders.count)"
     case .sessionListPagingChanged(let hasMore, let isLoading): "paging \(hasMore) \(isLoading)"

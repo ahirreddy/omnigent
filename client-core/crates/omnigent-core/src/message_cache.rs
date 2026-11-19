@@ -5,7 +5,7 @@
 //! The host reads and writes the files. Under the cache root, per server and per account
 //! (hashed, so no URL, user id or session id becomes a file name):
 //!
-//! - `<server>/<account>/sessions.json`: the session list's rows.
+//! - `<server>/<account>/sessions.json`: the session list's rows and the projects.
 //! - `<server>/<account>/conversations/<session>.json`: one session's snapshot and items.
 //! - `<server>/last-account.json`: the account that last connected, for an offline start that
 //!   names none.
@@ -19,6 +19,8 @@ use omnigent_protocol::{
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
 
+use crate::project_settings::ProjectSortMode;
+use crate::projects::ProjectSummary;
 use crate::reconcile::HistoryItems;
 use crate::server_url;
 
@@ -250,13 +252,25 @@ impl SavedConversation {
     }
 }
 
-/// The session list as saved: the rows of every page loaded.
+/// The session list as saved: the rows of every page, pin and folder read loaded, and the
+/// projects the folders are drawn from.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedSessionList {
     /// When it was saved, ms since the Unix epoch.
     pub saved_at_ms: u64,
     /// Rows in the server's order.
     pub rows: Vec<SessionListItem>,
+    /// The projects as last read; `None` before a read landed (and in older files).
+    pub projects: Option<SavedProjects>,
+}
+
+/// The caller's projects as saved, in their display order, and how they sort.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SavedProjects {
+    /// The projects.
+    pub projects: Vec<ProjectSummary>,
+    /// How the sidebar sorts them.
+    pub sort: ProjectSortMode,
 }
 
 impl SavedSessionList {
@@ -439,6 +453,21 @@ pub fn encode_list(list: &SavedSessionList) -> Result<Vec<u8>, CacheError> {
     let mut fields = envelope(list.saved_at_ms);
     let rows = serde_json::to_value(&list.rows).map_err(|error| encode_error(what, &error))?;
     fields.insert("rows".to_owned(), rows);
+    if let Some(saved) = &list.projects {
+        let projects = saved
+            .projects
+            .iter()
+            .map(|project| {
+                serde_json::json!({"id": project.id, "name": project.name, "icon": project.icon})
+            })
+            .collect();
+        fields.insert("projects".to_owned(), Value::Array(projects));
+        let sort = match saved.sort {
+            ProjectSortMode::Alphabetical => "alphabetical",
+            ProjectSortMode::Manual => "manual",
+        };
+        fields.insert("project_sort".to_owned(), Value::from(sort));
+    }
     to_bytes(what, fields)
 }
 
@@ -451,7 +480,48 @@ pub fn decode_list(bytes: &[u8]) -> Result<SavedSessionList, CacheError> {
     let what = LIST_ROLE;
     let (mut fields, saved_at_ms) = open_envelope(what, bytes)?;
     let rows = decode_list_of(what, &mut fields, "rows")?;
-    Ok(SavedSessionList { saved_at_ms, rows })
+    let projects = decode_projects(&mut fields)?;
+    Ok(SavedSessionList {
+        saved_at_ms,
+        rows,
+        projects,
+    })
+}
+
+/// A saved list's projects; `None` when it saved none.
+fn decode_projects(fields: &mut Map<String, Value>) -> Result<Option<SavedProjects>, CacheError> {
+    let what = LIST_ROLE;
+    let Some(projects) = fields.remove("projects") else {
+        return Ok(None);
+    };
+    let Value::Array(projects) = projects else {
+        return Err(corrupt(what, "`projects` is not a list"));
+    };
+    let text =
+        |project: &Value, key: &str| project.get(key).and_then(Value::as_str).map(str::to_owned);
+    let projects = projects
+        .iter()
+        .enumerate()
+        .map(|(index, project)| {
+            let name = text(project, "name")
+                .ok_or_else(|| corrupt(what, format!("projects[{index}] has no usable `name`")))?;
+            Ok(ProjectSummary {
+                id: text(project, "id"),
+                name,
+                icon: text(project, "icon"),
+            })
+        })
+        .collect::<Result<Vec<_>, CacheError>>()?;
+    let sort = match fields
+        .remove("project_sort")
+        .as_ref()
+        .and_then(Value::as_str)
+    {
+        Some("alphabetical") => ProjectSortMode::Alphabetical,
+        Some("manual") => ProjectSortMode::Manual,
+        _ => return Err(corrupt(what, "no usable `project_sort`")),
+    };
+    Ok(Some(SavedProjects { projects, sort }))
 }
 
 /// The last-account file naming `account_key`.

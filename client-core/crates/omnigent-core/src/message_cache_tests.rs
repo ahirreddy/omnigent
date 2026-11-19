@@ -111,10 +111,27 @@ fn a_saved_session_list_comes_back_and_shows_as_the_list_shows_it() {
             .iter()
             .map(|row| SessionListItem::from_value(row.clone()).unwrap())
             .collect();
-    let list = SavedSessionList {
+    let mut list = SavedSessionList {
         saved_at_ms: 3,
         rows: rows.clone(),
+        projects: None,
     };
+    assert_eq!(decode_list(&encode_list(&list).unwrap()).unwrap(), list);
+    list.projects = Some(SavedProjects {
+        projects: vec![
+            ProjectSummary {
+                id: Some("prj_1".into()),
+                name: "Alpha".into(),
+                icon: Some("🚀".into()),
+            },
+            ProjectSummary {
+                id: None,
+                name: "label only".into(),
+                icon: None,
+            },
+        ],
+        sort: ProjectSortMode::Manual,
+    });
     let decoded = decode_list(&encode_list(&list).unwrap()).unwrap();
     assert_eq!(decoded, list);
     let summaries = saved_summaries(&decoded.rows).unwrap();
@@ -139,6 +156,7 @@ fn saved_list_rows_take_later_pages_and_removals() {
     let mut list = SavedSessionList {
         saved_at_ms: 1,
         rows: vec![row("a", "A"), row("b", "B")],
+        projects: None,
     };
     list.upsert(&[row("b", "B2"), row("c", "C")]);
     let titles: Vec<_> = list

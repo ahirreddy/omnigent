@@ -97,6 +97,7 @@ fn a_write_lands_whole_and_reads_back() {
             SessionListItem::from_json(br#"{"id":"conv_a","status":"idle","created_at":1}"#)
                 .unwrap(),
         ],
+        projects: None,
     };
     store.save_list(&account, list.clone());
     store.save_last_account(&account, 8);

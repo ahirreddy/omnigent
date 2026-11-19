@@ -71,10 +71,15 @@ struct SidebarBottomBars: View {
       if let undo = state.undo {
         UndoBar(banner: undo, actions: actions)
       }
-      if let offline = state.offlineNotice {
-        SessionListOfflineBar(message: offline, retry: actions.sessions.retry)
-      } else if case .failed(let message) = state.list.phase {
-        SessionListErrorBar(message: message, retry: actions.sessions.retry)
+      switch state.savedListNotice {
+      case .offline(let message):
+        SessionListOfflineBar(message: message, retry: actions.sessions.retry)
+      case .refreshing(let message):
+        SessionListRefreshingBar(message: message)
+      case nil:
+        if case .failed(let message) = state.list.phase {
+          SessionListErrorBar(message: message, retry: actions.sessions.retry)
+        }
       }
     }
     .frame(minWidth: 0, maxWidth: .infinity)

@@ -9,16 +9,29 @@ extension ConnectionStore {
   /// could not be reached. The app shows its sessions then rather than the sign-in screen.
   public var isOffline: Bool { offlineServerURL != nil }
 
-  /// Whether to show the server's sessions: signed in, or offline with a saved copy.
-  public var showsSessions: Bool { isSignedIn || isOffline }
+  /// Whether the sidebar shows what this device saved while the app connects, before the
+  /// server's own list replaces it.
+  public var isShowingSavedList: Bool { savedListServerURL != nil }
 
-  /// The server whose sessions show: the connected one, or the one shown offline.
-  public var shownServerURL: String? { connectedServer?.baseUrl ?? offlineServerURL }
+  /// Whether to show the server's sessions: signed in, offline with a saved copy, or connecting
+  /// with one.
+  public var showsSessions: Bool { isSignedIn || isOffline || isShowingSavedList }
+
+  /// The server whose sessions show: the connected one, or the one whose saved copy shows.
+  public var shownServerURL: String? {
+    connectedServer?.baseUrl ?? offlineServerURL ?? savedListServerURL
+  }
 
   func offlineChanged(_ serverURL: String?) {
     if serverURL != offlineServerURL { offlineServerURL = serverURL }
     // The saved list belonged to the offline view; a sign-in screen starts without it.
-    if serverURL == nil, !isSignedIn { sessionList.clear() }
+    if serverURL == nil, !showsSessions { sessionList.clear() }
+  }
+
+  func savedListShown(_ serverURL: String?) {
+    if serverURL != savedListServerURL { savedListServerURL = serverURL }
+    // A connect that ended in a sign-in screen or a disconnect starts it without the list.
+    if serverURL == nil, !showsSessions { sessionList.clear() }
   }
 
   /// Deletes this device's saved copy of `serverURL`'s sessions, for every account, as removing

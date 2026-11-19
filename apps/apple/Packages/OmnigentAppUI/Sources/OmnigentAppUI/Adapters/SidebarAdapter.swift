@@ -245,14 +245,17 @@ enum SidebarAdapter {
     return list.isLoaded ? .loaded : .loading
   }
 
-  /// The line under the sidebar while the list is this device's saved copy.
+  /// The line under the sidebar while the list is this device's saved copy, offline.
   static let offlineText = "Offline \u{2014} showing saved sessions"
+  /// The line while the saved copy shows and the server's list is on its way.
+  static let refreshingText = "Updating saved sessions\u{2026}"
 
-  /// The sidebar's offline line, `nil` while the server is reachable.
+  /// The sidebar's line while the list is the saved copy, `nil` once it is the server's.
   /// - Parameter connection: The connection.
   /// - Returns: The line.
-  static func offlineNotice(_ connection: ConnectionStore) -> String? {
-    connection.isOffline ? offlineText : nil
+  static func savedListNotice(_ connection: ConnectionStore) -> SidebarSavedListNotice? {
+    if connection.isOffline { return .offline(offlineText) }
+    return connection.isShowingSavedList ? .refreshing(refreshingText) : nil
   }
 
   /// Why the sidebar has no Automations, Usage or Canvas rows when the reason is a failed read

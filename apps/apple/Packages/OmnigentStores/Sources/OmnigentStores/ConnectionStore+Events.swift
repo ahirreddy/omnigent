@@ -24,6 +24,8 @@ extension ConnectionStore {
       sessionList.loaded()
     case .offlineChanged(let serverURL):
       offlineChanged(serverURL)
+    case .savedListShown(let serverURL):
+      savedListShown(serverURL)
     case .sessionOfflineChanged(let id, let offline):
       conversations[id]?.offlineChanged(offline)
     default:

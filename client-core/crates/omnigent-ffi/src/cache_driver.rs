@@ -1,14 +1,15 @@
 //! This device's saved copy in the engine ([`crate::message_cache`]). Opening a session shows its
-//! saved rows at once, and the first hydration replaces them with the server's. A connect that
-//! cannot reach the server shows the saved list and sessions as offline until a connection, a
-//! sign-in screen or a disconnect ends it. What the server returns is written through as it
-//! arrives: hydrations, older pages, items the stream commits, and session list pages.
+//! saved rows at once, and the first hydration replaces them with the server's. A connect shows
+//! the saved list while it runs ([`crate::saved_list_driver`]); one that cannot reach the server
+//! shows the saved list and sessions as offline until a connection, a sign-in screen or a
+//! disconnect ends it. What the server returns is written through as it arrives: hydrations,
+//! older pages, items the stream commits, and session list pages.
 
 use std::sync::Arc;
 
 use futures::future::AbortHandle;
 use omnigent_core::message_cache::{
-    self as cache, CacheError, CacheScope, SavedConversation, SavedSessionList,
+    self as cache, CacheError, CacheScope, SavedConversation, SavedProjects, SavedSessionList,
 };
 use omnigent_core::realtime::ConnectionState;
 use omnigent_protocol::{ConversationItem, ServerStreamEvent, SessionListItem, SessionSnapshot};
@@ -30,8 +31,12 @@ pub(crate) struct SavedState {
     pub(crate) scope: Option<CacheScope>,
     /// The URL the app connected with, while its saved copy shows offline.
     pub(crate) offline: Option<String>,
+    /// The URL the app is connecting to, while its saved list shows ahead of the server's.
+    pub(crate) early: Option<String>,
     /// The rows of every list page loaded, as saved.
     pub(crate) list: Option<SavedSessionList>,
+    /// The projects as last read or saved, which the saved list keeps with its rows.
+    pub(crate) projects: Option<SavedProjects>,
 }
 
 /// One open session's saved-copy state.
@@ -53,6 +58,11 @@ pub(crate) struct DriverSaved {
 
 /// Saved-copy messages for the engine.
 pub(crate) enum SavedMsg {
+    /// A connect to `server_url` began: show what this device saved of it until it answers.
+    Connecting {
+        server_url: String,
+        expected_user_id: Option<String>,
+    },
     /// A connect could not reach `server_url`: show what this device saved of it.
     Unreachable {
         server_url: String,
@@ -84,6 +94,10 @@ fn corrupt_conversation() -> CacheError {
 impl Engine {
     pub(crate) fn saved_message(&mut self, message: SavedMsg) {
         match message {
+            SavedMsg::Connecting {
+                server_url,
+                expected_user_id,
+            } => self.saved_connecting(&server_url, expected_user_id.as_deref()),
             SavedMsg::Unreachable {
                 server_url,
                 expected_user_id,
@@ -100,7 +114,7 @@ impl Engine {
     }
 
     /// The saved copy and the account it is read and written for, when both are known.
-    fn cached(&self) -> Option<(Arc<MessageCache>, CacheScope)> {
+    pub(crate) fn cached(&self) -> Option<(Arc<MessageCache>, CacheScope)> {
         Some((Arc::clone(self.cache.as_ref()?), self.saved.scope.clone()?))
     }
 
@@ -129,68 +143,62 @@ impl Engine {
         };
         if ends {
             self.leave_offline();
+            self.leave_early();
         }
         if matches!(self.phase, ConnectionPhase::Disconnected) {
             self.flush_saves();
             self.saved.scope = None;
             self.saved.list = None;
+            self.saved.projects = None;
         }
     }
 
     /// A connect could not reach `server_url`: shows what this device saved of it, for
-    /// `expected_user_id` or the account that last connected, as offline.
+    /// `expected_user_id` or the account that last connected, as offline. The saved list that
+    /// showed while connecting stays, now offline.
     pub(crate) fn server_unreachable(&mut self, server_url: &str, expected_user_id: Option<&str>) {
         let Some(cache) = self.cache.clone() else {
             return;
         };
         let scope = self.offline_scope(&cache, server_url, expected_user_id);
-        if self.saved.offline.is_some() && scope.is_some() && self.saved.scope == scope {
+        let shown = self.saved.offline.is_some() || self.saved.early.is_some();
+        if shown && scope.is_some() && self.saved.scope == scope {
+            if self.saved.early.is_some() {
+                self.saved.offline = Some(server_url.to_owned());
+                // Offline first, so the app never sees the saved list belong to neither.
+                self.emit(CoreEvent::OfflineChanged {
+                    server_url: Some(server_url.to_owned()),
+                });
+                self.leave_early();
+                for id in self.open_ids() {
+                    self.report_session_offline(&id);
+                }
+            }
             return;
         }
         // Another server's or account's saved copy never shows for this one.
-        if self.saved.offline.is_some() {
+        if shown {
             self.leave_offline();
+            self.leave_early();
             self.saved.scope = None;
             self.saved.list = None;
         }
         let Some(scope) = scope else {
             return;
         };
-        let list = match cache.read_list(&scope) {
-            Ok(Some(list)) => list,
-            Ok(None) => return,
-            Err(error) => {
-                self.error(ErrorScope::SessionList, error.into());
-                return;
-            }
-        };
-        let Ok(summaries) = omnigent_core::sessions::saved_summaries(&list.rows) else {
-            cache.discard(scope.list_path(), CacheFailureScope::List, cache::LIST_ROLE);
-            let error = CacheError::Corrupt {
-                what: cache::LIST_ROLE.to_owned(),
-                cause: "it holds a row this app cannot show".to_owned(),
-            };
-            self.error(ErrorScope::SessionList, error.into());
+        let Some((list, summaries)) = self.read_saved_list(&cache, &scope) else {
             return;
         };
-        self.saved.scope = Some(scope);
         self.saved.offline = Some(server_url.to_owned());
-        self.saved.list = Some(list);
         self.emit(CoreEvent::OfflineChanged {
             server_url: Some(server_url.to_owned()),
         });
-        self.show_saved_list(&summaries);
-        for id in self.open_ids() {
-            if let Some(applied) = self.restore_saved(&id) {
-                self.publish(&id, applied);
-            }
-            self.report_session_offline(&id);
-        }
+        self.show_saved(scope, list, &summaries);
     }
 
     /// The account whose saved copy of `server_url` shows offline: `expected_user_id`, else the
     /// one that last connected; `None` when neither is known.
-    fn offline_scope(
+    pub(crate) fn offline_scope(
         &self,
         cache: &MessageCache,
         server_url: &str,
@@ -210,7 +218,7 @@ impl Engine {
         Some(CacheScope::from_keys(server, account))
     }
 
-    fn open_ids(&self) -> Vec<String> {
+    pub(crate) fn open_ids(&self) -> Vec<String> {
         self.drivers.keys().cloned().collect()
     }
 
@@ -226,24 +234,31 @@ impl Engine {
     }
 
     /// The connection is up: the connected account's copy is read and written from now on,
-    /// and open sessions that show nothing yet show theirs until they hydrate.
+    /// and open sessions that show nothing yet show theirs until they hydrate. A saved list
+    /// that shows (offline, or while connecting) stays until this connection's first reads
+    /// replace it at once; another account's goes now.
     pub(crate) fn saved_connected(&mut self, server: &ConnectedServer) {
-        let shown = self
-            .saved
-            .offline
-            .is_some()
-            .then(|| self.saved.scope.clone());
+        let shown = (self.saved.offline.is_some() || self.saved.early.is_some())
+            .then(|| self.saved.scope.clone())
+            .flatten();
         self.leave_offline();
         self.saved.list = None;
-        let Some(cache) = self.cache.clone() else {
+        let scope = CacheScope::new(&server.base_url, &server.user_id);
+        if scope != self.saved.scope {
+            self.saved.projects = None;
+        }
+        self.saved.scope.clone_from(&scope);
+        let (Some(cache), Some(scope)) = (self.cache.clone(), scope) else {
+            self.leave_early();
             return;
         };
-        self.saved.scope = CacheScope::new(&server.base_url, &server.user_id);
-        let Some(scope) = self.saved.scope.clone() else {
-            return;
-        };
-        if shown.flatten().is_some_and(|shown| shown != scope) {
-            self.drop_saved_rows();
+        match shown {
+            Some(shown) if shown == scope => self.list.holds_for_saved = true,
+            Some(_) => {
+                self.drop_saved_rows();
+                self.drop_saved_list();
+            }
+            None => {}
         }
         cache.save_last_account(&scope, self.host.unix_ms());
         for id in self.open_ids() {
@@ -446,19 +461,6 @@ impl Engine {
         }
     }
 
-    /// A reload's rows replace the saved list.
-    pub(crate) fn saved_list_reset(&mut self, rows: Vec<SessionListItem>) {
-        let Some((cache, scope)) = self.cached() else {
-            return;
-        };
-        let list = SavedSessionList {
-            saved_at_ms: self.host.unix_ms(),
-            rows,
-        };
-        cache.save_list(&scope, list.clone());
-        self.saved.list = Some(list);
-    }
-
     /// A later page's rows join the saved list.
     pub(crate) fn saved_list_more(&mut self, rows: &[SessionListItem]) {
         let Some((cache, scope)) = self.cached() else {
@@ -497,7 +499,9 @@ impl Engine {
         self.cancel_saves();
         let scope = self.saved.scope.take();
         self.saved.list = None;
+        self.saved.projects = None;
         self.leave_offline();
+        self.leave_early();
         if let (Some(cache), Some(scope)) = (self.cache.clone(), scope) {
             cache.forget_account(&scope);
         }
@@ -521,7 +525,9 @@ impl Engine {
             self.cancel_saves();
             self.saved.scope = None;
             self.saved.list = None;
+            self.saved.projects = None;
             self.leave_offline();
+            self.leave_early();
         }
         cache.forget_server(server);
     }

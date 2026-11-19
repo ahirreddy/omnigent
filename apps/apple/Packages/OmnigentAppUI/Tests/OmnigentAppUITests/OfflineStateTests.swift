@@ -51,16 +51,42 @@ struct OfflineStateTests {
   func offlineSidebar() async throws {
     let connection = try await ConversationFixtures.connection()
     let session = ServerSession(connection: connection)
-    #expect(SidebarAdapter.offlineNotice(connection) == nil)
+    #expect(SidebarAdapter.savedListNotice(connection) == nil)
     connection.apply(
       .connectionChanged(
         phase: .failed(serverUrl: "http://127.0.0.1:6767", error: .InvalidState(message: "x"))))
     connection.apply(.offlineChanged(serverUrl: "http://127.0.0.1:6767"))
-    #expect(SidebarAdapter.offlineNotice(connection) == SidebarAdapter.offlineText)
+    #expect(SidebarAdapter.savedListNotice(connection) == .offline(SidebarAdapter.offlineText))
     #expect(session.showsSessions)
     #expect(!session.isSignedIn)
     connection.apply(.offlineChanged(serverUrl: nil))
-    #expect(SidebarAdapter.offlineNotice(connection) == nil)
+    #expect(SidebarAdapter.savedListNotice(connection) == nil)
     #expect(!session.showsSessions)
+  }
+
+  @Test(
+    "A launch shows the saved sessions while it connects, marked as refreshing, until the server's")
+  func savedListWhileConnecting() async throws {
+    let connection = try await ConversationFixtures.connection()
+    let session = ServerSession(connection: connection)
+    let server = "http://127.0.0.1:6767"
+    connection.apply(.connectionChanged(phase: .discovering(serverUrl: server)))
+    #expect(!session.showsSessions)
+    connection.apply(.savedListShown(serverUrl: server))
+    let saved = ConversationFixtures.summary("saved")
+    connection.apply(.sessionListChanged(change: .reset(sessions: [saved])))
+    connection.apply(.sessionListLoaded)
+    #expect(session.showsSessions)
+    #expect(!session.isSignedIn)
+    #expect(
+      SidebarAdapter.savedListNotice(connection) == .refreshing(SidebarAdapter.refreshingText))
+    #expect(connection.sessionList.visible.map(\.id) == ["saved"])
+
+    // The connect ends at a sign-in screen: the saved list goes with the mark.
+    connection.apply(.connectionChanged(phase: .disconnected))
+    connection.apply(.savedListShown(serverUrl: nil))
+    #expect(!session.showsSessions)
+    #expect(SidebarAdapter.savedListNotice(connection) == nil)
+    #expect(connection.sessionList.visible.isEmpty)
   }
 }
