@@ -80,16 +80,13 @@ struct HarnessCatalogList: View {
   }
 }
 
-/// An MCP server: its initial, name and detail, dimmed with "Off" when turned off.
+/// An MCP server: its symbol, name and detail, dimmed with "Off" when turned off.
 struct HarnessServerRow: View {
   let server: HarnessCatalogState.Server
 
   var body: some View {
     HStack(spacing: Theme.Spacing.medium) {
-      Text(server.title.prefix(1).uppercased())
-        .font(.caption.weight(.semibold))
-        .frame(width: 22, height: 22)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: Theme.Radius.small))
+      Image(systemName: "server.rack").foregroundStyle(.secondary).accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 2) {
         Text(server.title)
         let detail = [server.detail, server.isOff ? "Off" : nil].compactMap(\.self)
