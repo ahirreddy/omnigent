@@ -112,6 +112,12 @@ struct ConversationContainer: View {
     .modifier(MessageMediaEnvironment(fileLinks: fileLinks, conversation: conversation))
     .environment(\.taskMarkerLinks, taskMarkerLinks)
     .task(id: conversation.sessionID) { await tasks?.load() }
+    .modifier(
+      TasksTabOnOpen(
+        sessionID: conversation.sessionID,
+        known: TasksAdapter.tasksKnown(tasks, conversation: conversation),
+        hasTasks: { TasksAdapter.hasTasks(tasks, conversation: conversation) }, show: showTasks)
+    )
     .task(id: (linkedWorkspace ?? workspace).map(ObjectIdentifier.init)) {
       fileLinks = (linkedWorkspace ?? workspace).map { workspace in
         MarkdownLinksAdapter.links(workspace) { failures.append($0) }

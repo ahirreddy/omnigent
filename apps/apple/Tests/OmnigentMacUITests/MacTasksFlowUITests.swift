@@ -25,6 +25,10 @@ final class MacTasksFlowUITests: XCTestCase {
     let app = live.launch()
     defer { app.terminate() }
     live.open(Self.tasksSession, in: app)
+    // Opening a session that has tasks shows its Tasks tab, as the web does.
+    XCTAssertTrue(
+      live.element("tasks-panel", in: app).appears(within: 20),
+      "opening the session did not show its Tasks tab")
     live.showInspector(in: app)
 
     live.click(live.element("inspector-tab-tasks", in: app), "the Tasks tab", timeout: 20)

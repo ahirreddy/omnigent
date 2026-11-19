@@ -104,8 +104,11 @@ struct TasksAdapterTests {
     #expect(links.listed() == .shown(["task-1"]))
     links.open("task-1")
     #expect(opened.count == 1)
+    // Opening a session with tasks shows the tab; one without them leaves the panel be.
+    #expect(TasksAdapter.hasTasks(nil, conversation: conversation))
 
     let empty = try await ConversationFixtures.store()
+    #expect(!TasksAdapter.hasTasks(nil, conversation: empty))
     #expect(!TasksAdapter.showsTab(tasks: nil, conversation: empty))
     #expect(TasksAdapter.listedTasks(tasks: nil, conversation: empty) == .hidden)
     let content = TasksAdapter.content(
