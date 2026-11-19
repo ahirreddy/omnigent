@@ -214,7 +214,7 @@ final class MacProjectFolderFlowUITests: XCTestCase {
     target.click()
   }
 
-  /// Opens or closes the folder on its chevron, first bringing the row back where the list
+  /// Opens or closes the folder on its expand button, first bringing the row back where the list
   /// scrolled it away above.
   @MainActor
   private func toggle(_ folder: XCUIElement, live: MacLiveUITestSupport, app: XCUIApplication)
@@ -230,9 +230,9 @@ final class MacProjectFolderFlowUITests: XCTestCase {
     live.scrollIntoView(folder)
     let id = folder.identifier.replacingOccurrences(
       of: "sidebar-project-", with: "sidebar-project-toggle-")
-    let chevron = app.buttons[id].firstMatch
-    XCTAssertTrue(chevron.exists, "no chevron on the folder\n\(app.debugDescription)")
-    chevron.click()
+    let button = app.buttons[id].firstMatch
+    XCTAssertTrue(button.exists, "no expand button on the folder\n\(app.debugDescription)")
+    button.click()
   }
 
   /// Asks a question in `sessionID`, so it needs you until the test ends.

@@ -86,7 +86,7 @@ struct ProjectFolder<Row: View>: View {
     }
   }
 
-  /// The folder's own row: its name, its hover buttons or hidden marker, and its chevron.
+  /// The folder's own row: its name, its hover buttons or hidden marker, and its expand button.
   private var folderRow: some View {
     HStack(spacing: Theme.Spacing.tiny) {
       HStack(spacing: Theme.Spacing.small) {
@@ -99,11 +99,9 @@ struct ProjectFolder<Row: View>: View {
       } else {
         folderMarker
       }
-      chevron
+      expandButton
     }
-    // An empty gutter, as a childless session row's, so the folder's icon and name line up with
-    // the session rows' in and outside it.
-    .padding(.leading, SessionFamilyMetrics.lead)
+    // Flush left, where a family's chevron starts, so a folder reads apart from its sessions.
     .contentShape(Rectangle())
     // A click on the row shows or hides its sessions, as the web's project header.
     .onTapGesture(perform: toggle)
@@ -112,7 +110,7 @@ struct ProjectFolder<Row: View>: View {
     .contextMenu { menu.items }
     .draggable(SidebarDragItem.project(project.id).payload)
     .sidebarDropTarget(drop)
-    // One element for the folder, around its name, hover buttons and chevron.
+    // One element for the folder, around its name, hover buttons and expand button.
     .accessibilityElement(children: .contain)
     .accessibilityActions {
       if let newSession = menu.actions.newSessionInProject {
@@ -131,16 +129,17 @@ struct ProjectFolder<Row: View>: View {
     withAnimation { isExpanded.toggle() }
   }
 
-  /// Shows or hides the folder's sessions. It trails the row, as a system sidebar section's, so
-  /// it reads apart from the chevron that leads a session family.
-  private var chevron: some View {
+  /// Shows or hides the folder's sessions: an expand or collapse symbol at the row's end, not a
+  /// chevron, so it reads apart from the chevron that leads a session family.
+  private var expandButton: some View {
     let label = isExpanded ? "Collapse project" : "Expand project"
     return Button(action: toggle) {
-      Image(systemName: "chevron.right")
-        .font(.system(size: 10, weight: .semibold))
-        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-        .frame(width: SessionFamilyMetrics.gutter, height: SessionFamilyMetrics.gutter)
-        .contentShape(Rectangle())
+      Image(
+        systemName: isExpanded ? "rectangle.compress.vertical" : "rectangle.expand.vertical"
+      )
+      .contentTransition(.symbolEffect(.replace))
+      .frame(width: SessionFamilyMetrics.markWidth, height: SessionFamilyMetrics.markWidth)
+      .contentShape(Rectangle())
     }
     .buttonStyle(.borderless)
     .foregroundStyle(.secondary)

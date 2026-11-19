@@ -236,7 +236,7 @@
       }
     }
 
-    @Test("A click on a folder's row or on its chevron shows and hides its sessions")
+    @Test("A click on a folder's row or on its expand button shows and hides its sessions")
     func folderRowClickToggles() throws {
       let ids = (0..<3).map { "s\($0)" }
       var state = SidebarFixture.state
@@ -256,7 +256,7 @@
         MainLoop.settle(until: { table.numberOfRows == closed + ids.count }),
         "a click on the row opens it")
       try screen.clickListElement("sidebar-project-toggle-big")
-      #expect(MainLoop.settle(until: { table.numberOfRows == closed }), "its chevron closes it")
+      #expect(MainLoop.settle(until: { table.numberOfRows == closed }), "its button closes it")
     }
 
     @Test("hovering a folder offers New session and its menu")
@@ -264,22 +264,19 @@
       let spy = spy()
       let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 800)
       defer { screen.close() }
-      // The folder's chevron always shows; the rest only while the row is hovered.
-      let chevron = ["Expand project", "Collapse project"]
-      let hoverButtons = {
-        try screen.plainButtons(inRow: workRow).filter {
-          !chevron.contains($0.accessibilityLabel() ?? "")
-        }
-      }
-      #expect(try hoverButtons().isEmpty)
+      // The expand button always shows; New session, left of it, only while the row is hovered.
+      let buttons = { try screen.plainButtons(inRow: workRow) }
+      #expect(try buttons().count == 1)
       try screen.hoverRow(workRow)
-      let newSession = try #require(try hoverButtons().first)
+      #expect(try buttons().count == 2)
+      let left = { (button: NSButton) in button.convert(button.bounds, to: nil).minX }
+      let newSession = try #require(try buttons().min { left($0) < left($1) })
       try screen.click(newSession)
       #expect(spy.calls == ["new in p1"])
       let menu = try screen.openMenu(try #require(try screen.popUps(inRow: workRow).first))
       #expect(menu.item(named: "Rename project\u{2026}") != nil)
       try screen.endRowHover()
-      #expect(try hoverButtons().isEmpty)
+      #expect(try buttons().count == 1)
     }
   }
 #endif

@@ -129,17 +129,19 @@
       }
     }
 
-    @Test("A folder's icon and name, its sessions and Show more line up with the rows outside it")
+    @Test("A folder's icon and name sit flush left; its sessions and Show more line up outside it")
     func folderRowsLineUp() throws {
       let screen = try sidebar()
       defer { screen.close() }
       let rows = try drawn(screen, sessions: ["workers"] + Fixture.inProject, folders: ["gateway"])
       let top = try icon(rows["workers"], "workers")
       let folder = try icon(rows["gateway"], "gateway")
-      #expect(abs(folder.lowerBound - top.lowerBound) <= 1.5, "folder at \(folder), top \(top)")
+      // Where a head's chevron starts, a gutter before the session icons.
+      let flushLeft = top.lowerBound - SessionFamilyMetrics.lead
+      #expect(abs(folder.lowerBound - flushLeft) <= 1.5, "folder at \(folder), top \(top)")
       let name = try #require(rows["gateway"]?.title)
-      let title = try #require(rows["workers"]?.title)
-      #expect(abs(name - title) <= 1.5, "name at \(name), title at \(title)")
+      let markAndSpacing = SessionFamilyMetrics.markWidth + Theme.Spacing.small
+      #expect(abs(name - folder.lowerBound - markAndSpacing) <= 2, "name at \(name)")
       for id in Fixture.inProject {
         let mark = try icon(rows[id], id)
         #expect(abs(mark.lowerBound - top.lowerBound) <= 1, "\(id) at \(mark)")
@@ -156,8 +158,8 @@
       #expect(abs(text - sessions.lowerBound) <= 1.5, "Show more at \(text)")
     }
 
-    @Test("A folder's chevron trails its row, its gutter left empty; a head's chevron leads")
-    func folderChevronTrails() throws {
+    @Test("A folder's expand button trails its row; a head's chevron leads")
+    func folderExpandButtonTrails() throws {
       let screen = try sidebar()
       defer { screen.close() }
       let folders = ["gateway", "tools"]
@@ -165,13 +167,13 @@
       for head in ["rollout", "monitor"] {
         #expect(rows[head]?.lead.count == 1, "\(head) leads with its chevron")
       }
-      let chevrons = try screen.withAccessibilityTree {
+      let buttons = try screen.withAccessibilityTree {
         try folders.map { try screen.listElementFrame("sidebar-project-toggle-\($0)") }
       }
-      for (id, chevron) in zip(folders, chevrons) {
+      for (id, button) in zip(folders, buttons) {
         let row = try #require(rows[id], "\(id) is drawn")
-        #expect(row.lead.isEmpty, "\(id)'s gutter draws \(row.lead)")
-        #expect(chevron.minX > row.frame.midX, "\(id)'s chevron at \(chevron) trails its row")
+        #expect(row.lead.isEmpty, "\(id) draws before its icon: \(row.lead)")
+        #expect(button.minX > row.frame.midX, "\(id)'s button at \(button) trails its row")
       }
     }
 
