@@ -98,9 +98,10 @@ struct AutomationScheduleRows: View {
     /// Schedule or an integration, and for a schedule its frequency and time.
     private var typeRow: some View {
       VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+        // A pop-up keeps its own width, so the row reads from the leading edge, as the web's.
         HStack(spacing: Theme.Spacing.medium) {
-          editor.triggerTypePicker.labelsHidden().frame(maxWidth: .infinity)
-          if !editor.isTrigger { scheduleControl(fills: true) }
+          editor.triggerTypePicker.labelsHidden().fixedSize()
+          if editor.isTrigger { Spacer(minLength: 0) } else { scheduleControl(fills: true) }
         }
         if editor.triggersUnavailable {
           Text("Integration triggers aren\u{2019}t available on this server.")
@@ -155,11 +156,12 @@ struct AutomationScheduleRows: View {
     private var runRow: some View {
       VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         HStack(spacing: Theme.Spacing.medium) {
-          editor.hostPicker.labelsHidden().frame(maxWidth: .infinity)
-          editor.agentPicker.labelsHidden().frame(maxWidth: .infinity)
+          editor.hostPicker.labelsHidden().fixedSize()
+          editor.agentPicker.labelsHidden().fixedSize()
           if editor.offersPermissions {
-            editor.permissionPicker.labelsHidden().frame(maxWidth: .infinity)
+            editor.permissionPicker.labelsHidden().fixedSize()
           }
+          Spacer(minLength: 0)
         }
         editor.runNotes
       }
