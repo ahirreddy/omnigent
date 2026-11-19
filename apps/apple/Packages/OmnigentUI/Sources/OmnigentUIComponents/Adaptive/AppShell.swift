@@ -23,9 +23,14 @@ public struct AppShell<Detail: View>: View {
   private let tabs: ShellTabs?
   private let detail: ShellDetail<Detail>
 
-  @State private var columns: NavigationSplitViewVisibility =
-    SidebarLaunchState.current == nil ? .all : .detailOnly
-  @State private var stripSpace = TitlebarStripSpace()
+  /// The sidebar's visibility, which the body never reads: a collapse the split view makes
+  /// renders only the strip and the peek, which read ``TitlebarStripSpace/isSidebarHidden``.
+  @State private var columns = ShellColumns(SidebarLaunchState.current == nil ? .all : .detailOnly)
+  /// Counts the toggles the shell makes itself (``SidebarToggle``), each of which renders it
+  /// once, so the split view takes the new visibility.
+  @State private var shellToggles = 0
+  @State private var stripSpace = TitlebarStripSpace(
+    isSidebarHidden: SidebarLaunchState.current != nil)
   /// A tab dragged from the strip onto the content, for the split view's drop targets.
   @State private var tabDrag = TabDragTracker()
   @Environment(\.sidebarToggle) private var sidebarToggle
@@ -76,8 +81,16 @@ public struct AppShell<Detail: View>: View {
 
   /// The shell.
   public var body: some View {
+    _ = shellToggles
     let columns = settledColumns
-    sidebarToggle?.toggle = { columns.wrappedValue = SidebarToggle.toggled(columns.wrappedValue) }
+    let toggles = $shellToggles
+    sidebarToggle?.toggle = {
+      columns.wrappedValue = SidebarToggle.toggled(columns.wrappedValue)
+      // The split view takes the new visibility as the shell renders, laid out at once as the
+      // binding's own changes are.
+      toggles.wrappedValue += 1
+      Self.layOutVisibleWindows()
+    }
     return NavigationSplitView(columnVisibility: columns) {
       sidebarColumn
         .navigationSplitViewColumnWidth(
@@ -95,10 +108,7 @@ public struct AppShell<Detail: View>: View {
           // Every page: a transcript, a terminal and a browser all start where the tabs end.
           .belowTitlebar()
           .adaptiveLayoutWidth()
-          .modifier(
-            TitlebarTabs(
-              tabs: tabs, space: stripSpace, isSidebarHidden: self.columns == .detailOnly)
-          )
+          .modifier(TitlebarTabs(tabs: tabs, space: stripSpace))
           .onPreferenceChange(TitlebarTrailingItems.self) { [stripSpace] items in
             stripSpace.trailingItems = items
           }
@@ -118,10 +128,8 @@ public struct AppShell<Detail: View>: View {
     .countsRenders("shell")
     #if os(macOS)
       .modifier(
-        SidebarPeekOverlay(
-          isCollapsed: columns.wrappedValue == .detailOnly,
-          startsShown: SidebarLaunchState.current == .peek
-        ) {
+        SidebarPeekBesideShell(space: stripSpace, startsShown: SidebarLaunchState.current == .peek)
+        {
           sidebarColumn
         })
     #endif
@@ -175,12 +183,14 @@ extension AppShell {
   /// animated change that meets a resize in one layout pass animates the window's root view, and
   /// SwiftUI then resizes the window to that size in every later pass until AppKit throws.
   private var settledColumns: Binding<NavigationSplitViewVisibility> {
-    let columns = $columns
+    let columns = columns
+    let space = stripSpace
     return Binding {
-      columns.wrappedValue
+      columns.visibility
     } set: { visibility, transaction in
       Self.layOutVisibleWindows()
-      withTransaction(transaction) { columns.wrappedValue = visibility }
+      columns.visibility = visibility
+      withTransaction(transaction) { space.isSidebarHidden = visibility == .detailOnly }
       Self.layOutVisibleWindows()
     }
   }
@@ -204,6 +214,8 @@ extension AppShell {
 final class TitlebarStripSpace {
   /// The detail column's width.
   var detailWidth: CGFloat = 0
+  /// Whether the sidebar is hidden, which the strip and the sidebar's peek read.
+  var isSidebarHidden: Bool
   /// The button widths the shown screen's trailing toolbar items take, if it reports them.
   var trailingItems: Int?
   /// Counts the times the strip was offered to the toolbar again, as a new item, after the
@@ -211,16 +223,23 @@ final class TitlebarStripSpace {
   var stripOffer = 0
   /// The strip width the last offer was made at, until the toolbar takes the strip.
   @ObservationIgnored var offeredWidth: CGFloat?
+
+  init(isSidebarHidden: Bool = false) {
+    self.isSidebarHidden = isSidebarHidden
+  }
 }
 
 /// The tab strip at the width the titlebar has for it.
 struct TitlebarTabStrip: View {
   let tabs: () -> TabStripContent
   let space: TitlebarStripSpace
-  let isSidebarHidden: Bool
 
   var body: some View {
     let tabs = tabs()
+    let isSidebarHidden = space.isSidebarHidden
+    let stripWidth = TitlebarMetrics.stripWidth(
+      detailWidth: space.detailWidth, isSidebarHidden: isSidebarHidden,
+      trailingItems: space.trailingItems)
     TabStrip(
       state: tabs.state, actions: tabs.actions, isInTitlebar: true, includesControls: false
     )
@@ -231,12 +250,6 @@ struct TitlebarTabStrip: View {
       }
     #endif
     .countsRenders("strip")
-  }
-
-  private var stripWidth: CGFloat {
-    TitlebarMetrics.stripWidth(
-      detailWidth: space.detailWidth, isSidebarHidden: isSidebarHidden,
-      trailingItems: space.trailingItems)
   }
 }
 
