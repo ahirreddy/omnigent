@@ -68,3 +68,43 @@ extension LookFixtures {
       context: AutomationUXFixtures.editorContext(), save: {}, cancel: {})
   }
 }
+
+extension LookFixtures {
+  // MARK: New project
+
+  private static let projectChoices = [
+    ProjectRunChoice(id: "mac", title: "Studio Mac"),
+    ProjectRunChoice(id: "__sandbox__:modal", title: "Modal Sandbox", isSandbox: true),
+  ]
+
+  /// New project's Folder source with a working directory picked on the host.
+  static var newProjectFolder: some View {
+    var draft = ProjectRepositoryDraft()
+    draft.targetID = "mac"
+    draft.workspace = "/Users/dev/code/garden"
+    return newProject(draft)
+  }
+
+  /// New project's Repository source, cloned into a folder Browse picked.
+  static var newProjectRepository: some View {
+    var draft = ProjectRepositoryDraft()
+    draft.targetID = "mac"
+    draft.fromRepository = true
+    draft.url = "https://github.com/example/garden"
+    draft.cloneParent = "~/code"
+    draft.destination = "~/code/garden"
+    return newProject(draft)
+  }
+
+  private static func newProject(_ draft: ProjectRepositoryDraft) -> some View {
+    var actions = ProjectCreationActions()
+    actions.browse = { _, _ in .success(FolderListing(path: "/", parent: nil, folders: [])) }
+    actions.cloneDestination = { _ in "~/garden" }
+    return Form {
+      TextField("Name", text: .constant("Garden"))
+      ProjectRepositoryFields(
+        choices: projectChoices, draft: .constant(draft), actions: actions, projectName: "Garden")
+    }
+    .formStyle(.grouped)
+  }
+}

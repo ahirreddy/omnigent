@@ -2,8 +2,8 @@ import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
 
-/// New project from a repository (`project_repository_creation`): where it can run, and making
-/// it, as the web's New project dialog.
+/// New project from a repository or a folder on a host (`project_repository_creation`): where it
+/// can run, and making it, as the web's New project dialog.
 extension ConnectedServerView {
   /// The id prefix of a sandbox choice; the provider follows it.
   static let sandboxChoicePrefix = "__sandbox__:"
@@ -47,6 +47,29 @@ extension ConnectedServerView {
       case .success: return nil
       case .failure(let error): return error.message
       }
+    }
+    actions.createFolderProject = { name, icon, draft in
+      let hostID = draft.namesHost ? draft.targetID : nil
+      let made = await connection.sessionList.createFolderProject(
+        FolderProjectRequest(
+          name: name, icon: icon, hostId: hostID,
+          workspace: draft.workspace.isEmpty ? nil : draft.workspace))
+      switch made {
+      case .success: return nil
+      case .failure(let error): return error.message
+      }
+    }
+    actions.createFolder = { hostID, name in
+      await connection.sessionList.createProjectFolder(hostID: hostID, name: name)
+        .mapError { FolderBrowseError(message: $0.message) }
+    }
+    actions.browse = { hostID, path in
+      guard let creation = connection.creation() else {
+        return .failure(FolderBrowseError(message: "Connect to a server first."))
+      }
+      return await creation.directory(hostID: hostID, path: path)
+        .map(NewSessionAdapter.listing)
+        .mapError { FolderBrowseError(message: $0.message) }
     }
     actions.problem = { url, branch in projectRepositoryProblem(url: url, branch: branch) }
     actions.cloneDestination = { defaultCloneDestination(url: $0) }

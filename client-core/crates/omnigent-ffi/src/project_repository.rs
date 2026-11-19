@@ -1,7 +1,9 @@
-//! A new project from a repository: cloned onto a host, or saved for a sandbox. The rules are
-//! `omnigent_core::project_repository`.
+//! A new project from a repository (cloned onto a host, or saved for a sandbox) or from a folder
+//! on a host. The rules are `omnigent_core::project_repository`.
 
-use omnigent_core::project_repository::{self as core, ProjectTarget, RepositoryProject};
+use omnigent_core::project_repository::{
+    self as core, FolderProject, ProjectTarget, RepositoryProject,
+};
 
 use crate::client::ClientCore;
 use crate::errors::CoreError;
@@ -37,6 +39,19 @@ pub struct RepositoryProjectRequest {
     pub branch: String,
     /// Where a host clones it; unused for a sandbox.
     pub destination: String,
+}
+
+/// A project whose sessions start in a folder on a host.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct FolderProjectRequest {
+    /// The project's name.
+    pub name: String,
+    /// Its emoji icon.
+    pub icon: Option<String>,
+    /// The host its sessions run on; `None` leaves the host to each session.
+    pub host_id: Option<String>,
+    /// The sessions' working directory on that host.
+    pub workspace: Option<String>,
 }
 
 /// Why a repository and branch can't start a project, as the web words it; `None` when they can.
@@ -81,6 +96,47 @@ impl ClientCore {
         let created = self
             .sessions()
             .create_repository_project(&project)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from);
+        self.events_published().await;
+        created
+    }
+
+    /// Creates the folder `~/<name>` on `host_id` for a new project and returns its path.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: kind `InvalidInput` with the words to show.
+    pub async fn create_project_folder(
+        &self,
+        host_id: String,
+        name: String,
+    ) -> Result<String, CoreError> {
+        self.sessions()
+            .create_project_folder(&host_id, &name)
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// Makes a project whose sessions start on a host, in a working directory when given.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: kind `InvalidInput` with the words to show.
+    pub async fn create_folder_project(
+        &self,
+        request: FolderProjectRequest,
+    ) -> Result<ProjectSummary, CoreError> {
+        let project = FolderProject {
+            name: request.name,
+            icon: request.icon,
+            host_id: request.host_id,
+            workspace: request.workspace,
+        };
+        let created = self
+            .sessions()
+            .create_folder_project(&project)
             .await
             .map(Into::into)
             .map_err(CoreError::from);

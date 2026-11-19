@@ -54,6 +54,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case viewersVideo = "viewers-video"
   /// Recording links in a reply: a workspace recording and a remote one.
   case viewersChatVideo = "viewers-chat-video"
+  case projectsNewFolder = "projects-new-folder"
+  case projectsNewRepository = "projects-new-repository"
   case viewersTable = "viewers-table"
   case viewersTableFiltered = "viewers-table-filtered"
 
@@ -76,6 +78,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .tasksHistory: 420
     case .automationsLegacyShare: 900
     case .automationsNew: 600
+    case .projectsNewFolder, .projectsNewRepository: 460
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 640
     default: 640
     }
@@ -91,6 +94,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .tasksStopping: 420
     case .automationsLegacyShare: 640
     case .automationsNew: 760
+    case .projectsNewFolder, .projectsNewRepository: 440
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 560
     case .viewersPDF: 520
     case .viewersTable, .viewersTableFiltered: 480
@@ -153,6 +157,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .viewersPDF: return AnyView(PDFPreviewView(data: Fixture.pdf, truncated: false))
     case .viewersVideo: return AnyView(Fixture.video)
     case .viewersChatVideo: return AnyView(Fixture.chatVideo)
+    case .projectsNewFolder: return AnyView(Fixture.newProjectFolder)
+    case .projectsNewRepository: return AnyView(Fixture.newProjectRepository)
     case .viewersTable: return AnyView(Fixture.dataTableViewer)
     case .viewersTableFiltered: return AnyView(Fixture.dataTableFiltered)
     }

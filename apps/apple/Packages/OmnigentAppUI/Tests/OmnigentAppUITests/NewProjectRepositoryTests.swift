@@ -30,6 +30,9 @@ struct NewProjectRepositoryTests {
       "/v1/hosts/mac/repositories/clone", method: "POST",
       .json(#"{"object":"repository","path":"/Users/me/app"}"#))
     server.route(
+      "/v1/hosts/mac/directories", method: "POST",
+      .json(#"{"object":"directory","path":"/Users/me/Garden"}"#))
+    server.route(
       "/v1/projects", method: "POST", .json(#"{"id":"p9","object":"project","name":"Garden"}"#))
     let session = try await signedInSession(server)
     _ = await session.connection.pages?.loadOffered()
@@ -69,6 +72,40 @@ struct NewProjectRepositoryTests {
     let config = try #require(project["config"] as? [String: Any])
     #expect(config["workspace"] as? String == "/Users/me/app")
     #expect(config["host_id"] as? String == "mac")
+  }
+
+  @Test("A Folder project keeps the host the user picked and its working directory")
+  func folderProjects() async throws {
+    let (view, server) = try await opened(features: #""project_repository_creation":true"#)
+    let actions = view.repositoryProjectActions()
+    var draft = ProjectRepositoryDraft()
+    draft.targetID = "mac"
+    // A host nobody picked stays each session's choice, as on the web.
+    #expect(await actions.createFolderProject?("Garden", nil, draft) == nil)
+    draft.targetChosen = true
+    #expect(await actions.createFolderProject?("Garden", "🌱", draft) == nil)
+    let made = try #require(await actions.createFolder?("mac", "Garden"))
+    draft.workspace = try made.get()
+    #expect(draft.workspace == "/Users/me/Garden")
+    #expect(await actions.createFolderProject?("Garden", nil, draft) == nil)
+    let folder = try #require(try server.posted("/v1/hosts/mac/directories").last)
+    #expect(folder["path"] as? String == "~/Garden")
+    let configs = try server.posted("/v1/projects").map { $0["config"] as? [String: String] }
+    #expect(
+      configs == [
+        nil, ["icon": "🌱", "host_id": "mac"],
+        ["host_id": "mac", "workspace": "/Users/me/Garden"],
+      ])
+  }
+
+  @Test("Clone into follows the folder Browse picks; a Folder project names its host when asked")
+  func draftRules() {
+    #expect(ProjectRepositoryDraft.join("~", "app") == "~/app")
+    #expect(ProjectRepositoryDraft.join("/srv/code/", "app") == "/srv/code/app")
+    var draft = ProjectRepositoryDraft()
+    #expect(!draft.namesHost)
+    draft.createsFolder = true
+    #expect(draft.namesHost)
   }
 
   @Test("A sandbox choice names its provider; a host choice names the host")
