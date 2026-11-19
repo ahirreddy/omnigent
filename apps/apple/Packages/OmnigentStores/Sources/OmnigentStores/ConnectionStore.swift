@@ -34,6 +34,8 @@ public final class ConnectionStore {
   public internal(set) var phase: ConnectionPhase = .disconnected
   /// The session-updates socket's state.
   public internal(set) var updatesLink: LinkState = .idle
+  /// Whether the server can be reached, which every connection warning shows, and "Reconnected".
+  public let health = ConnectionHealth()
   /// Failures outside an open conversation, newest last.
   public internal(set) var issues: [CoreIssue] = []
   /// A browser-ticket sign-in waiting for approval.
@@ -364,11 +366,6 @@ public final class ConnectionStore {
     withMutation(keyPath: \.[open: sessionID]) { conversations[sessionID] = nil }
     dropStores(of: sessionID)
     core?.closeSession(sessionId: sessionID)
-  }
-
-  /// Clears ``issues`` after the user has seen them.
-  public func dismissIssues() {
-    issues = []
   }
 
   private func startPump() {

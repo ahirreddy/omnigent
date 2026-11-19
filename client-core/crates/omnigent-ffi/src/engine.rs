@@ -498,6 +498,20 @@ impl Engine {
         }
     }
 
+    /// The app is back: links that ended start again, pending reconnects are made now, and live
+    /// links silent since before a sleep are replaced.
+    fn resume_realtime(&mut self) {
+        if self.is_demo() {
+            self.start_realtime();
+            return;
+        }
+        self.resume_updates();
+        let ids: Vec<String> = self.drivers.keys().cloned().collect();
+        for id in ids {
+            self.stream_input(&id, StreamInput::Resume);
+        }
+    }
+
     fn stop_realtime(&mut self) {
         self.cancel_list_timers();
         if let Some(timer) = self.attention.timer.take() {
@@ -525,7 +539,7 @@ impl Engine {
         if !self.is_connected() {
             return;
         }
-        self.start_realtime();
+        self.resume_realtime();
         self.refresh_list();
         self.mark_viewed(core::read_state::SeenReason::Viewing);
     }

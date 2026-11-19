@@ -55,7 +55,7 @@ public final class SessionListStore {
   /// their order changed, or a session's facts beyond what its own row says (its `placement`).
   public private(set) var placementRevision = 0
   /// The last list failure, until the next successful load.
-  public private(set) var lastError: CoreError?
+  public internal(set) var lastError: CoreError?
   /// The last rename, pin or archive failure, until the next edit.
   public private(set) var editError: CoreError? {
     didSet { if editRetry != nil { editRetry = nil } }

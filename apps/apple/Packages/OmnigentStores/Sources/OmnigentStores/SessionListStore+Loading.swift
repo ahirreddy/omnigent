@@ -32,6 +32,14 @@ extension SessionListStore {
     }
   }
 
+  /// The connection is back: read failures that only said the server could not be reached go;
+  /// the core reads the list, projects and hosts again.
+  func connectionRecovered() {
+    if lastError?.isConnectivityProblem == true { lastError = nil }
+    if projectsError?.isConnectivityProblem == true { projectsError = nil }
+    if hostsError?.isConnectivityProblem == true { hostsError = nil }
+  }
+
   /// The filter changed. To or from Archived, the core also reads the pages with or without
   /// archived sessions.
   func filterChanged(from previous: SessionFilter) {
