@@ -24,6 +24,8 @@
 //!   covers an open that never gets a response.
 //! - **Backoff.** See [`super::backoff`]: losing a stream that was live for at least 5 s
 //!   reconnects immediately. Otherwise the jittered 250 ms to 5 s ramp applies.
+//! - **Resume.** When the app comes back, [`StreamInput::Resume`] makes a pending reconnect now
+//!   and replaces a live stream silent for [`StreamConfig::stale_after_ms`] (35 s).
 //! - **Malformed input.** A framing error or an event whose data is not a JSON object with a
 //!   `type` ends the attempt, and a fresh connection resynchronises it. It is never skipped.
 
@@ -54,6 +56,10 @@ pub struct StreamConfig {
     /// retried before the stream fails. A replica rollout answers 400 for a few attempts; a
     /// request the server will never take must not be repeated forever. The default is 10.
     pub max_refused_retries: u32,
+    /// Silence, in ms, after which [`StreamInput::Resume`] replaces a live stream: it may have
+    /// died while the device slept. The default is 35 s (`SSE_STALE_RECYCLE_MS` in
+    /// `web/src/store/chatStore.ts`), a little over two 15 s heartbeats.
+    pub stale_after_ms: u64,
 }
 
 impl Default for StreamConfig {
@@ -63,6 +69,7 @@ impl Default for StreamConfig {
             stall_timeout_ms: 45_000,
             limits: SseLimits::default(),
             max_refused_retries: 10,
+            stale_after_ms: 35_000,
         }
     }
 }
@@ -138,6 +145,10 @@ pub enum StreamInput {
     /// Start (or restart after `Stopped`, `Closed` or `Failed`) with a fresh backoff ramp. This
     /// does nothing while already connecting, live or reconnecting.
     Start,
+    /// The app is back (foreground, wake, network restored): what ended starts as with
+    /// [`Self::Start`], a pending reconnect is made now, and a live stream silent for
+    /// [`StreamConfig::stale_after_ms`] is replaced. An attempt in flight is left alone.
+    Resume,
     /// Stop and cancel everything.
     Stop,
     /// [`super::EventStreamTransport::open`] resolved `Err`.
@@ -288,6 +299,7 @@ impl<J: JitterSource> SessionStream<J> {
         let mut out = Vec::new();
         match input {
             StreamInput::Start => self.start(now_ms, &mut out),
+            StreamInput::Resume => self.resume(now_ms, &mut out),
             StreamInput::Stop => self.stop(&mut out),
             StreamInput::OpenFailed { attempt, error } => {
                 if self.is_current(attempt) {
@@ -339,6 +351,25 @@ impl<J: JitterSource> SessionStream<J> {
                 self.open_attempt(now_ms, out);
             }
         }
+    }
+
+    fn resume(&mut self, now_ms: u64, out: &mut Vec<StreamOutput>) {
+        if let Some(token) = self.reconnect_timer.take() {
+            out.push(StreamOutput::CancelTimer { token });
+            self.open_attempt(now_ms, out);
+            return;
+        }
+        let stale_silence = self
+            .attempt
+            .as_ref()
+            .filter(|attempt| attempt.ready_at_ms.is_some())
+            .map(|attempt| now_ms.saturating_sub(attempt.last_activity_ms))
+            .filter(|silent_ms| *silent_ms >= self.config.stale_after_ms);
+        if let Some(silent_ms) = stale_silence {
+            self.lose(now_ms, LinkError::Stalled { silent_ms }, true, out);
+            return;
+        }
+        self.start(now_ms, out);
     }
 
     fn stop(&mut self, out: &mut Vec<StreamOutput>) {
@@ -929,6 +960,77 @@ mod tests {
         );
     }
 
+    #[test]
+    fn resume_makes_a_pending_reconnect_now_and_keeps_the_ramp() {
+        let mut harness = Harness::new();
+        harness.run(StreamInput::Start);
+        harness.respond(200, "text/event-stream");
+        harness.chunk(HEARTBEAT);
+        harness.advance(1_000);
+        let outputs = harness.finish(Err(offline()));
+        let [(token, _)] = scheduled(&outputs, TimerKind::Reconnect)[..] else {
+            panic!("expected one reconnect timer: {outputs:?}");
+        };
+
+        let outputs = harness.run(StreamInput::Resume);
+        assert!(outputs.contains(&StreamOutput::CancelTimer { token }));
+        assert_eq!(opens(&outputs), [AttemptId(2)]);
+        assert_eq!(
+            last_state(&outputs),
+            None,
+            "still reconnecting, with its count"
+        );
+        // The timer it replaced does nothing when it fires anyway.
+        assert_eq!(harness.run(StreamInput::TimerFired { token }), []);
+
+        // The attempt it made is in flight: another resume leaves it alone.
+        assert_eq!(harness.run(StreamInput::Resume), []);
+        harness.respond(200, "text/event-stream");
+        harness.advance(1_000);
+        let outputs = harness.finish(Err(offline()));
+        assert!(matches!(
+            last_state(&outputs),
+            Some(ConnectionState::Reconnecting { failures: 2, .. })
+        ));
+    }
+
+    #[test]
+    fn resume_replaces_a_live_stream_silent_since_before_a_sleep() {
+        let mut harness = Harness::new();
+        let first = harness.live();
+        harness.advance(34_999);
+        assert_eq!(
+            harness.run(StreamInput::Resume),
+            [],
+            "a heartbeat is still due"
+        );
+
+        harness.advance(1);
+        let outputs = harness.run(StreamInput::Resume);
+        assert!(outputs.contains(&StreamOutput::Cancel { attempt: first }));
+        assert_eq!(
+            last_state(&outputs),
+            Some(&ConnectionState::Reconnecting {
+                reason: LinkError::Stalled { silent_ms: 35_000 },
+                failures: 0,
+                delay_ms: 0
+            })
+        );
+        assert_eq!(opens(&outputs), [AttemptId(2)]);
+        harness.accept_and_ready();
+        assert_eq!(harness.machine.state(), &ConnectionState::Live);
+    }
+
+    #[test]
+    fn resume_starts_what_ended_like_start() {
+        let mut harness = Harness::new();
+        let outputs = harness.run(StreamInput::Resume);
+        assert_eq!(opens(&outputs), [AttemptId(1)]);
+        assert_eq!(last_state(&outputs), Some(&ConnectionState::Connecting));
+        harness.run(StreamInput::Stop);
+        let outputs = harness.run(StreamInput::Resume);
+        assert_eq!(opens(&outputs), [AttemptId(2)]);
+    }
     #[test]
     fn stall_watchdog_reschedules_on_activity_and_reconnects_after_45_s_of_silence() {
         let mut harness = Harness::new();

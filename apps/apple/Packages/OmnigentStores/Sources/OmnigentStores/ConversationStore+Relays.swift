@@ -8,6 +8,17 @@ extension ConversationStore {
     if offline != isOffline { isOffline = offline }
   }
 
+  /// The connection is back: failures that only said the server could not be reached go. A
+  /// message that may have landed keeps its banner, and an unsent one its Restore.
+  func connectionRecovered() {
+    if errors.contains(where: \.isConnectivityProblem) {
+      errors.removeAll { $0.isConnectivityProblem }
+    }
+    if let error = composer.lastError, error.isConnectivityProblem, !composer.isBlocked {
+      composer.lastError = nil
+    }
+  }
+
   /// Shows a message being sent until the server echoes it, and an idle session working in the
   /// list until its next server row (the transcript's working state comes from the core).
   /// - Parameters:

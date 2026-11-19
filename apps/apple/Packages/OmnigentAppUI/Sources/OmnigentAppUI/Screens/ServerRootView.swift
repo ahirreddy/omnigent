@@ -36,21 +36,24 @@ public struct ServerRootView: View {
 
   /// Sign-in until connected, then the connected app; offline, the sessions this device saved.
   public var body: some View {
-    if session.showsSessions {
-      ConnectedServerView(
-        session: session, selection: $selection, isWindowFocused: isWindowFocused,
-        openInNewWindow: openInNewWindow, tabContext: tabContext,
-        serverSwitching: serverSwitching)
-    } else {
-      AuthFlowView(
-        state: session.signIn.state, actions: session.signIn.actions, validator: .app
-      )
-      // The flow's one primary action stays the brand pink; system controls elsewhere use the
-      // system tint.
-      .tint(ThemeColor.accent)
-      // A container, so the form's own identifiers (auth.username, auth.sign-in) survive.
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("auth.flow")
+    Group {
+      if session.showsSessions {
+        ConnectedServerView(
+          session: session, selection: $selection, isWindowFocused: isWindowFocused,
+          openInNewWindow: openInNewWindow, tabContext: tabContext,
+          serverSwitching: serverSwitching)
+      } else {
+        AuthFlowView(
+          state: session.signIn.state, actions: session.signIn.actions, validator: .app
+        )
+        // The flow's one primary action stays the brand pink; system controls elsewhere use the
+        // system tint.
+        .tint(ThemeColor.accent)
+        // A container, so the form's own identifiers (auth.username, auth.sign-in) survive.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("auth.flow")
+      }
     }
+    .reconnectsAutomatically(session)
   }
 }

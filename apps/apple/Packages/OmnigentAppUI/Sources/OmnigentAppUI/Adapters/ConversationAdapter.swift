@@ -215,10 +215,11 @@ enum ConversationAdapter {
     switch store.link {
     case .live: return nil
     case .idle, .connecting: return "Connecting\u{2026}"
-    case .reconnecting(let reason, let failures, let delayMs):
-      let seconds = max(1, Int((Double(delayMs) / 1_000).rounded()))
-      let attempt = failures > 1 ? " (attempt \(failures))" : ""
-      return "Reconnecting in \(seconds)s\(attempt): \(reason.message)"
+    case .reconnecting(let reason, let failures, _):
+      // A healthy stream recycling (no failed attempt yet) is back before anyone could read it.
+      guard failures > 0 else { return nil }
+      let attempt = failures > 1 ? " attempt \(failures)" : ""
+      return "Reconnecting\u{2026}\(attempt) \u{00B7} \(reason.message)"
     case .closed: return "The stream closed."
     case .stopped: return "Disconnected."
     case .failed(let error): return "The stream failed: \(error.message)"

@@ -72,6 +72,8 @@ enum SidebarNestingFixture {
     info["helper"]?.hasDraft = true
     state.rowInfo = info
     state.collapsedFamilies = [SidebarFamilyScope.project(project.id).key(family: "monitor")]
+    // Gateway has more on the server, so its Show more row draws.
+    state.paging.projectsWithMore = [project.id]
     return state
   }
 

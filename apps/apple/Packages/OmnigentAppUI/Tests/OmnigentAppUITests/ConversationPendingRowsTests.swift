@@ -39,6 +39,8 @@ struct ConversationFailureCardTests {
   @Test("a lost stream shows on the connection line only, and leaves with it")
   func streamFailures() async throws {
     let store = try await ConversationFixtures.store()
+    store.linkChanged(.reconnecting(reason: streamFailure, failures: 0, delayMs: 0))
+    #expect(ComposerAdapter.connection(store) == nil, "a healthy recycle is back before it reads")
     store.linkChanged(.reconnecting(reason: streamFailure, failures: 2, delayMs: 2_000))
     #expect(ConversationAdapter.errorMessage(store) == nil)
     #expect(ConversationAdapter.connectionStatus(store)?.contains("HTTP 500") == true)

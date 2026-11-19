@@ -40,7 +40,7 @@ struct CanvasAdapter: View {
         canvas.relayout(
           projects: connection.sessionList.projects, viewerID: connection.sessionList.viewerID)
       }
-      .task(id: layoutKey) {
+      .task(id: "\(layoutKey)#\(connection.health.reconnections)") {
         if connection.sessionList.projects.isEmpty { await connection.sessionList.loadProjects() }
         while !Task.isCancelled {
           await canvas.load(viewerID: connection.sessionList.viewerID)
