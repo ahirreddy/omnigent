@@ -91,6 +91,7 @@ extension SessionCommandActions: FocusedActions {
       toggleViewMode: Self.forward(toggleViewMode, \.toggleViewMode, to: latest),
       openChanges: Self.forward(openChanges, \.openChanges, to: latest))
     copy.rename = Self.forward(rename, \.rename, to: latest)
+    copy.toggleUnread = Self.forward(toggleUnread, \.toggleUnread, to: latest)
     copy.chooseModel = Self.forward(chooseModel, \.chooseModel, to: latest)
     copy.cycleModel = Self.forward(cycleModel, \.cycleModel, to: latest)
     copy.cycleEffort = Self.forward(cycleEffort, \.cycleEffort, to: latest)

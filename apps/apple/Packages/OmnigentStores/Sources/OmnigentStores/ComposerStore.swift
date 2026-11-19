@@ -71,6 +71,8 @@ public final class ComposerStore {
   var rules = ConfigurationRules()
   /// Workspace paths matching the draft's `@` mention, for the `@` menu.
   public internal(set) var mentionCandidates: [String] = []
+  /// Local review comments attached to the draft, sent after its text.
+  public internal(set) var reviewComments: [LocalReviewComment] = []
   /// Workspace paths tagged with `@`, shown as chips and sent as marker lines ahead of the text.
   public internal(set) var mentions: [String] = [] {
     didSet { if mentions != oldValue, !isRestoring { draftStored?(savedDraft) } }
@@ -139,7 +141,7 @@ public final class ComposerStore {
   public var canSend: Bool {
     !isSending && !isBlocked
       && (!draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        || !attachments.items.isEmpty || !mentions.isEmpty)
+        || !attachments.items.isEmpty || !mentions.isEmpty || !reviewComments.isEmpty)
   }
 
   /// Records a changed draft: the sidebar's marker, the saved copy and the core's text.

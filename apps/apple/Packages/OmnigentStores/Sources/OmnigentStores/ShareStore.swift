@@ -14,6 +14,10 @@ public final class ShareStore {
   public private(set) var isSaving = false
   /// The last change's failure.
   public private(set) var error: CoreError?
+  /// What the server lets sessions be shared with: public links and read-only modes.
+  public var policy: ServerPages?
+  /// The session's working directory, which a restricted server may refuse to share.
+  public var workspace: String?
 
   private let core: ClientCore
 

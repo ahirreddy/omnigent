@@ -22,8 +22,48 @@ public final class HarnessSetupStore {
 
   private let core: ClientCore
 
+  /// Each harness's MCP servers, skills and plugins, by host and harness.
+  public private(set) var catalogs: [String: CreationLoad<HarnessInventoryRecord>] = [:]
+  /// Skill pages read, by host, harness and skill.
+  public private(set) var skillContents: [String: CreationLoad<SkillContentRecord>] = [:]
+
   init(core: ClientCore) {
     self.core = core
+  }
+
+  /// Reads `harness`'s MCP servers, skills and plugins on `hostID`; a reread keeps the lists
+  /// showing until it lands.
+  public func loadCatalog(harness: String, hostID: String) async {
+    let key = Self.key(hostID, harness)
+    if catalogs[key]?.value == nil { catalogs[key] = .loading }
+    do {
+      catalogs[key] = .loaded(try await core.harnessCatalog(hostId: hostID, harness: harness))
+    } catch {
+      catalogs[key] = .failed(coreError(error))
+    }
+  }
+
+  /// Reads a skill's contents for its page; each opening reads it again, as the web does.
+  /// - Parameters:
+  ///   - name: The skill (`plugin:skill` for a plugin's).
+  ///   - sourceID: A plugin skill's id.
+  ///   - harness: The harness.
+  ///   - hostID: The host.
+  public func loadSkill(_ name: String, sourceID: String?, harness: String, hostID: String) async {
+    let key = Self.skillKey(hostID, harness, name)
+    skillContents[key] = .loading
+    do {
+      skillContents[key] = .loaded(
+        try await core.harnessSkillContent(
+          hostId: hostID, harness: harness, name: name, sourceId: sourceID))
+    } catch {
+      skillContents[key] = .failed(coreError(error))
+    }
+  }
+
+  /// The key of a skill's page.
+  public static func skillKey(_ hostID: String, _ harness: String, _ name: String) -> String {
+    "\(hostID)/\(harness)/\(name)"
   }
 
   /// Reads the catalog; the hosts' readiness comes with it.

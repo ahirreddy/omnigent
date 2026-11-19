@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use omnigent_protocol::FromWire;
-use omnigent_protocol::sessions::{SessionList, SessionListItem};
+use omnigent_protocol::sessions::{SessionList, SessionListItem, SessionStatus};
 use serde_json::{Value, json};
 
 use super::requests::{page_query, validate_identifier};
@@ -34,6 +34,9 @@ struct ProjectMember {
     representative: Option<String>,
     /// Nested under another representative, which moves it.
     nested: bool,
+    /// Its agent is working: running, waiting on an approval, or with background work (the
+    /// web's `isSessionWorking`).
+    working: bool,
 }
 
 impl From<&SessionListItem> for ProjectMember {
@@ -44,6 +47,9 @@ impl From<&SessionListItem> for ProjectMember {
             family: family.map(|family| family.id.clone()),
             representative: family.and_then(|family| family.representative_id.clone()),
             nested: family.is_some_and(|family| family.nests(&row.id)),
+            working: row.status == SessionStatus::Running
+                || row.pending_elicitations_count.value().is_some_and(|count| *count > 0)
+                || row.background_work_running.value() == Some(&true),
         }
     }
 }
@@ -351,6 +357,26 @@ impl<T: HttpTransport> ClientCore<T> {
                 .await?;
         }
         Ok(())
+    }
+
+    /// How many of `project`'s sessions, archived included, have an agent still working, which
+    /// deleting the project stops: the web asks before it deletes them.
+    ///
+    /// # Errors
+    ///
+    /// The read errors; [`SessionError::MalformedResponse`]; `InvalidPagination`.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn project_working_sessions(
+        &self,
+        project: &ProjectSummary,
+    ) -> Result<u32, SessionError> {
+        let result = self.project_members(&project.name).await;
+        self.dispatch();
+        let working = result?.iter().filter(|member| member.working).count();
+        Ok(u32::try_from(working).unwrap_or(u32::MAX))
     }
 
     /// Saves `projects` as the caller's manual order (`PUT /v1/projects/order`), as the web's

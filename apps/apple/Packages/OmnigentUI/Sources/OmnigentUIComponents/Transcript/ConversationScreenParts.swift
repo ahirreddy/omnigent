@@ -4,6 +4,8 @@ public import SwiftUI
 public struct ConversationExtras {
   /// Title-menu actions (Pin, Share, Fork, Rename, Mark as unread, Move, Archive, Delete).
   public var sessionActions: SessionListActions
+  /// The title menu's Switch Host: move the session to another machine; `nil` hides it.
+  public var switchHost: HostMoveRoute?
   /// Files and Changes content for the right panel.
   public var slots: WorkspaceSlots
   /// The Share sheet's state and actions; `nil` hides Share.

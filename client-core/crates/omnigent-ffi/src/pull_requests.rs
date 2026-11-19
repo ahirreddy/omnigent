@@ -14,6 +14,9 @@ pub struct PanelFeatures {
     pub content_search: bool,
     /// The server stores each session's linked pull requests.
     pub pull_requests: bool,
+    /// Session comments can carry a pull request's diff coordinates (local review comments).
+    #[uniffi(default)]
+    pub comment_anchors: bool,
 }
 
 impl From<core::PanelFeatures> for PanelFeatures {
@@ -21,6 +24,7 @@ impl From<core::PanelFeatures> for PanelFeatures {
         Self {
             content_search: features.content_search,
             pull_requests: features.pull_requests,
+            comment_anchors: features.comment_anchors,
         }
     }
 }
@@ -85,6 +89,9 @@ pub struct SessionPullRequest {
     pub status: PullRequestStatus,
     /// Epoch seconds of the fetch that read the state.
     pub state_checked_at: Option<f64>,
+    /// The git provider's id (`github`, `gitlab`, `azure_devops`).
+    #[uniffi(default)]
+    pub provider: String,
 }
 
 impl From<core::SessionPullRequest> for SessionPullRequest {
@@ -99,6 +106,7 @@ impl From<core::SessionPullRequest> for SessionPullRequest {
             provider_name: pr.provider_name,
             status: pr.status.into(),
             state_checked_at: pr.state_checked_at,
+            provider: pr.provider,
         }
     }
 }

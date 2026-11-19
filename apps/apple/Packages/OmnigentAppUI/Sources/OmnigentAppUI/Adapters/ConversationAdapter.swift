@@ -36,6 +36,32 @@ enum ConversationAdapter {
     return state
   }
 
+  /// Who is reading, as the web's `getCurrentAuthorId`: the signed-in user, never the
+  /// single-user `local` one.
+  static func viewer(_ server: OmnigentCoreFFI.ConnectedServer?) -> String? {
+    guard let user = server?.userId, !user.isEmpty, user != "local" else { return nil }
+    return user
+  }
+
+  /// Whether the session is shared with other people, so their messages carry their avatar
+  /// (the web's `isSessionSharedWithOthers`): another person owns it, or its owner granted
+  /// someone else (anyone with the link included).
+  static func isShared(
+    owner: String?, viewer: String?, grants: [OmnigentCoreFFI.SessionGrant]
+  ) -> Bool {
+    guard let viewer else { return false }
+    if let owner, owner != viewer { return true }
+    return grants.contains { $0.userId != viewer }
+  }
+
+  /// Whether the signed-in user owns the session; an unreported owner is the caller.
+  static func ownedByViewer(
+    _ summary: OmnigentCoreFFI.SessionSummary?, server: OmnigentCoreFFI.ConnectedServer?
+  ) -> Bool {
+    guard let viewer = viewer(server) else { return false }
+    return summary?.owner.map { $0 == viewer } ?? true
+  }
+
   /// The conversation's state without its rows, for the screen around the transcript. It reads
   /// no rows or revision, so streamed deltas don't re-render the header, composer or panels;
   /// the transcript reads them through ``liveRows(_:)``.

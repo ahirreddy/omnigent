@@ -30,8 +30,7 @@ public struct ShareSheet: View {
     NavigationStack {
       Form {
         Section {
-          Text("Invite others to view or collaborate on this session.")
-            .foregroundStyle(.secondary)
+          description
           Picker(
             "General access",
             selection: Binding(
@@ -39,7 +38,7 @@ public struct ShareSheet: View {
           ) {
             ForEach(state.generalAccessOptions, id: \.self) { Text($0).tag($0) }
           }
-          .disabled(actions.setGeneralAccess == nil)
+          .disabled(actions.setGeneralAccess == nil || state.generalAccessOptions.count < 2)
           .accessibilityIdentifier("share-general-access")
           // Shown only where the server can store the choice.
           if let setWorkspaceFiles = actions.setWorkspaceFiles {
@@ -65,15 +64,21 @@ public struct ShareSheet: View {
               AuthorAvatar(name: grant.principal)
               Text(grant.principal)
               Spacer()
-              Picker(
-                "Role",
-                selection: Binding(get: { grant.role }, set: { actions.setRole?(grant, $0) })
-              ) {
-                ForEach(ShareGrant.Role.allCases, id: \.self) { Text($0.title).tag($0) }
+              if state.roles.count > 1 {
+                Picker(
+                  "Role",
+                  selection: Binding(get: { grant.role }, set: { actions.setRole?(grant, $0) })
+                ) {
+                  ForEach(state.roles, id: \.self) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                .accessibilityIdentifier("share-role-\(grant.id)")
+              } else {
+                // As the web, a read-only server shows the level without changing it.
+                Text(grant.role.title).foregroundStyle(.secondary)
+                  .accessibilityIdentifier("share-role-\(grant.id)")
               }
-              .labelsHidden()
-              .fixedSize()
-              .accessibilityIdentifier("share-role-\(grant.id)")
               if let remove = actions.removeGrant {
                 Button("Remove", systemImage: "xmark.circle") { remove(grant) }
                   .labelStyle(.iconOnly)
@@ -90,7 +95,7 @@ public struct ShareSheet: View {
               .onSubmit(add)
               .accessibilityIdentifier("share-add-principal")
             Picker("Role", selection: $newRole) {
-              ForEach(ShareGrant.Role.allCases, id: \.self) { Text($0.title).tag($0) }
+              ForEach(state.roles, id: \.self) { Text($0.title).tag($0) }
             }
             .labelsHidden()
             .fixedSize()
@@ -99,7 +104,10 @@ public struct ShareSheet: View {
               .disabled(newPrincipal.trimmingCharacters(in: .whitespaces).isEmpty)
               .accessibilityIdentifier("share-add")
           }
-          .disabled(actions.addGrant == nil)
+          .disabled(actions.addGrant == nil || state.blockedReason != nil)
+          .onChange(of: state.roles, initial: true) { _, roles in
+            if !roles.contains(newRole) { newRole = roles.first ?? .read }
+          }
         }
         if let error = state.errorMessage {
           Section {
@@ -147,6 +155,27 @@ public struct ShareSheet: View {
     #endif
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("share-sheet")
+  }
+
+  /// What sharing allows here, as the web words it.
+  @ViewBuilder private var description: some View {
+    if state.isReadOnlySharing {
+      Text("This server allows read-only sharing \u{2014} invite others to view this session.")
+        .foregroundStyle(.secondary)
+      Text(
+        "Please be careful when sharing. Read access will allow for reading of all session "
+          + "outputs."
+      )
+      .foregroundStyle(.secondary)
+    } else {
+      Text("Invite others to view or collaborate on this session.")
+        .foregroundStyle(.secondary)
+    }
+    if let blocked = state.blockedReason {
+      Label(blocked, systemImage: "exclamationmark.triangle")
+        .foregroundStyle(Theme.warning)
+        .accessibilityIdentifier("share-blocked")
+    }
   }
 
   private func add() {

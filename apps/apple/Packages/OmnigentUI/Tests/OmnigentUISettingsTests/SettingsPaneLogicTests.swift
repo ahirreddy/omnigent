@@ -146,6 +146,13 @@ struct SettingsPaneLogicTests {
     #expect(SettingsPortability.text([1]) == nil)
   }
 
+  @Test("title instructions count trimmed Unicode scalars, as the server does")
+  func titleInstructionsLength() {
+    #expect(TitleInstructionsState.length(of: "  abc \n") == 3)
+    #expect(TitleInstructionsState.length(of: "\u{1F600}x") == 2)
+    #expect(TitleInstructionsState.length(of: "") == 0)
+  }
+
   @Test("panes have their titles, symbols and ids")
   func paneMetadata() {
     for pane in ServerSettingsPane.allCases {

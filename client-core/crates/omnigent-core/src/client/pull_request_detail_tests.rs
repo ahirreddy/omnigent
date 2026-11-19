@@ -225,9 +225,9 @@ fn patch_reads_the_whole_diff_or_why_it_is_unavailable() {
         ],
     );
     let core = connected(transport);
-    let patch = block_on(core.pull_request_patch("conv_a", Some(PR))).unwrap();
+    let patch = block_on(core.pull_request_patch("conv_a", Some(PR), None)).unwrap();
     assert!(patch.patch.starts_with("diff --git") && patch.unavailable.is_none());
-    let outside = block_on(core.pull_request_patch("conv_a", Some(PR))).unwrap();
+    let outside = block_on(core.pull_request_patch("conv_a", Some(PR), None)).unwrap();
     assert!(
         outside
             .unavailable
@@ -541,20 +541,20 @@ fn a_patch_with_a_wrong_shape_or_an_unknown_reason_is_explained() {
     );
     let core = connected(transport);
     assert!(matches!(
-        block_on(core.pull_request_patch("conv_a", None)),
+        block_on(core.pull_request_patch("conv_a", None, None)),
         Err(SessionError::MalformedResponse { .. })
     ));
-    let generic = block_on(core.pull_request_patch("conv_a", None)).unwrap();
+    let generic = block_on(core.pull_request_patch("conv_a", None, None)).unwrap();
     assert!(
         generic
             .unavailable
             .unwrap()
             .contains("open the pull request")
     );
-    let custom = block_on(core.pull_request_patch("conv_a", None)).unwrap();
+    let custom = block_on(core.pull_request_patch("conv_a", None, None)).unwrap();
     assert_eq!(custom.unavailable.as_deref(), Some("Custom"));
     assert!(matches!(
-        block_on(core.pull_request_patch("../x", None)),
+        block_on(core.pull_request_patch("../x", None, None)),
         Err(SessionError::InvalidIdentifier { .. })
     ));
 }

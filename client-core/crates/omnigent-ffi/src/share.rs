@@ -13,6 +13,14 @@ pub fn public_grantee() -> String {
     core::PUBLIC_GRANTEE.to_owned()
 }
 
+/// Whether a `restricted_read_only` server refuses to share a session working in `workspace`:
+/// a home or root folder.
+#[must_use]
+#[uniffi::export]
+pub fn workspace_sharing_blocked(workspace: String) -> bool {
+    core::workspace_sharing_blocked(&workspace)
+}
+
 /// One grant on a session.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct SessionGrant {

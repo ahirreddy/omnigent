@@ -111,6 +111,7 @@ struct SessionWindowTitle: View {
 /// The session menu's prompts: Share, Rename, and the Delete, Leave and Stop confirmations.
 struct SessionMenuPrompts {
   var showsShare = false
+  var showsSwitchHost = false
   var renaming: SessionSummary?
   var renameText = ""
   var confirmingDelete: SessionSummary?
@@ -158,6 +159,13 @@ struct SessionChromeParts: ViewModifier {
         if let share = chrome?.extras.share {
           ShareSheet(state: share.state, actions: share.actions) { prompts.showsShare = false }
             .onAppear { chrome?.extras.shareOpened?() }
+        }
+      }
+      .sheet(isPresented: $prompts.showsSwitchHost) {
+        if let route = chrome?.extras.switchHost {
+          HostMoveSheet(kind: route.kind, actions: route.actions) {
+            prompts.showsSwitchHost = false
+          }
         }
       }
       .modifier(
@@ -216,6 +224,13 @@ struct SessionChromeParts: ViewModifier {
       ConfirmedCopyButton(
         title: "Copy Session ID", systemImage: "number", text: state.header.id,
         confirmation: "Session ID copied")
+    }
+    // As the web's host menu: move the session to another machine, online host or not.
+    if chrome.extras.switchHost != nil {
+      Button("Switch Host\u{2026}", systemImage: "arrow.left.arrow.right") {
+        prompts.showsSwitchHost = true
+      }
+      .accessibilityIdentifier("header-switch-host")
     }
     if let exportTranscript = chrome.extras.exportTranscript {
       Button("Export\u{2026}", systemImage: "square.and.arrow.down", action: exportTranscript)

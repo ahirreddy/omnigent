@@ -82,6 +82,12 @@ struct AutomationsAdapter: View {
         .sheet(item: $editing) { target in editor(pages, target: target) }
         .sheet(item: $sharing) { target in shareSheet(pages, target: target) }
         .transientBanner($banner)
+        // The Inbox's Open automation lands on that automation's page.
+        .onChange(of: pages.requestedAutomationID, initial: true) { _, requested in
+          guard let requested else { return }
+          pages.requestedAutomationID = nil
+          detailID = requested
+        }
     } else {
       ContentUnavailableView("Automations are unavailable", systemImage: "clock")
     }

@@ -28,7 +28,7 @@ struct SidebarNavigationRows: View {
     SidebarCountedRow(counts: counts) { counts in
       Label("Inbox", systemImage: "tray")
         .neutralSidebarIcon()
-        .badge(counts.inbox)
+        .badge(counts.inboxBadge.map { Text($0) })
     }
     .tag(SidebarDestination.inbox)
     .sidebarSelection(selection == .inbox)

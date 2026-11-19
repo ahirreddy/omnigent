@@ -101,6 +101,8 @@ public struct StackedDiffAnnotations {
   public var lines: [DiffLineAnchor: AnyView] = [:]
   /// A view under a file's header, by path.
   public var files: [String: AnyView] = [:]
+  /// Controls beside a file's header (file actions, the Viewed mark), by path.
+  public var headers: [String: AnyView] = [:]
   /// The lines chosen, highlighted.
   public var selection: DiffLineSelection?
   /// Choosing lines by their numbers; `nil` leaves the numbers plain.

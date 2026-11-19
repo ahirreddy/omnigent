@@ -164,6 +164,10 @@ extension ConversationContainer {
   func adorned(_ state: ConversationViewState) -> ConversationViewState {
     var state = state
     state.shareUnavailableReason = shareUnavailableReason
+    let viewer = ConversationAdapter.viewer(server)
+    state.viewerName = viewer
+    state.isShared = ConversationAdapter.isShared(
+      owner: summary?.owner, viewer: viewer, grants: loadedGrants)
     state.sandbox = SandboxAdapter.state(conversation, environment: hostEnvironment)
     if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
     state.agentInfo = conversation.agentInfo.map {
@@ -217,6 +221,9 @@ extension ConversationContainer {
       share: share(over: shareStore), forkActions: forkActions, navigation: navigation,
       menuContext: menuContext, exportTranscript: exportTranscript,
       shareOpened: { Task { await shareStore?.load() } })
+    var liveness = SessionLivenessActions()
+    addHostMoves(to: &liveness, sheets: livenessSheets)
+    extras.switchHost = liveness.switchHost
     if let panel = tabRoutes?.windowPanel {
       extras.showPanelTab = panel.show
       extras.togglePanel = { [route = panel.chrome.panel] in route.isShown.toggle() }

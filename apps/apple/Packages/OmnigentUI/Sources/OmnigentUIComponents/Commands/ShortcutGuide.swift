@@ -85,6 +85,7 @@ enum ShortcutGuide {
       row("Open command palette", AppShortcuts.commandPalette),
       row("Find a session by name", AppShortcuts.findSession),
       row("Rename current session", AppShortcuts.renameSession),
+      row("Mark current session unread or read", AppShortcuts.toggleUnread),
       row("Open Settings", AppShortcuts.settings),
       row("Show keyboard shortcuts", AppShortcuts.keyboardShortcuts),
     ]

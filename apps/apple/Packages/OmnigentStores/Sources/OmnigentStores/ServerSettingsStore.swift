@@ -23,6 +23,8 @@ public final class ServerSettingsStore {
   public private(set) var connections: CreationLoad<[ProviderConnectionRecord]> = .idle
   /// Hosts that can import their local sessions.
   public private(set) var importHosts: CreationLoad<[ImportHostRecord]> = .idle
+  /// The caller's guidance for automatic session titles.
+  public private(set) var titleInstructions: CreationLoad<SessionTitleInstructionsRecord> = .idle
   /// Archived sessions loaded so far, most recently updated first.
   public private(set) var archived: CreationLoad<[SessionSummary]> = .idle
   /// More archived sessions are on the server.
@@ -46,6 +48,25 @@ public final class ServerSettingsStore {
   public func loadInfo() async {
     info = .loading
     info = await read { try await $0.serverSettingsInfo() }
+  }
+
+  /// Reads the caller's title instructions.
+  public func loadTitleInstructions() async {
+    titleInstructions = .loading
+    titleInstructions = await read { try await $0.sessionTitleInstructions() }
+  }
+
+  /// Saves the caller's title instructions; `nil` or blank clears them.
+  /// - Parameter instructions: The guidance, trimmed by the core.
+  /// - Returns: Whether it saved; a failure is in ``error`` and the saved value is kept.
+  @discardableResult
+  public func saveTitleInstructions(_ instructions: String?) async -> Bool {
+    var saved: SessionTitleInstructionsRecord?
+    let succeeded = await write {
+      saved = try await $0.saveSessionTitleInstructions(instructions: instructions)
+    }
+    if let saved { titleInstructions = .loaded(saved) }
+    return succeeded
   }
 
   /// Reads the accounts.

@@ -1,7 +1,7 @@
 //! One pull request's live detail, read from the session's host through the server.
 //!
-//! `GET /v1/sessions/{id}/resources/github[?pr_url=]` answers `session.github.info`, and
-//! `…/resources/github/diff` the PR's patch. Every git provider answers under the `github` name.
+//! `GET /v1/sessions/{id}/resources/github[?pr_url=]` answers `session.github.info`; its changed
+//! files, patches and commits are [`changes`]'. Every git provider answers under the `github` name.
 //!
 //! The host answers these, so they fail while it is offline: a `503` whose `error.code` is
 //! `runner_unavailable` reads as [`SessionError::HostOffline`] with [`HOST_OFFLINE`]. A `404` from
@@ -17,6 +17,8 @@ use super::{ClientCore, SessionError, lock};
 use crate::auth::mode::error_text;
 use crate::http::{HttpTransport, TransportError};
 
+#[path = "pull_request_changes.rs"]
+pub mod changes;
 #[path = "pull_request_polling.rs"]
 pub mod polling;
 #[path = "pull_request_reviews.rs"]
@@ -255,6 +257,8 @@ pub struct PullRequestDetail {
     pub head_sha: Option<String>,
     /// The base commit the PR's diff is against.
     pub base_sha: Option<String>,
+    /// The web page of the source (possibly fork) repository; `None` when unknown or deleted.
+    pub head_repository_url: Option<String>,
     /// Markdown description.
     pub body: Option<String>,
     /// CI.
@@ -402,6 +406,9 @@ pub enum PullRequestAvailability {
 pub struct PullRequestInfo {
     /// Whether there is a PR to show, or why not.
     pub availability: PullRequestAvailability,
+    /// The provider's id (`github`, `gitlab`, `azure_devops`); `None` when no provider serves
+    /// the workspace. A host that predates the field serves GitHub.
+    pub provider: Option<String>,
     /// The provider's name ("GitHub").
     pub provider_name: Option<String>,
     /// What precedes a PR number: `#`, or `!` on Azure DevOps.
@@ -428,13 +435,17 @@ pub struct PullRequestInfo {
     pub polling: PullRequestPolling,
 }
 
-/// The selected PR's patch.
+/// A patch of the selected PR: the whole PR, one commit, or the changes since a commit.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PullRequestPatch {
-    /// The whole PR as one unified diff; empty when it has no changes.
+    /// One unified diff; empty when there are no changes.
     pub patch: String,
     /// Why the host cannot diff it, already worded for the reader.
     pub unavailable: Option<String>,
+    /// The head the patch was read at, when the host names it.
+    pub head_sha: Option<String>,
+    /// The base the patch was read at, when the host names it.
+    pub base_sha: Option<String>,
 }
 
 fn reviewer_kind(value: Option<&str>) -> ReviewerKind {
@@ -648,6 +659,7 @@ impl PullRequestDetail {
             head_ref: opt_str(object, "head_ref")?,
             head_sha: opt_str(object, "head_sha")?,
             base_sha: opt_str(object, "base_sha")?,
+            head_repository_url: opt_str(object, "head_repository_url")?,
             body: opt_str(object, "body")?.filter(|body| !body.trim().is_empty()),
             checks: decode_checks(opt_object(object, "checks")?)?,
             checks_supported: opt_bool(object, "checks_supported")?.unwrap_or(true),
@@ -767,8 +779,13 @@ impl PullRequestInfo {
             .flatten()
             .map(SessionPullRequest::from_value)
             .collect::<Result<Vec<_>, _>>()?;
+        let provider = match object.get("provider") {
+            None => Some("github".to_owned()),
+            Some(_) => opt_str(object, "provider")?,
+        };
         Ok(Self {
             availability: availability(object, pull_request.as_ref(), !warnings.is_empty())?,
+            provider,
             provider_name: display
                 .map(|display| opt_str(display, "display_name"))
                 .transpose()?
@@ -808,6 +825,7 @@ impl PullRequestInfo {
             } else {
                 PullRequestAvailability::Unavailable
             },
+            provider: None,
             provider_name: None,
             number_prefix: "#".to_owned(),
             branch: None,
@@ -851,7 +869,25 @@ impl<T: HttpTransport> ClientCore<T> {
         path: &str,
         query: &[(&str, String)],
     ) -> Result<Value, SessionError> {
-        let prepared = self.prepare("GET", path, query, None)?;
+        self.host_resource_read_at(path, &[], query).await
+    }
+
+    /// [`Self::host_resource_read`] of `path` with `segments` appended, each escaped as one
+    /// path segment.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(super) async fn host_resource_read_at(
+        &self,
+        path: &str,
+        segments: &[&str],
+        query: &[(&str, String)],
+    ) -> Result<Value, SessionError> {
+        let mut prepared = self.prepare("GET", path, query, None)?;
+        if !segments.is_empty() {
+            prepared.request.url = changes::append_segments(&prepared.request.url, segments)?;
+        }
         let result = self
             .send_routed(prepared.request, prepared.addressing)
             .await;
@@ -935,34 +971,6 @@ impl<T: HttpTransport> ClientCore<T> {
         self.dispatch();
         result
     }
-
-    /// The whole of `pr_url` as one unified-diff patch, from the session's host.
-    ///
-    /// # Errors
-    ///
-    /// As [`ClientCore::pull_request_info`], without the `404` case.
-    #[allow(
-        clippy::future_not_send,
-        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
-    )]
-    pub async fn pull_request_patch(
-        &self,
-        session_id: &str,
-        pr_url: Option<&str>,
-    ) -> Result<PullRequestPatch, SessionError> {
-        validate_identifier(session_id)?;
-        let path = format!("/v1/sessions/{session_id}/resources/github/diff");
-        let result = self
-            .host_resource_read(&path, &pr_query(pr_url))
-            .await
-            .and_then(|value| {
-                decode_patch(&value).map_err(|detail| SessionError::MalformedResponse {
-                    detail: format!("{path}: {detail}"),
-                })
-            });
-        self.dispatch();
-        result
-    }
 }
 
 fn decode_patch(value: &Value) -> Result<PullRequestPatch, String> {
@@ -982,6 +990,8 @@ fn decode_patch(value: &Value) -> Result<PullRequestPatch, String> {
     Ok(PullRequestPatch {
         patch: opt_str(object, "patch")?.unwrap_or_default(),
         unavailable,
+        head_sha: opt_str(object, "head_sha")?,
+        base_sha: opt_str(object, "base_sha")?,
     })
 }
 
@@ -996,3 +1006,7 @@ mod text_tests;
 #[cfg(test)]
 #[path = "pull_request_reviews_tests.rs"]
 mod reviews_tests;
+
+#[cfg(test)]
+#[path = "pull_request_changes_tests.rs"]
+mod changes_tests;

@@ -7,6 +7,8 @@ use omnigent_core::server_admin::{
     self as core, DefaultPolicy as CorePolicy, McpService as CoreMcpService,
     SharingSettings as CoreSharing,
 };
+use omnigent_core::user_settings::SessionTitleInstructions;
+
 
 use crate::client::ClientCore;
 use crate::errors::CoreError;
@@ -32,12 +34,18 @@ pub struct ServerSettingsInfo {
     /// Sign-in has a session to end (accounts or SSO): Settings shows the identity and Sign out.
     #[uniffi(default)]
     pub has_login_session: bool,
-    /// Settings lists custom agents (`custom_agents_settings_ui` and `agent_install`).
+    /// Settings shows Custom agents (`agent_install`).
     #[uniffi(default)]
     pub custom_agents: bool,
-    /// An agent's configuration can be read and edited (`agent_detail`).
+    /// Agents can be listed and read (`agent_detail`).
     #[uniffi(default)]
     pub agent_detail: bool,
+    /// An agent's configuration can be edited (`agent_config_edit`).
+    #[uniffi(default)]
+    pub agent_config_edit: bool,
+    /// The caller can save guidance for automatic session titles.
+    #[uniffi(default)]
+    pub session_title_instructions: bool,
 }
 
 impl From<core::ServerSettingsInfo> for ServerSettingsInfo {
@@ -53,6 +61,8 @@ impl From<core::ServerSettingsInfo> for ServerSettingsInfo {
             has_login_session: info.has_login_session,
             custom_agents: info.custom_agents,
             agent_detail: info.agent_detail,
+            agent_config_edit: info.agent_config_edit,
+            session_title_instructions: info.session_title_instructions,
         }
     }
 }
@@ -300,6 +310,25 @@ pub fn min_password_length() -> u32 {
     u32::try_from(core::MIN_PASSWORD_CHARS).unwrap_or(u32::MAX)
 }
 
+/// The caller's saved guidance for automatic session titles.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct SessionTitleInstructionsRecord {
+    /// Saved guidance; `None` when only the server's or the default title prompt applies.
+    pub instructions: Option<String>,
+    /// The longest guidance the server accepts, in characters.
+    pub max_chars: u64,
+}
+
+impl From<SessionTitleInstructions> for SessionTitleInstructionsRecord {
+    fn from(saved: SessionTitleInstructions) -> Self {
+        Self {
+            instructions: saved.instructions,
+            max_chars: saved.max_chars,
+        }
+    }
+}
+
+
 #[uniffi::export]
 impl ClientCore {
     /// What the server offers and the caller may manage.
@@ -310,6 +339,37 @@ impl ClientCore {
     pub async fn server_settings_info(&self) -> Result<ServerSettingsInfo, CoreError> {
         self.sessions()
             .server_settings_info()
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// The caller's title instructions.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the read errors.
+    pub async fn session_title_instructions(
+        &self,
+    ) -> Result<SessionTitleInstructionsRecord, CoreError> {
+        self.sessions()
+            .session_title_instructions()
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Saves the caller's title instructions, trimmed; blank or `None` clears them.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `Rejected` over the server's limit; the write errors.
+    pub async fn save_session_title_instructions(
+        &self,
+        instructions: Option<String>,
+    ) -> Result<SessionTitleInstructionsRecord, CoreError> {
+        self.sessions()
+            .save_session_title_instructions(instructions.as_deref())
             .await
             .map(Into::into)
             .map_err(CoreError::from)

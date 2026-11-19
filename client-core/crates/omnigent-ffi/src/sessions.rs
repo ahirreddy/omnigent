@@ -725,6 +725,19 @@ impl ClientCore {
         deleted.map_err(CoreError::from)
     }
 
+    /// How many of a project's sessions, archived included, have an agent still working:
+    /// deleting the project stops them, so the app asks first.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the read errors.
+    pub async fn project_working_sessions(&self, project: ProjectSummary) -> Result<u32, CoreError> {
+        self.sessions()
+            .project_working_sessions(&project.into())
+            .await
+            .map_err(CoreError::from)
+    }
+
     /// Up to `limit` sessions whose title (or, with `in_messages`, message content) matches
     /// `query`, archived included. Content matches carry the snippet as their preview.
     ///

@@ -13,7 +13,8 @@ extension ComposerStore {
       if let queued = enqueueDraft() { followUps.insert(queued) }
       return
     }
-    let message = draftMessage
+    let message = withReviewComments(draftMessage)
+    let attached = Set(reviewComments.map(\.id))
     let draft = fieldDraft
     let extras: MessageQueue.Extras
     do {
@@ -33,6 +34,7 @@ extension ComposerStore {
       transcript?.messageAccepted(pendingRow, sent)
     }
     guard let failure else {
+      reviewComments.removeAll { attached.contains($0.id) }
       await sendFollowUps()
       return
     }
@@ -44,6 +46,7 @@ extension ComposerStore {
       return
     }
     queue.hold(message, extras: extras)
+    reviewComments.removeAll { attached.contains($0.id) }
     lastError = nil
     commandNotice = failure.message
     draftStored?(savedDraft)

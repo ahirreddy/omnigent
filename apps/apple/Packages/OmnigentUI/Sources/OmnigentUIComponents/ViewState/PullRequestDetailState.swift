@@ -310,6 +310,8 @@ public struct PullRequestPanelActions {
     )?
   /// Clears the last failure.
   public var dismissError: (@MainActor () -> Void)?
+  /// The detail switched to its Changes tab as ``PullRequestPanelExtras/opensChanges`` asked.
+  public var changesOpened: (@MainActor () -> Void)?
 
   /// No actions.
   public init() {}

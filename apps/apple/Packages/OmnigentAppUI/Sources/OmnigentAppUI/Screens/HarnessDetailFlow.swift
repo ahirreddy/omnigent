@@ -25,14 +25,12 @@ struct HarnessDetailContainer: View {
   @Binding var setupTarget: HarnessSetupTarget?
   @State private var fixTarget: HarnessFixTarget?
   @State private var notice: String?
+  @State private var openSkill: HarnessCatalogState.Skill?
 
   var body: some View {
     Group {
       if let detail {
-        HarnessDetailView(
-          state: HarnessFixAdapter.detail(
-            detail, startup: fix.startup["\(hostID)/\(harness)"], notice: notice),
-          actions: actions(detail))
+        HarnessDetailView(state: state(detail), actions: actions(detail))
       } else {
         Section {
           Button("Harnesses", systemImage: "chevron.left", action: back)
@@ -42,8 +40,12 @@ struct HarnessDetailContainer: View {
       }
     }
     .task(id: "\(hostID)/\(harness)") {
-      guard let hostName = detail?.hostName else { return }
-      await fix.loadStartup(harness: harness, hostID: hostID, hostName: hostName)
+      openSkill = nil
+      guard let detail else { return }
+      await fix.loadStartup(harness: harness, hostID: hostID, hostName: detail.hostName)
+      if HarnessCatalogAdapter.offersCatalog(detail) {
+        await setup.loadCatalog(harness: harness, hostID: hostID)
+      }
     }
     .sheet(item: $fixTarget, onDismiss: fix.cancel) { target in
       fixSheet(target)
@@ -54,14 +56,37 @@ struct HarnessDetailContainer: View {
     setup.detail(harness: harness, name: name, hostID: hostID)
   }
 
+  private func state(_ detail: HarnessDetail) -> HarnessDetailState {
+    var state = HarnessFixAdapter.detail(
+      detail, startup: fix.startup["\(hostID)/\(harness)"], notice: notice)
+    state.catalog = HarnessCatalogAdapter.catalog(
+      setup.catalogs["\(hostID)/\(harness)"], detail: detail)
+    if let openSkill {
+      let key = HarnessSetupStore.skillKey(hostID, harness, openSkill.name)
+      state.skillPage = HarnessCatalogAdapter.skillPage(
+        openSkill, load: setup.skillContents[key], host: detail.hostName)
+    }
+    return state
+  }
+
   private func actions(_ detail: HarnessDetail) -> HarnessDetailActions {
-    HarnessDetailActions(
+    var actions = HarnessDetailActions(
       back: back,
       fixWarning: { open(detail.warning?.mode ?? detail.mode, detail: detail) },
       fixCredential: {
         guard let action = detail.credentialAction else { return }
         open(HarnessFixAdapter.mode(for: action, detail: detail), detail: detail)
       })
+    let (setup, harness, hostID) = (setup, harness, hostID)
+    actions.openSkill = { skill in
+      openSkill = skill
+      Task {
+        await setup.loadSkill(
+          skill.name, sourceID: skill.sourceID, harness: harness, hostID: hostID)
+      }
+    }
+    actions.closeSkill = { openSkill = nil }
+    return actions
   }
 
   /// Runs `mode` in the fix sheet, or opens the setup sheet for steps only it can do: an

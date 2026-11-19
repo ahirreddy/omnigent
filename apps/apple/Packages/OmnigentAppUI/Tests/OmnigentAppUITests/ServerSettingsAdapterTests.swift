@@ -1,5 +1,6 @@
 import Foundation
 import OmnigentCoreFFI
+import OmnigentStores
 import OmnigentUIComponents
 import Testing
 
@@ -7,12 +8,12 @@ import Testing
 
 private func info(
   admin: Bool, singleUser: Bool = false, accounts: Bool = false, mcp: Bool = false,
-  connections: [String] = [], customAgents: Bool = false
+  connections: [String] = [], customAgents: Bool = false, titleInstructions: Bool = false
 ) -> ServerSettingsInfo {
   ServerSettingsInfo(
     userId: "ada", isAdmin: admin, singleUser: singleUser, accountsEnabled: accounts,
     mcpRegistry: mcp, connections: connections, archiveWorktreeCleanup: false,
-    customAgents: customAgents)
+    customAgents: customAgents, sessionTitleInstructions: titleInstructions)
 }
 
 @Suite("Server settings adapter")
@@ -23,7 +24,7 @@ struct ServerSettingsAdapterTests {
     #expect(
       ServerSettingsAdapter.panes(info(admin: false))
         == [.harnesses, .git, .importSessions, .archived],
-      "Custom Agents needs the server's custom_agents_settings_ui and agent_install")
+      "Custom Agents needs the server's agent_install")
     #expect(
       ServerSettingsAdapter.panes(info(admin: true, singleUser: true))
         == [.harnesses, .git, .importSessions, .policies, .archived],
@@ -31,11 +32,28 @@ struct ServerSettingsAdapterTests {
     #expect(
       ServerSettingsAdapter.panes(
         info(
-          admin: true, accounts: true, mcp: true, connections: ["github"], customAgents: true))
+          admin: true, accounts: true, mcp: true, connections: ["github"], customAgents: true,
+          titleInstructions: true))
         == [
-          .account, .harnesses, .customAgents, .mcp, .integrations, .git, .importSessions,
-          .members, .policies, .sharing, .archived,
+          .account, .harnesses, .customAgents, .mcp, .integrations, .sessions, .git,
+          .importSessions, .members, .policies, .sharing, .archived,
         ])
+  }
+
+  @Test("title instructions load as loading, then the saved text and limit, or a failure")
+  func titleInstructions() {
+    #expect(ServerSettingsAdapter.titleInstructions(.idle) == .loading)
+    #expect(ServerSettingsAdapter.titleInstructions(.loading) == .loading)
+    #expect(
+      ServerSettingsAdapter.titleInstructions(
+        .loaded(SessionTitleInstructionsRecord(instructions: nil, maxChars: 4000)))
+        == .ready(saved: "", maxChars: 4000))
+    #expect(
+      ServerSettingsAdapter.titleInstructions(
+        .loaded(SessionTitleInstructionsRecord(instructions: "Use French.", maxChars: 10)))
+        == .ready(saved: "Use French.", maxChars: 10))
+    #expect(
+      ServerSettingsAdapter.titleInstructions(.failed(.InvalidState(message: "boom"))) == .failed)
   }
 
   @Test("members can be reset and removed only on password servers, never yourself")

@@ -236,6 +236,11 @@ extension ConversationScreen {
         renaming = summary
       }
     }
+    // As the web's Option-Command-U: an unread session reads again, any other is marked unread.
+    if let summary = state.summary, let setUnread = extras.sessionActions.setUnread {
+      let isUnread = extras.sessionActions.isUnread
+      actions.toggleUnread = { setUnread(summary, !(isUnread?(summary.id) ?? false)) }
+    }
     actions.addNestedAgent = chrome.addNestedAgentCommand
     return actions
   }

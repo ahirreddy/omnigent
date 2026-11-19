@@ -182,6 +182,50 @@ fn renaming_a_label_project_promotes_it_and_refiles_members() {
 }
 
 #[test]
+fn working_members_are_counted_across_pages_archived_included() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        "/v1/sessions",
+        vec![
+            Reply::json(
+                200,
+                r#"{"object":"list","data":[
+                    {"id":"run","status":"running","created_at":1},
+                    {"id":"ask","status":"idle","created_at":2,"pending_elicitations_count":1},
+                    {"id":"bg","status":"failed","created_at":3,"background_work_running":true}
+                ],"has_more":true,"last_id":"bg"}"#,
+            ),
+            Reply::json(
+                200,
+                r#"{"object":"list","data":[
+                    {"id":"idle","status":"idle","created_at":4,"archived":true},
+                    {"id":"wait","status":"waiting","created_at":5}
+                ],"has_more":false}"#,
+            ),
+        ],
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.project_working_sessions(&project(Some("p1"), "Alpha"))),
+        Ok(3)
+    );
+    let reads: Vec<_> = core
+        .transport()
+        .taken()
+        .into_iter()
+        .filter(|request| path_of(request) == "/v1/sessions")
+        .collect();
+    assert_eq!(reads.len(), 2);
+    assert_eq!(query_value(&reads[0], "project").as_deref(), Some("Alpha"));
+    assert_eq!(
+        query_value(&reads[0], "include_archived").as_deref(),
+        Some("true")
+    );
+    assert!(core.transport().writes().is_empty(), "counting writes nothing");
+}
+
+#[test]
 fn deleting_archives_and_unfiles_members_and_keeps_the_project_on_failure() {
     let transport = RouteTransport::local();
     members_page(&transport);

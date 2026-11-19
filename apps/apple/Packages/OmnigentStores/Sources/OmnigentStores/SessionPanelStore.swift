@@ -1,5 +1,7 @@
+import Foundation
 public import Observation
 public import OmnigentCoreFFI
+public import OmnigentWorkspaceUI
 
 /// The right panel's server data for one session: which panel features the server offers
 /// (content search, stored pull requests), the session's linked pull requests, and the open
@@ -19,8 +21,30 @@ public final class SessionPanelStore {
   public internal(set) var openPullRequest: String?
   /// The open pull request's live detail.
   public internal(set) var detail: CreationLoad<PullRequestInfo> = .idle
-  /// The open pull request's changed files, parsed from its patch.
+  /// The open pull request's patch, parsed, pinned to the revision the detail shows.
   public internal(set) var files: CreationLoad<PullRequestFiles> = .idle
+  /// The open pull request's changed-file list, pinned to the same revision.
+  public internal(set) var changes: CreationLoad<PullRequestChanges> = .idle
+  /// Each pull request's Changes tab view, by URL, kept while the app runs.
+  public internal(set) var changesViews: [String: PullRequestChangesTabState] = [:]
+  /// Unchanged context read to expand the open pull request's files, by path.
+  public internal(set) var fileContext: [String: DiffContextState] = [:]
+  /// The open pull request's commits, at the head its list shows.
+  public internal(set) var commits: CreationLoad<PullRequestCommits> = .idle
+  /// Pull requests whose server or host lacks the commit routes.
+  public internal(set) var commitsUnsupported: Set<String> = []
+  /// The patch of the commit the Changes tab shows, or of the changes since a commit.
+  public internal(set) var commitPatch: CreationLoad<PullRequestFiles> = .idle
+  /// The session's local review comments on pull request diffs.
+  public internal(set) var localComments: CreationLoad<[LocalReviewComment]> = .idle
+  /// A local review comment the composer asked the Changes tab to show.
+  public internal(set) var localCommentTarget: LocalReviewComment?
+  /// The open pull request's detail should switch to its Changes tab.
+  public internal(set) var opensChangesTab = false
+  /// The Changes diff's layout, unified or side by side, kept across launches.
+  public var diffLayout: DiffLayoutMode {
+    didSet { preferences.set(diffLayout.rawValue, forKey: Self.diffLayoutKey) }
+  }
   /// The labels the open pull request's repository offers, read when the label menu opens.
   public internal(set) var repositoryLabels: CreationLoad<RepositoryLabels> = .idle
   /// Who a review can be requested from, read when the reviewer menu opens.
@@ -51,14 +75,35 @@ public final class SessionPanelStore {
   /// The poll found nothing to watch and stopped; the next read from outside restarts it.
   @ObservationIgnored var pollRests = false
   let pollTimer: any PullRequestPollTimer
+  /// The commit or "since" start ``commitPatch`` was read for.
+  @ObservationIgnored var commitPatchKey: String?
+  /// The listed head ``commits`` was read at.
+  @ObservationIgnored var commitsReadHead: String?
+  /// Bumps scroll requests so a repeated one is new.
+  @ObservationIgnored var scrollTokens = 0
+  /// Where viewed marks are kept on this device.
+  public let viewedMarks: PullRequestViewedMarks
+  /// The server and the signed-in user viewed marks are kept under; `nil` keeps none.
+  @ObservationIgnored public var viewedScope: (@MainActor () -> PullRequestViewedScope?)?
+  /// Attaches a new local review comment to the session's composer.
+  @ObservationIgnored public var attachReviewComment: (@MainActor (LocalReviewComment) -> Void)?
+  /// Takes a deleted local review comment off the session's composer.
+  @ObservationIgnored public var detachReviewComment: (@MainActor (String) -> Void)?
+  /// Where the new-thread card's destination choice is remembered.
+  let preferences: UserDefaults
 
   init(
     sessionID: String, core: ClientCore,
-    pollTimer: any PullRequestPollTimer = SystemPullRequestPollTimer()
+    pollTimer: any PullRequestPollTimer = SystemPullRequestPollTimer(),
+    viewedMarks: PullRequestViewedMarks = .shared, preferences: UserDefaults = .standard
   ) {
     self.sessionID = sessionID
     self.core = core
     self.pollTimer = pollTimer
+    self.viewedMarks = viewedMarks
+    self.preferences = preferences
+    diffLayout =
+      preferences.string(forKey: Self.diffLayoutKey).flatMap(DiffLayoutMode.init) ?? .unified
   }
 
   /// Whether the server stores pull requests; `false` until the features are read.
@@ -119,6 +164,12 @@ extension ConnectionStore {
   /// - Returns: The store, or `nil` when the core did not start.
   public func makePanelStore(_ sessionID: String) -> SessionPanelStore? {
     guard let core else { return nil }
-    return SessionPanelStore(sessionID: sessionID, core: core)
+    let store = SessionPanelStore(sessionID: sessionID, core: core)
+    store.viewedScope = { [weak self] in
+      self?.connectedServer.map {
+        PullRequestViewedScope(server: $0.baseUrl, user: $0.userId)
+      }
+    }
+    return store
   }
 }
