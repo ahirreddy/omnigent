@@ -483,7 +483,9 @@ fn a_stopping_run_shows_stopping_in_stops_place_and_offers_no_stop() {
     let view = tasks_view(&recorded(), &[], &BTreeSet::new(), stopping);
     assert!(view.stopping && !view.can_stop && !view.can_continue);
     assert!(
-        view.rows.iter().all(|row| row.action != Some(TaskAction::Stop)),
+        view.rows
+            .iter()
+            .all(|row| row.action != Some(TaskAction::Stop)),
         "a running task's menu offers no second Stop"
     );
     let view = tasks_view(&recorded(), &[], &BTreeSet::new(), WORKING);
