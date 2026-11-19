@@ -58,6 +58,16 @@ final class MacSidebarToggleFlowUITests: XCTestCase {
     SidebarToggleCheck(live: live, app: app).run(.menu)
   }
 
+  /// Option-Command-[ and the command palette's Toggle conversations sidebar.
+  @MainActor
+  func testPaletteCommandHidesAndShowsTheSidebar() {
+    let live = MacLiveUITestSupport(self)
+    let app = live.launchDemo()
+    defer { app.terminate() }
+    live.openDemo("demo-notes", in: app)
+    SidebarToggleCheck(live: live, app: app).run(.paletteKeys, .palette, rounds: 2)
+  }
+
   @MainActor
   func testToolbarButtonHidesAndShowsATintedSidebar() {
     let live = MacLiveUITestSupport(self)
@@ -87,6 +97,8 @@ private struct SidebarToggleCheck {
     case toolbar = "the toolbar's sidebar button"
     case keys = "Control-Command-S"
     case menu = "the View menu's sidebar item"
+    case paletteKeys = "Option-Command-["
+    case palette = "the command palette"
   }
 
   let live: MacLiveUITestSupport
@@ -147,6 +159,17 @@ private struct SidebarToggleCheck {
         return
       }
       XCTContext.runActivity(named: "View menu item: \(item.title)") { _ in item.click() }
+    case .paletteKeys:
+      app.typeKey("[", modifierFlags: [.command, .option])
+    case .palette:
+      let palette = live.element("command-palette", in: app)
+      app.typeKey("k", modifierFlags: .command)
+      XCTAssertTrue(palette.appears(within: 10), "no palette")
+      app.typeText("Toggle conversations sidebar")
+      let entry = live.element("palette-result-sidebar", in: app)
+      XCTAssertTrue(entry.appears(within: 10), "the palette has no sidebar entry")
+      app.typeKey(.return, modifierFlags: [])
+      XCTAssertTrue(palette.disappears(within: 10), "the palette stayed open")
     }
   }
 
