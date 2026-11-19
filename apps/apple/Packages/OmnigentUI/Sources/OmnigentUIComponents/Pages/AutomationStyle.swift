@@ -1,11 +1,5 @@
 import SwiftUI
 
-#if os(macOS)
-  import AppKit
-#else
-  import UIKit
-#endif
-
 /// The Automations screens' look: the system's text styles, materials, separators and radii,
 /// with color only where it means something (the accent for the primary action, green for
 /// active, red for a failure, each service's brand color on its mark).
@@ -61,97 +55,6 @@ extension View {
     #endif
   }
 }
-
-#if os(macOS)
-  /// The system's search field.
-  struct AutomationSearchField: NSViewRepresentable {
-    @Binding var text: String
-    var prompt = "Search automations"
-
-    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
-
-    func makeNSView(context: Context) -> NSSearchField {
-      let field = NSSearchField()
-      field.placeholderString = prompt
-      field.controlSize = .large
-      field.delegate = context.coordinator
-      field.setAccessibilityIdentifier("automations-search")
-      return field
-    }
-
-    func updateNSView(_ field: NSSearchField, context: Context) {
-      context.coordinator.text = $text
-      if field.stringValue != text { field.stringValue = text }
-    }
-
-    final class Coordinator: NSObject, NSSearchFieldDelegate {
-      var text: Binding<String>
-
-      init(text: Binding<String>) {
-        self.text = text
-      }
-
-      func controlTextDidChange(_ notification: Notification) {
-        guard let field = notification.object as? NSSearchField else { return }
-        text.wrappedValue = field.stringValue
-      }
-
-      /// The field's clear button, which empties it without a text change.
-      func searchFieldDidEndSearching(_ sender: NSSearchField) {
-        text.wrappedValue = ""
-      }
-    }
-  }
-#else
-  /// The system's search field.
-  struct AutomationSearchField: UIViewRepresentable {
-    @Binding var text: String
-    var prompt = "Search automations"
-
-    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
-
-    func makeUIView(context: Context) -> UISearchTextField {
-      let field = UISearchTextField()
-      field.placeholder = prompt
-      field.returnKeyType = .search
-      field.delegate = context.coordinator
-      field.addTarget(
-        context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
-      field.accessibilityIdentifier = "automations-search"
-      return field
-    }
-
-    func updateUIView(_ field: UISearchTextField, context: Context) {
-      context.coordinator.text = $text
-      if field.text != text { field.text = text }
-    }
-
-    /// The offered width at the field's own height, as the system's search bar.
-    func sizeThatFits(
-      _ proposal: ProposedViewSize, uiView field: UISearchTextField, context: Context
-    ) -> CGSize? {
-      let natural = field.intrinsicContentSize
-      return CGSize(width: proposal.width ?? natural.width, height: max(natural.height, 36))
-    }
-
-    final class Coordinator: NSObject, UITextFieldDelegate {
-      var text: Binding<String>
-
-      init(text: Binding<String>) {
-        self.text = text
-      }
-
-      @objc func textChanged(_ field: UISearchTextField) {
-        text.wrappedValue = field.text ?? ""
-      }
-
-      func textFieldShouldReturn(_ field: UITextField) -> Bool {
-        field.resignFirstResponder()
-        return true
-      }
-    }
-  }
-#endif
 
 /// A failure with an optional fix: a red warning label beside its button.
 struct AutomationErrorBanner: View {

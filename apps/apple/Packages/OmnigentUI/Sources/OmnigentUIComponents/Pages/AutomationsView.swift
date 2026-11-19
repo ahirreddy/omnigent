@@ -103,8 +103,8 @@ public struct AutomationsView: View {
   /// Paused segments.
   private func controls(hasAny: Bool) -> some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-      AutomationSearchField(text: $search)
-        .accessibilityIdentifier("automations-search")
+      SearchField("Search automations", text: $search, identifier: "automations-search")
+        .controlSize(.large)
       if hasAny {
         Picker("Filter automations", selection: $filter) {
           ForEach(AutomationsFilter.allCases) { Text($0.title).tag($0) }
