@@ -158,14 +158,7 @@ struct McpLaunchMenu: View {
         }
       }
     } label: {
-      HStack(spacing: Theme.Spacing.extraSmall) {
-        Image(systemName: "powerplug")
-          .foregroundStyle(state.needsSignInCount > 0 ? Theme.warning : .secondary)
-        Text(state.chipTitle)
-        if state.needsSignInCount > 0 {
-          Text("\u{00B7} \(state.needsSignInCount) needs sign-in").foregroundStyle(Theme.warning)
-        }
-      }
+      chipLabel(state)
     }
     .fixedSize()
     .help(
@@ -174,6 +167,26 @@ struct McpLaunchMenu: View {
     )
     .accessibilityLabel(Self.accessibilityLabel(state))
     .accessibilityIdentifier("new-session-mcp-services")
+  }
+
+  /// A label like the folder and worktree chips beside it; a service waiting on sign-in turns
+  /// the symbol into the warning one.
+  private func chipLabel(_ state: McpLaunchServices) -> some View {
+    let needs = state.needsSignInCount
+    return Label {
+      if needs > 0 {
+        let warning = Text("\u{00B7} \(needs) needs sign-in").foregroundStyle(Theme.warning)
+        Text("\(state.chipTitle) \(warning)")
+      } else {
+        Text(state.chipTitle)
+      }
+    } icon: {
+      if needs > 0 {
+        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning)
+      } else {
+        Image(systemName: "powerplug")
+      }
+    }
   }
 
   /// The chip's label, as the web's `aria-label`.

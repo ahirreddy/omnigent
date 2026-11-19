@@ -99,7 +99,7 @@ public struct RewindPickerSheet: View {
   private let state: RewindPickerState
   private let actions: RewindPickerActions
   @State private var query = ""
-  @FocusState private var searchFocused: Bool
+  @State private var searchFocused = false
 
   /// Creates the sheet.
   /// - Parameters:
@@ -116,31 +116,64 @@ public struct RewindPickerSheet: View {
 
   /// The sheet.
   public var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-      TextField("Rewind to a prompt\u{2026}", text: $query)
-        .textFieldStyle(.roundedBorder)
-        .focused($searchFocused)
-        .onSubmit { if let first = shown.first { actions.choose(first.id) } }
-        .accessibilityIdentifier("rewind-search")
-      content
-        .frame(maxWidth: .infinity, minHeight: 160, maxHeight: 360, alignment: .top)
-      HStack {
-        Spacer()
-        Button("Cancel", role: .cancel, action: actions.dismiss)
-          .keyboardShortcut(.cancelAction)
+    sheet
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("Rewind conversation")
+      .accessibilityHint(
+        "Choose a prompt. The conversation continues in a new chat from just before it, with the "
+          + "prompt ready to edit."
+      )
+      .accessibilityIdentifier("rewind-picker")
+  }
+
+  private func chooseFirst() {
+    if let first = shown.first { actions.choose(first.id) }
+  }
+
+  #if os(macOS)
+    /// A Mac sheet: the search field, the list in its bordered box, and Cancel at the bottom.
+    private var sheet: some View {
+      VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+        SearchField(
+          "Rewind to a prompt\u{2026}", text: $query, identifier: "rewind-search",
+          isFocused: $searchFocused, submit: chooseFirst,
+          escape: {
+            actions.dismiss()
+            return true
+          }
+        )
+        .accessibilityLabel("Rewind to a prompt")
+        content
+          .frame(maxWidth: .infinity, minHeight: 160, maxHeight: 360, alignment: .top)
+          // A list in a sheet sits in a bordered box, as an AppKit table in its scroll view.
+          .overlay { Rectangle().strokeBorder(.separator).allowsHitTesting(false) }
+        HStack {
+          Spacer()
+          Button("Cancel", role: .cancel, action: actions.dismiss)
+            .keyboardShortcut(.cancelAction)
+        }
+      }
+      .padding(Theme.Spacing.large)
+      .frame(minWidth: 460)
+      .onAppear { searchFocused = true }
+    }
+  #else
+    /// An iOS sheet: the list under a navigation bar with the search field and Cancel.
+    private var sheet: some View {
+      NavigationStack {
+        content
+          .searchable(text: $query, prompt: "Rewind to a prompt\u{2026}")
+          .onSubmit(of: .search, chooseFirst)
+          .navigationTitle("Rewind conversation")
+          .navigationBarTitleDisplayMode(.inline)
+          .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+              Button("Cancel", role: .cancel, action: actions.dismiss)
+            }
+          }
       }
     }
-    .padding(Theme.Spacing.large)
-    .frame(minWidth: 460)
-    .onAppear { searchFocused = true }
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("Rewind conversation")
-    .accessibilityHint(
-      "Choose a prompt. The conversation continues in a new chat from just before it, with the "
-        + "prompt ready to edit."
-    )
-    .accessibilityIdentifier("rewind-picker")
-  }
+  #endif
 
   @ViewBuilder private var content: some View {
     switch state.phase {
@@ -158,11 +191,16 @@ public struct RewindPickerSheet: View {
               Button {
                 actions.choose(prompt.id)
               } label: {
-                Text(Self.label(prompt))
-                  .lineLimit(1)
-                  .truncationMode(.tail)
-                  .frame(maxWidth: .infinity, alignment: .leading)
-                  .contentShape(Rectangle())
+                Label {
+                  Text(Self.label(prompt))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                } icon: {
+                  Image(systemName: Self.isAttachmentOnly(prompt) ? "paperclip" : "text.bubble")
+                    .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
               }
               .buttonStyle(.plain)
               .accessibilityIdentifier("rewind-prompt-\(prompt.id)")
@@ -171,9 +209,8 @@ public struct RewindPickerSheet: View {
         }
         // Shown whatever the search, so an older prompt stays reachable.
         if let older = olderTitle {
-          Button(older, action: actions.loadOlder)
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+          Button(older, systemImage: "clock.arrow.circlepath", action: actions.loadOlder)
+            .buttonStyle(.borderless)
             .disabled(state.older == .loading)
             .accessibilityIdentifier("rewind-load-older")
         }
@@ -197,11 +234,26 @@ public struct RewindPickerSheet: View {
     return text.isEmpty ? "(attachment)" : text
   }
 
+  /// A prompt of files alone, with no text.
+  static func isAttachmentOnly(_ prompt: RewindPickerState.Prompt) -> Bool {
+    prompt.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
+  /// Loading shows a spinner beside its words; a failure, the warning symbol.
   private func notice(_ text: String, failure: Bool = false) -> some View {
-    Text(text)
-      .font(.callout)
-      .foregroundStyle(failure ? Theme.failure : .secondary)
-      .frame(maxWidth: .infinity)
-      .padding(.vertical, Theme.Spacing.extraLarge)
+    Group {
+      if failure {
+        Label(text, systemImage: "exclamationmark.triangle.fill")
+          .foregroundStyle(Theme.failure)
+      } else {
+        HStack(spacing: Theme.Spacing.small) {
+          ProgressView().controlSize(.small)
+          Text(text).foregroundStyle(.secondary)
+        }
+      }
+    }
+    .font(.callout)
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, Theme.Spacing.extraLarge)
   }
 }
