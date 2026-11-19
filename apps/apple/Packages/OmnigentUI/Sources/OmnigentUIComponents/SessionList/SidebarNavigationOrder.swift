@@ -9,6 +9,13 @@ public enum SidebarNavigationOrder {
   /// Expanded project ids, newline-separated (the sidebar's `@AppStorage`).
   static let expandedProjectsKey = "omnigent:sidebar-expanded-projects"
 
+  /// The project folders the sidebar keeps open, as it saved them.
+  /// - Parameter defaults: Where the sidebar keeps them.
+  /// - Returns: Their ids.
+  public static func expandedProjects(defaults: UserDefaults = .standard) -> Set<String> {
+    lines(defaults.string(forKey: expandedProjectsKey))
+  }
+
   /// Session ids top to bottom, open sections and expanded projects only.
   /// - Parameters:
   ///   - state: The sidebar.

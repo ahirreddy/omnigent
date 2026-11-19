@@ -219,7 +219,10 @@ impl Engine {
                 self.attention_removed(&ids);
             }
             UpdatesFrame::HostsChanged => self.emit(CoreEvent::HostsChanged),
-            UpdatesFrame::ProjectsChanged => self.emit(CoreEvent::ProjectsChanged),
+            UpdatesFrame::ProjectsChanged => {
+                self.emit(CoreEvent::ProjectsChanged);
+                self.read_projects();
+            }
             UpdatesFrame::Heartbeat => {}
             UpdatesFrame::Unknown { frame_type, .. } => {
                 self.emit(CoreEvent::UnknownUpdate { frame_type });

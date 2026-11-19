@@ -137,11 +137,34 @@ impl HostedConnection {
         &mut self,
         transport: &T,
     ) -> Result<ConnectedServer, HostedAuthError> {
+        self.connect_knowing(transport, None).await
+    }
+
+    /// As [`Self::connect`], with the server's `/v1/info` when the caller read it a moment ago:
+    /// then only `/v1/me` is read.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::connect`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn connect_knowing<T: HttpTransport>(
+        &mut self,
+        transport: &T,
+        info: Option<ServerInfo>,
+    ) -> Result<ConnectedServer, HostedAuthError> {
         self.disconnect();
-        let info_response = transport
-            .send(self.build_request("GET", "/v1/info", &[], "application/json")?)
-            .await?;
-        let info = ServerInfo::from_json(&self.checked(&info_response)?.body)?;
+        let info = match info {
+            Some(info) => info,
+            None => {
+                let info_response = transport
+                    .send(self.build_request("GET", "/v1/info", &[], "application/json")?)
+                    .await?;
+                ServerInfo::from_json(&self.checked(&info_response)?.body)?
+            }
+        };
         let single_user = self.expects_single_user();
         if single_user {
             if !info.is_pure_single_user() {

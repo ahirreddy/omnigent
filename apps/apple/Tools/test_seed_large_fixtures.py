@@ -1,5 +1,6 @@
 """The large-data seed plans stable, varied sessions and transcripts the server accepts."""
 
+import collections
 import importlib.util
 import unittest
 from pathlib import Path
@@ -29,6 +30,26 @@ class PlanTests(unittest.TestCase):
         projects = {plan.project for plan in plans}
         self.assertEqual(projects, {None, *range(len(seed.PROJECT_NAMES))})
         self.assertGreater(max(plan.age_seconds for plan in plans), 59 * seed.DAY)
+
+
+class SidebarPlanTests(unittest.TestCase):
+    def test_sidebar_state_spreads_past_the_first_page(self):
+        plans = seed.plan_sidebar(seed.plan_sessions(400, 0, 500), 12, 160, 15, 40)
+        self.assertEqual(sum(plan.archived for plan in plans), 160)
+        self.assertEqual(sum(plan.pinned for plan in plans), 12)
+        self.assertFalse(any(plan.pinned and plan.archived for plan in plans))
+        families = collections.Counter(plan.family for plan in plans if plan.family)
+        self.assertEqual(len(families), 15)
+        self.assertEqual(set(families.values()), {3})
+        self.assertEqual(sum(plan.owner == "teammate" for plan in plans), 40)
+        self.assertEqual(len({plan.session_id for plan in plans}), len(plans))
+        older = sorted(plans, key=lambda plan: plan.age_seconds)[50:]
+        self.assertTrue(any(plan.pinned for plan in older))
+        self.assertTrue(any(plan.archived for plan in older))
+
+    def test_no_sidebar_state_leaves_the_plan_alone(self):
+        plans = seed.plan_sessions(30, 1, 300)
+        self.assertEqual(seed.plan_sidebar(plans, 0, 0, 0, 0), plans)
 
 
 class TranscriptTests(unittest.TestCase):

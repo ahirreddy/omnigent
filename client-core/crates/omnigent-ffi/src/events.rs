@@ -457,8 +457,33 @@ pub enum CoreEvent {
     },
     /// The server's host inventory changed.
     HostsChanged,
-    /// The server's project list changed.
+    /// The server's project list changed; the core reads it again ([`Self::ProjectsLoaded`]).
     ProjectsChanged,
+    /// The projects in display order, and how they sort: read on each connection and after
+    /// [`Self::ProjectsChanged`].
+    ProjectsLoaded {
+        /// The caller's projects.
+        projects: Vec<crate::sessions::ProjectSummary>,
+        /// How they sort.
+        sort_mode: crate::sidebar::ProjectSortMode,
+    },
+    /// The projects could not be read.
+    ProjectsFailed {
+        /// Why.
+        error: CoreError,
+    },
+    /// Every project folder's pages; sent whenever one of them changes.
+    ProjectFoldersChanged {
+        /// The folders with pages loaded or loading.
+        folders: Vec<crate::project_driver::ProjectFolderPaging>,
+    },
+    /// A folder page the app asked for could not be read.
+    ProjectFolderFailed {
+        /// The folder.
+        folder_id: String,
+        /// Why.
+        error: CoreError,
+    },
     /// The server could not be reached, and the session list and open sessions show what this
     /// device saved of `server_url` (the URL the app connected with); `None` once that ends (a
     /// connection, a sign-in screen, a disconnect or a sign-out). Sent before the saved list.

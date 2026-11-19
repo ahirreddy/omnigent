@@ -115,8 +115,9 @@ extension ConnectionStore {
     case .unreadChanged(let ids):
       let unread = Set(ids)
       if unread != sessionList.unreadIDs { sessionList.unreadIDs = unread }
-    case .sessionListPagingChanged(let hasMore, let isLoading):
-      sessionList.paging.pagingChanged(hasMore: hasMore, isLoading: isLoading)
+    case .sessionListPagingChanged, .projectsLoaded, .projectsFailed, .projectFoldersChanged,
+      .projectFolderFailed:
+      applyListPagesEvent(event)
     case .terminalsChanged(let id, let rows, let harness):
       terminals(id)?.apply(terminals: rows, harness: harness)
     case .browserActionRequested(let id, let actionID, let action, let args):
@@ -130,15 +131,31 @@ extension ConnectionStore {
     }
   }
 
-  /// Reads the projects and hosts of a server just connected to.
+  /// The list's pages, the projects and their folders, as the core read them.
+  private func applyListPagesEvent(_ event: CoreEvent) {
+    switch event {
+    case .sessionListPagingChanged(let hasMore, let isLoading):
+      sessionList.paging.pagingChanged(hasMore: hasMore, isLoading: isLoading)
+    case .projectsLoaded(let projects, let sortMode):
+      sessionList.projectsLoaded(projects, sortMode: sortMode)
+    case .projectsFailed(let error):
+      sessionList.projectsError = error
+    case .projectFoldersChanged(let folders):
+      sessionList.paging.foldersChanged(folders)
+    case .projectFolderFailed(_, let error):
+      sessionList.paging.reportFailure(error)
+    default:
+      break
+    }
+  }
+
+  /// Reads the hosts of a server just connected to; the core reads its projects.
   private func loadServerLists(_ server: ConnectedServer) {
     let list = sessionList
     let offlineHosts = notifications?.offlineHosts
     Task {
-      async let projects: Void = list.loadProjects()
       let hosts = await list.loadHosts(serverURL: server.baseUrl)
       offlineHosts?.observe(hosts)
-      await projects
     }
   }
 
@@ -163,9 +180,8 @@ extension ConnectionStore {
       hostsRevision += 1
       reloadHosts()
     case .projectsChanged:
+      // The core reads the projects again; `projectsLoaded` brings them.
       projectsRevision += 1
-      let list = sessionList
-      Task { await list.loadProjects() }
     case .unknownUpdate(let frameType):
       unknownUpdates.append(frameType)
       if unknownUpdates.count > 20 { unknownUpdates.removeFirst() }

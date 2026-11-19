@@ -3,7 +3,7 @@
 
 use omnigent_core as core;
 use omnigent_core::auth::endpoint::ServerEndpoint;
-use omnigent_core::auth::mode::{self, AuthenticationMode};
+use omnigent_core::auth::mode::{self, AuthenticationMode, ServerInfo};
 use omnigent_core::http::HttpTransport as _;
 use omnigent_core::server_url;
 use omnigent_protocol::manifest::ManifestAuth;
@@ -101,6 +101,10 @@ pub fn normalize_server_url(server_url: String, policy: UrlPolicy) -> Result<Str
     normalize(&server_url, policy).map(|url| server_url::display(&url))
 }
 
+/// How long a manifest or `/v1/info` read stands in for reading it again: the connect that
+/// follows a discovery reuses its manifest, and the identity check the mode's `/v1/info`.
+pub(crate) const RECENT_READ_MS: u64 = 30_000;
+
 /// A server whose manifest and `/v1/info` were read.
 #[derive(Debug, Clone)]
 pub(crate) struct Resolved {
@@ -113,6 +117,35 @@ pub(crate) struct Resolved {
     pub(crate) databricks_workspace: Option<Url>,
     /// Accounts mode with no administrator yet (`/v1/info` `needs_setup`).
     pub(crate) needs_setup: bool,
+    /// The `/v1/info` the mode came from and when it was read (monotonic ms).
+    pub(crate) info: Option<(ServerInfo, u64)>,
+}
+
+impl Resolved {
+    /// The `/v1/info` read less than [`RECENT_READ_MS`] before `now_ms`, for the identity check
+    /// to reuse.
+    pub(crate) fn recent_info(&self, now_ms: u64) -> Option<ServerInfo> {
+        self.info
+            .as_ref()
+            .filter(|(_, read_at_ms)| now_ms.saturating_sub(*read_at_ms) < RECENT_READ_MS)
+            .map(|(info, _)| info.clone())
+    }
+}
+
+/// A manifest [`discover`] read, kept for the connect that follows it.
+#[derive(Debug, Clone)]
+pub(crate) struct RecentManifest {
+    pub(crate) url: Url,
+    pub(crate) discovery: core::ServerDiscovery,
+    pub(crate) read_at_ms: u64,
+}
+
+impl RecentManifest {
+    /// The manifest, when it was read for `url` less than [`RECENT_READ_MS`] before `now_ms`.
+    fn reusable(self, url: &Url, now_ms: u64) -> Option<core::ServerDiscovery> {
+        (self.url == *url && now_ms.saturating_sub(self.read_at_ms) < RECENT_READ_MS)
+            .then_some(self.discovery)
+    }
 }
 
 /// A discovery for a server inside a Databricks workspace. Its routes (the manifest and
@@ -162,13 +195,21 @@ pub(crate) async fn discover(
     Ok((url, discovery))
 }
 
-/// The manifest, then `/v1/info`, then the mode.
+/// The manifest (`recent`'s, when it is for this URL and recent), then `/v1/info`, then the
+/// mode. `now_ms` is the monotonic clock.
 pub(crate) async fn resolve(
     transport: &CoreTransport,
     raw: &str,
     policy: UrlPolicy,
+    recent: Option<RecentManifest>,
+    now_ms: u64,
 ) -> Result<Resolved, CoreError> {
-    let (url, discovery) = discover(transport, raw, policy).await?;
+    let url = normalize(raw, policy)?;
+    let known = recent.and_then(|recent| recent.reusable(&url, now_ms));
+    let (url, discovery) = match known {
+        Some(discovery) => (url, discovery),
+        None => discover(transport, raw, policy).await?,
+    };
     let endpoint = ServerEndpoint::new(&discovery.base_url).map_err(CoreError::from)?;
     if server_url::is_databricks_workspace(&url) {
         return Ok(Resolved {
@@ -178,6 +219,7 @@ pub(crate) async fn resolve(
             mode: AuthenticationMode::Proxy,
             manifest_auth: None,
             needs_setup: false,
+            info: None,
         });
     }
     let manifest_auth = discovery.auth_mode.clone().map(|mode| ManifestAuth {
@@ -189,15 +231,16 @@ pub(crate) async fn resolve(
         .send(mode::info_request(&endpoint).map_err(CoreError::from)?)
         .await
         .map_err(CoreError::from)?;
-    let info = mode::discovery_from_info_response(&endpoint, manifest_auth.as_ref(), &response)
-        .map_err(CoreError::from)?;
+    let info = mode::info_from_response(&response).map_err(CoreError::from)?;
+    let resolved = mode::discovery_from_info(&endpoint, manifest_auth.as_ref(), &info);
     Ok(Resolved {
         discovery,
         endpoint,
-        mode: info.mode,
+        mode: resolved.mode,
         manifest_auth,
         databricks_workspace: None,
-        needs_setup: info.needs_setup,
+        needs_setup: resolved.needs_setup,
+        info: Some((info, now_ms)),
     })
 }
 

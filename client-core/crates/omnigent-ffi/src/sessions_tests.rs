@@ -485,42 +485,6 @@ fn projects_list_create_rename_and_delete() {
 }
 
 #[test]
-fn a_project_page_reads_its_sessions_and_cursor() {
-    let mut harness = connected();
-    harness.http.route(
-        "/v1/sessions",
-        json(
-            200,
-            r#"{"data":[{"id":"a","status":"idle","created_at":7,"owner":"me","project_id":"p1"}],
-                "has_more":true,"last_id":"a"}"#,
-        ),
-    );
-    let project = ProjectSummary {
-        id: Some("p1".into()),
-        name: "Alpha".into(),
-        icon: None,
-    };
-    let page = harness
-        .call({
-            let project = project.clone();
-            move |core| async move { core.project_sessions(project, Some("prev".into())).await }
-        })
-        .unwrap();
-    assert_eq!(page.sessions[0].id, "a");
-    assert_eq!(page.next_cursor.as_deref(), Some("a"));
-    assert_eq!(harness.last_query("project").as_deref(), Some("Alpha"));
-    assert_eq!(harness.last_query("after").as_deref(), Some("prev"));
-    assert_eq!(harness.last_query("limit").as_deref(), Some("20"));
-
-    harness.http.route("/v1/sessions", json(500, "{}"));
-    assert!(
-        harness
-            .call(move |core| async move { core.project_sessions(project, None).await })
-            .is_err()
-    );
-}
-
-#[test]
 fn a_search_picks_its_scope_and_reads_the_snippet() {
     let mut harness = connected();
     harness.http.route(

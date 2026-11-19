@@ -55,6 +55,8 @@ public final class ServerSession {
     remoteBrowser: (any RemoteBrowserConnecting)? = nil
   ) {
     self.connection = connection
+    // Before the first connect, so the open folders load beside the list's first page.
+    connection.sessionList.paging.setOpenFolders(SidebarNavigationOrder.expandedProjects())
     signIn = SignInController(store: connection, opener: opener)
     remoteBrowsers = (remoteBrowser ?? RemoteBrowserAvailability.connector(core: connection.core))
       .map { RemoteBrowserTabs(connector: $0) }

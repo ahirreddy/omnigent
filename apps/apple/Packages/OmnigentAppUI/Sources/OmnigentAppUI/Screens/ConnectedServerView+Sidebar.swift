@@ -200,9 +200,8 @@ extension ConnectedServerView {
     actions.live = SidebarAdapter.live(connection.sessionList, pages: connection.pages)
     let paging = connection.sessionList.paging
     actions.loadMoreSessions = { paging.loadMore() }
-    actions.loadProjectPage = { project in
-      Task { await paging.loadProject(ProjectSummary(project), id: project.id) }
-    }
+    actions.loadProjectPage = { project in paging.loadProject(ProjectSummary(project)) }
+    actions.setOpenProjects = { folderIDs in paging.setOpenFolders(folderIDs) }
     return withGroupSortActions(withProjectActions(actions))
   }
 

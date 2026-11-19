@@ -8,6 +8,7 @@ so a message sent to one streams a reply into a long transcript.
 """
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import time
@@ -45,6 +46,12 @@ class SessionPlan:
     age_seconds: int
     turns: int
     long: bool
+    pinned: bool = False
+    archived: bool = False
+    # The family's id (its first member's session id) for a session in a sibling family.
+    family: str | None = None
+    # Who owns it; a session another user owns is shared with "local" to read.
+    owner: str = "local"
 
 
 @dataclass(frozen=True)
@@ -91,6 +98,48 @@ def plan_sessions(count: int, long_count: int, long_turns: int) -> list[SessionP
             )
         )
     return plans
+
+
+def plan_sidebar(
+    plans: list[SessionPlan], pinned: int, archived: int, families: int, shared: int
+) -> list[SessionPlan]:
+    """The short sessions with sidebar state spread over every age, so some of each falls past
+    the first page: every third of the archived and pinned sessions, families of three, then
+    sessions a teammate owns and shares."""
+    short = [index for index, plan in enumerate(plans) if not plan.long]
+    result = list(plans)
+
+    def spread(candidates: list[int], count: int, offset: int) -> list[int]:
+        if count <= 0 or not candidates:
+            return []
+        step = max(1, len(candidates) // count)
+        return candidates[offset % step :: step][:count]
+
+    for index in spread(short, archived, 1):
+        result[index] = dataclasses.replace(result[index], archived=True)
+    active = [index for index in short if not result[index].archived]
+    for index in spread(active, pinned, 2):
+        result[index] = dataclasses.replace(result[index], pinned=True)
+    free = [index for index in active if not result[index].pinned]
+    for group in spread(free[::3], families, 0):
+        members = [index for index in free if group <= index][:3]
+        family = result[members[0]].session_id
+        for index in members:
+            result[index] = dataclasses.replace(result[index], family=family)
+    for index in range(shared):
+        topic = TOPICS[index % len(TOPICS)]
+        result.append(
+            SessionPlan(
+                session_id=fixed_id("perf-shared", index),
+                title=f"Shared: {topic} #{index + 1}",
+                project=None,
+                age_seconds=900 + (index * 30 * DAY) // max(shared, 1),
+                turns=1,
+                long=False,
+                owner="teammate",
+            )
+        )
+    return result
 
 
 def code_block(turn: int, lines: int) -> str:
@@ -313,6 +362,10 @@ def main() -> None:
     parser.add_argument("--sessions", type=int, default=320)
     parser.add_argument("--long", type=int, default=3, help="how many long transcripts")
     parser.add_argument("--long-turns", type=int, default=500, help="turns in the first long one")
+    parser.add_argument("--pinned", type=int, default=0, help="short sessions to pin")
+    parser.add_argument("--archived", type=int, default=0, help="short sessions to archive")
+    parser.add_argument("--families", type=int, default=0, help="families of three siblings")
+    parser.add_argument("--shared", type=int, default=0, help="sessions a teammate shares")
     args = parser.parse_args()
     seed(args)
 
@@ -331,7 +384,7 @@ def seed(args: argparse.Namespace) -> None:
 
     from sqlalchemy import update
 
-    from omnigent.db.db_models import SqlConversation
+    from omnigent.db.db_models import SqlConversation, SqlConversationMetadata
     from omnigent.db.utils import get_or_create_engine
     from omnigent.entities import (
         FunctionCallData,
@@ -340,6 +393,7 @@ def seed(args: argparse.Namespace) -> None:
         NewConversationItem,
         ReasoningData,
     )
+    from omnigent.stores.conversation_store import pinned_label_key
     from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
     from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
 
@@ -352,14 +406,24 @@ def seed(args: argparse.Namespace) -> None:
     uri = f"sqlite:///{database}"
     agent = mock_agent(args.server)
     projects = ensure_projects(args.server)
-    host_id = online_host(args.server)
+    # Only the long sessions run on a host.
+    host_id = online_host(args.server) if args.long else None
     conversations = SqlAlchemyConversationStore(uri)
     permissions = SqlAlchemyPermissionStore(uri)
     permissions.ensure_user("local")
+    if args.shared:
+        permissions.ensure_user("teammate")
     engine = get_or_create_engine(uri)
     now = int(time.time())
     created = 0
-    for plan in plan_sessions(args.sessions, args.long, args.long_turns):
+    plans = plan_sidebar(
+        plan_sessions(args.sessions, args.long, args.long_turns),
+        args.pinned,
+        args.archived,
+        args.families,
+        args.shared,
+    )
+    for plan in plans:
         existing = conversations.get_conversation(plan.session_id)
         if existing is not None:
             if existing.title != plan.title:
@@ -392,16 +456,35 @@ def seed(args: argparse.Namespace) -> None:
         if batch:
             conversations.append(plan.session_id, batch)
         stamp = now - plan.age_seconds
+        if plan.pinned:
+            # The single-user server keys pins by the "local" user.
+            conversations.set_labels(
+                plan.session_id, {pinned_label_key("local"): str(stamp * 1000)}
+            )
         with engine.begin() as connection:
             connection.execute(
                 update(SqlConversation)
                 .where(SqlConversation.workspace_id == 0, SqlConversation.id == plan.session_id)
-                .values(created_at=stamp, updated_at=stamp)
+                .values(created_at=stamp, updated_at=stamp, archived=plan.archived)
             )
-        permissions.grant("local", plan.session_id, 4)
+            if plan.family is not None:
+                connection.execute(
+                    update(SqlConversationMetadata)
+                    .where(
+                        SqlConversationMetadata.workspace_id == 0,
+                        SqlConversationMetadata.id == plan.session_id,
+                    )
+                    .values(family_id=plan.family)
+                )
+        if plan.owner == "local":
+            permissions.grant("local", plan.session_id, 4)
+        else:
+            permissions.grant(plan.owner, plan.session_id, 4)
+            permissions.grant("local", plan.session_id, 1)
         created += 1
     print(
-        f"Seeded {created} new sessions ({args.sessions} short, {args.long} long planned) "
+        f"Seeded {created} new sessions ({args.sessions} short, {args.long} long, "
+        f"{args.shared} shared planned) "
         f"in {len(projects)} projects. No host, runner or model was started."
     )
 
