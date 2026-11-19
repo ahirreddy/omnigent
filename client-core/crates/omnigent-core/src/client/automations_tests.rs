@@ -10,7 +10,7 @@ use super::super::test_support::{
 use super::{
     Automation, AutomationDraft, AutomationFilter, AutomationGrant, AutomationRunStatus,
     AutomationState, RunPullRequestStatus, ServerPages, arrange_automations, automation_from,
-    describe_run_failure, draft_body, format_cost_usd, format_run_duration, parse_cost_limit,
+    automation_share_disabled_reason, describe_run_failure, draft_body, format_cost_usd, format_run_duration, parse_cost_limit,
     run_from, run_pull_requests_summary,
 };
 
@@ -46,6 +46,7 @@ fn automation(id: &str, name: &str, state: AutomationState, next: Option<i64>) -
         source_session_id: None,
         shared_with_me: false,
         owner_name: "another user".into(),
+        shareable: true,
     }
 }
 
@@ -651,6 +652,8 @@ fn decodes_mains_task_fields() {
     assert_eq!(trigger.source_session_id.as_deref(), Some("copy1"));
     assert!(trigger.shared_with_me);
     assert_eq!(trigger.owner_name, "ana@example.com");
+    // A server older than `shareable` can share every automation.
+    assert!(trigger.shareable);
     // A rendered prompt on a new-session automation runs on its schedule.
     let scheduled = automation_from(
         &json!({"id": "t", "name": "Jira", "rrule": "x", "state": "active",
@@ -658,6 +661,11 @@ fn decodes_mains_task_fields() {
     )
     .unwrap();
     assert!(!scheduled.is_trigger && !scheduled.shared_with_me);
+    let legacy = automation_from(
+        &json!({"id": "t", "name": "Old", "rrule": "x", "state": "active", "shareable": false}),
+    )
+    .unwrap();
+    assert!(!legacy.shareable);
     assert_eq!(scheduled.max_cost_usd.as_deref(), Some("5"));
     assert_eq!(scheduled.owner_name, "Ana");
     assert!(
@@ -908,4 +916,18 @@ fn reads_shared_automations_run_pull_requests_and_grants() {
         block_on(core.grant_automation_access("t1", "a/b")),
         Err(SessionError::InvalidIdentifier { .. })
     ));
+}
+
+#[test]
+fn share_shows_disabled_with_why() {
+    assert_eq!(automation_share_disabled_reason(false, true), None);
+    assert_eq!(
+        automation_share_disabled_reason(false, false),
+        Some("This is a legacy automation. Recreate it to share it.")
+    );
+    // Sharing off is the reason given when both apply, as the server refuses for it first.
+    assert_eq!(
+        automation_share_disabled_reason(true, false),
+        Some("Sharing has been disabled for this Omnigent server.")
+    );
 }

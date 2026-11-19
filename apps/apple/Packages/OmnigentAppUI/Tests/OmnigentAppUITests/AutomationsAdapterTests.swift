@@ -37,6 +37,17 @@ struct AutomationsAdapterTests {
       ])
   }
 
+  @Test("Share shows disabled on a legacy automation the server can't keep grants for")
+  func legacyShare() {
+    var legacy = automation(rrule: "FREQ=DAILY")
+    #expect(legacy.shareable)
+    #expect(ShareAdapter.unavailableReason(nil, automation: legacy) == nil)
+    legacy.shareable = false
+    #expect(
+      ShareAdapter.unavailableReason(nil, automation: legacy)
+        == "This is a legacy automation. Recreate it to share it.")
+  }
+
   @Test("An editable rule round-trips through the editor; the saved zone is kept")
   func editableRule() {
     let rule = "FREQ=WEEKLY;BYDAY=MO,FR;BYHOUR=8;BYMINUTE=30"

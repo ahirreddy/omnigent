@@ -59,7 +59,8 @@ enum AutomationsMapping {
       row.sharedBy = automation.ownerName
     } else if pages.offered?.automationSharing == true {
       row.canShare = true
-      row.shareDisabledReason = ShareAdapter.unavailableReason(pages.offered)
+      row.shareDisabledReason = ShareAdapter.unavailableReason(
+        pages.offered, automation: automation)
     }
     return row
   }

@@ -77,6 +77,7 @@ fn saved(id: &str, name: &str, state: AutomationState, next_run_at: Option<i64>)
         source_session_id: Some("copy".into()),
         shared_with_me: true,
         owner_name: "Ana".into(),
+        shareable: false,
     }
 }
 

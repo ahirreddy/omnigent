@@ -207,7 +207,7 @@ struct AutomationsAdapter: View {
   private func shareAction(_ pages: PagesStore, automation: Automation) -> (@MainActor () -> Void)?
   {
     guard pages.offered?.automationSharing == true, !automation.sharedWithMe,
-      ShareAdapter.unavailableReason(pages.offered) == nil
+      ShareAdapter.unavailableReason(pages.offered, automation: automation) == nil
     else { return nil }
     let target = SharingTarget(id: automation.id, continuesSession: automation.continuesSession)
     return { sharing = target }
