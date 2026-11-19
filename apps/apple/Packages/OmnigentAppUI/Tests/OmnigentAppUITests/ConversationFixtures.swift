@@ -32,6 +32,7 @@ enum ConversationFixtures {
       try await Task.sleep(for: .milliseconds(5))
     }
     try #require(connection.sessionList.isLoaded)
+    try await offeredPagesRead(connection)
     return connection
   }
 

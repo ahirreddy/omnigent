@@ -67,11 +67,7 @@ final class SidebarStateMemo: SessionListFollower {
     cached = state
     isStale = false
     builds += 1
-    if SidebarLoadSignposts.isEnabled {
-      // After the pass that draws this state: the main queue's next turn.
-      let detail = Self.signpostDetail(state)
-      DispatchQueue.main.async { SidebarLoadSignposts.mark("sidebar drawn", detail) }
-    }
+    if SidebarLoadSignposts.isEnabled { Self.markDrawn(Self.signpostDetail(state)) }
     return state
   }
 
@@ -88,6 +84,17 @@ final class SidebarStateMemo: SessionListFollower {
       list: list, display: inputs.display, sorts: inputs.sorts, server: inputs.server,
       servers: inputs.servers)
     if SidebarArrangement(next) != SidebarArrangement(cached) { rearrangements += 1 }
+  }
+
+  /// Marks "sidebar drawn" once the main thread has laid out and committed the frame this state
+  /// shows in: after Core Animation's own observer (2 000 000) as the loop next waits. The main
+  /// queue's next turn can come before that frame.
+  private static func markDrawn(_ detail: String) {
+    let activities = CFRunLoopActivity.beforeWaiting.rawValue | CFRunLoopActivity.exit.rawValue
+    let observer = CFRunLoopObserverCreateWithHandler(nil, activities, false, 2_500_000) { _, _ in
+      SidebarLoadSignposts.mark("sidebar drawn", detail)
+    }
+    CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
   }
 
   /// The counts a sidebar build's signpost carries.

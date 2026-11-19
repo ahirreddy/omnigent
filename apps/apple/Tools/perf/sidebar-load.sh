@@ -170,6 +170,9 @@ for run in $(seq 1 "$runs"); do
   kill "$proxy_pid" "$stream_pid" 2> /dev/null || true
   report "launch $run" "$log" "$launched" "$signposts"
   if ((sample)) && [[ -s "$runtime/sample-$run.txt" ]]; then
+    # A test VM's shared results folder, where the host can read the whole call tree.
+    shared="/Volumes/My Shared Files/results"
+    if [[ -d "$shared" ]]; then cp "$runtime/sample-$run.txt" "$shared/sidebar-load-sample-$run.txt"; fi
     python3 apps/apple/Tools/perf/sample-breakdown.py "$runtime/sample-$run.txt" --top 40 \
       --frames 'SidebarView|SidebarAdapter|SessionListStore|ConnectionStore|SessionIndex|ProjectFolder|SessionRow'
   fi

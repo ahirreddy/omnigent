@@ -48,7 +48,8 @@ struct ServerWindowRoot: View {
     .appearanceSettings(services.theme)
     // Controls take the theme's accent, or the system's under Use system accent.
     .omnigentAppearance(services.theme)
-    .task { start() }
+    // Connects as the session is made, so a saved list can show before a sign-in screen does.
+    .task(id: id.serverURL) { await connectBoundServer(start(), force: false) }
   }
 
   /// "Use This Mac" in Connect a Host: hosts for the server where the edition runs the CLI.
@@ -104,7 +105,6 @@ struct ServerWindowRoot: View {
     .windowFrameAutosave()
     .background { UnsavedEditsWindowAccessor(session: session).frame(width: 0, height: 0) }
     .onDisappear { services.windowClosed(id.instance) }
-    .task(id: id.serverURL) { await connectBoundServer(session, force: false) }
     .onChange(of: id.serverURL) { _, url in
       // Back on the server list: show the servers connected to since the window opened.
       if url == nil { session.signIn.directory = services.serverDirectory() }
@@ -113,13 +113,14 @@ struct ServerWindowRoot: View {
   }
 
   /// Creates the window's session once and binds its sign-in to the window.
-  private func start() {
-    guard session == nil else { return }
+  /// - Returns: The window's session.
+  private func start() -> ServerSession {
+    if let session { return session }
     let session = services.makeServerSession()
     configure(session)
     self.session = session
     let localServer = desktop.localServer
-    guard localServer.capability.isAvailable else { return }
+    guard localServer.capability.isAvailable else { return session }
     if Self.resumesLocalServer(
       boundTo: id.serverURL, isDemo: services.isDemo,
       localServerIsRunning: localServer.server.endpoint != nil,
@@ -127,6 +128,7 @@ struct ServerWindowRoot: View {
     {
       session.signIn.resumeLocalServer()
     }
+    return session
   }
 
   /// Binds a new session's sign-in to this window and the app's services.

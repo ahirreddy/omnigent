@@ -199,26 +199,40 @@ extension View {
 
   /// A nested row's connector, laid on the row from its family's leading edge (before its
   /// step): down from the row's top to its mark's midline (its middle while the title is
-  /// edited), and on down when it `continues`.
-  func sessionFamilyConnector(rowHeight: CGFloat, continues: Bool) -> some View {
+  /// edited), and on down when it continues. Every row has the overlay, drawn only for a
+  /// nested one, so a row is one view of one type and the list builds it only when it shows.
+  func sessionFamilyConnector(rowHeight: CGFloat, family: SessionRowFamily) -> some View {
     overlayPreferenceValue(SessionMarkAnchor.self, alignment: .topLeading) { anchor in
-      GeometryReader { proxy in
-        let midline = anchor.map { proxy[$0].midY } ?? proxy.size.height / 2
-        // The list centers a short row's content; the connector reaches the row's edges.
-        let beyond = max(0, (rowHeight - proxy.size.height) / 2)
-        SessionFamilyConnector(
-          turn: midline + beyond, continues: continues,
-          cornerRadius: SessionFamilyMetrics.connectorRadius
-        )
-        .stroke(Theme.mutedText.opacity(0.4), lineWidth: 1)
-        .frame(
-          width: SessionFamilyMetrics.connectorEnd - SessionFamilyMetrics.connectorX,
-          height: proxy.size.height + beyond * 2
-        )
-        .offset(x: SessionFamilyMetrics.connectorX, y: -beyond)
+      if case .nested(let continues) = family {
+        SessionFamilyConnectorLine(anchor: anchor, rowHeight: rowHeight, continues: continues)
       }
-      .allowsHitTesting(false)
-      .accessibilityHidden(true)
     }
+  }
+}
+
+/// A nested row's connector line, meeting the row's mark at `anchor`.
+private struct SessionFamilyConnectorLine: View {
+  let anchor: Anchor<CGRect>?
+  let rowHeight: CGFloat
+  let continues: Bool
+
+  var body: some View {
+    GeometryReader { proxy in
+      let midline = anchor.map { proxy[$0].midY } ?? proxy.size.height / 2
+      // The list centers a short row's content; the connector reaches the row's edges.
+      let beyond = max(0, (rowHeight - proxy.size.height) / 2)
+      SessionFamilyConnector(
+        turn: midline + beyond, continues: continues,
+        cornerRadius: SessionFamilyMetrics.connectorRadius
+      )
+      .stroke(Theme.mutedText.opacity(0.4), lineWidth: 1)
+      .frame(
+        width: SessionFamilyMetrics.connectorEnd - SessionFamilyMetrics.connectorX,
+        height: proxy.size.height + beyond * 2
+      )
+      .offset(x: SessionFamilyMetrics.connectorX, y: -beyond)
+    }
+    .allowsHitTesting(false)
+    .accessibilityHidden(true)
   }
 }
