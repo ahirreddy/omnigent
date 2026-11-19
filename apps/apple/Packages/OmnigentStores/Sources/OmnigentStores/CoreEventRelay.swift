@@ -16,6 +16,9 @@ nonisolated final class CoreEventRelay: CoreListener, Sendable {
   }
 
   func onEvent(event: CoreEvent) {
+    if SidebarLoadSignposts.isEnabled, let kind = SidebarLoadSignposts.kind(of: event) {
+      SidebarLoadSignposts.mark("core event", kind)
+    }
     sent.withLock { count in
       continuation.yield(event)
       count += 1

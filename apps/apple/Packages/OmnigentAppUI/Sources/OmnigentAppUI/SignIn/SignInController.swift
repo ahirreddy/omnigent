@@ -160,6 +160,7 @@ public final class SignInController {
       return
     }
     lastServerUrl = serverURL
+    SidebarLoadSignposts.mark("connect")
     do {
       let phase = try await core.connect(
         serverUrl: serverURL, expectedUserId: accounts.user(for: serverURL))

@@ -5,6 +5,14 @@ extension ConnectionStore {
     eventsApplied += 1
     defer { if !eventWaiters.isEmpty { resumeEventWaiters() } }
     logSavedCopyFailure(event)
+    guard SidebarLoadSignposts.isEnabled, let kind = SidebarLoadSignposts.kind(of: event) else {
+      applyEvent(event)
+      return
+    }
+    SidebarLoadSignposts.measure("list event", detail: { _ in kind }, { applyEvent(event) })
+  }
+
+  private func applyEvent(_ event: CoreEvent) {
     switch event {
     case .connectionChanged(let phase):
       connectionChanged(phase)
