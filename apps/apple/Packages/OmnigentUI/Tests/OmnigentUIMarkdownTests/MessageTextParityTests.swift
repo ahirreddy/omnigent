@@ -29,7 +29,15 @@
       ("table", Self.table(rows: 4)),
       ("inline", "Calls `process(batch:)` once per item; see [the note](https://example.com/n)."),
       ("answer", Self.answer),
+      ("question reply", Self.questionReply),
     ]
+
+    /// A reply to two agent questions, the second unnamed: its quoted questions are small lines.
+    nonisolated static let questionReply =
+      QuestionReplyMarkdown.text([
+        QuestionReply(question: "Did you click Run after signing in?", answer: "Yes, I did"),
+        QuestionReply(answer: "Ship it on **Friday**."),
+      ]) ?? ""
 
     nonisolated static func code(lines: Int) -> String {
       (1...lines).map { "let value\($0) = \($0)" }.joined(separator: "\n")

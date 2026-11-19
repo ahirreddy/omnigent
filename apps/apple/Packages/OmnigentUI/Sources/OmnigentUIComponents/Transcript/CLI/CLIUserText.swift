@@ -5,11 +5,29 @@ nonisolated extension UserPrompt {
   struct Run: Hashable, Sendable {
     let text: String
     let isQuote: Bool
+    /// A reply's quoted question, `↪ Re: <question>`, over its answer.
+    var isQuestion = false
+  }
+
+  /// The text `row`'s prompt draws from: a reply to an agent's questions as its reply's text
+  /// (``QuestionReplyMarkdown``), any other prompt as its text.
+  static func source(_ row: Row) -> String {
+    QuestionReplyMarkdown.text(row.questionReplies) ?? row.text
   }
 
   /// `text` split into plain and block-quote runs, as a reply that quotes the transcript sends
-  /// it. Lines inside fenced code are never quotes.
+  /// it. Lines inside fenced code are never quotes. A reply's text gives each question's quoted
+  /// line and then its answer as typed.
   static func runs(_ text: String) -> [Run] {
+    let replies = QuestionReplyMarkdown.replies(in: text)
+    if !replies.isEmpty {
+      return replies.flatMap { reply in
+        let answer = Run(text: reply.answer, isQuote: false)
+        guard let question = reply.question else { return [answer] }
+        let quoted = QuestionReplyMarkdown.quotePrefix + question
+        return [Run(text: quoted, isQuote: false, isQuestion: true), answer]
+      }
+    }
     guard text.contains(">") else { return [Run(text: text, isQuote: false)] }
     var runs: [Run] = []
     var lines: [Substring] = []
@@ -41,7 +59,7 @@ nonisolated extension UserPrompt {
 }
 
 /// A user prompt in CLI style: the text as typed, with quoted transcript text (a reply's quote
-/// blocks) set off by a bar in the quote color.
+/// blocks) set off by a bar in the quote color, and an answered question's quoted line dim.
 struct CLIUserText: View {
   let text: String
   @Environment(\.cliPalette) private var palette
@@ -53,7 +71,10 @@ struct CLIUserText: View {
     } else {
       VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         ForEach(Array(runs.enumerated()), id: \.offset) { _, run in
-          if run.isQuote {
+          if run.isQuestion {
+            CLISourceText(text: run.text, tintsMarkdown: false, color: \.dim)
+              .accessibilityIdentifier("question-reply-quote")
+          } else if run.isQuote {
             CLISourceText(text: run.text, tintsMarkdown: false, color: \.quote)
               .padding(.leading, Theme.Spacing.small)
               .overlay(alignment: .leading) {

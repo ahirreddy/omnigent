@@ -290,7 +290,7 @@ nonisolated struct CLITextBuilder {
   // MARK: Prompts
 
   /// A user's prompt as ``CLIUserText`` draws it: the text as typed, quoted runs in the quote
-  /// color beside a bar, a small gap apart.
+  /// color beside a bar, an answered question's quoted line dim, a small gap apart.
   private mutating func prompt(_ text: String) -> CLITextNode {
     let runs = UserPrompt.runs(text)
     if runs.count == 1, let only = runs.first, !only.isQuote {
@@ -300,7 +300,9 @@ nonisolated struct CLITextBuilder {
     var items: [CLITextStackItem] = []
     for (index, run) in runs.enumerated() {
       let node: CLITextNode
-      if run.isQuote {
+      if run.isQuestion {
+        node = source(run.text, color: palette.dim, tintsMarkdown: false, indent: 0)
+      } else if run.isQuote {
         node = .bar(
           source(run.text, color: palette.quote, tintsMarkdown: false, indent: gap), leading: 0,
           color: palette.quote)

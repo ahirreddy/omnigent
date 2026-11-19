@@ -164,6 +164,10 @@ nonisolated struct MessageTextBuilder {
 
   /// A paragraph, or a heading at `level`.
   private mutating func prose(_ text: AttributedString, level: Int?, in context: Context) {
+    if level == nil, text.isQuestionReplyQuote {
+      questionQuote(text, in: context)
+      return
+    }
     guard let level else {
       let content = inline(
         text, size: ramp.body, codeSize: ramp.code, color: context.color, setsMath: true)
@@ -185,6 +189,20 @@ nonisolated struct MessageTextBuilder {
       Paragraph(
         content: content, lineHeight: ramp.headingLineHeight(level),
         font: palette.font(size: size, weight: .semibold), indent: context.indent),
+      in: context)
+  }
+
+  /// A reply's quoted question (``QuestionReplyMarkdown``): small, in the secondary color, as
+  /// ``QuestionReplyQuoteLine`` draws it.
+  private mutating func questionQuote(_ text: AttributedString, in context: Context) {
+    let size = ramp.questionQuote
+    let content = inline(
+      text, size: size, codeSize: (size * TypeRamp.codeScale).rounded(.down),
+      color: palette.secondary)
+    emit(
+      Paragraph(
+        content: content, lineHeight: ramp.questionQuoteLineHeight,
+        font: palette.font(size: size), indent: context.indent),
       in: context)
   }
 

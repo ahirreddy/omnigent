@@ -5,6 +5,8 @@
 //! Every visible string goes through the protocol crate's safe display, so credentials, private
 //! reasoning and embedded bytes never reach a row.
 
+use std::borrow::Cow;
+
 use omnigent_protocol::content::{self, ContentPart};
 use omnigent_protocol::display;
 use omnigent_protocol::items::{
@@ -13,6 +15,7 @@ use omnigent_protocol::items::{
     SlashCommandKind, TerminalCommandData, TerminalCommandKind,
 };
 use omnigent_protocol::native_tools::{NativeToolItem, NativeToolKind};
+use omnigent_protocol::question_reply;
 use omnigent_protocol::system_message::{self, SystemMessage, SystemMessageKind};
 use omnigent_protocol::{ConversationItem, ItemData, MessageRole};
 use serde_json::Value;
@@ -215,16 +218,24 @@ impl Projector<'_> {
         let joined = content::visible_text(&message.content);
         let text = system_message::strip_automation_context(&joined);
         let origin = system_message::split_session_message_origin(text);
+        let body = origin.map_or(text, |origin| origin.body);
+        // A reply to Codex async questions shows its answers, as the web's `userMessageBody`.
+        let replies = question_reply::parse_question_replies(body).unwrap_or_default();
+        let body = if replies.is_empty() {
+            Cow::Borrowed(body)
+        } else {
+            Cow::Owned(question_reply::question_reply_text(&replies))
+        };
         // Another session's message keeps its sender; attachments are always the person's own.
         if origin.is_none() && message.attachments().next().is_none() {
-            let shown = system_message::without_attached_markers(text);
+            let shown = system_message::without_attached_markers(&body);
             if let Some(notice) = system_message::parse_system_message(&shown) {
                 return Ok(self.system_notice(&notice));
             }
         }
-        let body = origin.map_or(text, |origin| origin.body);
-        let mut row = self.message_row(message, role, Some(body));
+        let mut row = self.message_row(message, role, Some(&body));
         row.origin_session_id = origin.map(|origin| origin.source_id.to_owned());
+        row.question_replies = replies;
         Ok(Some(row))
     }
 

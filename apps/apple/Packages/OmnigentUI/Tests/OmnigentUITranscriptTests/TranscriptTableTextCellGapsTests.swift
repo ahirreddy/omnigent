@@ -300,4 +300,38 @@
       #expect(shown.frame.size == shown.intrinsicContentSize)
     }
   }
+
+  // MARK: Question replies
+
+  extension TranscriptTableTextCellGapsTests {
+    @Test("A reply to an agent's questions is one run: small secondary questions over answers")
+    func questionReplyMatchesSwiftUI() throws {
+      let environment = textCellEnvironment()
+      let cell = try shownMatchingSwiftUI(
+        textCellRow(Fixture.questionReply("u-reply")), environment)
+      let message = try #require(cell.message)
+      // One run and nothing beside it, which iPhone and iPad text rows draw too.
+      #expect(message.entries.count == 1 && message.runs.count == 1)
+      #expect(cell.accessoryViews.isEmpty)
+      #expect(message.promptFold == nil)
+      let text = try #require(cell.runs.first?.document).text
+      #expect(text.string == "\u{21AA} Re: Color?\nBlue\nLarge")
+      func font(at location: Int) -> NSFont? {
+        // Nothing reads the effective range back.
+        unsafe text.attribute(.font, at: location, effectiveRange: nil) as? NSFont
+      }
+      let style = textCellStyle(environment)
+      let quote = try #require(font(at: 0))
+      let blue = try #require(text.string.range(of: "Blue"))
+      let answer = try #require(font(at: NSRange(blue, in: text.string).location))
+      #expect(quote.pointSize == style.ramp.questionQuote)
+      #expect(quote.pointSize < answer.pointSize)
+      let palette = try #require(style.style.map(MessageTextPalette.init))
+      let color = unsafe text.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+      #expect(color == palette.secondary)
+      // A prewarm parses the message's text again and gets the run's blocks.
+      let run = try #require(message.runs.first)
+      #expect(MarkdownParser.parse(message.markdown) == run.blocks)
+    }
+  }
 #endif

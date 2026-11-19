@@ -67,7 +67,8 @@ nonisolated struct TranscriptTableCLIText: Sendable {
     case (.assistant, .styled):
       return MarkdownCache.shared.blocks(for: message.text).isEmpty ? nil : .styled(message.text)
     case (.user, _):
-      return UserPrompt.runs(message.text).isEmpty ? nil : .prompt(message.text)
+      let source = UserPrompt.source(message)
+      return UserPrompt.runs(source).isEmpty ? nil : .prompt(source)
     case (.assistant, .rich), (.tool, _):
       return nil
     }

@@ -93,6 +93,15 @@ pub struct Attachment {
     pub is_embedded: bool,
 }
 
+/// One answered question of a user's reply to Codex async questions.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct QuestionReply {
+    /// The question answered, when the reply names one.
+    pub question: Option<String>,
+    /// The answer; never empty.
+    pub answer: String,
+}
+
 /// The typed presentation of a non-text row.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct Activity {
@@ -185,6 +194,10 @@ pub struct Row {
     /// is not in `text`.
     #[uniffi(default)]
     pub origin_session_id: Option<String>,
+    /// A user message that is only a reply to Codex async questions: each answered question, in
+    /// order, which `text` shows as the web does. Empty for any other row.
+    #[uniffi(default)]
+    pub question_replies: Vec<QuestionReply>,
 }
 
 /// One edit to the row list. Apply in order; indexes are positions after every earlier op.
@@ -461,6 +474,16 @@ impl From<core::Row> for Row {
             agent: row.agent,
             created_at: row.created_at,
             origin_session_id: row.origin_session_id,
+            question_replies: row.question_replies.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<omnigent_protocol::question_reply::QuestionReply> for QuestionReply {
+    fn from(reply: omnigent_protocol::question_reply::QuestionReply) -> Self {
+        Self {
+            question: reply.question,
+            answer: reply.answer,
         }
     }
 }

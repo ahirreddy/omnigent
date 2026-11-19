@@ -189,6 +189,23 @@ nonisolated public struct Activity: Hashable, Sendable {
   }
 }
 
+/// One answered question of a user's reply to Codex async questions.
+nonisolated public struct QuestionReply: Hashable, Sendable {
+  /// The question answered, when the reply names one.
+  public var question: String?
+  /// The answer; never empty.
+  public var answer: String
+
+  /// Creates an answered question.
+  /// - Parameters:
+  ///   - question: The question answered.
+  ///   - answer: The answer.
+  public init(question: String? = nil, answer: String) {
+    self.question = question
+    self.answer = answer
+  }
+}
+
 /// One transcript or activity row, keyed by a stable id.
 nonisolated public struct Row: Hashable, Sendable, Identifiable {
   /// Stable id: the server item id, or `live:...` / `event:...` for previews.
@@ -221,6 +238,9 @@ nonisolated public struct Row: Hashable, Sendable, Identifiable {
   public var createdAt: Date?
   /// The session that sent this user message; its sender line is not in ``text``.
   public var originSessionId: String?
+  /// A user message that is only a reply to Codex async questions: each answered question, in
+  /// order, which ``text`` shows as the web does. Empty for any other row.
+  public var questionReplies: [QuestionReply]
 
   /// Creates a row.
   /// - Parameters:
@@ -239,12 +259,14 @@ nonisolated public struct Row: Hashable, Sendable, Identifiable {
   ///   - isActivityOnly: Belongs in the activity drawer.
   ///   - createdAt: When the server wrote it.
   ///   - originSessionId: The session that sent it.
+  ///   - questionReplies: The questions it answers.
   public init(
     id: String, role: RowRole, text: String = "", isStreaming: Bool = false,
     activity: Activity? = nil, attachments: [Attachment] = [], callId: String? = nil,
     responseId: String? = nil, interrupted: Bool = false, author: String? = nil,
     agent: String? = nil, isEphemeral: Bool = false, isActivityOnly: Bool = false,
-    createdAt: Date? = nil, originSessionId: String? = nil
+    createdAt: Date? = nil, originSessionId: String? = nil,
+    questionReplies: [QuestionReply] = []
   ) {
     self.id = id
     self.role = role
@@ -261,5 +283,6 @@ nonisolated public struct Row: Hashable, Sendable, Identifiable {
     self.isActivityOnly = isActivityOnly
     self.createdAt = createdAt
     self.originSessionId = originSessionId
+    self.questionReplies = questionReplies
   }
 }

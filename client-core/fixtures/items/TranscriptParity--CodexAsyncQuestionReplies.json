@@ -1,0 +1,72 @@
+[
+  {
+    "id": "reply",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r1",
+    "created_at": 1795080600,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "<send_user_message_question_reply>\n[{\"answer\":\"Yes, I clicked Run\",\"question\":\"Did you click Run after signing in?\",\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"call_9\\\",0]\"}]\n</send_user_message_question_reply>"
+      }
+    ]
+  },
+  {
+    "id": "several",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r2",
+    "created_at": 1795080601,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "<send_user_message_question_reply>\n[{\"answer\":\"Blue\",\"question\":\"Color?\",\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"call_abc\\\",0]\"},{\"answer\":\"\",\"question\":\"Shape?\",\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"call_abc\\\",1]\"},{\"answer\":\"Large\",\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"call_abc\\\",2]\"}]\n</send_user_message_question_reply>"
+      }
+    ]
+  },
+  {
+    "id": "from-session",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r3",
+    "created_at": 1795080602,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[Message from session sess_peer-1]\n<send_user_message_question_reply>[{\"answer\":\"Main\",\"question\":\"Which branch?\",\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"call_peer\\\",0]\"}]</send_user_message_question_reply>"
+      }
+    ]
+  },
+  {
+    "id": "quoted",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r4",
+    "created_at": 1795080603,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "Explain this: <send_user_message_question_reply>[{\"answer\":\"Blue\",\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"call_abc\\\",0]\"}]</send_user_message_question_reply>"
+      }
+    ]
+  },
+  {
+    "id": "malformed",
+    "type": "message",
+    "status": "completed",
+    "response_id": "r5",
+    "created_at": 1795080604,
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "<send_user_message_question_reply>\n[{</send_user_message_question_reply>"
+      }
+    ]
+  }
+]

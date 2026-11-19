@@ -17,7 +17,8 @@
     let role: Role
     let row: Row
     let decoration: MessageDecoration
-    /// The markdown shown: the answer's text, or the prompt's without its mentions.
+    /// The markdown shown: the answer's text, the prompt's without its mentions, or a reply's
+    /// text (``QuestionReplyMarkdown``).
     let markdown: String
     let split: MessageTextSplit
     /// What the message stacks, top to bottom, as its row's stacks do: the parts beside the
@@ -128,6 +129,10 @@
     /// A user's prompt's body as ``UserPromptBody`` stacks it: its mentions' chips, its text
     /// and a long prompt's toggle. A prompt of attachments alone has no body.
     private static func promptBody(_ message: Row, ramp: TypeRamp, expands: Bool) -> PromptBody {
+      // A reply to an agent's questions: each answer under its quoted question, in one run.
+      if let reply = QuestionReplyMarkdown.text(message.questionReplies) {
+        return PromptBody(markdown: reply, entries: pieces(of: reply, ramp: ramp))
+      }
       let prompt = UserPrompt.parse(message.text)
       var markdown = prompt.text
       var fold: PromptFold?

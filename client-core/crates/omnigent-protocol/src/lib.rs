@@ -14,6 +14,7 @@ pub mod items;
 pub mod manifest;
 pub mod native_tools;
 pub mod page;
+pub mod question_reply;
 pub mod remote_browser;
 pub mod sessions;
 pub mod system_message;

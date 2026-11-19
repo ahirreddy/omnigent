@@ -65,6 +65,7 @@ nonisolated struct TypeRamp: Hashable, Sendable {
   static func spacing(above block: MarkdownBlock, after previous: MarkdownBlock?) -> CGFloat {
     guard let previous else { return 0 }
     if case .heading = previous { return headingBelow }
+    if case .paragraph(let text) = previous, text.isQuestionReplyQuote { return questionQuoteBelow }
     if case .heading = block { return headingAbove }
     return paragraphSpacing
   }

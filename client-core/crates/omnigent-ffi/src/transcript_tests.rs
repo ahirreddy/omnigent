@@ -26,7 +26,45 @@ fn row(id: &str) -> Row {
         is_ephemeral: false,
         is_activity_only: false,
         origin_session_id: None,
+        question_replies: Vec::new(),
     }
+}
+
+#[test]
+fn a_rows_question_replies_convert_in_order() {
+    use omnigent_protocol::question_reply::QuestionReply as CoreReply;
+    let mut theirs = core::Row::text(
+        "m1",
+        core::RowRole::User,
+        "\u{21AA} Re: Color?\nBlue\n\nLarge",
+    );
+    theirs.question_replies = vec![
+        CoreReply {
+            question: Some("Color?".into()),
+            answer: "Blue".into(),
+        },
+        CoreReply {
+            question: None,
+            answer: "Large".into(),
+        },
+    ];
+    let ours = Row::from(theirs);
+    assert_eq!(ours.text, "\u{21AA} Re: Color?\nBlue\n\nLarge");
+    assert_eq!(
+        ours.question_replies,
+        [
+            QuestionReply {
+                question: Some("Color?".into()),
+                answer: "Blue".into(),
+            },
+            QuestionReply {
+                question: None,
+                answer: "Large".into(),
+            },
+        ]
+    );
+    let plain = Row::from(core::Row::text("m2", core::RowRole::User, "hi"));
+    assert_eq!(plain.question_replies, Vec::<QuestionReply>::new());
 }
 
 #[test]

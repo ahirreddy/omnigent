@@ -6,11 +6,14 @@
 //!   (`web/src/lib/systemMessage.ts`, `itemsToBlocks.ts`).
 //! - An automation's note is stripped from the prompt it ends (`stripAutomationContext`).
 //! - Another session's message keeps its sender apart from its text (`sessionMessageOrigin`).
+//! - A reply to Codex async questions shows each answer under its question
+//!   (`codexAsyncQuestionReply`).
 //! - Sub-agent and task receipts are markers, plan changes one line each; journal checkpoints
 //!   never show (`subagentActivity.ts`, `taskActivity.ts`).
 //! - `session.background_tasks` updates the background tasks and `session.journal.appended`
 //!   adds no row (`chatStore.ts`).
 
+use omnigent_protocol::question_reply::QuestionReply;
 use omnigent_protocol::{ConversationItem, FromWire as _};
 
 use super::{Harness, events, fixture};
@@ -19,6 +22,7 @@ use crate::reducer::{ActivityKind, Row, RowRole};
 
 const HISTORY: &str = "items/TranscriptParity--RuntimeContextAndMarkers.json";
 const STREAM: &str = "TranscriptParity--LiveNoticesMarkersAndBackgroundTasks.jsonl";
+const REPLIES: &str = "items/TranscriptParity--CodexAsyncQuestionReplies.json";
 
 fn history() -> Vec<Row> {
     let items: Vec<ConversationItem> = fixture(HISTORY)
@@ -157,5 +161,77 @@ fn live_notices_markers_and_background_tasks() {
     assert_eq!(
         harness.snapshot().event_state.background_task_count,
         Some(0)
+    );
+}
+
+fn answered(question: Option<&str>, answer: &str) -> QuestionReply {
+    QuestionReply {
+        question: question.map(str::to_owned),
+        answer: answer.to_owned(),
+    }
+}
+
+#[test]
+fn a_codex_question_reply_shows_its_answers() {
+    let items: Vec<ConversationItem> = fixture(REPLIES)
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| ConversationItem::from_value(item.clone()).expect("decodes"))
+        .collect();
+    let rows = history_rows(&items).expect("projects");
+    let shown: Vec<(&str, RowRole, &str, &[QuestionReply])> = rows
+        .iter()
+        .map(|row| {
+            (
+                row.id.as_str(),
+                row.role,
+                row.text.as_str(),
+                row.question_replies.as_slice(),
+            )
+        })
+        .collect();
+    let quoted = "Explain this: <send_user_message_question_reply>[{\"answer\":\"Blue\",\
+                  \"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"call_abc\\\",0]\"}]\
+                  </send_user_message_question_reply>";
+    assert_eq!(
+        shown,
+        [
+            (
+                "reply",
+                RowRole::User,
+                "\u{21AA} Re: Did you click Run after signing in?\nYes, I clicked Run",
+                [answered(
+                    Some("Did you click Run after signing in?"),
+                    "Yes, I clicked Run"
+                )]
+                .as_slice(),
+            ),
+            (
+                "several",
+                RowRole::User,
+                "\u{21AA} Re: Color?\nBlue\n\nLarge",
+                [answered(Some("Color?"), "Blue"), answered(None, "Large")].as_slice(),
+            ),
+            (
+                "from-session",
+                RowRole::User,
+                "\u{21AA} Re: Which branch?\nMain",
+                [answered(Some("Which branch?"), "Main")].as_slice(),
+            ),
+            ("quoted", RowRole::User, quoted, [].as_slice()),
+            (
+                "malformed",
+                RowRole::User,
+                "<send_user_message_question_reply>\n[{</send_user_message_question_reply>",
+                [].as_slice(),
+            ),
+        ]
+    );
+    let from_session = rows.iter().find(|row| row.id == "from-session");
+    assert_eq!(
+        from_session.and_then(|row| row.origin_session_id.as_deref()),
+        Some("sess_peer-1"),
+        "a reply another session sent keeps its sender"
     );
 }

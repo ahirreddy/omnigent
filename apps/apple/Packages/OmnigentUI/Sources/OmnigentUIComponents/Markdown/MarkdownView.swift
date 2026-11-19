@@ -94,6 +94,9 @@ struct MarkdownBlockView: View {
 
   var body: some View {
     switch block {
+    case .paragraph(let text) where text.isQuestionReplyQuote:
+      QuestionReplyQuoteLine(line: String(text.characters))
+        .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
     case .paragraph(let text):
       MarkdownParagraphText(
         text: ramp.sizingMath(
