@@ -23,6 +23,7 @@ import pytest
 from omnigent.inner.codex_executor import (
     _TURN_EVENT_WARN_SECONDS,
     CodexExecutor,
+    FormElicitationHandler,
     _build_initial_prompt,
     _clean_codex_env,
     _codex_builtin_tool_completion,
@@ -65,6 +66,7 @@ from omnigent.inner.model_auth import ProviderAuthRequired
 from omnigent.inner.model_egress import FrozenModelRoute
 from omnigent.inner.model_signer import SignerLaunchConfig, SubprocessModelSigner
 from omnigent.native import _native_forwarder_health as native_forwarder_health
+from omnigent.server.schemas import ElicitationRequestParams, ElicitationResult
 
 
 @pytest.fixture(autouse=True)
@@ -7422,3 +7424,225 @@ async def test_disabled_mcp_restarts_plan_from_original_baseline(disabled_mcp_se
         ("base=true",),
     ]
     assert harness.session._codex_config_overrides == ["base=true"]
+
+
+# Shared with the server's ``test_codex_elicitation.py`` and omnigent-core's ``codex_tests.rs``:
+# a Codex request, the card published for it, the user's answer, and Codex's reply.
+_CODEX_DECISION_FIXTURES = sorted(
+    (Path(__file__).resolve().parents[2] / "client-core" / "fixtures" / "decisions").glob(
+        "Codex--*.json"
+    )
+)
+
+_CODEX_QUESTION = {
+    "id": 5,
+    "method": "item/tool/requestUserInput",
+    "params": {
+        "threadId": "thread-1",
+        "turnId": "turn-1",
+        "itemId": "call-1",
+        "questions": [
+            {
+                "id": "env",
+                "question": "Which environment?",
+                "options": [{"label": "staging"}, {"label": "prod"}],
+            }
+        ],
+    },
+}
+
+
+def _session_with_codex_requests(
+    card: FormElicitationHandler | None, *requests: dict[str, Any]
+) -> _CodexAppServerSession:
+    """A started session whose next turn receives *requests*, then completes."""
+    session = _CodexAppServerSession(
+        codex_path="/bin/echo",
+        cwd="/tmp/workspace",
+        env={},
+        tool_executor=None,
+        form_elicitation_handler=card,
+    )
+    session.start = AsyncMock()
+    session._proc = _FakeProcess()
+    session.thread_id = "thread-1"
+    session._request = AsyncMock(return_value={"result": {"turn": {"id": "turn-1"}}})
+    for request in requests:
+        session._events.put_nowait(request)
+    session._events.put_nowait({"method": "turn/completed", "params": {"turn": {"id": "turn-1"}}})
+    return session
+
+
+async def _codex_turn_and_replies(
+    session: _CodexAppServerSession,
+) -> tuple[list[object], list[dict[str, Any]]]:
+    """Run one turn; return its events and every JSON-RPC reply written to Codex."""
+    events = [
+        event
+        async for event in session.run_turn(
+            messages=[{"role": "user", "content": "deploy it"}],
+            tools=[],
+            system_prompt="",
+            model="gpt-5.4-mini",
+            cwd=".",
+            sandbox="workspace-write",
+        )
+    ]
+    return events, [json.loads(line) for line in session._proc.stdin.writes]
+
+
+async def _no_card_may_open(
+    elicitation_id: str, params: ElicitationRequestParams
+) -> ElicitationResult:
+    raise AssertionError(f"no card may open for this request: {params}")
+
+
+@pytest.mark.parametrize("path", _CODEX_DECISION_FIXTURES, ids=lambda path: path.stem)
+async def test_codex_request_is_shown_as_its_card_and_answered(path: Path) -> None:
+    """Every question and approval Codex waits on reaches the user as the codex-native
+    card, and the answer goes back to Codex, so the SDK turn finishes instead of hanging."""
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+    shown: list[ElicitationRequestParams] = []
+
+    async def user_answers(
+        elicitation_id: str, params: ElicitationRequestParams
+    ) -> ElicitationResult:
+        shown.append(params)
+        return ElicitationResult.model_validate(fixture["answer"])
+
+    events, replies = await _codex_turn_and_replies(
+        _session_with_codex_requests(user_answers, fixture["codex"])
+    )
+
+    [card] = shown
+    published = {
+        key: value for key, value in card.model_dump(mode="json").items() if value is not None
+    }
+    published.pop("content_preview")
+    assert published == fixture["elicitation"]["params"]
+    assert replies == [{"id": fixture["codex"]["id"], "result": fixture["codex_result"]}]
+    assert isinstance(events[-1], TurnComplete)
+
+
+async def test_withdrawn_codex_card_cancels_the_request_and_the_turn_ends() -> None:
+    """An interrupt withdraws the open card (the turn context cancels its elicitation):
+    Codex is told the question was cancelled instead of waiting on it."""
+    elicitation: asyncio.Future[ElicitationResult] = asyncio.get_running_loop().create_future()
+
+    async def interrupted(
+        elicitation_id: str, params: ElicitationRequestParams
+    ) -> ElicitationResult:
+        elicitation.cancel()
+        return await elicitation
+
+    events, replies = await _codex_turn_and_replies(
+        _session_with_codex_requests(interrupted, _CODEX_QUESTION)
+    )
+
+    assert replies == [{"id": 5, "result": {"answers": {}}}]
+    assert isinstance(events[-1], TurnComplete)
+
+
+async def test_codex_question_without_a_card_bridge_is_declined() -> None:
+    """A session nobody can ask still replies, with the decline answer."""
+    _, replies = await _codex_turn_and_replies(_session_with_codex_requests(None, _CODEX_QUESTION))
+
+    assert replies == [{"id": 5, "result": {"answers": {}}}]
+
+
+@pytest.mark.parametrize(
+    ("request_frame", "code", "reason"),
+    [
+        pytest.param(
+            {"id": 6, "method": "account/chatgptAuthTokens/refresh", "params": {}},
+            -32601,
+            "does not answer Codex 'account/chatgptAuthTokens/refresh' requests",
+            id="unknown-method",
+        ),
+        pytest.param(
+            {
+                "id": 7,
+                "method": "mcpServer/elicitation/request",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "serverName": "apps",
+                    "mode": "openai/form",
+                    "_meta": None,
+                    "message": "Select a template",
+                    "requestedSchema": {
+                        "type": "object",
+                        "properties": {"template": {"type": "openai/imagePicker", "items": []}},
+                    },
+                },
+            },
+            -32602,
+            "mode 'openai/form' is not supported",
+            id="openai-form",
+        ),
+        pytest.param(
+            {
+                "id": 8,
+                "method": "mcpServer/elicitation/request",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "serverName": "apps",
+                    "mode": "openai/userVerification",
+                    "_meta": None,
+                    "title": "Confirm the payment",
+                    "description": "Verify it is you.",
+                    "challenge": "challenge-fixture",
+                },
+            },
+            -32602,
+            "mode 'openai/userVerification' is not supported",
+            id="user-verification",
+        ),
+    ],
+)
+async def test_codex_request_no_card_can_show_gets_an_error_reply(
+    request_frame: dict[str, Any], code: int, reason: str
+) -> None:
+    """A request no card can show is refused with a JSON-RPC error, never left waiting."""
+    events, replies = await _codex_turn_and_replies(
+        _session_with_codex_requests(_no_card_may_open, request_frame)
+    )
+
+    [reply] = replies
+    assert (reply["id"], reply["error"]["code"]) == (request_frame["id"], code)
+    assert reason in reply["error"]["message"]
+    assert isinstance(events[-1], TurnComplete)
+
+
+async def test_codex_exit_withdraws_the_open_card(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When Codex exits under an open card, the card is withdrawn and the turn fails
+    with the transport error rather than waiting for an answer nobody can deliver."""
+    from omnigent.errors import HarnessTransportClosedError
+
+    monkeypatch.setattr("omnigent.inner.codex_executor._TURN_EVENT_POLL_SECONDS", 0.01)
+    opened = asyncio.Event()
+    withdrawn = asyncio.Event()
+
+    async def never_answered(
+        elicitation_id: str, params: ElicitationRequestParams
+    ) -> ElicitationResult:
+        opened.set()
+        try:
+            return await asyncio.get_running_loop().create_future()
+        finally:
+            withdrawn.set()
+
+    session = _session_with_codex_requests(never_answered, _CODEX_QUESTION)
+
+    async def codex_exits() -> None:
+        await opened.wait()
+        session._note_transport_closed("Codex app-server closed stdout", clean_eof=True)
+
+    exiting = asyncio.create_task(codex_exits())
+    with pytest.raises(HarnessTransportClosedError):
+        await _codex_turn_and_replies(session)
+    await exiting
+
+    assert withdrawn.is_set()
+    assert session._proc.stdin.writes == []

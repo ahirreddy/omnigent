@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shlex
 import shutil
 import stat
@@ -49,7 +50,7 @@ from omnigent.databricks_ai_gateway import (
     is_databricks_ai_gateway_url,
     with_gateway_attribution,
 )
-from omnigent.errors import HarnessTransportClosedError
+from omnigent.errors import HarnessTransportClosedError, OmnigentError
 from omnigent.harnesses.codex_egress import (
     CERTIFICATE_FAILURE_CODE,
     CERTIFICATE_FAILURE_TITLE,
@@ -61,6 +62,7 @@ from omnigent.harnesses.codex_egress import (
     is_connection_failure_text,
     is_connection_retry,
 )
+from omnigent.harnesses.codex_native.elicitation import is_codex_request_id
 from omnigent.inner.agent_env import clean_agent_env, declared_passthrough
 from omnigent.llms._usage_observer import notify_from_dict as _notify_usage_from_dict
 from omnigent.models import model_catalog
@@ -73,6 +75,12 @@ from omnigent.models.codex_model_vocabulary import (
 from omnigent.models.model_fallbacks import CODEX_CATALOG_CLONE_SOURCE_SLUG
 from omnigent.native import _native_forwarder_health as native_forwarder_health
 from omnigent.runtime.mcp_tool_result import decode_mcp_image_result
+from omnigent.server.routes._codex_elicitation import (
+    CODEX_ELICITATION_METHODS,
+    CodexElicitationRequest,
+    parse_codex_elicitation_request,
+)
+from omnigent.server.schemas import ElicitationRequestParams, ElicitationResult
 from omnigent.spec.repo_scope import repo_scope_dirs
 from omnigent.spec.types import RetryPolicy
 from omnigent.telemetry.surface import harness_client_surface
@@ -170,6 +178,16 @@ CodexToolExecutor: TypeAlias = Callable[
     [str, ToolArgs],
     Awaitable[CodexToolResult] | CodexToolResult,
 ]
+
+# ExecutorAdapter bridge that shows a Codex question or approval as a card and
+# returns the user's answer; a decline is an answer, not a turn cancellation.
+FormElicitationHandler: TypeAlias = Callable[
+    [str, ElicitationRequestParams], Awaitable[ElicitationResult]
+]
+
+# JSON-RPC error codes for a Codex server request no card can answer.
+_JSONRPC_METHOD_NOT_FOUND = -32601
+_JSONRPC_INVALID_PARAMS = -32602
 
 # Warn when model/tool progress stops, even if unrelated notifications arrive.
 # Keep waiting: a tool or model call can legitimately exceed any fixed deadline.
@@ -3010,6 +3028,20 @@ def _dynamic_tool_result_payload(result: CodexToolResult) -> CodexParams:
     }
 
 
+def _is_codex_server_request(message: CodexMessage) -> bool:
+    """
+    Whether *message* is a Codex request for the client, other than a dynamic tool call.
+
+    These are the questions and approvals Codex waits on (``item/tool/requestUserInput``,
+    ``mcpServer/elicitation/request``, ...), plus any request Omnigent does not know.
+
+    :param message: One decoded Codex app-server frame.
+    :returns: ``True`` for a request (``id`` and ``method``) other than ``item/tool/call``.
+    """
+    method = message.get("method")
+    return "id" in message and isinstance(method, str) and method != "item/tool/call"
+
+
 @dataclass
 class _PendingToolResult:
     """Tracks a dynamic tool invocation pending a Codex result event.
@@ -3049,11 +3081,13 @@ class _CodexAppServerSession:
         signer_factory: Callable[[], ModelSignerSession] | None = None,
         provider_auth_authority: tuple[str, str] | None = None,
         thread_model_provider: str | None = None,
+        form_elicitation_handler: FormElicitationHandler | None = None,
     ) -> None:
         self._codex_path = codex_path
         self._cwd = cwd
         self._env = env
         self._tool_executor = tool_executor
+        self._form_elicitation_handler = form_elicitation_handler
         self._base_codex_config_overrides = tuple(codex_config_overrides or ())
         self._codex_config_overrides = list(self._base_codex_config_overrides)
         self._mcp_active_harnesses = active_harnesses
@@ -4167,7 +4201,8 @@ class _CodexAppServerSession:
                     queued_turn_id = raw_queued_turn_id
             if queued_turn_id is not None and queued_turn_id == active_turn_id:
                 retaining_current_turn = True
-            if retaining_current_turn:
+            # Codex still waits on a request sent between turns, so it must be answered.
+            if retaining_current_turn or _is_codex_server_request(queued_message):
                 retained_events.append(queued_message)
         for queued_message in retained_events:
             self._events.put_nowait(queued_message)
@@ -4298,6 +4333,12 @@ class _CodexAppServerSession:
                 raw_method = message.get("method")
                 method: str | None = raw_method if isinstance(raw_method, str) else None
                 params = message.get("params", {})
+
+                if _is_codex_server_request(message):
+                    # Codex holds its tool call until this reply; the user's answer is progress.
+                    await self._answer_server_request(message)
+                    last_progress_at = time.monotonic()
+                    continue
 
                 if method == "item/started":
                     if not _event_turn_matches(params):
@@ -4704,6 +4745,82 @@ class _CodexAppServerSession:
         except Exception as exc:  # noqa: BLE001 — tool errors are surfaced to Codex via the JSON response envelope
             return {"error": str(exc)}
 
+    async def _answer_server_request(self, message: CodexMessage) -> None:
+        """
+        Show a Codex question or approval as a card, and reply with the user's answer.
+
+        Codex holds the tool call that asked until it gets a reply, so every request
+        is answered: with the answer, or with a JSON-RPC error when no card can show it.
+        The card and both translations are the codex-native ones
+        (:mod:`omnigent.server.routes._codex_elicitation`), so clients see one shape.
+
+        :param message: Codex JSON-RPC request, e.g.
+            ``{"id": 12, "method": "item/tool/requestUserInput", "params": {...}}``.
+        :raises HarnessTransportClosedError: If Codex exits while the card is open.
+        """
+        request_id = message.get("id")
+        method = message.get("method")
+        if not is_codex_request_id(request_id):
+            logger.error("Codex sent a %s request with an unusable id %r", method, request_id)
+            return
+        if method not in CODEX_ELICITATION_METHODS:
+            logger.warning("Codex sent a %s request, which Omnigent does not answer", method)
+            await self._send_error_response(
+                request_id,
+                _JSONRPC_METHOD_NOT_FOUND,
+                f"Omnigent does not answer Codex {method!r} requests.",
+            )
+            return
+        try:
+            request = parse_codex_elicitation_request(message)
+        except OmnigentError as exc:
+            logger.warning("Codex %s request cannot be shown: %s", method, exc.message)
+            await self._send_error_response(request_id, _JSONRPC_INVALID_PARAMS, exc.message)
+            return
+        result = await self._elicit_server_request(request)
+        try:
+            response = request.build_response(result)
+        except OmnigentError as exc:
+            # For example a persistence choice the request never offered.
+            logger.warning("Codex %s answer was not offered (%s); declining", method, exc.message)
+            response = request.build_response(ElicitationResult(action="decline"))
+        await self._send_response(request.request_id, response)
+
+    async def _elicit_server_request(self, request: CodexElicitationRequest) -> ElicitationResult:
+        """
+        Show *request*'s card and wait for the answer, for as long as Codex runs.
+
+        :param request: The parsed Codex request.
+        :returns: The user's answer; ``cancel`` when the card is withdrawn (the
+            turn was interrupted) or fails; ``decline`` when nothing can show it.
+        :raises HarnessTransportClosedError: If Codex exits while the card is open.
+        """
+        handler = self._form_elicitation_handler
+        if handler is None:
+            logger.warning("Codex %s request has no card to show it; declining", request.method)
+            return ElicitationResult(action="decline")
+        card = asyncio.ensure_future(handler(f"elicit_{secrets.token_hex(16)}", request.params))
+        try:
+            while not card.done():
+                await asyncio.wait({card}, timeout=_TURN_EVENT_POLL_SECONDS)
+                if self._transport_error is not None and not card.done():
+                    raise self._transport_error
+        finally:
+            if not card.done():
+                # Withdraws the card: the elicitation reports itself unanswered.
+                card.cancel()
+                await asyncio.wait({card})
+        if card.cancelled():
+            return ElicitationResult(action="cancel")
+        error = card.exception()
+        if error is not None:
+            logger.error("Codex %s card failed; cancelling", request.method, exc_info=error)
+            return ElicitationResult(action="cancel")
+        return card.result()
+
+    async def _send_error_response(self, request_id: int | str, code: int, message: str) -> None:
+        await self._send_message({"id": request_id, "error": {"code": code, "message": message}})
+
     async def _request(self, method: str, params: CodexParams) -> CodexMessage:
         if self._transport_error is not None:
             raise self._transport_error
@@ -4737,7 +4854,7 @@ class _CodexAppServerSession:
             raise RuntimeError(str(error))
         return response
 
-    async def _send_response(self, request_id: int, result: CodexParams) -> None:
+    async def _send_response(self, request_id: int | str, result: CodexParams) -> None:
         await self._send_message(
             {
                 "id": request_id,
@@ -4931,6 +5048,7 @@ class _AppSessionFactory(Protocol):
         skills_filter: str | list[str],
         skills_dir: Path | None,
         os_env: OSEnvSpec | None,
+        form_elicitation_handler: FormElicitationHandler | None,
     ) -> _CodexAppServerSession: ...
 
 
@@ -4947,6 +5065,7 @@ def _default_app_session_factory(
     skills_filter: str | list[str],
     skills_dir: Path | None = None,
     os_env: OSEnvSpec | None,
+    form_elicitation_handler: FormElicitationHandler | None = None,
     signer_launch_config: SignerLaunchConfig | None = None,
     active_harnesses: Collection[str] | None = None,
 ) -> _CodexAppServerSession:
@@ -4979,6 +5098,7 @@ def _default_app_session_factory(
             else None
         ),
         thread_model_provider=thread_provider,
+        form_elicitation_handler=form_elicitation_handler,
     )
 
 
@@ -5275,6 +5395,8 @@ class CodexExecutor(Executor):
             # key accepts "live", "cached", or "disabled".
             self._codex_config_overrides.append('web_search="disabled"')
         self._tool_executor: CodexToolExecutor | None = None
+        # Set by ExecutorAdapter; shows Codex's questions and approvals as cards.
+        self._form_elicitation_handler: FormElicitationHandler | None = None
         self._session_states: dict[str, _CodexSessionState] = {}
         self._app_session_factory: _AppSessionFactory
         if app_session_factory is not None:
@@ -5427,6 +5549,7 @@ class CodexExecutor(Executor):
             skills_filter=self._skills_filter,
             skills_dir=self._skills_dir,
             os_env=self._os_env_spec,
+            form_elicitation_handler=self._form_elicitation_handler,
         )
         state.app_session = app_session
         state.signature = signature

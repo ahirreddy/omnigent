@@ -901,3 +901,6 @@ _CODEX_ELICITATION_ADAPTERS: dict[str, _CodexElicitationAdapter] = {
         build_response=_codex_apply_patch_approval_response,
     ),
 }
+
+#: Codex app-server requests that become an Omnigent card and get the user's answer back.
+CODEX_ELICITATION_METHODS: frozenset[str] = frozenset(_CODEX_ELICITATION_ADAPTERS)
