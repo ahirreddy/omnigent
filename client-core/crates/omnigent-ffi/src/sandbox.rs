@@ -6,8 +6,60 @@
 use omnigent_core::sandbox as core;
 
 use crate::client::ClientCore;
+use crate::configuration::ModelChoice;
 use crate::creation::CreationCatalog;
 use crate::errors::CoreError;
+
+/// How a new sandbox's model catalog for a harness stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum SandboxModelStatus {
+    /// Models are listed.
+    Ready,
+    /// The provider lists none.
+    Empty,
+    /// The catalog could not be read; the preview's error says why.
+    Unavailable,
+    /// The sandbox configures no inference for the harness.
+    Unconfigured,
+    /// No model can serve the harness in this sandbox.
+    Unsupported,
+}
+
+impl From<core::SandboxModelStatus> for SandboxModelStatus {
+    fn from(status: core::SandboxModelStatus) -> Self {
+        match status {
+            core::SandboxModelStatus::Ready => Self::Ready,
+            core::SandboxModelStatus::Empty => Self::Empty,
+            core::SandboxModelStatus::Unavailable => Self::Unavailable,
+            core::SandboxModelStatus::Unconfigured => Self::Unconfigured,
+            core::SandboxModelStatus::Unsupported => Self::Unsupported,
+        }
+    }
+}
+
+/// A new sandbox's models for a harness, previewed before one is provisioned.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct SandboxModelPreview {
+    /// The usable rows; empty unless `status` is `Ready`.
+    pub models: Vec<ModelChoice>,
+    /// The sandbox configures inference for the harness, so it takes a model.
+    pub configured: bool,
+    /// How the catalog stands.
+    pub status: SandboxModelStatus,
+    /// The server's explanation for an unavailable or unsupported catalog.
+    pub error: Option<String>,
+}
+
+impl From<core::SandboxModelPreview> for SandboxModelPreview {
+    fn from(preview: core::SandboxModelPreview) -> Self {
+        Self {
+            models: preview.models.into_iter().map(Into::into).collect(),
+            configured: preview.configured,
+            status: preview.status.into(),
+            error: preview.error,
+        }
+    }
+}
 
 /// A server-defined sandbox profile.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
@@ -251,6 +303,25 @@ impl ClientCore {
             managed_providers: page.managed_providers,
             has_more: page.has_more,
         })
+    }
+
+    /// What a new sandbox of `provider` offers `harness` for `agent_id`, before one is
+    /// provisioned.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`, the read errors and `MalformedResponse`.
+    pub async fn sandbox_model_preview(
+        &self,
+        provider: String,
+        harness: String,
+        agent_id: String,
+    ) -> Result<SandboxModelPreview, CoreError> {
+        self.sessions()
+            .sandbox_model_preview(&provider, &harness, &agent_id)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
     }
 
     /// The caller's GitHub repositories, newest push first.

@@ -499,6 +499,12 @@ pub struct CreationCapabilities {
     pub default_sandbox_provider: Option<String>,
     /// Providers whose `sandbox_provider_capabilities` report `multi_repo`.
     pub multi_repo_providers: Vec<String>,
+    /// Providers whose sandboxes preview a model catalog (`default_models` or
+    /// `inference_models`).
+    pub model_preview_providers: Vec<String>,
+    /// Providers whose catalog is the gateway's default list (`default_models` without
+    /// `inference_models`): any harness takes a model there, with the model's own efforts.
+    pub default_model_providers: Vec<String>,
     /// `features.sandbox_profiles`: sandboxes launch with a server-defined profile.
     pub sandbox_profiles: bool,
     /// `request_managed_sandbox_host_id`: a sandbox create names its new host's id.
@@ -588,17 +594,25 @@ impl CreationCapabilities {
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
         };
-        let multi_repo_providers = opt_object(object, "sandbox_provider_capabilities")?
-            .map(|providers| {
-                providers
-                    .iter()
-                    .filter(|(_, flags)| {
-                        flags.get("multi_repo").and_then(Value::as_bool) == Some(true)
-                    })
-                    .map(|(provider, _)| provider.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
+        let provider_flags = opt_object(object, "sandbox_provider_capabilities")?;
+        let providers_where = |wanted: fn(&Value) -> bool| -> Vec<String> {
+            provider_flags
+                .map(|providers| {
+                    providers
+                        .iter()
+                        .filter(|(_, flags)| wanted(flags))
+                        .map(|(provider, _)| provider.clone())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let multi_repo_providers = providers_where(|flags| provider_flag(flags, "multi_repo"));
+        let model_preview_providers = providers_where(|flags| {
+            provider_flag(flags, "default_models") || provider_flag(flags, "inference_models")
+        });
+        let default_model_providers = providers_where(|flags| {
+            provider_flag(flags, "default_models") && !provider_flag(flags, "inference_models")
+        });
         let connections = opt_array(object, "enabled_connections")?;
         let connection = |wanted: &str| {
             connections.is_some_and(|names| names.iter().any(|name| name.as_str() == Some(wanted)))
@@ -612,6 +626,8 @@ impl CreationCapabilities {
             default_sandbox_provider: opt_str(object, "sandbox_provider")?
                 .filter(|provider| !provider.is_empty()),
             multi_repo_providers,
+            model_preview_providers,
+            default_model_providers,
             sandbox_profiles: feature("sandbox_profiles"),
             mints_sandbox_host_id: opt_bool(object, "request_managed_sandbox_host_id")?
                 .unwrap_or(false),
@@ -627,6 +643,11 @@ impl CreationCapabilities {
             mcp_registry: connection("mcp"),
         })
     }
+}
+
+/// Whether a provider's `sandbox_provider_capabilities` entry sets `name` to `true`.
+fn provider_flag(flags: &Value, name: &str) -> bool {
+    flags.get(name).and_then(Value::as_bool) == Some(true)
 }
 
 /// The native Codex harness, which can start in Plan mode.

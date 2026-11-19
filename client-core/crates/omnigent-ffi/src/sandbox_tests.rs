@@ -38,6 +38,8 @@ fn catalog() -> CreationCatalog {
         codex_plan_at_launch: false,
         default_sandbox_provider: Some("modal".into()),
         multi_repo_providers: vec!["e2b".into()],
+        model_preview_providers: vec!["modal".into()],
+        default_model_providers: vec!["modal".into()],
         sandbox_profiles: false,
         mints_sandbox_host_id: false,
         github_connection: false,

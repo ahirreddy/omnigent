@@ -919,6 +919,77 @@ fn a_new_sandboxs_models_come_from_its_providers_preview_for_the_agent() {
 }
 
 #[test]
+fn a_sandbox_preview_says_how_its_catalog_stands() {
+    use crate::sandbox::SandboxModelStatus;
+    let path = "/v1/sandbox-providers/modal/harnesses/claude-native/model-options";
+    let cases = [
+        (
+            r#"{"configured":true,"status":"ready","models":[{"id":"a","model":"a"},{"id":"q","model":"q","hidden":true}]}"#,
+            SandboxModelStatus::Ready,
+            true,
+            None,
+        ),
+        (
+            r#"{"configured":false,"status":"unsupported","error":"  No route  ","models":[]}"#,
+            SandboxModelStatus::Unsupported,
+            false,
+            Some("No route"),
+        ),
+        (
+            r#"{"configured":true,"status":"unavailable","error":"","models":[{"id":"a","model":"a"}]}"#,
+            SandboxModelStatus::Unavailable,
+            true,
+            None,
+        ),
+        (r#"{"models":[]}"#, SandboxModelStatus::Empty, false, None),
+    ];
+    for (body, status, configured, error) in cases {
+        let transport = RouteTransport::local();
+        transport.ok(path, body);
+        let core = connected(transport);
+        let preview =
+            block_on(core.sandbox_model_preview("modal", "claude-native", "ag_claude")).unwrap();
+        assert_eq!(preview.status, status, "{body}");
+        assert_eq!(preview.configured, configured, "{body}");
+        assert_eq!(preview.error.as_deref(), error, "{body}");
+        let ids: Vec<_> = preview
+            .models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect();
+        let listed: &[&str] = if status == SandboxModelStatus::Ready {
+            &["a"]
+        } else {
+            &[]
+        };
+        assert_eq!(ids, listed, "only a ready catalog lists models: {body}");
+        let reads = core.transport().taken();
+        let read = reads
+            .iter()
+            .find(|request| path_of(request) == path)
+            .unwrap();
+        assert_eq!(query_value(read, "agent_id").as_deref(), Some("ag_claude"));
+    }
+    let core = connected(RouteTransport::local());
+    assert!(matches!(
+        block_on(core.sandbox_model_preview("../x", "claude-native", "ag_claude")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+
+    let info = json!({"sandbox_provider_capabilities": {
+        "modal": {"default_models": true},
+        "lakebox": {"default_models": true, "inference_models": true},
+        "e2b": {"multi_repo": true},
+    }});
+    let capabilities = crate::creation::CreationCapabilities::from_value(&info).unwrap();
+    let mut previewing = capabilities.model_preview_providers.clone();
+    previewing.sort();
+    assert_eq!(previewing, ["lakebox", "modal"]);
+    assert_eq!(capabilities.default_model_providers, ["modal"]);
+    assert_eq!(capabilities.multi_repo_providers, ["e2b"]);
+}
+
+#[test]
 fn a_harness_without_a_model_preview_offers_a_new_sandbox_no_models() {
     let plain = RouteTransport::local();
     plain.ok("/v1/hosts", r#"{"hosts":[]}"#);

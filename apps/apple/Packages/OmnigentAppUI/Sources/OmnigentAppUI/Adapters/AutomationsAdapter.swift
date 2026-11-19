@@ -174,9 +174,8 @@ struct AutomationsAdapter: View {
       save: { save(pages, saved: saved) },
       cancel: { editing = nil }
     )
-    .task(id: modelsKey(pages)) {
-      guard let key = modelsKey(pages) else { return }
-      await pages.loadAutomationModels(agentID: key.agentID, hostID: key.hostID)
+    .task(id: AutomationModelSource.of(draft, pages: pages)) {
+      await AutomationModelSource.of(draft, pages: pages)?.load(pages)
     }
     .task {
       if AutomationEditorMapping.showsMcpServices(pages.offered, draft: draft) {
@@ -223,19 +222,6 @@ struct AutomationsAdapter: View {
     else { return nil }
     let target = SharingTarget(id: automation.id, continuesSession: automation.continuesSession)
     return { sharing = target }
-  }
-
-  /// The agent and host whose models the Advanced section lists, when the harness takes them.
-  private func modelsKey(_ pages: PagesStore) -> ModelsKey? {
-    guard !draft.hostID.isEmpty, !draft.runsInSandbox,
-      AutomationEditorMapping.takesModel(pages.automationCatalog.value, agentID: draft.agentID)
-    else { return nil }
-    return ModelsKey(agentID: draft.agentID, hostID: draft.hostID)
-  }
-
-  private struct ModelsKey: Hashable {
-    let agentID: String
-    let hostID: String
   }
 
   /// A session URL whose id the trigger's manager replaces with each worker's.
@@ -349,8 +335,7 @@ extension AutomationsAdapter {
   private func save(_ pages: PagesStore, saved: Automation?) {
     guard !isSaving else { return }
     isSaving = true
-    let sendsOverrides = AutomationEditorMapping.sendsOverrides(
-      pages: pages, agentID: draft.agentID, hostID: draft.hostID)
+    let sendsOverrides = AutomationEditorMapping.sendsOverrides(pages: pages, draft: draft)
     // A new trigger's hidden schedule follows where it runs.
     if saved == nil, draft.trigger != nil,
       AutomationsMapping.scheduleProblem(

@@ -251,6 +251,51 @@ pub fn sandbox_option_label(provider: Option<&str>) -> String {
     format!("{name} Sandbox")
 }
 
+/// How a new sandbox's model catalog for a harness stands (the preview's `status`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum SandboxModelStatus {
+    /// Models are listed.
+    #[default]
+    Ready,
+    /// The provider lists none.
+    Empty,
+    /// The catalog could not be read; the preview's error says why.
+    Unavailable,
+    /// The sandbox configures no inference for the harness.
+    Unconfigured,
+    /// No model can serve the harness in this sandbox.
+    Unsupported,
+}
+
+impl SandboxModelStatus {
+    /// Reads `status`; a missing or unknown one is `Ready` with models, else `Empty`.
+    #[must_use]
+    pub fn from_wire(status: Option<&str>, has_models: bool) -> Self {
+        match status {
+            Some("empty") => Self::Empty,
+            Some("unavailable") => Self::Unavailable,
+            Some("unconfigured") => Self::Unconfigured,
+            Some("unsupported") => Self::Unsupported,
+            _ if has_models => Self::Ready,
+            _ => Self::Empty,
+        }
+    }
+}
+
+/// A new sandbox's models for a harness, previewed before one is provisioned (`GET
+/// /v1/sandbox-providers/{provider}/harnesses/{harness}/model-options`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SandboxModelPreview {
+    /// The usable rows, de-duplicated by value; empty unless `status` is `Ready`.
+    pub models: Vec<crate::config::session::ModelChoice>,
+    /// The sandbox configures inference for the harness, so it takes a model.
+    pub configured: bool,
+    /// How the catalog stands.
+    pub status: SandboxModelStatus,
+    /// The server's explanation for an unavailable or unsupported catalog.
+    pub error: Option<String>,
+}
+
 /// A server-defined sandbox profile (`GET /v1/sandbox-profiles`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct SandboxProfile {

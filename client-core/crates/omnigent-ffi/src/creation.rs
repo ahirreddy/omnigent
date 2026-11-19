@@ -121,6 +121,13 @@ pub struct CreationCatalog {
     /// Providers that clone several repositories.
     #[uniffi(default)]
     pub multi_repo_providers: Vec<String>,
+    /// Providers whose sandboxes preview a model catalog.
+    #[uniffi(default)]
+    pub model_preview_providers: Vec<String>,
+    /// Providers whose catalog is the gateway's default list: any harness takes a model there,
+    /// with the model's own efforts.
+    #[uniffi(default)]
+    pub default_model_providers: Vec<String>,
     /// `features.sandbox_profiles`.
     #[uniffi(default)]
     pub sandbox_profiles: bool,
@@ -366,6 +373,8 @@ impl From<core::CreationCatalog> for CreationCatalog {
             sandbox_providers: catalog.capabilities.sandbox_providers,
             default_sandbox_provider: catalog.capabilities.default_sandbox_provider,
             multi_repo_providers: catalog.capabilities.multi_repo_providers,
+            model_preview_providers: catalog.capabilities.model_preview_providers,
+            default_model_providers: catalog.capabilities.default_model_providers,
             sandbox_profiles: catalog.capabilities.sandbox_profiles,
             mints_sandbox_host_id: catalog.capabilities.mints_sandbox_host_id,
             github_connection: catalog.capabilities.github_connection,
@@ -391,6 +400,8 @@ impl From<CreationCatalog> for core::CreationCatalog {
                 codex_plan_at_launch: catalog.codex_plan_at_launch,
                 default_sandbox_provider: catalog.default_sandbox_provider,
                 multi_repo_providers: catalog.multi_repo_providers,
+                model_preview_providers: catalog.model_preview_providers,
+                default_model_providers: catalog.default_model_providers,
                 sandbox_profiles: catalog.sandbox_profiles,
                 mints_sandbox_host_id: catalog.mints_sandbox_host_id,
                 github_connection: catalog.github_connection,

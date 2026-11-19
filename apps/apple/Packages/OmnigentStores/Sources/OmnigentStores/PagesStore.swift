@@ -46,7 +46,10 @@ public final class PagesStore {
   /// The projects an automation can file its sessions into.
   public private(set) var automationProjects: CreationLoad<[ProjectSummary]> = .idle
   /// The models a host offers an agent, by ``modelsKey(agentID:hostID:)``.
-  public private(set) var automationModels: [String: CreationLoad<[ModelChoice]>] = [:]
+  public internal(set) var automationModels: [String: CreationLoad<[ModelChoice]>] = [:]
+  /// A new sandbox's model previews, by ``sandboxModelsKey(agentID:provider:)``.
+  public internal(set) var automationSandboxModels: [String: CreationLoad<SandboxModelPreview>] =
+    [:]
   /// Each automation's run history, by automation.
   public private(set) var automationRuns: [String: CreationLoad<[AutomationRun]>] = [:]
   /// The automations others shared with the caller, as far as paged.
@@ -204,27 +207,6 @@ public final class PagesStore {
       automationProjects = .loaded(try await core.projects())
     } catch {
       automationProjects = .failed(coreError(error))
-    }
-  }
-
-  /// The ``automationModels`` key of an agent on a host.
-  public static func modelsKey(agentID: String, hostID: String) -> String {
-    "\(agentID)\n\(hostID)"
-  }
-
-  /// Reads the models `hostID` offers `agentID`, unless they are loaded or loading.
-  public func loadAutomationModels(agentID: String, hostID: String) async {
-    let key = Self.modelsKey(agentID: agentID, hostID: hostID)
-    switch automationModels[key] {
-    case .loading, .loaded: return
-    case .idle, .failed, nil: break
-    }
-    automationModels[key] = .loading
-    do {
-      automationModels[key] = .loaded(
-        try await core.creationModels(agentId: agentID, hostId: hostID))
-    } catch {
-      automationModels[key] = .failed(coreError(error))
     }
   }
 
