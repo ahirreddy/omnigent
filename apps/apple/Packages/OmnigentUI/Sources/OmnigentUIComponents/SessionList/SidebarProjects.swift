@@ -142,9 +142,13 @@ struct ProjectFolder<Row: View>: View {
       HStack {
         Text(isWaiting ? "Loading\u{2026}" : "Show more")
         Spacer(minLength: 4)
-        moreMarker
+        // Drawn only: a click on the marker (a tooltip's pill, or a spinner) is the button's,
+        // which shows the marker's tooltip itself.
+        moreMarker?.inButton().allowsHitTesting(false)
       }
+      .contentShape(Rectangle())
     }
+    .help(moreMarker?.help ?? "")
     .buttonStyle(.borderless)
     .foregroundStyle(.secondary)
     .disabled(isWaiting)

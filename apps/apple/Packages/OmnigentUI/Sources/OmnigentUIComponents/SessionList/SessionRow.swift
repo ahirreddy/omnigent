@@ -305,9 +305,17 @@ private struct InlineTitleField: View {
 /// The pink "Needs you" capsule, with the request count when there is more than one.
 struct NeedsYouCapsule: View {
   let requests: Int
+  /// Shows its own tooltip. Inside a button, the button shows ``help(requests:)`` instead: on the
+  /// Mac a tooltip takes the clicks on what it covers.
+  var showsHelp = true
+
+  /// The tooltip.
+  static func help(requests: Int) -> String {
+    requests > 1 ? "\(requests) requests need your response" : "Needs your response"
+  }
 
   var body: some View {
-    HStack(spacing: Theme.Spacing.tiny) {
+    let capsule = HStack(spacing: Theme.Spacing.tiny) {
       Text("Needs you")
       if requests > 1 {
         Text("\(requests)").monospacedDigit()
@@ -320,9 +328,13 @@ struct NeedsYouCapsule: View {
     // An opaque base, so a selected row's tint never lowers the text's contrast.
     .background(ThemeColor.attentionFill, in: Capsule())
     .background(ThemeColor.surface, in: Capsule())
-    .help(requests > 1 ? "\(requests) requests need your response" : "Needs your response")
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(requests > 1 ? "Needs you, \(requests) requests" : "Needs you")
+    if showsHelp {
+      capsule.help(Self.help(requests: requests))
+    } else {
+      capsule
+    }
   }
 }
 

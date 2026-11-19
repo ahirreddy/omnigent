@@ -188,6 +188,40 @@
       #expect(spy.calls == ["load project big"])
     }
 
+    @Test("Show more takes a click anywhere on its row: the gap, and its Needs you pill")
+    func showMoreRowTakesClicks() throws {
+      let ids = (0..<7).map { "s\($0)" }
+      var state = SidebarFixture.state
+      state.list.sessions += ids.map {
+        SessionSummary(id: $0, title: $0, attention: $0 == "s6" ? .needsYou : nil)
+      }
+      state.projects = [SessionProject(id: "big", name: "Big", sessionIds: ids)]
+      state.paging.loadedProjects = ["big"]
+      // Rows: 7 Projects, 8 Big, 9 to 13 its first five, 14 Show more with s6's pill.
+      for place in ["gap", "pill"] {
+        let spy = SidebarSpy(state)
+        UserDefaults.standard.set("big", forKey: SidebarNavigationOrder.expandedProjectsKey)
+        let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 900)
+        defer { screen.close() }
+        let table = try #require(screen.list)
+        let before = table.numberOfRows
+        let row = table.convert(table.rect(ofRow: 14), to: screen.host)
+        // The pill is all that draws in the row's right half, against the gap's color.
+        let picture = try Snapshot(screen)
+        let gap = CGPoint(x: row.midX - 20, y: row.midY)
+        let pill = stride(from: row.midX, to: row.maxX - 4, by: 0.5).filter {
+          picture.inks(CGPoint(x: $0, y: row.midY), against: gap)
+        }
+        let left = try #require(pill.first, "the pill draws")
+        let right = try #require(pill.last)
+        let column = place == "gap" ? gap.x : (left + right) / 2
+        try screen.click(CGPoint(x: column, y: row.midY))
+        #expect(
+          MainLoop.settle(until: { table.numberOfRows == before + 1 }),
+          "a click on the \(place) shows more")
+      }
+    }
+
     @Test("hovering a folder offers New session and its menu")
     func hoverButtons() throws {
       let spy = spy()

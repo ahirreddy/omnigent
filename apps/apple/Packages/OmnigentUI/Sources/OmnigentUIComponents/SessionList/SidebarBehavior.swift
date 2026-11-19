@@ -94,12 +94,30 @@ struct SidebarHiddenMarker: View {
   let sessions: [SessionSummary]
   let state: SidebarViewState
   let live: SidebarLive?
+  /// Shows its own tooltip; inside a button, the button shows ``help`` instead.
+  var showsHelp = true
 
   var body: some View {
-    let rows = sessions.map { live?.row($0.id, false) ?? state.rowContent($0) }
-    if let marker = SidebarMarker.strongest(rows) {
-      SidebarMarkerView(marker: marker)
+    if let marker {
+      SidebarMarkerView(marker: marker, showsHelp: showsHelp)
     }
+  }
+
+  /// The marker's tooltip, for a button the marker sits in.
+  var help: String? {
+    guard case .needsYou(let requests) = marker else { return nil }
+    return NeedsYouCapsule.help(requests: requests)
+  }
+
+  /// The same marker, its tooltip left to the button it sits in.
+  func inButton() -> Self {
+    var marker = self
+    marker.showsHelp = false
+    return marker
+  }
+
+  private var marker: SidebarMarker? {
+    SidebarMarker.strongest(sessions.map { live?.row($0.id, false) ?? state.rowContent($0) })
   }
 }
 
@@ -127,11 +145,13 @@ struct SidebarLiveRow<Content: View>: View {
 /// A ``SidebarMarker`` drawn as a row draws the same state.
 struct SidebarMarkerView: View {
   let marker: SidebarMarker
+  /// Shows its own tooltip (``NeedsYouCapsule/showsHelp``).
+  var showsHelp = true
 
   var body: some View {
     switch marker {
     case .needsYou(let requests):
-      NeedsYouCapsule(requests: requests)
+      NeedsYouCapsule(requests: requests, showsHelp: showsHelp)
     case .working:
       ProgressView().controlSize(.mini)
         .accessibilityLabel("Running")
