@@ -233,6 +233,30 @@ struct MarkdownImagesAndMathTests {
     }
   }
 
+  @Test("a link alone in its paragraph to a recording is a video block, as the web's player")
+  func videos() {
+    #expect(
+      MarkdownParser.parse("[Screen recording](demo.webm)") == [
+        .video(source: "demo.webm", title: "Screen recording")
+      ])
+    let signed = "https://cdn.example.com/run/clip.MP4?sig=abc#t=3"
+    #expect(MarkdownParser.parse("[clip](\(signed))") == [.video(source: signed, title: "clip")])
+    #expect(MarkdownVideoSource("file:///work/out/run.mov") == .workspace("/work/out/run.mov"))
+    for prose in [
+      "See [the recording](demo.webm) for details.", "[notes](docs/notes.md)",
+      "[image](https://example.com/a.png)", "[mail](mailto:someone@example.com)",
+      "[page](https://example.com/videos/)", "[dot](.mp4)",
+    ] {
+      if case .paragraph? = MarkdownParser.parse(prose).first {
+      } else {
+        Issue.record("\(prose) stays a paragraph")
+      }
+    }
+    #expect(MarkdownVideoSource.isVideoName("recordings/a.ogv"))
+    #expect(MarkdownVideoSource.isVideoName("a.m4v?raw"))
+    #expect(!MarkdownVideoSource.isVideoName("src/player.ts"))
+  }
+
   @Test("display and inline math, as the web delimits them")
   func math() {
     #expect(MarkdownParser.parse("$$\nx^2 + 1\n$$") == [.math("x^2 + 1")])

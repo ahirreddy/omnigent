@@ -142,7 +142,8 @@ private struct ProjectNameSheet: View {
           }
         }
         if !runChoices.isEmpty {
-          ProjectRepositoryFields(choices: runChoices, draft: $repository, actions: creation)
+          ProjectRepositoryFields(
+            choices: runChoices, draft: $repository, actions: creation, projectName: name)
         }
         if let failure {
           Text(failure).foregroundStyle(Theme.failure)
@@ -166,11 +167,15 @@ private struct ProjectNameSheet: View {
     .accessibilityIdentifier("project-name-sheet")
   }
 
-  /// Creates as the sheet says: from the repository, which can take minutes to clone, else by
-  /// name and icon.
+  /// Creates as the sheet says: from the repository, which can take minutes to clone, in a
+  /// folder on the chosen host, else by name and icon.
   private func create() {
-    guard !runChoices.isEmpty, repository.startsFromRepository(runChoices) else {
+    guard !runChoices.isEmpty else {
       submit()
+      return
+    }
+    guard repository.startsFromRepository(runChoices) else {
+      createInFolder()
       return
     }
     if repository.url.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -187,6 +192,46 @@ private struct ProjectNameSheet: View {
       failure = await createFromRepository()
       isCreating = false
     }
+  }
+
+  /// A Folder project: the host the user picked, and the folder it chose or creates.
+  private func createInFolder() {
+    guard repository.namesHost, let createFolderProject = creation.createFolderProject else {
+      submit()
+      return
+    }
+    failure = nil
+    isCreating = true
+    Task {
+      failure = await folderProject(createFolderProject)
+      isCreating = false
+    }
+  }
+
+  private func folderProject(
+    _ create: @MainActor (String, String?, ProjectRepositoryDraft) async -> String?
+  ) async -> String? {
+    var draft = repository
+    if draft.createsFolder {
+      guard let hostID = draft.targetID, let createFolder = creation.createFolder else {
+        return "Connect a host before creating a working directory."
+      }
+      if let made = draft.createdFolder, made.hostID == hostID, made.name == trimmed {
+        draft.workspace = made.path
+      } else {
+        switch await createFolder(hostID, trimmed) {
+        case .success(let path):
+          draft.workspace = path
+          repository.createdFolder = .init(hostID: hostID, name: trimmed, path: path)
+        case .failure(let error):
+          return error.message
+        }
+      }
+    }
+    let failure = await create(trimmed, Self.icon(icon), draft)
+    // Made: the sheet closes as Cancel closes it.
+    if failure == nil { cancel() }
+    return failure
   }
 
   private var isRename: Bool {

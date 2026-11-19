@@ -51,7 +51,7 @@ nonisolated struct MessageTextSplit {
       items.allSatisfy { $0.blocks.allSatisfy { drawsAsText($0, ramp: ramp) } }
     case .code(let language, _): CodeHighlighting.fenceName(language) != "mermaid"
     case .table(let table): MessageTableColumns.fits(table, ramp: ramp)
-    case .image, .math: false
+    case .image, .math, .video: false
     }
   }
 }
@@ -107,7 +107,7 @@ nonisolated extension MarkdownBlock {
           }
         case .quote(let inner): visit(inner)
         case .list(_, _, let items): for item in items { visit(item.blocks) }
-        case .heading, .code, .table, .rule, .html, .image, .math: break
+        case .heading, .code, .table, .rule, .html, .image, .math, .video: break
         }
       }
     }
@@ -135,7 +135,7 @@ extension MarkdownBlock {
       table.header = table.header.map { links.linking($0) }
       table.rows = table.rows.map { $0.map { links.linking($0) } }
       return .table(table)
-    case .code, .rule, .html, .image, .math:
+    case .code, .rule, .html, .image, .math, .video:
       return self
     }
   }

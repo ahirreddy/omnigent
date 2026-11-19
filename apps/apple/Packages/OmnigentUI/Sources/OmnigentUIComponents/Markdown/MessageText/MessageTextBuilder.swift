@@ -150,11 +150,12 @@ nonisolated struct MessageTextBuilder {
       rule(in: context)
     case .html(let raw):
       lines(raw, font: palette.codeFont, color: palette.secondary, in: context)
-    case .image(_, let alt):
-      // The split keeps images, display math and lists holding them out of the text; this
-      // only draws blocks given to the builder directly.
-      let label = alt.isEmpty ? "[Image]" : "[Image: \(alt)]"
-      lines(label, font: palette.font(size: ramp.body), color: palette.secondary, in: context)
+    case .image, .video:
+      // The split keeps images, videos, display math and lists holding them out of the text;
+      // this only draws blocks given to the builder directly.
+      lines(
+        block.mediaLabel(namingSource: false), font: palette.font(size: ramp.body),
+        color: palette.secondary, in: context)
     case .math(let tex):
       lines(
         MathText.unicode(tex), font: palette.math(size: ramp.body), color: context.color,

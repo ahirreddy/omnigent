@@ -239,12 +239,15 @@ impl Projector<'_> {
         Ok(Some(row))
     }
 
-    /// The row of a `[System: …]` notice: a muted marker. A sub-agent's wake is control traffic
-    /// the web never shows, and an interrupt shows on the reply it cut off.
+    /// The row of a `[System: …]` notice: a muted marker. A sub-agent's wake and a resumed
+    /// turn's prompt are control traffic the web never shows, and an interrupt shows on the
+    /// reply it cut off.
     fn system_notice(&self, notice: &SystemMessage) -> Option<Row> {
         if matches!(
             notice.kind,
-            SystemMessageKind::SubagentWake | SystemMessageKind::Interrupted
+            SystemMessageKind::SubagentWake
+                | SystemMessageKind::SessionResumed
+                | SystemMessageKind::Interrupted
         ) {
             return None;
         }

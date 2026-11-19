@@ -1,5 +1,6 @@
 public import Foundation
 public import Observation
+public import OmnigentWorkspaceUI
 public import SwiftUI
 
 /// What a workspace folder holds, by name.
@@ -40,6 +41,10 @@ public final class WorkspaceFileLinks {
   @ObservationIgnored private let listFolder:
     @MainActor (String) async throws -> WorkspaceFolderListing
   @ObservationIgnored private let readImage: (@MainActor (String) async throws -> Data)?
+  /// Reads recordings for the chat's players; `nil` shows a recording link as its title.
+  @ObservationIgnored let videoSource: (any WorkspaceDataSource)?
+  /// Saves a recording where the person picks; `nil` hides the players' Download.
+  @ObservationIgnored let downloadVideo: ((String) -> Void)?
   @ObservationIgnored private let openFile: @MainActor (WorkspaceFileTarget) -> Void
   @ObservationIgnored private var images = BoundedCache<String, Data>(limit: 32)
   private var listings: [String: Listing] = [:]
@@ -52,18 +57,29 @@ public final class WorkspaceFileLinks {
   ///   - home: The home directory once known, to expand `~/`.
   ///   - listFolder: The files and subfolders of a workspace-relative folder, `""` for the root.
   ///   - readImage: An image file's bytes; `nil` shows workspace images as their alt text.
+  ///   - videoSource: Reads recordings for the chat's players; `nil` shows them as their title.
+  ///   - downloadVideo: Saves a recording; `nil` hides the players' Download.
   ///   - open: Opens a file in the app.
   public init(
     root: @escaping @MainActor () -> String?, home: @escaping @MainActor () -> String?,
     listFolder: @escaping @MainActor (String) async throws -> WorkspaceFolderListing,
     readImage: (@MainActor (String) async throws -> Data)? = nil,
+    videoSource: (any WorkspaceDataSource)? = nil,
+    downloadVideo: ((String) -> Void)? = nil,
     open: @escaping @MainActor (WorkspaceFileTarget) -> Void
   ) {
     self.root = root
     self.home = home
     self.listFolder = listFolder
     self.readImage = readImage
+    self.videoSource = videoSource
+    self.downloadVideo = downloadVideo
     openFile = open
+  }
+
+  /// The workspace-relative path of a cited recording, when it is inside the workspace.
+  func videoPath(_ cited: String) -> String? {
+    WorkspacePaths.resolve(cited, root: root(), home: home())
   }
 
   /// The file a cited path opens, or the folder an explicit link shows (as on the web), when
@@ -213,7 +229,7 @@ nonisolated extension MarkdownBlock {
           for item in items { visit(item.blocks) }
         case .table(let table):
           for cell in table.header + table.rows.flatMap(\.self) { add(cell) }
-        case .code, .rule, .html, .image, .math: break
+        case .code, .rule, .html, .image, .math, .video: break
         }
       }
     }

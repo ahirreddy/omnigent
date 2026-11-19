@@ -1,8 +1,10 @@
-//! A new project from a repository, as the web's `NewProjectButton` makes one.
+//! A new project from a repository or a folder, as the web's `NewProjectButton` makes one.
 //!
 //! Under the `project_repository_creation` feature, the repository is cloned onto a host first
 //! (`POST /v1/hosts/{id}/repositories/clone`), or saved for a sandbox to prepare, then the
-//! project is created with the repository in its config (`POST /v1/projects`).
+//! project is created with the repository in its config (`POST /v1/projects`). A folder project
+//! names its host and, optionally, a working directory, which can be a new folder named after
+//! the project (`POST /v1/hosts/{id}/directories`).
 
 use serde_json::{Map, Value, json};
 
@@ -42,6 +44,46 @@ pub struct RepositoryProject {
     pub branch: String,
     /// Where a host clones it, `~/`-relative or absolute; unused for a sandbox.
     pub destination: String,
+}
+
+/// A project whose sessions start in a folder on a host (the web's Folder source).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FolderProject {
+    /// The project's name.
+    pub name: String,
+    /// Its emoji icon.
+    pub icon: Option<String>,
+    /// The host its sessions run on; `None` leaves the host to each session.
+    pub host_id: Option<String>,
+    /// The sessions' working directory on that host.
+    pub workspace: Option<String>,
+}
+
+/// Whether `name` can name a folder: one path component (`isSinglePathComponent`).
+#[must_use]
+pub fn is_single_path_component(name: &str) -> bool {
+    name != "." && name != ".." && !name.contains(['/', '\\', '\0'])
+}
+
+/// What a failed folder create tells the user, from the host's reason
+/// (`friendlyDirectoryError`).
+#[must_use]
+pub fn directory_failure_message(reason: &str) -> &'static str {
+    let reason = reason.to_lowercase();
+    let says = |words: &[&str]| words.iter().any(|word| reason.contains(word));
+    if says(&["already exists"]) {
+        "That folder already exists. Choose a different folder."
+    } else if says(&["permission denied", "not your host"]) {
+        "You can\u{2019}t create folders there. Reconnect your host or choose another location."
+    } else if says(&["host not found", "host is offline", "host unavailable", "disconnected"]) {
+        "The host is offline. Reconnect it and try again."
+    } else if says(&["timeout", "timed out"]) {
+        "The host didn\u{2019}t respond. Check its connection and try again."
+    } else if says(&["not a directory", "parent is a file", "path must"]) {
+        "That folder can\u{2019}t be created. Uncheck the box to choose another location."
+    } else {
+        "The folder couldn\u{2019}t be created. Check the host and try again."
+    }
 }
 
 /// Why a repository and branch can't be used, as the web words it (`sandboxRepoProblem`), or
@@ -181,6 +223,95 @@ impl<T: HttpTransport> ClientCore<T> {
             .map_err(|detail| SessionError::DeliveryUncertain {
                 detail: format!("unreadable {route} acknowledgement: {detail}"),
             })
+    }
+
+    /// Creates the folder `~/<name>` on `host_id` for a new project's working directory and
+    /// returns its absolute path.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidInput`] with the web's words for a name that isn't one folder
+    /// or a folder the host refused.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn create_project_folder(
+        &self,
+        host_id: &str,
+        name: &str,
+    ) -> Result<String, SessionError> {
+        let result = async {
+            let name = name.trim();
+            if !is_single_path_component(name) {
+                return Err(rejected(
+                    "Use a project name without slashes or dot segments to create a folder.",
+                ));
+            }
+            validate_identifier(host_id)?;
+            let route = format!("/v1/hosts/{host_id}/directories");
+            let body = json!({"path": format!("~/{name}")});
+            let answer = self
+                .write_json("POST", &route, &body)
+                .await
+                .map_err(|error| rejected(directory_failure_message(&reason_of(&error))))?;
+            as_object(&answer, &route)
+                .and_then(|object| req_str(object, "path"))
+                .map_err(|detail| SessionError::DeliveryUncertain {
+                    detail: format!("unreadable {route} acknowledgement: {detail}"),
+                })
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Makes a project whose sessions start on a host, in a working directory when one is
+    /// given, as the web's Folder source does.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidInput`] with the web's words for a missing name or a refused
+    /// create.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn create_folder_project(
+        &self,
+        project: &FolderProject,
+    ) -> Result<ProjectSummary, SessionError> {
+        let result = async {
+            let name = project.name.trim();
+            if name.is_empty() {
+                return Err(rejected("Enter a project name."));
+            }
+            let mut config = Map::new();
+            if let Some(icon) = project.icon.as_deref().filter(|icon| !icon.is_empty()) {
+                config.insert("icon".into(), json!(icon));
+            }
+            if let Some(host_id) = project.host_id.as_deref().filter(|id| !id.is_empty()) {
+                config.insert("host_id".into(), json!(host_id));
+                let workspace = project.workspace.as_deref().map(str::trim);
+                if let Some(workspace) = workspace.filter(|path| !path.is_empty()) {
+                    config.insert("workspace".into(), json!(workspace));
+                }
+            }
+            let mut body = json!({"name": name});
+            if !config.is_empty() {
+                body["config"] = Value::Object(config);
+            }
+            let created = self
+                .write_json("POST", "/v1/projects", &body)
+                .await
+                .map_err(|error| rejected(project_failure_message(&error)))?;
+            project_from(&created).map_err(|detail| SessionError::DeliveryUncertain {
+                detail: format!("unreadable /v1/projects acknowledgement: {detail}"),
+            })
+        }
+        .await;
+        self.dispatch();
+        result
     }
 
     /// Makes a project from a repository as the web does: checks the inputs, clones onto the

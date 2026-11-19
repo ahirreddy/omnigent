@@ -43,6 +43,9 @@ nonisolated indirect enum MarkdownBlock: Hashable, Sendable {
   case html(String)
   /// An image alone in its paragraph whose source is a workspace path or a `data:` URL.
   case image(source: String, alt: String)
+  /// A link alone in its paragraph to a recording: a workspace video or a direct `http(s)` video
+  /// file, drawn as a compact player.
+  case video(source: String, title: String)
   /// Display math, as TeX.
   case math(String)
 }
@@ -55,7 +58,8 @@ nonisolated indirect enum MarkdownBlock: Hashable, Sendable {
 /// link once the file is known to exist; anything else renders as plain text. Remote images are
 /// never fetched; they render as their alt text, linked when the source is `http(s)`. An image
 /// alone in its paragraph from the workspace or a `data:` URL becomes an ``MarkdownBlock/image``
-/// block. Raw HTML is shown verbatim.
+/// block, and a link alone in its paragraph to a video a ``MarkdownBlock/video`` block. Raw HTML
+/// is shown verbatim.
 nonisolated enum MarkdownParser {
   static let allowedLinkSchemes: Set<String> = ["http", "https", "mailto"]
   /// Quotes and lists deeper than this draw as text: each level costs layout and width.
@@ -89,7 +93,7 @@ nonisolated enum MarkdownParser {
   static func block(_ markup: any Markup) -> MarkdownBlock? {
     switch markup {
     case let paragraph as Paragraph:
-      return soleImage(paragraph) ?? .paragraph(inline(paragraph.children))
+      return soleImage(paragraph) ?? soleVideo(paragraph) ?? .paragraph(inline(paragraph.children))
     case let heading as Heading:
       return .heading(level: heading.level, text: inline(heading.children))
     case let code as CodeBlock:
@@ -134,6 +138,15 @@ nonisolated enum MarkdownParser {
       let source = image.source, MarkdownImageSource(source) != nil
     else { return nil }
     return .image(source: source, alt: String(inline(image.children).characters))
+  }
+
+  /// A video block for a paragraph holding only one link to a recording (the web's chat
+  /// `VideoPlayer`).
+  private static func soleVideo(_ paragraph: Paragraph) -> MarkdownBlock? {
+    guard paragraph.childCount == 1, let link = paragraph.child(at: 0) as? Markdown.Link,
+      let destination = link.destination, MarkdownVideoSource(destination) != nil
+    else { return nil }
+    return .video(source: destination, title: String(inline(link.children).characters))
   }
 
   private static func container(_ markup: any Markup) -> MarkdownBlock? {

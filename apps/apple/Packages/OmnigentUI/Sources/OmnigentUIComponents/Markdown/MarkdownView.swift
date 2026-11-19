@@ -147,6 +147,8 @@ struct MarkdownBlockView: View {
         .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
     case .math(let tex):
       MathBlockView(tex: tex)
+    case .video(let source, let title):
+      MarkdownVideoView(source: source, title: title)
     }
   }
 

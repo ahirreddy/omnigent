@@ -86,6 +86,9 @@ enum ShortcutGuide {
       row("Find a session by name", AppShortcuts.findSession),
       row("Rename current session", AppShortcuts.renameSession),
       row("Mark current session unread or read", AppShortcuts.toggleUnread),
+      row("Pin or unpin current session", AppShortcuts.togglePin),
+      row("Archive current session", AppShortcuts.archiveSession),
+      row("Fork current session", AppShortcuts.forkSession),
       row("Open Settings", AppShortcuts.settings),
       row("Show keyboard shortcuts", AppShortcuts.keyboardShortcuts),
     ]

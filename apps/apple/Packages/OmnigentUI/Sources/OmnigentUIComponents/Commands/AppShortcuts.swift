@@ -40,6 +40,12 @@ public enum AppShortcuts {
   public static let renameSession = KeyboardShortcut("r", modifiers: [.command, .option])
   /// Mark the open session unread, or read again.
   public static let toggleUnread = KeyboardShortcut("u", modifiers: [.command, .option])
+  /// Pin or unpin the open session.
+  public static let togglePin = KeyboardShortcut("p", modifiers: [.command, .option])
+  /// Archive the open session.
+  public static let archiveSession = KeyboardShortcut("a", modifiers: [.command, .shift])
+  /// Fork the open session.
+  public static let forkSession = KeyboardShortcut("f", modifiers: [.command, .option])
   /// Add a nested agent beside the session.
   public static let addNestedAgent = KeyboardShortcut("a", modifiers: [.command, .option])
   /// Focus the composer.

@@ -2,7 +2,7 @@
 //! web client shows it on main.
 //!
 //! - `[System: …]` notices (task, timer and terminal events, Claude's task notifications) are
-//!   muted markers; a sub-agent's wake and peer envelopes never show
+//!   muted markers; a sub-agent's wake, a resumed turn's prompt and peer envelopes never show
 //!   (`web/src/lib/systemMessage.ts`, `itemsToBlocks.ts`).
 //! - An automation's note is stripped from the prompt it ends (`stripAutomationContext`).
 //! - Another session's message keeps its sender apart from its text (`sessionMessageOrigin`).

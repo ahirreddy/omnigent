@@ -24,6 +24,8 @@ pub enum SystemMessageKind {
     TerminalIdle,
     /// A sub-agent's result waits in the inbox: control traffic the web never shows.
     SubagentWake,
+    /// The server resumed a turn its host's runner lost: a prompt to the agent, never shown.
+    SessionResumed,
     /// An interrupt record.
     Interrupted,
     /// Any other `[System: …]` header.
@@ -41,6 +43,7 @@ impl SystemMessageKind {
             Self::TimerFired => "timer_fired",
             Self::TerminalIdle => "terminal_idle",
             Self::SubagentWake => "subagent_wake",
+            Self::SessionResumed => "session_resumed",
             Self::Interrupted => "interrupted",
             Self::Generic => "generic",
         }
@@ -73,6 +76,8 @@ const INTERRUPT_RECORDS: [&str; 2] = [
     "[Request interrupted by user for tool use]",
 ];
 const HEADER_OPEN: &str = "[System: ";
+/// The first line of the prompt that resumes an interrupted turn (`RECOVERY_NOTICE`).
+const SESSION_RESUMED: &str = "[System: session resumed]";
 const TASK_STATUSES: [&str; 3] = ["completed", "failed", "cancelled"];
 const SUBAGENT_WAKE_TAIL: &str = " waiting in inbox. Call sys_read_inbox to collect.";
 
@@ -81,6 +86,13 @@ const SUBAGENT_WAKE_TAIL: &str = " waiting in inbox. Call sys_read_inbox to coll
 #[must_use]
 pub fn parse_system_message(text: &str) -> Option<SystemMessage> {
     let (first_line, body) = text.split_once('\n').unwrap_or((text, ""));
+    if first_line == SESSION_RESUMED {
+        return Some(SystemMessage::new(
+            SystemMessageKind::SessionResumed,
+            "Session resumed",
+            body,
+        ));
+    }
     if INTERRUPT_RECORDS.contains(&first_line) {
         return Some(SystemMessage::new(
             SystemMessageKind::Interrupted,

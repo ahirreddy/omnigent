@@ -143,7 +143,9 @@ struct SessionRowMenu {
       ) { fork(session) }
     }
     // An automation runs from the owner's own session.
-    if let createAutomation = actions.createAutomation, !isShared, !session.isArchived {
+    if let createAutomation = actions.createAutomation, !isShared, !session.isArchived,
+      actions.offersCreateAutomation?(session) ?? true
+    {
       Button("Create automation", systemImage: "clock.arrow.circlepath") {
         createAutomation(session)
       }

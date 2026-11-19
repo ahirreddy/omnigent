@@ -6,6 +6,7 @@ public import SwiftUI
 /// lists its chapters beside the player (below it when narrow), each seeking to its start.
 public struct WorkspaceVideoView: View {
   private let path: String
+  private let name: String?
   private let source: any WorkspaceDataSource
   private let download: ((String) -> Void)?
   private let compact: Bool
@@ -20,6 +21,8 @@ public struct WorkspaceVideoView: View {
     "This video couldn't be played. Download the file to open it in another app."
   /// Wider than this and the chapters sit beside the player.
   static let wideWidth: CGFloat = 640
+  /// The chat card's stage: 16:10 at its 320-point width, as on the web.
+  static let compactStageHeight: CGFloat = 200
 
   /// A player card.
   /// - Parameters:
@@ -27,12 +30,14 @@ public struct WorkspaceVideoView: View {
   ///   - source: Reads it.
   ///   - download: Saves a file where the person picks; `nil` hides Download.
   ///   - compact: The small card the chat embeds.
+  ///   - title: The card's name, as a chat link labels it; `nil` names the file.
   ///   - openFile: Opens the video in the file viewer, from its name; `nil` keeps the name plain.
   public init(
     path: String, source: any WorkspaceDataSource, download: ((String) -> Void)?,
-    compact: Bool = false, openFile: (() -> Void)? = nil
+    compact: Bool = false, title: String? = nil, openFile: (() -> Void)? = nil
   ) {
     self.path = path
+    name = title.flatMap { $0.isEmpty ? nil : $0 }
     self.source = source
     self.download = download
     self.compact = compact
@@ -79,7 +84,7 @@ public struct WorkspaceVideoView: View {
     .accessibilityIdentifier("workspace.video")
   }
 
-  private var title: String { WorkspacePaths.name(of: path) }
+  private var title: String { name ?? WorkspacePaths.name(of: path) }
 
   private var showsChapters: Bool { !compact && !chapters.chapters.isEmpty && showsActions }
 
@@ -202,6 +207,8 @@ public struct WorkspaceVideoView: View {
       }
     }
     .frame(maxWidth: .infinity)
+    // A message lays the card out at its ideal height, so the chat's card sets its own.
+    .frame(height: compact ? Self.compactStageHeight : nil)
     .aspectRatio(compact ? 1.6 : 16.0 / 9.0, contentMode: .fit)
     .background(playback.phase == .idle || playback.phase == .failed ? Color.clear : .black)
   }

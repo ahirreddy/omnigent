@@ -7,7 +7,8 @@ use serde_json::json;
 use super::super::SessionError;
 use super::super::test_support::{Reply, RouteTransport, connected, path_of};
 use super::{
-    ProjectTarget, RepositoryProject, clone_failure_message, default_clone_destination,
+    FolderProject, ProjectTarget, RepositoryProject, clone_failure_message,
+    default_clone_destination, directory_failure_message, is_single_path_component,
     project_repository_problem,
 };
 
@@ -170,5 +171,87 @@ fn repository_problems_and_defaults_follow_the_web() {
     assert_eq!(
         clone_failure_message("something else"),
         "The repository couldn\u{2019}t be cloned. Check the details and try again."
+    );
+}
+
+#[test]
+fn a_folder_project_names_its_host_and_working_directory() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/projects",
+        r#"{"id":"p9","object":"project","name":"Garden","created_at":1,"updated_at":1}"#,
+    );
+    let mut project = FolderProject {
+        name: " Garden ".into(),
+        icon: Some("🌱".into()),
+        host_id: Some("host_1".into()),
+        workspace: Some("/Users/me/garden".into()),
+    };
+    block_on(core.create_folder_project(&project)).unwrap();
+    project.workspace = None;
+    block_on(core.create_folder_project(&project)).unwrap();
+    project.host_id = None;
+    project.icon = None;
+    block_on(core.create_folder_project(&project)).unwrap();
+    assert_eq!(
+        core.transport().write_bodies(),
+        [
+            json!({"name": "Garden", "config": {
+                "icon": "🌱", "host_id": "host_1", "workspace": "/Users/me/garden"}}),
+            json!({"name": "Garden", "config": {"icon": "🌱", "host_id": "host_1"}}),
+            json!({"name": "Garden"}),
+        ]
+    );
+}
+
+#[test]
+fn a_project_folder_is_made_in_home_and_failures_use_the_webs_words() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/hosts/host_1/directories",
+        r#"{"object":"directory","path":"/Users/me/Garden"}"#,
+    );
+    assert_eq!(
+        block_on(core.create_project_folder("host_1", " Garden ")).unwrap(),
+        "/Users/me/Garden"
+    );
+    assert_eq!(
+        core.transport().write_bodies(),
+        [json!({"path": "~/Garden"})]
+    );
+    assert_eq!(
+        reason(block_on(core.create_project_folder("host_1", "a/b")).unwrap_err()),
+        "Use a project name without slashes or dot segments to create a folder."
+    );
+    let refused = connected(RouteTransport::local());
+    refused.transport().respond(
+        Some("POST"),
+        "/v1/hosts/host_1/directories",
+        None,
+        Reply::json(409, r#"{"detail":"directory already exists"}"#),
+    );
+    assert_eq!(
+        reason(block_on(refused.create_project_folder("host_1", "Garden")).unwrap_err()),
+        "That folder already exists. Choose a different folder."
+    );
+}
+
+#[test]
+fn folder_names_and_directory_failures_follow_the_web() {
+    assert!(is_single_path_component("Garden 2"));
+    for bad in [".", "..", "a/b", "a\\b", "a\0b"] {
+        assert!(!is_single_path_component(bad), "{bad}");
+    }
+    assert_eq!(
+        directory_failure_message("Host is offline"),
+        "The host is offline. Reconnect it and try again."
+    );
+    assert_eq!(
+        directory_failure_message("parent is a file"),
+        "That folder can\u{2019}t be created. Uncheck the box to choose another location."
+    );
+    assert_eq!(
+        directory_failure_message("boom"),
+        "The folder couldn\u{2019}t be created. Check the host and try again."
     );
 }

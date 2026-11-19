@@ -242,7 +242,22 @@ extension ConversationScreen {
       actions.toggleUnread = { setUnread(summary, !(isUnread?(summary.id) ?? false)) }
     }
     actions.addNestedAgent = chrome.addNestedAgentCommand
+    if let summary = state.summary { addRowCommands(to: &actions, summary: summary) }
     return actions
+  }
+
+  /// Pin, Archive and Fork, as the session's menus offer them (the web's desktop commands).
+  private func addRowCommands(to actions: inout SessionCommandActions, summary: SessionSummary) {
+    let sessionActions = extras.sessionActions
+    if let setPinned = sessionActions.setPinned, summary.canPin, !summary.isArchived {
+      actions.togglePin = { setPinned(summary, !summary.isPinned) }
+    }
+    if let setArchived = sessionActions.setArchived, summary.canArchive, !summary.isArchived {
+      actions.archive = { setArchived(summary, true) }
+    }
+    if let fork = sessionActions.fork, sessionActions.forkUnavailableReason?(summary) == nil {
+      actions.fork = { fork(summary) }
+    }
   }
 
   /// The composer with this screen's picker requests.

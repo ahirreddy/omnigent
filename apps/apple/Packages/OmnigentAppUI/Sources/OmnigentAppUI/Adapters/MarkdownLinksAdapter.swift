@@ -5,15 +5,17 @@ import OmnigentUIComponents
 import OmnigentWorkspaceUI
 import SwiftUI
 
-/// Workspace file links for a session's messages, over its workspace browser: folder listings
-/// and image reads through the core; a click opens a file in the workspace viewer, or shows a
-/// folder in the Files tree.
+/// Workspace file links for a session's messages, over its workspace browser: folder listings,
+/// image reads and recordings through the core; a click opens a file in the workspace viewer, or
+/// shows a folder in the Files tree.
 enum MarkdownLinksAdapter {
   /// Pages read per folder when checking that a cited file exists.
   static let maxListingPages = 20
 
-  /// Links over `workspace`.
-  static func links(_ workspace: WorkspaceBrowserModel) -> WorkspaceFileLinks {
+  /// Links over `workspace`; `report` shows a failed recording download.
+  static func links(
+    _ workspace: WorkspaceBrowserModel, report: @escaping @MainActor (String) -> Void = { _ in }
+  ) -> WorkspaceFileLinks {
     let source = workspace.source
     return WorkspaceFileLinks(
       root: { source.absoluteLocation(of: "") },
@@ -25,6 +27,9 @@ enum MarkdownLinksAdapter {
         }
         return data
       },
+      videoSource: source,
+      downloadVideo: WorkspaceActionsAdapter.actions(workspace, mention: nil, report: report)
+        .download,
       open: { [weak workspace] target in
         guard let workspace else { return }
         Task { await open(target, in: workspace) }

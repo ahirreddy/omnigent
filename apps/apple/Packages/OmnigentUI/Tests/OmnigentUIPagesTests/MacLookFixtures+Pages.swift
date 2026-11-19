@@ -190,4 +190,24 @@ extension LookFixtures {
     )
     .padding(Theme.Spacing.medium)
   }
+
+  /// A reply linking a workspace recording and a remote one, each alone in its paragraph.
+  static var chatVideo: some View {
+    let links = WorkspaceFileLinks(
+      root: { "/work/app" }, home: { "/home/dev" },
+      listFolder: { _ in WorkspaceFolderListing(files: []) }, videoSource: LookChapteredSource(),
+      downloadVideo: { _ in }, open: { _ in })
+    let reply = """
+      The sign-in flow passes now. Here is the run:
+
+      [Sign-in recording](recordings/sign-in.mp4)
+
+      The same flow on staging:
+
+      [Staging run](https://media.example.com/runs/sign-in.webm)
+      """
+    return MarkdownView(reply)
+      .environment(\.workspaceFileLinks, links)
+      .padding(Theme.Spacing.medium)
+  }
 }

@@ -73,6 +73,7 @@ extension SessionCommandActions: FocusedActions {
       toggleInspector != nil, previousSession != nil, nextSession != nil,
       toggleViewMode != nil, openChanges != nil, rename != nil, chooseModel != nil,
       cycleModel != nil, cycleEffort != nil, approveOwnsCommandReturn, addNestedAgent != nil,
+      toggleUnread != nil, togglePin != nil, archive != nil, fork != nil,
     ]
   }
 
@@ -92,6 +93,9 @@ extension SessionCommandActions: FocusedActions {
       openChanges: Self.forward(openChanges, \.openChanges, to: latest))
     copy.rename = Self.forward(rename, \.rename, to: latest)
     copy.toggleUnread = Self.forward(toggleUnread, \.toggleUnread, to: latest)
+    copy.togglePin = Self.forward(togglePin, \.togglePin, to: latest)
+    copy.archive = Self.forward(archive, \.archive, to: latest)
+    copy.fork = Self.forward(fork, \.fork, to: latest)
     copy.chooseModel = Self.forward(chooseModel, \.chooseModel, to: latest)
     copy.cycleModel = Self.forward(cycleModel, \.cycleModel, to: latest)
     copy.cycleEffort = Self.forward(cycleEffort, \.cycleEffort, to: latest)

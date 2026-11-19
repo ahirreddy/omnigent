@@ -114,8 +114,8 @@ private struct CLIMarkdownBlockView: View {
     case .html(let raw):
       Text(withCursor(AttributedString(raw)))
         .fixedSize(horizontal: false, vertical: true)
-    case .image(let source, let alt):
-      Text(withCursor(colored("[Image: \(alt.isEmpty ? source : alt)]", palette.dim)))
+    case .image, .video:
+      Text(withCursor(colored(block.mediaLabel(namingSource: true), palette.dim)))
         .fixedSize(horizontal: false, vertical: true)
     case .math(let tex):
       Text(withCursor(colored(MathText.unicode(tex), palette.code)))
