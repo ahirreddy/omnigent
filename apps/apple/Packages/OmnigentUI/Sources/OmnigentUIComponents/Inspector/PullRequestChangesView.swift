@@ -12,7 +12,7 @@ public struct PullRequestChangesView: View {
   @State private var sidebarChoice = SidebarChoice.automatic
   @State private var sidebarWidth: CGFloat = 192
   @State private var inlineFilterOpen = false
-  @FocusState private var findFocused: Bool
+  @State private var findFocused = false
   #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
   #endif
@@ -202,15 +202,16 @@ struct PullRequestPathFilterField: View {
   let set: (@MainActor (String) -> Void)?
 
   var body: some View {
-    TextField("Filter files\u{2026}", text: Binding(get: { value }, set: { set?($0) }))
-      .textFieldStyle(.roundedBorder)
-      .font(.callout)
-      .onKeyPress(.escape) {
-        guard !value.isEmpty else { return .ignored }
+    SearchField(
+      "Filter files\u{2026}", text: Binding(get: { value }, set: { set?($0) }),
+      identifier: "pr-path-filter",
+      escape: {
+        guard !value.isEmpty else { return false }
         set?("")
-        return .handled
+        return true
       }
-      .accessibilityLabel("Filter changed files")
-      .accessibilityIdentifier("pr-path-filter")
+    )
+    .controlSize(.small)
+    .accessibilityLabel("Filter changed files")
   }
 }

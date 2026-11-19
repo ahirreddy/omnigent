@@ -96,19 +96,18 @@ public struct PullRequestFileActionsView: View {
       }
       menu
       if state.offersViewed, let toggleViewed {
-        VStack(alignment: .trailing, spacing: Theme.Spacing.tiny) {
-          PullRequestCheckbox(
-            title: "Viewed", isOn: state.viewed, accessibilityLabel: "Viewed \(state.path)",
-            toggle: toggleViewed)
-          if state.changedSinceViewed {
-            Text("Changed since viewed")
-              .font(.caption2)
-              .padding(.horizontal, Theme.Spacing.extraSmall)
-              .overlay { RoundedRectangle(cornerRadius: 4).strokeBorder(.separator) }
-          }
+        if state.changedSinceViewed {
+          Label("Changed since viewed", systemImage: "exclamationmark.circle")
+            .font(.caption)
+            .foregroundStyle(Theme.warning)
+            .lineLimit(1)
         }
+        PullRequestCheckbox(
+          title: "Viewed", isOn: state.viewed, accessibilityLabel: "Viewed \(state.path)",
+          toggle: toggleViewed
+        )
         .font(.caption)
-        .foregroundStyle(.secondary)
+        .controlSize(.small)
       }
     }
     .buttonStyle(.borderless)
@@ -296,13 +295,7 @@ private struct PullRequestLocalCommentCard: View {
       }
     }
     .padding(Theme.Spacing.small)
-    .background(
-      ThemeColor.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-    )
-    .overlay {
-      RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-        .strokeBorder(.separator)
-    }
+    .cardSurface(cornerRadius: Theme.Radius.small)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Local review comment")
     .accessibilityIdentifier("pr-local-comment-\(comment.id)")

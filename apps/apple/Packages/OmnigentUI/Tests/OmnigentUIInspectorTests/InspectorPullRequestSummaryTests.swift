@@ -346,8 +346,11 @@
       #expect(try screen.shows("Sam"))
       #expect(try screen.shows("Maintainer"))
       #expect(try screen.shows("Kim"))
+      // The filter's own search and clear buttons are not choices.
+      let filter = screen.allViews.compactMap { $0 as? NSSearchField }
       let checkboxes = screen.allViews.compactMap { $0 as? NSButton }
         .filter { $0.frame.width > 0 }
+        .filter { button in !filter.contains { button.isDescendant(of: $0) } }
       #expect(checkboxes.count == 2)
       #expect(checkboxes.map(\.state).sorted { $0.rawValue < $1.rawValue } == [.off, .on])
       for checkbox in checkboxes { try screen.click(checkbox) }

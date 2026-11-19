@@ -40,16 +40,16 @@ struct PullRequestCommitsList: View {
         Text(error).font(.caption).foregroundStyle(Theme.failure).padding(Theme.Spacing.small)
         Divider()
       }
-      TextField(
+      SearchField(
         "Search commits\u{2026}",
-        text: Binding(get: { state.query }, set: { actions.setCommitQuery?($0) })
+        text: Binding(get: { state.query }, set: { actions.setCommitQuery?($0) }),
+        escape: {
+          guard !state.query.isEmpty else { return false }
+          actions.setCommitQuery?("")
+          return true
+        }
       )
-      .textFieldStyle(.roundedBorder)
-      .onKeyPress(.escape) {
-        guard !state.query.isEmpty else { return .ignored }
-        actions.setCommitQuery?("")
-        return .handled
-      }
+      .controlSize(.small)
       .accessibilityLabel("Search commits")
       .padding(Theme.Spacing.small)
       Divider()

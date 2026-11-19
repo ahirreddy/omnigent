@@ -145,9 +145,8 @@ private struct PullRequestTreeRow: View {
       .padding(.leading, indent)
       .padding(.trailing, Theme.Spacing.small)
       .padding(.vertical, Theme.Spacing.tiny)
-      .background(
-        state.activePath == file.path ? AnyShapeStyle(ThemeColor.hover) : AnyShapeStyle(.clear)
-      )
+      // The file in view reads as the list's selection.
+      .selectionFill(state.activePath == file.path, cornerRadius: Theme.Radius.small / 2)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -186,8 +185,8 @@ struct PullRequestDiffStat: View {
 
   var body: some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
-      if let added { Text("+\(added)").foregroundStyle(.green) }
-      if let removed { Text("\u{2212}\(removed)").foregroundStyle(.red) }
+      if let added { Text("+\(added)").foregroundStyle(ThemeColor.diffAdded) }
+      if let removed { Text("\u{2212}\(removed)").foregroundStyle(ThemeColor.diffRemoved) }
     }
     .font(.caption.monospacedDigit())
     .accessibilityElement(children: .combine)
