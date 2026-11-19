@@ -10,8 +10,8 @@ use super::super::test_support::{
 use super::{
     Automation, AutomationDraft, AutomationFilter, AutomationGrant, AutomationRunStatus,
     AutomationState, RunPullRequestStatus, ServerPages, arrange_automations, automation_from,
-    automation_share_disabled_reason, describe_run_failure, draft_body, format_cost_usd, format_run_duration, parse_cost_limit,
-    run_from, run_pull_requests_summary,
+    automation_share_disabled_reason, describe_run_failure, draft_body, format_cost_usd,
+    format_run_duration, parse_cost_limit, run_from, run_pull_requests_summary,
 };
 
 const TASK: &str = r#"{"id":"t1","name":"Standup","prompt":"Summarize","rrule":"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=8;BYMINUTE=0","agent_id":"a1","timezone":"America/New_York","session_mode":"continue","state":"active","last_run_at":1793800000,"last_run_status":"succeeded","last_run_conversation_id":"c9","next_run_at":"2026-11-05T08:00:00+00:00","updated_at":1793700000.5}"#;
@@ -395,7 +395,11 @@ fn pages_follow_what_the_server_advertises() {
     assert!(ServerPages::from_value(&json!({"features": {"canvas": "yes"}})).is_err());
     assert!(ServerPages::from_value(&json!({"sharing_mode": 1})).is_err());
     // Moving sessions between nests needs a server that says it can.
-    assert!(!ServerPages::from_value(&json!({})).unwrap().session_nest_moves);
+    assert!(
+        !ServerPages::from_value(&json!({}))
+            .unwrap()
+            .session_nest_moves
+    );
     let moves = json!({"session_nest_moves": true});
     assert!(ServerPages::from_value(&moves).unwrap().session_nest_moves);
 }

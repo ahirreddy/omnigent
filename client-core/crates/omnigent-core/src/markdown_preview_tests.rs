@@ -65,7 +65,10 @@ fn keeps_code_as_written_without_its_backticks_or_fences() {
         "Keep a *b* as code, all of it"
     );
     // A fence closes only on as many of its own character; a tilde fence holds backticks.
-    assert_eq!(preview("~~~~\n```\nx\n~~~\n~~~~\nDone."), "``` · x · ~~~ · Done.");
+    assert_eq!(
+        preview("~~~~\n```\nx\n~~~\n~~~~\nDone."),
+        "``` · x · ~~~ · Done."
+    );
 }
 
 #[test]
@@ -103,7 +106,9 @@ fn keeps_a_tables_cells_and_leaves_out_its_rules() {
 #[test]
 fn leaves_marks_that_mark_nothing_and_escaped_ones_as_written() {
     assert_eq!(
-        preview("Multiply 2 * 3 in my_file_name.py, not \\*this\\*, but _this_, *that* and ~~those~~."),
+        preview(
+            "Multiply 2 * 3 in my_file_name.py, not \\*this\\*, but _this_, *that* and ~~those~~."
+        ),
         "Multiply 2 * 3 in my_file_name.py, not *this*, but this, that and those."
     );
     assert_eq!(preview("**a**, **b** _c_ `d` `e`"), "a, b c d e");
