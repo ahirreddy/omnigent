@@ -139,7 +139,7 @@ final class MacProjectFolderFlowUITests: XCTestCase {
       let place = Self.places[tally.clicks % Self.places.count]
       // Pointer events go to the window in front: another app's window must not take them.
       app.activate()
-      let row = try revealShowMore(below: rows, live: live, app: app)
+      let row = try revealShowMore(showMore, below: rows, live: live, app: app)
       if hasPill(showMore, in: row, app: app) { tally.clicksBesidePill += 1 }
       let point = place.point(in: row)
       try await click(point, in: app, waitingForTooltip: place == .pillAfterItsTooltip)
@@ -161,13 +161,22 @@ final class MacProjectFolderFlowUITests: XCTestCase {
   /// Show more's own frame reads empty while it is below the window: the rows above place it.
   @MainActor
   private func revealShowMore(
-    below rows: XCUIElementQuery, live: MacLiveUITestSupport, app: XCUIApplication
+    _ showMore: XCUIElement, below rows: XCUIElementQuery, live: MacLiveUITestSupport,
+    app: XCUIApplication
   ) throws -> CGRect {
     let window = app.windows.firstMatch
     let bottom = window.frame.maxY - 60
     var row = try Self.showMoreRow(below: rows)
     let pointer = window.coordinate(withNormalizedOffset: .zero)
       .withOffset(CGVector(dx: row.midX - window.frame.minX, dy: window.frame.height / 2))
+    // Rows past the window's bottom are not laid out, so they can't place Show more: scroll
+    // until Show more itself is in the window.
+    for _ in 0..<30 where showMore.frame.isEmpty || showMore.frame.maxY > bottom {
+      let before = showMore.frame
+      pointer.scroll(byDeltaX: 0, deltaY: -40)
+      _ = live.waitUntil(timeout: 1) { showMore.frame != before }
+    }
+    row = try Self.showMoreRow(below: rows)
     for _ in 0..<20 where row.maxY > bottom {
       let before = row.minY
       pointer.scroll(byDeltaX: 0, deltaY: -40)
@@ -182,7 +191,9 @@ final class MacProjectFolderFlowUITests: XCTestCase {
   /// apart, as wide. A row reports its content's frame, centered in the row.
   @MainActor
   private static func showMoreRow(below rows: XCUIElementQuery) throws -> CGRect {
-    let listed = rows.allElementsBoundByIndex.map(\.frame).sorted { $0.minY < $1.minY }
+    // A row the list has not laid out reads an empty frame.
+    let listed = rows.allElementsBoundByIndex.map(\.frame).filter { !$0.isEmpty }
+      .sorted { $0.minY < $1.minY }
     let above = try XCTUnwrap(listed.last, "no session listed above Show more")
     let pitch = above.minY - (listed.dropLast().last ?? above).minY
     return CGRect(
