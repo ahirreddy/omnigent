@@ -100,6 +100,9 @@ pub struct SessionSummary {
     /// The token of the nested create that made it, which its provisional row carries.
     #[uniffi(default)]
     pub client_create_token: Option<String>,
+    /// The automation that starts each run from a copy of this session.
+    #[uniffi(default)]
+    pub automation_source_id: Option<String>,
     /// The session family it belongs to; `None` for a standalone session or a shared one.
     #[uniffi(default)]
     pub family: Option<SessionFamily>,
@@ -328,6 +331,7 @@ impl From<CoreSummary> for SessionSummary {
             comments_count: summary.comments_count,
             created_by_session_id: summary.created_by_session_id,
             client_create_token: summary.client_create_token,
+            automation_source_id: summary.automation_source_id,
             family: summary.family.map(Into::into),
         }
     }
@@ -358,6 +362,7 @@ impl From<&SessionSummary> for CoreSummary {
             comments_count: summary.comments_count,
             created_by_session_id: summary.created_by_session_id.clone(),
             client_create_token: summary.client_create_token.clone(),
+            automation_source_id: summary.automation_source_id.clone(),
             family: summary.family.clone().map(Into::into),
             ..Self::new(
                 summary.id.clone(),

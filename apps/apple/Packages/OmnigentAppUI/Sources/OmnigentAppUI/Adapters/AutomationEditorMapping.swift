@@ -45,6 +45,11 @@ enum AutomationEditorMapping {
     AutomationOption(id: "max", name: "Max"),
   ]
 
+  /// Pi's thinking levels (the web's `PI_NATIVE_EFFORTS`).
+  static let piEfforts =
+    [AutomationOption(id: "none", name: "None"), AutomationOption(id: "minimal", name: "Minimal")]
+    + claudeEfforts
+
   /// The harnesses whose model an automation can set (the web's `nativeAgentHasModelSettings`).
   static let modelHarnesses: Set<String> = [
     "claude-native", "codex-native", "pi-native", "devin-native",
@@ -318,19 +323,24 @@ extension AutomationEditorMapping {
     return options
   }
 
-  /// The efforts the host reports for the picked model (else its default), or Claude Code's.
-  private static func efforts(harness: String, models: [ModelChoice], picked: String)
+  /// The web's `nativeEffortOptions`: Claude Code's and Pi's fixed ladders, else the efforts the
+  /// host reports for the picked model (or its default).
+  static func efforts(harness: String, models: [ModelChoice], picked: String)
     -> [AutomationOption]
   {
-    let model = models.first { $0.value == picked } ?? models.first { $0.isDefault == true }
-    let reported = (model?.supportedReasoningEfforts ?? []).map { choice in
-      AutomationOption(
-        id: choice.reasoningEffort,
-        name: claudeEfforts.first { $0.id == choice.reasoningEffort }?.name
-          ?? choice.reasoningEffort.capitalized)
+    switch harness {
+    case "claude-native": return claudeEfforts
+    case "pi-native": return piEfforts
+    default: break
     }
-    if !reported.isEmpty { return reported }
-    return harness == "claude-native" ? claudeEfforts : []
+    let model = models.first { $0.value == picked } ?? models.first { $0.isDefault == true }
+    var seen = Set<String>()
+    return (model?.supportedReasoningEfforts ?? []).compactMap { choice in
+      let effort = choice.reasoningEffort
+      guard !effort.isEmpty, seen.insert(effort).inserted else { return nil }
+      return AutomationOption(
+        id: effort, name: piEfforts.first { $0.id == effort }?.name ?? effort.capitalized)
+    }
   }
 
   /// Whether a save of `draft` sends the model, effort and permission mode.

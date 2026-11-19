@@ -37,6 +37,44 @@ struct AutomationsAdapterTests {
       ])
   }
 
+  @Test("Create automation is offered on an agent session that no automation runs from yet")
+  func offersAutomationFromSession() {
+    typealias Fixtures = ConversationFixtures
+    let agentSession = Fixtures.summary("s1", configuration: Fixtures.configuration())
+    #expect(AutomationsAdapter.offersAutomation(from: agentSession))
+    var source = agentSession
+    source.automationSourceId = "task_daily"
+    #expect(!AutomationsAdapter.offersAutomation(from: source))
+    #expect(!AutomationsAdapter.offersAutomation(from: Fixtures.summary("s2")))
+    // A side chat or any other session the list doesn't hold.
+    #expect(!AutomationsAdapter.offersAutomation(from: nil))
+  }
+
+  @Test("Claude Code and Pi offer their fixed effort ladders; Codex takes the model's efforts")
+  func effortLadders() {
+    let models = [
+      ModelChoice(
+        id: "gpt", model: "gpt", displayName: nil, description: nil, hidden: nil, isDefault: true,
+        defaultReasoningEffort: nil,
+        supportedReasoningEfforts: [
+          ReasoningChoice(reasoningEffort: "minimal", description: nil),
+          ReasoningChoice(reasoningEffort: "xhigh", description: nil),
+          ReasoningChoice(reasoningEffort: "xhigh", description: nil),
+        ], title: "GPT", value: "gpt")
+    ]
+    let ids = { (harness: String) in
+      AutomationEditorMapping.efforts(harness: harness, models: models, picked: "").map(\.id)
+    }
+    #expect(ids("claude-native") == ["low", "medium", "high", "xhigh", "max"])
+    #expect(ids("pi-native") == ["none", "minimal", "low", "medium", "high", "xhigh", "max"])
+    #expect(ids("codex-native") == ["minimal", "xhigh"])
+    #expect(
+      AutomationEditorMapping.efforts(harness: "codex-native", models: models, picked: "")
+        .map(\.name) == ["Minimal", "xHigh"])
+    #expect(
+      AutomationEditorMapping.efforts(harness: "devin-native", models: [], picked: "").isEmpty)
+  }
+
   @Test("Share shows disabled on a legacy automation the server can't keep grants for")
   func legacyShare() {
     var legacy = automation(rrule: "FREQ=DAILY")

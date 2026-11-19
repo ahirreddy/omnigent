@@ -217,6 +217,8 @@ public struct SessionListActions {
   public var forkUnavailableReason: (@MainActor (SessionSummary) -> String?)?
   /// Open a new automation whose runs each start from a copy of the session.
   public var createAutomation: (@MainActor (SessionSummary) -> Void)?
+  /// Whether a session can be an automation's source; without it, every owned session can.
+  public var offersCreateAutomation: (@MainActor (SessionSummary) -> Bool)?
   /// Move to a project (`nil` removes it from its project).
   public var moveToProject: (@MainActor (SessionSummary, SessionProject?) -> Void)?
   /// Move into the nest of another session (`nil` removes it from its own); `nil` where the

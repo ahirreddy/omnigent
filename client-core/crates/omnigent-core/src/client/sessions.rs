@@ -102,6 +102,9 @@ pub struct SessionSummary {
     /// The token of the nested create that made it (`omnigent.client_create_token`), so the
     /// create's provisional row knows it before the create answers.
     pub client_create_token: Option<String>,
+    /// The automation that starts each run from a copy of this session
+    /// (`omnigent.scheduled_task_source`).
+    pub automation_source_id: Option<String>,
     /// The session family it belongs to; `None` for a standalone session or a shared one.
     pub family: Option<SessionFamily>,
 }
@@ -152,6 +155,7 @@ impl SessionSummary {
             comments_count: 0,
             created_by_session_id: None,
             client_create_token: None,
+            automation_source_id: None,
             family: None,
         }
     }
@@ -245,6 +249,9 @@ pub const PINNED_LABEL: &str = "omnigent.pinned";
 
 /// The label naming the session that started an independent worker.
 pub const CREATED_BY_SESSION_LABEL: &str = "omnigent.created_by_session_id";
+
+/// The label the server puts on an automation's session copy; its value is the automation's id.
+pub const AUTOMATION_SOURCE_LABEL: &str = "omnigent.scheduled_task_source";
 
 /// A change to a session's organisation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -645,6 +652,16 @@ impl SessionProjection {
                 Field::Present(labels) => labels
                     .get(crate::nested_creation::CLIENT_CREATE_TOKEN_LABEL)
                     .filter(|token| !token.is_empty())
+                    .cloned(),
+            },
+            automation_source_id: match &self.labels {
+                Field::Absent => {
+                    previous.and_then(|previous| previous.automation_source_id.clone())
+                }
+                Field::Null => None,
+                Field::Present(labels) => labels
+                    .get(AUTOMATION_SOURCE_LABEL)
+                    .filter(|id| !id.is_empty())
                     .cloned(),
             },
             family: match &self.family {
@@ -1829,6 +1846,22 @@ mod tests {
             generic.failure_message.as_deref(),
             Some("The last response failed. Check the server or provider sign-in.")
         );
+    }
+
+    #[test]
+    fn an_automations_session_copy_names_its_automation() {
+        let source = summary_of(
+            &json!({"labels": {AUTOMATION_SOURCE_LABEL: "task_daily"}}),
+            None,
+            true,
+        );
+        assert_eq!(source.automation_source_id.as_deref(), Some("task_daily"));
+        let kept = summary_of(&json!({}), Some(&source), true);
+        assert_eq!(kept.automation_source_id.as_deref(), Some("task_daily"));
+        for labels in [json!({}), json!({AUTOMATION_SOURCE_LABEL: ""})] {
+            let cleared = summary_of(&json!({ "labels": labels }), Some(&source), true);
+            assert_eq!(cleared.automation_source_id, None);
+        }
     }
 
     #[test]

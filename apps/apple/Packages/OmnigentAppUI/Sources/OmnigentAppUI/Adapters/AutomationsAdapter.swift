@@ -68,6 +68,14 @@ struct AutomationsAdapter: View {
     }
   }
 
+  /// Whether a session can be an automation's source (web `canCreateAutomationFromSession`):
+  /// a listed session with an agent that no automation runs from yet. Side chats are never
+  /// listed, and the menus leave out shared and archived sessions.
+  static func offersAutomation(from session: OmnigentCoreFFI.SessionSummary?) -> Bool {
+    guard let session, session.automationSourceId == nil else { return false }
+    return session.configuration?.agentId?.isEmpty == false
+  }
+
   var body: some View {
     if let pages = connection.pages {
       page(pages)

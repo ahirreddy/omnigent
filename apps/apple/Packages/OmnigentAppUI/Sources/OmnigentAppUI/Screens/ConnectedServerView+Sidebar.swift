@@ -253,6 +253,9 @@ extension ConnectedServerView {
     actions.createAutomation = AutomationsAdapter.createFromSession(connection) {
       selection.wrappedValue = .automations
     }
+    actions.offersCreateAutomation = { summary in
+      AutomationsAdapter.offersAutomation(from: list.sessionsByID[summary.id])
+    }
     actions.forkUnavailableReason = { summary in
       list.sessionWithoutActivity(summary.id).flatMap { forkUnavailableReason(source: $0) }
     }
