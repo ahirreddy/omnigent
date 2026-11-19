@@ -36,9 +36,6 @@ enum SidebarBoxMetrics {
     /// A source list's grouping: the system's faintest fill inside a separator hairline.
     static let fill = Color(nsColor: .quaternarySystemFill)
     static let edge: Color? = Color(nsColor: .separatorColor)
-    /// A folder's icon, in the system accent as a source list tints its folders. Not the
-    /// theme's accent, which marks only a screen's primary action.
-    static let folderTint = Color(nsColor: .controlAccentColor)
   #else
     // The system's own sidebar selection is the full row; the box takes its place.
     static let inset: CGFloat = 0
@@ -46,8 +43,6 @@ enum SidebarBoxMetrics {
     /// An inset-grouped section's fill, with no border.
     static let fill = Color(uiColor: .quaternarySystemFill)
     static let edge: Color? = nil
-    /// A folder's icon, in the system's default tint.
-    static let folderTint = Color(uiColor: .systemBlue)
   #endif
 }
 

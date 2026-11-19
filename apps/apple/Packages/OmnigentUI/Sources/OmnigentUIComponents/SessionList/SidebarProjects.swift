@@ -129,7 +129,8 @@ struct ProjectFolder<Row: View>: View {
     if let icon = project.icon {
       Text(icon).accessibilityHidden(true)
     } else {
-      Image(systemName: "folder").foregroundStyle(SidebarBoxMetrics.folderTint)
+      // The window's accent: the theme's, or the system's under Use system accent.
+      Image(systemName: "folder").foregroundStyle(ThemeColor.controlTint)
         .accessibilityHidden(true)
     }
   }
