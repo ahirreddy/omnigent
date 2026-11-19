@@ -149,6 +149,7 @@ public struct AutomationDetailView: View {
         .contentShape(Rectangle())
     }
     .buttonStyle(.borderless)
+    .tint(.primary)
     .hoverHighlight()
     .help(title)
     .accessibilityLabel(title)
