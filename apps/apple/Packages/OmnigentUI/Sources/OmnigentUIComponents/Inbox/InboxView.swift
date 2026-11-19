@@ -139,12 +139,13 @@ public struct InboxView: View {
         let summary = InboxTriage.summary(
           state.items, unreadSuggestions: state.unreadSuggestionCount,
           unreadSuggestionsCapped: state.unreadSuggestionsCapped)
+        // A count badge as the system's lists draw one: secondary digits on a quiet capsule.
         Text("\(state.items.count)")
           .font(.callout.weight(.medium)).monospacedDigit()
-          .foregroundStyle(.background)
+          .foregroundStyle(.secondary)
           .padding(.horizontal, Theme.Spacing.small)
           .padding(.vertical, 2)
-          .background(.primary, in: Capsule())
+          .background(.quaternary, in: Capsule())
           .help(summary)
           .accessibilityLabel(summary)
           .accessibilityIdentifier("inbox-count")
@@ -182,7 +183,7 @@ public struct InboxView: View {
               + (state.failedSessionCount == 1 ? "session." : "sessions."),
             systemImage: "exclamationmark.triangle"
           )
-          .foregroundStyle(.red)
+          .foregroundStyle(Theme.failure)
           Spacer()
           if let retry = actions.retry { Button("Retry", action: retry) }
         }

@@ -6,10 +6,12 @@
   @testable import OmnigentUIComponents
   @testable import OmnigentUITestSupport
 
-  /// Emphasis discipline, checked on rendered screens: the accent marks only the single primary
-  /// action on a screen, and the brand accent only "needs you". Each screen renders with a probe
-  /// theme whose accent and brand accent are colors nothing else uses, and the solid areas of
-  /// each are counted. Soft tints such as the row selection stay far below the threshold.
+  /// Emphasis discipline, checked on rendered screens as a window draws them (its root tints the
+  /// controls with the resolved accent): the accent marks the single primary action and,
+  /// as a Mac app uses its accent, controls, folder icons and selection, never text or chrome;
+  /// the brand accent marks only "needs you". Each screen renders with a probe theme whose
+  /// accent and brand accent are colors nothing else uses, and the solid areas of each are
+  /// counted. Soft tints such as the row selection stay far below the threshold.
   @Suite("Accent budget", .serialized)
   struct AccentBudgetTests {
     /// Green for the accent, magenta for the brand accent, each already at the contrast the
@@ -122,54 +124,58 @@
     nonisolated struct Screen: CustomTestStringConvertible, Sendable {
       let name: String
       let size: CGSize
-      /// The solid accent areas expected: the one primary action, or none.
-      let accent: Int
+      /// The primary action's solid area: one, or none.
+      let primary: Int
+      /// How many more areas the window's accent may mark: controls (a menu button, a chosen
+      /// box), folder icons and selection, as a Mac app uses its accent.
+      var controls = 0
       let make: @MainActor @Sendable () -> AnyView
 
       var testDescription: String { name }
     }
 
     nonisolated static let screens: [Screen] = [
-      Screen(name: "sidebar", size: CGSize(width: 300, height: 860), accent: 0) {
+      // The Projects menu and the project folders' icons take the window's accent.
+      Screen(name: "sidebar", size: CGSize(width: 300, height: 860), primary: 0, controls: 3) {
         AnyView(GallerySessionList())
       },
-      Screen(name: "header", size: CGSize(width: 900, height: 0), accent: 0) {
+      Screen(name: "header", size: CGSize(width: 900, height: 0), primary: 0) {
         AnyView(SessionHeaderView(state: PreviewData.shellConversation))
       },
-      Screen(name: "composer-running-empty", size: CGSize(width: 760, height: 0), accent: 0) {
+      Screen(name: "composer-running-empty", size: CGSize(width: 760, height: 0), primary: 0) {
         AnyView(
           ComposerView(
             draft: .constant(""), state: PreviewData.sessionComposer,
             actions: ComposerActions(send: {})))
       },
-      Screen(name: "composer-draft", size: CGSize(width: 760, height: 0), accent: 1) {
+      Screen(name: "composer-draft", size: CGSize(width: 760, height: 0), primary: 1) {
         AnyView(
           ComposerView(
             draft: .constant("Add a test for the expiry path"),
             state: PreviewData.idleSessionComposer, actions: ComposerActions(send: {})))
       },
-      Screen(name: "new-session", size: CGSize(width: 900, height: 700), accent: 1) {
+      Screen(name: "new-session", size: CGSize(width: 900, height: 700), primary: 1) {
         AnyView(
           NewSessionPage(
             draft: .constant("Fix the flaky test"), composer: PreviewData.startComposer,
             actions: ComposerActions(send: {})))
       },
-      Screen(name: "approval-card", size: CGSize(width: 720, height: 0), accent: 1) {
+      Screen(name: "approval-card", size: CGSize(width: 720, height: 0), primary: 1) {
         AnyView(DecisionCardView(card: PreviewData.codexCommand, respond: { _ in }).padding(20))
       },
-      Screen(name: "server-settings", size: CGSize(width: 900, height: 600), accent: 0) {
+      Screen(name: "server-settings", size: CGSize(width: 900, height: 600), primary: 0) {
         AnyView(
           ServerSettingsView(
             state: PreviewData.serverSettings, selectedServer: .constant("dbx"),
             actions: ServerSettingsActions()))
       },
-      Screen(name: "transcript-running-tool", size: CGSize(width: 760, height: 900), accent: 0) {
+      Screen(name: "transcript-running-tool", size: CGSize(width: 760, height: 900), primary: 0) {
         AnyView(
           TranscriptView(
             state: runningTranscript, actions: ConversationActions(openSession: { _ in })))
       },
       // The expanded request's Approve is the one primary action.
-      Screen(name: "inbox", size: CGSize(width: 900, height: 700), accent: 1) {
+      Screen(name: "inbox", size: CGSize(width: 900, height: 700), primary: 1) {
         AnyView(inbox)
       },
     ]
@@ -199,18 +205,20 @@
         actions: InboxActions(open: { _ in }, markRead: { _ in }, respond: { _, _ in }))
     }
 
-    @Test("the accent marks exactly the one primary action, or nothing", arguments: screens)
+    @Test(
+      "the accent marks the primary action and the controls, nothing else", arguments: screens)
     func accentBudget(screen: Screen) throws {
       for scheme in [ColorScheme.light, .dark] {
         let rendered = try RenderSupport.render(
-          screen.make().omnigentTheme(Self.probe).themeCanvas(), width: screen.size.width,
+          screen.make().omnigentAppearance(Self.probe).themeCanvas(), width: screen.size.width,
           height: screen.size.height > 0 ? screen.size.height : nil, scheme: scheme,
           layout: .regular)
         try RenderSupport.write(rendered, name: "accent-\(screen.name)-\(scheme)")
         let accent = Self.regions(.accent, in: rendered)
+        let allowed = screen.primary...(screen.primary + screen.controls)
         #expect(
-          accent == screen.accent,
-          "\(screen.name) \(scheme): \(accent) accent areas, expected \(screen.accent)")
+          allowed.contains(accent),
+          "\(screen.name) \(scheme): \(accent) accent areas, expected \(allowed)")
       }
     }
 
@@ -218,7 +226,7 @@
     func brandOnlyForNeedsYou() throws {
       let needsYou = PreviewData.sidebar.list.sessions.filter { $0.attention == .needsYou }
       let rendered = try RenderSupport.render(
-        GallerySessionList().omnigentTheme(Self.probe).themeCanvas(), width: 300, height: 860,
+        GallerySessionList().omnigentAppearance(Self.probe).themeCanvas(), width: 300, height: 860,
         scheme: .light, layout: .regular)
       let brand = Self.regions(.brand, in: rendered, cell: 20)
       #expect(brand >= min(needsYou.count, 1), "the Needs you signal should show")
@@ -231,7 +239,7 @@
       let needsYou = PreviewData.inbox.items.filter(\.isUnresolved).count
       for scheme in [ColorScheme.light, .dark] {
         let rendered = try RenderSupport.render(
-          Self.inbox.omnigentTheme(Self.probe).themeCanvas(), width: 900, height: 700,
+          Self.inbox.omnigentAppearance(Self.probe).themeCanvas(), width: 900, height: 700,
           scheme: scheme, layout: .regular)
         let brand = Self.regions(.brand, in: rendered, cell: 20)
         #expect(brand >= 1, "the Needs you signal should show")

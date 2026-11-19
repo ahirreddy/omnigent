@@ -87,13 +87,7 @@ struct PullRequestReviewThreadCard: View {
         footer
       }
     }
-    .background(
-      ThemeColor.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-    )
-    .overlay {
-      RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-        .strokeBorder(.separator)
-    }
+    .cardSurface(cornerRadius: Theme.Radius.small)
     .accessibilityIdentifier("pr-review-thread-\(thread.id)")
   }
 
@@ -108,8 +102,12 @@ struct PullRequestReviewThreadCard: View {
         Image(systemName: "text.bubble").accessibilityHidden(true)
         Text(thread.lineLabel).lineLimit(1)
         Spacer(minLength: 0)
-        if thread.outdated { Text("Outdated").foregroundStyle(.secondary) }
-        if thread.resolved { Text("Resolved").foregroundStyle(.secondary) }
+        if thread.outdated {
+          Label("Outdated", systemImage: "clock.arrow.circlepath").foregroundStyle(.secondary)
+        }
+        if thread.resolved {
+          Label("Resolved", systemImage: "checkmark.circle").foregroundStyle(ThemeColor.success)
+        }
         Text("\(thread.comments.count)\(thread.hasOlderComments ? "+" : "")")
           .foregroundStyle(.secondary)
           .monospacedDigit()
@@ -222,13 +220,8 @@ struct PullRequestNewThreadCard: View {
         problem: state.problem, setText: { actions.setNewBody?($0) },
         post: canPost ? actions.postNew : nil, postTitle: "Comment", cancel: actions.cancelNew)
     }
-    .background(
-      ThemeColor.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-    )
-    .overlay {
-      RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-        .strokeBorder(Color.accentColor.opacity(0.6))
-    }
+    // The conversation being written is edged in the focus color.
+    .cardSurface(cornerRadius: Theme.Radius.small, stroke: ThemeColor.focus)
     .accessibilityIdentifier("pr-new-review-thread")
   }
 
@@ -266,13 +259,17 @@ private struct PullRequestReviewField: View {
       HStack {
         Spacer(minLength: 0)
         if let cancel {
-          Button("Cancel", action: cancel).disabled(isBusy)
+          Button("Cancel", action: cancel)
+            .buttonStyle(.bordered)
+            .disabled(isBusy)
         }
         if let post {
           Button(postTitle, action: post)
+            .primaryActionStyle()
             .disabled(isBusy || blank || problem != nil)
         }
       }
+      .controlSize(.small)
     }
     .padding(Theme.Spacing.small)
   }

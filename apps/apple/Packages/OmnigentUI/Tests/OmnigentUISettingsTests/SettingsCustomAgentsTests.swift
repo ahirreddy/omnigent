@@ -106,7 +106,7 @@
         serverAgents: [row("server", description: "Finds bugs")], myAgents: [row("mine")])
       let screen = screen(state)
       defer { screen.close() }
-      let field = try #require(screen.textFields.first)
+      let field = try #require(screen.searchFields.first)
       try screen.replaceText(in: field, with: "bugs")
       #expect(try screen.shows("Agent server"))
       #expect(try !screen.shows("Agent mine"))

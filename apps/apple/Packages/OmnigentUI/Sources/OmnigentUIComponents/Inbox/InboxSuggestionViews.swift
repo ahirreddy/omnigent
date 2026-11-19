@@ -72,7 +72,7 @@ struct InboxSuggestionDetail: View {
       if let take = actions.takeSuggestionAction {
         ForEach(Array(suggestion.actions.enumerated()), id: \.offset) { index, label in
           if index == 0 {
-            Button(label) { take(item, index) }.buttonStyle(.borderedProminent)
+            Button(label) { take(item, index) }.primaryActionStyle()
               .accessibilityIdentifier("inbox-suggestion-action-\(item.id)-\(index)")
           } else {
             Button(label) { take(item, index) }.buttonStyle(.bordered)
@@ -97,11 +97,13 @@ struct InboxAutomationFailureDetail: View {
         .fixedSize(horizontal: false, vertical: true)
       HStack {
         if let open = actions.openAutomation {
-          Button("Open automation \u{2192}") { open(item) }.buttonStyle(.borderedProminent)
+          Button("Open automation", systemImage: "arrow.up.forward.app") { open(item) }
+            .primaryActionStyle()
             .accessibilityIdentifier("inbox-open-automation-\(item.id)")
         }
         if let markRead = actions.markRead {
-          Button("\u{2713} Mark as read") { markRead(item) }.buttonStyle(.bordered)
+          Button("Mark as read", systemImage: "envelope.open") { markRead(item) }
+            .buttonStyle(.bordered)
             .accessibilityIdentifier("inbox-mark-read-\(item.id)")
         }
       }

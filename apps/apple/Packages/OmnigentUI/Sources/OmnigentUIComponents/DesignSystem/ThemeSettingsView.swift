@@ -3,7 +3,8 @@ public import SwiftUI
 /// Settings > Appearance, as on the web: Mode (System, Light, Dark), Terminal theme, Transcript
 /// (style, output rendering, width, CLI font size), and Color theme (the presets plus Custom
 /// with Accent, Background tint, Contrast and Translucent sidebars). Editing a color on a preset turns it into Custom based on that preset. Values are
-/// stored under the web's keys by ``ThemePreferences``.
+/// stored under the web's keys by ``ThemePreferences``; Use system accent, the app's own, beside
+/// the palette.
 public struct ThemeSettingsView: View {
   @Bindable private var preferences: ThemePreferences
   @Environment(\.colorScheme) private var colorScheme
@@ -50,6 +51,13 @@ public struct ThemeSettingsView: View {
         Text(paletteDescription)
       }
       .accessibilityIdentifier("settings.theme")
+      Toggle(isOn: $preferences.usesSystemAccent) {
+        Text("Use system accent")
+        Text(
+          "Controls and the main button follow your system's accent color instead of the "
+            + "theme's.")
+      }
+      .accessibilityIdentifier("settings.system-accent")
       ColorPicker("Accent", selection: colorBinding(accent: true), supportsOpacity: false)
       ColorPicker("Background tint", selection: colorBinding(accent: false), supportsOpacity: false)
       LabeledContent {

@@ -46,7 +46,8 @@ struct ServerWindowRoot: View {
       }
     }
     .appearanceSettings(services.theme)
-    .omnigentTheme(services.theme.theme, appearance: services.theme.mode)
+    // Controls take the theme's accent, or the system's under Use system accent.
+    .omnigentAppearance(services.theme)
     .task { start() }
   }
 

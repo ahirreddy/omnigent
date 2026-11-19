@@ -15,7 +15,7 @@ struct PullRequestChangesToolbar: View {
   let toggleSidebar: () -> Void
   let inlineFilterOpen: Bool
   let toggleInlineFilter: () -> Void
-  var findFocused: FocusState<Bool>.Binding
+  @Binding var findFocused: Bool
 
   private var showsCommits: Bool {
     if case .commits = state.body { return true }
@@ -33,13 +33,14 @@ struct PullRequestChangesToolbar: View {
       .padding(.vertical, Theme.Spacing.extraSmall)
       if let find = state.find, find.isOpen {
         Divider()
-        PullRequestFindBar(state: find, actions: actions, focused: findFocused)
+        PullRequestFindBar(state: find, actions: actions, focused: $findFocused)
           .padding(.horizontal, Theme.Spacing.small)
           .padding(.vertical, Theme.Spacing.extraSmall)
       }
     }
     .buttonStyle(.borderless)
     .font(.callout)
+    .background(.bar)
     .accessibilityIdentifier("pr-changes-toolbar")
   }
 
@@ -78,7 +79,7 @@ struct PullRequestChangesToolbar: View {
     if let find = state.find, !find.isOpen, let setOpen = actions.setFindOpen {
       iconButton("Find in changes", symbol: "magnifyingglass") {
         setOpen(true)
-        findFocused.wrappedValue = true
+        findFocused = true
       }
       .accessibilityIdentifier("pr-find-open")
     }
@@ -158,7 +159,7 @@ struct PullRequestViewedProgressView: View {
   }
 }
 
-/// A checkbox on every platform (the checkbox toggle style is the Mac's only).
+/// A checkbox on the Mac; iOS has none, so a button that stays highlighted while on.
 struct PullRequestCheckbox: View {
   let title: String
   let isOn: Bool
@@ -166,18 +167,15 @@ struct PullRequestCheckbox: View {
   let toggle: () -> Void
 
   var body: some View {
-    Button(action: toggle) {
-      HStack(spacing: Theme.Spacing.extraSmall) {
-        Image(systemName: isOn ? "checkmark.square.fill" : "square")
-          .foregroundStyle(isOn ? Color.accentColor : .secondary)
-          .accessibilityHidden(true)
-        Text(title)
-      }
+    Toggle(isOn: Binding(get: { isOn }, set: { if $0 != isOn { toggle() } })) {
+      Text(title)
     }
-    .buttonStyle(.borderless)
+    #if os(macOS)
+      .toggleStyle(.checkbox)
+    #else
+      .toggleStyle(.button)
+    #endif
     .accessibilityLabel(accessibilityLabel ?? title)
-    .accessibilityValue(isOn ? "Checked" : "Unchecked")
-    .accessibilityAddTraits(isOn ? .isSelected : [])
   }
 }
 
@@ -187,27 +185,24 @@ struct PullRequestCheckbox: View {
 struct PullRequestFindBar: View {
   let state: PullRequestFindState
   let actions: PullRequestChangesActions
-  var focused: FocusState<Bool>.Binding
+  @Binding var focused: Bool
 
   var body: some View {
-    HStack(spacing: Theme.Spacing.extraSmall) {
-      Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
-      TextField(
+    HStack(spacing: Theme.Spacing.small) {
+      SearchField(
         "Find in changes\u{2026}",
-        text: Binding(get: { state.query }, set: { actions.setFindQuery?($0) })
+        text: Binding(get: { state.query }, set: { actions.setFindQuery?($0) }),
+        identifier: "pr-find-field",
+        isFocused: $focused,
+        submit: { actions.stepFind?(!Self.shiftHeld) },
+        escape: {
+          actions.setFindOpen?(false)
+          return true
+        }
       )
-      .textFieldStyle(.plain)
-      .focused(focused)
-      .onSubmit { actions.stepFind?(!Self.shiftHeld) }
-      .onKeyPress(.escape) {
-        actions.setFindOpen?(false)
-        return .handled
-      }
-      #if os(macOS)
-        .onExitCommand { actions.setFindOpen?(false) }
-      #endif
+      .controlSize(.small)
+      .frame(minWidth: 120)
       .accessibilityLabel("Find in changes")
-      .accessibilityIdentifier("pr-find-field")
       Text(state.status)
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -222,20 +217,23 @@ struct PullRequestFindBar: View {
       }
       option("Aa", label: "Match case", isOn: state.matchCase, toggle: actions.toggleMatchCase)
       option(".*", label: "Regular expression", isOn: state.regex, toggle: actions.toggleRegex)
-      Button {
-        actions.stepFind?(false)
-      } label: {
-        Image(systemName: "chevron.up").accessibilityLabel("Previous match")
+      // Previous and next as one control, as the system's find bars pair them.
+      ControlGroup {
+        Button {
+          actions.stepFind?(false)
+        } label: {
+          Image(systemName: "chevron.up").accessibilityLabel("Previous match")
+        }
+        .help("Previous match")
+        Button {
+          actions.stepFind?(true)
+        } label: {
+          Image(systemName: "chevron.down").accessibilityLabel("Next match")
+        }
+        .help("Next match")
       }
+      .fixedSize()
       .disabled(state.total == 0)
-      .help("Previous match")
-      Button {
-        actions.stepFind?(true)
-      } label: {
-        Image(systemName: "chevron.down").accessibilityLabel("Next match")
-      }
-      .disabled(state.total == 0)
-      .help("Next match")
       Button {
         actions.setFindOpen?(false)
       } label: {
@@ -255,21 +253,18 @@ struct PullRequestFindBar: View {
     #endif
   }
 
+  /// A find option as a toggle button, as the workspace search draws its own.
   private func option(
     _ title: String, label: String, isOn: Bool, toggle: (@MainActor () -> Void)?
   ) -> some View {
-    Button {
-      toggle?()
-    } label: {
-      Text(title)
-        .font(.caption.monospaced())
-        .padding(.horizontal, Theme.Spacing.extraSmall)
-        .background(
-          isOn ? Color.accentColor.opacity(0.2) : .clear,
-          in: RoundedRectangle(cornerRadius: Theme.Radius.small))
+    Toggle(isOn: Binding(get: { isOn }, set: { if $0 != isOn { toggle?() } })) {
+      Text(title).font(.caption.monospaced().weight(.semibold))
     }
+    .toggleStyle(.button)
+    .buttonStyle(.bordered)
+    .controlSize(.small)
+    .disabled(toggle == nil)
     .help(label)
     .accessibilityLabel(label)
-    .accessibilityValue(isOn ? "On" : "Off")
   }
 }

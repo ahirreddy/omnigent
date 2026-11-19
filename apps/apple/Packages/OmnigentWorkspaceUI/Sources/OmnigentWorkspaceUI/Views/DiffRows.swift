@@ -38,7 +38,7 @@ struct HunkHeaderRow: View {
       .background(WorkspaceTheme.hunkBackground(scheme))
       .overlay(alignment: .leading) {
         if isCurrent {
-          Rectangle().fill(Color.accentColor).frame(width: 3)
+          Rectangle().fill(TintShapeStyle.tint).frame(width: 3)
         }
       }
   }

@@ -77,6 +77,7 @@ struct PullRequestCommentsView: View {
         }
       }
       .keyboardShortcut(.return, modifiers: .command)
+      .primaryActionStyle()
       .disabled(extras.isBusy || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
     .padding(Theme.Spacing.small)
@@ -115,8 +116,7 @@ private struct PullRequestCommentCard: View {
     }
     .padding(Theme.Spacing.small)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      ThemeColor.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
+    .cardSurface(cornerRadius: Theme.Radius.small)
   }
 }
 

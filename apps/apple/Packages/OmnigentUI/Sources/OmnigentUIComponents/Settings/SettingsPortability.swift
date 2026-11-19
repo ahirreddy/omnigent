@@ -18,7 +18,8 @@ nonisolated public enum SettingsPortability {
     "web-theme",
   ]
 
-  /// The appearance keys "Reset to defaults" clears, as the web's Appearance reset.
+  /// The appearance keys "Reset to defaults" clears, as the web's Appearance reset, and the
+  /// app's own Use system accent.
   public static let appearanceKeys: [String] = [
     "omnigent:ui-font-size", "omnigent:ui-font-family", "omnigent:code-font-size",
     "omnigent:code-font-family", "omnigent:code-font-weight", "omnigent:terminal-theme",
@@ -26,6 +27,7 @@ nonisolated public enum SettingsPortability {
     "omnigent:default-workspace-panel", "omnigent:default-workspace-tab",
     "omnigent:pinned-workspace-tabs", "omnigent:hide-unconfigured-harnesses",
     "omnigent:fold-assistant-narration", "omnigent:hidden-picker-agents", "web-theme",
+    "omnigent:use-system-accent",
   ]
 
   /// Keys whose `"true"`/`"false"` text is kept as text (a tri-state the app stores as text);

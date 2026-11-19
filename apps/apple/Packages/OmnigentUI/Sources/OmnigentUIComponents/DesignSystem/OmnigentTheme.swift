@@ -6,7 +6,8 @@ public import SwiftUI
 /// (``StatusColors``).
 nonisolated public struct ThemePalette: Hashable, Sendable {
   /// `--primary`: the single primary action on a screen (Send, Approve, Submit). Selection
-  /// uses it softened; system controls keep the system tint.
+  /// uses it softened, and a window's controls take it as their tint (the web's
+  /// `accent-color: var(--primary)`).
   public var accent: Color
   /// `--brand-accent`: "needs you" only: the Needs you badge and count, pending requests.
   public var brandAccent: Color
@@ -279,21 +280,6 @@ nonisolated extension EnvironmentValues {
 }
 
 extension View {
-  /// Applies a theme: its brand colors to the components and the appearance preference.
-  /// System controls (toggles, toolbar items, menus, links, progress) keep the system tint, so
-  /// the accent stays for the one primary action on a screen; give that action
-  /// ``primaryActionStyle()``.
-  /// - Parameters:
-  ///   - theme: The theme.
-  ///   - appearance: Light, dark or system.
-  /// - Returns: The themed view.
-  public func omnigentTheme(_ theme: OmnigentTheme, appearance: AppearancePreference = .system)
-    -> some View
-  {
-    environment(\.omnigentTheme, theme)
-      .preferredColorScheme(appearance.colorScheme)
-  }
-
   /// The single primary action on a screen: a prominent button in the theme accent, which is
   /// darkened where needed to keep its white label at WCAG AA.
   /// - Returns: The styled button.

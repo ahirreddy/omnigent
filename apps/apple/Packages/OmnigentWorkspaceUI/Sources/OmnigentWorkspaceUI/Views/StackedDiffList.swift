@@ -211,7 +211,7 @@ private struct LineChooser<Content: View>: View {
       let chosen = annotations.selection?.contains(anchor) == true
       content
         .overlay(alignment: .leading) {
-          Color.accentColor.opacity(chosen ? 0.18 : 0.001)
+          Rectangle().fill(TintShapeStyle.tint.opacity(chosen ? 0.18 : 0.001))
             .frame(width: gutter)
             .contentShape(Rectangle())
             .onTapGesture { select(selection()) }

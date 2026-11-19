@@ -178,3 +178,80 @@ extension View {
     #endif
   }
 }
+
+/// A choice with an optional description, in the platform's idiom: a radio button or a checkbox
+/// in the control tint on a Mac; on iPhone and iPad a trailing checkmark for one answer, and a
+/// leading selection circle where several can be chosen.
+struct OptionRow: View {
+  let option: FormOption
+  let isMultiple: Bool
+  let isSelected: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
+        if let leading = OptionRowGlyph.leading(isMultiple: isMultiple, isSelected: isSelected) {
+          Image(systemName: leading)
+            .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            .accessibilityHidden(true)
+        }
+        VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+          Text(option.label)
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+          if !option.detail.isEmpty {
+            Text(option.detail)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+        Spacer(minLength: 0)
+        if let trailing = OptionRowGlyph.trailing(isMultiple: isMultiple, isSelected: isSelected) {
+          Image(systemName: trailing)
+            .fontWeight(.semibold)
+            .foregroundStyle(.tint)
+            .accessibilityHidden(true)
+        }
+      }
+      .padding(.vertical, OptionRowGlyph.verticalPadding)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(option.label)
+    .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+  }
+}
+
+/// Where an option row shows that it is chosen, and how.
+enum OptionRowGlyph {
+  /// The radio button or checkbox a Mac draws before the label; the selection circle iOS draws
+  /// before a multiple-choice label; nothing before a single-choice label on iOS.
+  static func leading(isMultiple: Bool, isSelected: Bool) -> String? {
+    #if os(macOS)
+      if isMultiple { return isSelected ? "checkmark.square.fill" : "square" }
+      return isSelected ? "circle.inset.filled" : "circle"
+    #else
+      guard isMultiple else { return nil }
+      return isSelected ? "checkmark.circle.fill" : "circle"
+    #endif
+  }
+
+  /// The checkmark iOS draws after a chosen single-choice label.
+  static func trailing(isMultiple: Bool, isSelected: Bool) -> String? {
+    #if os(macOS)
+      return nil
+    #else
+      return !isMultiple && isSelected ? "checkmark" : nil
+    #endif
+  }
+
+  /// A Mac's radio rows sit close together; touch rows keep room for a finger.
+  #if os(macOS)
+    static let verticalPadding = Theme.Spacing.tiny
+  #else
+    static let verticalPadding = Theme.Spacing.small
+  #endif
+}

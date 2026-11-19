@@ -31,7 +31,10 @@ struct InboxRow: View {
     .hoverHighlight()
     .commandReturnPreference($commandReturnSends)
     .countsRenders("inbox row")
-    .listRowBackground(Rectangle().fill(ThemeColor.hover.opacity(isSelected ? 1 : 0)))
+    .listRowBackground(
+      RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+        .fill(isSelected ? AnyShapeStyle(Theme.selection) : AnyShapeStyle(.clear))
+    )
     .contextMenu { rowActions }
     #if os(iOS)
       .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -75,7 +78,14 @@ struct InboxRow: View {
           Label("Pinned", systemImage: "pin.fill").font(.caption).foregroundStyle(.secondary)
         }
         if item.isUnread {
-          Label("Unread", systemImage: "circle.fill").font(.caption2).foregroundStyle(.secondary)
+          // Mail's unread dot: small, in the calm status blue.
+          Label {
+            Text("Unread").foregroundStyle(.secondary)
+          } icon: {
+            Image(systemName: "circle.fill").imageScale(.small).foregroundStyle(Theme.unread)
+          }
+          .font(.caption2)
+          .labelStyle(.titleAndIcon)
         }
         Spacer(minLength: 0)
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -185,7 +195,7 @@ struct InboxRow: View {
         replyField(send)
         if case .failed(let message) = item.reply {
           Label(message, systemImage: "exclamationmark.triangle").font(.callout)
-            .foregroundStyle(.red)
+            .foregroundStyle(Theme.failure)
             .accessibilityIdentifier("inbox-reply-error-\(item.id)")
         }
       }

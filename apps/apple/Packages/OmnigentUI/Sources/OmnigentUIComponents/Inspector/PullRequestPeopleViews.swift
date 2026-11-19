@@ -144,7 +144,7 @@ struct PullRequestChoiceList: View {
       case .failed(let message):
         Text(message).foregroundStyle(Theme.failure)
       case .loaded(let items):
-        TextField("Filter", text: $filter).textFieldStyle(.roundedBorder)
+        SearchField("Filter", text: $filter)
         List(shown(items)) { item in
           Toggle(isOn: Binding(get: { selected.contains(item.id) }, set: { toggle(item.id, $0) })) {
             VStack(alignment: .leading, spacing: 0) {

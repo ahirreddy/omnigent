@@ -80,8 +80,8 @@ struct InspectorTasksPanelTests {
     #expect(TaskStyle.symbol(.stop) == "stop.fill")
     #expect(TaskStyle.symbol(.retry) == "arrow.counterclockwise")
     #expect(TaskStyle.symbol(.run) == "play.fill")
-    #expect(TaskStyle.tint(.needsInput) == .pink)
-    #expect(TaskStyle.segment(.done) == .green)
+    #expect(TaskStyle.tint(.needsInput) == .system(.pink))
+    #expect(TaskStyle.segment(.done) == .system(.green))
   }
 
   #if os(macOS)

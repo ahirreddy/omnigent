@@ -55,6 +55,11 @@
       allViews.compactMap { $0 as? NSSecureTextField }
     }
 
+    /// Every system search field (`SearchField`), in layout order.
+    var searchFields: [NSSearchField] {
+      allViews.compactMap { $0 as? NSSearchField }
+    }
+
     /// Every `Picker` and `Menu` drawn as a pop-up button, in layout order.
     var popUps: [NSButton] {
       views(named: "SwiftUIPopupButton").compactMap { $0 as? NSButton }
@@ -70,7 +75,7 @@
     var buttonFrames: [CGRect] {
       let root = activeWindow.contentView
       let others: [NSView] =
-        switches + textFields + secureFields + popUps + segmentedControls
+        switches + textFields + secureFields + searchFields + popUps + segmentedControls
         + allViews.filter { $0 is NSStepper || $0 is NSDatePicker }
       let otherFrames = others.map { $0.convert($0.bounds, to: root) }
       return controlFrames.filter { frame in

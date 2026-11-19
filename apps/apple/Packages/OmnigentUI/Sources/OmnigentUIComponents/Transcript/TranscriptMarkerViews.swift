@@ -105,8 +105,7 @@ struct SystemNoticeRowView: View {
           .padding(.vertical, Theme.Spacing.small)
           .frame(maxWidth: .infinity, alignment: .leading)
           .background(
-            Color.primary.opacity(0.05),
-            in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+            .quinary, in: RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous))
       }
     }
     .frame(maxWidth: .infinity)
@@ -136,7 +135,7 @@ struct SystemNoticeRowView: View {
 }
 
 /// A sub-agent's or a task's start or end, or a plan change, as the web's
-/// `SubagentActivityMessage` and `TaskActivityMessage` show them: a pill between dashed rules,
+/// `SubagentActivityMessage` and `TaskActivityMessage` show them: a line between hairlines,
 /// its label muted and its subject in the text color. A sub-agent's title opens its session.
 struct ActivityMarkerRowView: View {
   let row: Row
@@ -147,7 +146,7 @@ struct ActivityMarkerRowView: View {
   var body: some View {
     let listed = taskLinks?.listed() ?? .hidden
     HStack(spacing: Theme.Spacing.small) {
-      DashedRule()
+      MarkerRule()
       HStack(spacing: Theme.Spacing.small) {
         Image(systemName: activity.kind.systemImage)
           .accessibilityHidden(true)
@@ -160,7 +159,7 @@ struct ActivityMarkerRowView: View {
       .padding(.horizontal, Theme.Spacing.medium)
       .padding(.vertical, Theme.Spacing.tiny)
       .layoutPriority(1)
-      DashedRule()
+      MarkerRule()
     }
     .padding(.vertical, Theme.Spacing.extraSmall)
     // A row with a link keeps the button its own element, which combining would fold away.
@@ -186,6 +185,7 @@ struct ActivityMarkerRowView: View {
       // A plan line opens the Tasks tab, as on the web.
       Button(activity.title) { taskLinks?.open(nil) }
         .buttonStyle(.plain)
+        .foregroundStyle(Theme.link)
         .help("Show the tasks")
         .accessibilityIdentifier("task-marker-open-\(row.id)")
     } else if let task = TranscriptMarker.task(activity), listed.isShown {
@@ -194,7 +194,7 @@ struct ActivityMarkerRowView: View {
         if listed.contains(task) {
           Button(activity.summary) { taskLinks?.open(task) }
             .buttonStyle(.plain)
-            .foregroundStyle(.primary)
+            .foregroundStyle(Theme.link)
             .help("Show \(activity.summary) in Tasks")
             .accessibilityIdentifier("task-marker-open-\(row.id)")
         } else {
@@ -213,7 +213,7 @@ struct ActivityMarkerRowView: View {
         label
         Button(activity.summary) { open(session) }
           .buttonStyle(.plain)
-          .foregroundStyle(.primary)
+          .foregroundStyle(Theme.link)
           .help("Open \(activity.summary)")
           .accessibilityIdentifier("subagent-marker-open-\(row.id)")
       }
@@ -223,23 +223,15 @@ struct ActivityMarkerRowView: View {
   }
 }
 
-/// A dashed hairline that fills the width it is offered.
-private struct DashedRule: View {
+/// A separator hairline, one pixel high, that fills the width it is offered.
+private struct MarkerRule: View {
+  @Environment(\.displayScale) private var displayScale
+
   var body: some View {
-    DashedLine()
-      .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-      .foregroundStyle(.separator)
-      .frame(height: 1)
+    Rectangle()
+      .fill(.separator)
+      .frame(height: 1 / max(displayScale, 1))
       .frame(minWidth: 0, maxWidth: .infinity)
       .accessibilityHidden(true)
-  }
-}
-
-nonisolated private struct DashedLine: Shape {
-  func path(in rect: CGRect) -> Path {
-    var path = Path()
-    path.move(to: CGPoint(x: rect.minX, y: rect.midY))
-    path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-    return path
   }
 }

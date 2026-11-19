@@ -202,7 +202,7 @@ public struct CustomAgentsSettingsSection: View {
 
   @ViewBuilder private var list: some View {
     Section {
-      TextField("Search", text: $search, prompt: Text("Search agents"))
+      SearchField("Search agents", text: $search, identifier: "custom-agent-search")
       messages
     }
     Section {

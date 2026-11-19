@@ -13,7 +13,7 @@ struct TaskDetailText: View {
       Text("\(Text("Can't start").fontWeight(.medium)) \u{00B7} \(failed) failed")
     case .ready(let goal):
       Text(
-        "\(Text("Ready").fontWeight(.medium).foregroundStyle(Color.accentColor))\(goal.map { " \u{00B7} \($0)" } ?? "")"
+        "\(Text("Ready").fontWeight(.medium).foregroundStyle(ThemeColor.controlTint))\(goal.map { " \u{00B7} \($0)" } ?? "")"
       )
     case .waitingForYou(let text):
       Text(
@@ -88,9 +88,7 @@ struct TaskHistoryView: View {
     }
     .font(.caption)
     .padding(Theme.Spacing.medium)
-    .background(
-      Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.Radius.small)
-    )
+    .background(.quinary, in: RoundedRectangle(cornerRadius: Theme.Radius.small))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("\(row.name) history")
   }
@@ -116,43 +114,55 @@ struct TaskGlyph: View {
         Circle().strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
           .foregroundStyle(Theme.secondary)
       case .waiting, .ready:
-        Circle()
-          .strokeBorder(
-            state == .ready ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.5)
+        numbered
+          .foregroundStyle(
+            state == .ready ? AnyShapeStyle(ThemeColor.controlTint) : AnyShapeStyle(Theme.secondary)
           )
-          .overlay {
-            Text("\(number)")
-              .font(.system(size: 9, weight: .medium).monospacedDigit())
-              .foregroundStyle(
-                state == .ready ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Theme.secondary))
-          }
       }
     }
     .frame(width: 18, height: 18)
     .accessibilityHidden(true)
   }
+
+  /// The task's number in a circle: the system's numbered symbol up to 50, then the digits in a
+  /// ring drawn to match.
+  @ViewBuilder private var numbered: some View {
+    if (0...50).contains(number) {
+      Image(systemName: "\(number).circle").accessibilityHidden(true)
+    } else {
+      Circle()
+        .strokeBorder(.secondary)
+        .overlay {
+          Text("\(number)")
+            .font(.caption2.weight(.medium).monospacedDigit())
+            .minimumScaleFactor(0.5)
+            .padding(2)
+        }
+    }
+  }
 }
 
-/// The tab's colors and symbols, by state, as the web's `SEGMENT_COLORS` sets them.
+/// The tab's colors and symbols, by state, as the web's `SEGMENT_COLORS` sets them; running and
+/// ready take the window's accent.
 nonisolated enum TaskStyle {
-  static func segment(_ state: TaskState) -> Color {
+  static func segment(_ state: TaskState) -> ThemeColor {
     switch state {
-    case .waiting: Color.primary.opacity(0.1)
-    case .ready: Color.accentColor.opacity(0.25)
-    case .running: Color.accentColor
-    case .stopped: Color.gray
-    case .needsInput: Color.pink
-    case .done: Color.green
-    case .failed: Color.red
+    case .waiting: .system(Color.primary.opacity(0.1))
+    case .ready: ThemeColor.controlTint.opacity(0.25)
+    case .running: .controlTint
+    case .stopped: .system(.gray)
+    case .needsInput: .system(.pink)
+    case .done: .system(.green)
+    case .failed: .system(.red)
     }
   }
 
-  static func tint(_ state: TaskState) -> Color {
+  static func tint(_ state: TaskState) -> ThemeColor {
     switch state {
-    case .needsInput: .pink
-    case .running, .ready: .accentColor
-    case .failed: .red
-    default: .secondary
+    case .needsInput: .system(.pink)
+    case .running, .ready: .controlTint
+    case .failed: .system(.red)
+    default: .system(.secondary)
     }
   }
 

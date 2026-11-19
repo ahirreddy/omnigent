@@ -58,9 +58,20 @@ struct CustomAgentsScreenTests {
     screen.settle(0.05)
   }
 
-  // The list's controls, top to bottom: Create, then Edit on your agent.
+  // The list's controls after its search field, top to bottom: Create, then Edit on your agent.
   private static let create = 0
   private static let edit = 1
+
+  /// Clicks one of the list's controls, counted after the search field's own.
+  private func clickListControl<Content: View>(
+    _ index: Int, in screen: OffscreenWindow<Content>
+  ) throws {
+    let search = try #require(screen.allViews.compactMap { $0 as? NSSearchField }.first)
+    let root = try #require(screen.activeWindow.contentView)
+    let field = search.convert(search.bounds, to: root).insetBy(dx: -2, dy: -2)
+    let inField = screen.controlFrames.filter { field.contains(CGPoint(x: $0.midX, y: $0.midY)) }
+    try screen.clickControl(at: inField.count + index)
+  }
 
   @Test("Create saves the agent, reloads and opens it")
   func creating() async throws {
@@ -68,7 +79,7 @@ struct CustomAgentsScreenTests {
     server.route("/v1/agents", method: "POST", .json(#"{"id":"a1","name":"Reviewer"}"#))
     let screen = try await opened(server)
     defer { screen.close() }
-    try screen.clickControl(at: Self.create)
+    try clickListControl(Self.create, in: screen)
     try await settle(screen, untilShowing: "Create Custom Agent")
     try fillIn("helper", in: screen)
     try screen.clickControl(at: screen.controlFrames.count - 1)
@@ -84,7 +95,7 @@ struct CustomAgentsScreenTests {
     let server = agentsServer()
     let screen = try await opened(server)
     defer { screen.close() }
-    try screen.clickControl(at: Self.create)
+    try clickListControl(Self.create, in: screen)
     try await settle(screen, untilShowing: "Create Custom Agent")
     try pressShortcut(screen, keyCode: 53, characters: "\u{1b}", modifiers: [])
     try await settle(screen, until: "the form to close") {
@@ -102,7 +113,7 @@ struct CustomAgentsScreenTests {
       .json(#"{"id":"a1","name":"Reviewer","version":3,"model":"m","harness":"claude-native"}"#))
     let screen = try await opened(server)
     defer { screen.close() }
-    try screen.clickControl(at: Self.edit)
+    try clickListControl(Self.edit, in: screen)
     try await settle(screen, untilShowing: "Delete Agent…")
     let description = try #require(
       screen.allViews.compactMap { $0 as? NSTextField }.first { $0.isEditable })
@@ -126,7 +137,7 @@ struct CustomAgentsScreenTests {
       .json(#"{"id":"a1","name":"Reviewer","version":3,"model":"m","harness":"claude-native"}"#))
     let screen = try await opened(server)
     defer { screen.close() }
-    try screen.clickControl(at: Self.edit)
+    try clickListControl(Self.edit, in: screen)
     try await settle(screen, untilShowing: "Delete Agent…")
     let editor = try #require(
       screen.allViews.lazy.compactMap { $0 as? NSTextView }.first { $0.isEditable })
@@ -147,7 +158,7 @@ struct CustomAgentsScreenTests {
   func backOnly() async throws {
     let screen = try await opened()
     defer { screen.close() }
-    try screen.clickControl(at: Self.edit)
+    try clickListControl(Self.edit, in: screen)
     try await settle(screen, untilShowing: "Delete Agent…")
     try screen.clickControl(at: 0)
     try await settle(screen, untilShowing: "Yours")
@@ -157,7 +168,7 @@ struct CustomAgentsScreenTests {
   func backAfterTyping() async throws {
     let screen = try await opened()
     defer { screen.close() }
-    try screen.clickControl(at: Self.edit)
+    try clickListControl(Self.edit, in: screen)
     try await settle(screen, untilShowing: "Delete Agent…")
     let description = try #require(
       screen.allViews.compactMap { $0 as? NSTextField }.first { $0.isEditable })
@@ -180,7 +191,7 @@ struct CustomAgentsScreenTests {
         status: 409))
     let screen = try await opened(server)
     defer { screen.close() }
-    try screen.clickControl(at: Self.edit)
+    try clickListControl(Self.edit, in: screen)
     try await settle(screen, untilShowing: "Delete Agent…")
     try screen.clickControl(at: screen.controlFrames.count - 1)
     try await settle(screen, untilShowing: "2 session(s) still use 'r'")
@@ -205,7 +216,7 @@ struct CustomAgentsScreenTests {
     server.route("/v1/agents/a1/config", .json(#"{"detail":"nope"}"#, status: 500))
     let screen = try await opened(server)
     defer { screen.close() }
-    try screen.clickControl(at: Self.edit)
+    try clickListControl(Self.edit, in: screen)
     try await settle(
       screen, untilShowing: "The server returned HTTP 500. Check that it is running and try again.")
   }

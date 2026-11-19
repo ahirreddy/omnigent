@@ -99,16 +99,17 @@ public struct PullRequestFileActionsView: View {
         VStack(alignment: .trailing, spacing: Theme.Spacing.tiny) {
           PullRequestCheckbox(
             title: "Viewed", isOn: state.viewed, accessibilityLabel: "Viewed \(state.path)",
-            toggle: toggleViewed)
+            toggle: toggleViewed
+          )
+          .font(.caption)
+          .controlSize(.small)
           if state.changedSinceViewed {
-            Text("Changed since viewed")
+            Label("Changed since viewed", systemImage: "exclamationmark.circle")
               .font(.caption2)
-              .padding(.horizontal, Theme.Spacing.extraSmall)
-              .overlay { RoundedRectangle(cornerRadius: 4).strokeBorder(.separator) }
+              .foregroundStyle(Theme.warning)
+              .fixedSize()
           }
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
       }
     }
     .buttonStyle(.borderless)
@@ -296,13 +297,7 @@ private struct PullRequestLocalCommentCard: View {
       }
     }
     .padding(Theme.Spacing.small)
-    .background(
-      ThemeColor.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-    )
-    .overlay {
-      RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-        .strokeBorder(.separator)
-    }
+    .cardSurface(cornerRadius: Theme.Radius.small)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Local review comment")
     .accessibilityIdentifier("pr-local-comment-\(comment.id)")

@@ -254,12 +254,12 @@ private struct TaskRowView: View {
     .accessibilityValue(row.stateLabel)
   }
 
-  private var tint: Color {
-    if isFlashed { return Color.accentColor.opacity(0.14) }
+  private var tint: ThemeColor {
+    if isFlashed { return ThemeColor.controlTint.opacity(0.14) }
     switch row.state {
-    case .running: return Color.accentColor.opacity(0.06)
-    case .needsInput: return Color.pink.opacity(0.06)
-    default: return .clear
+    case .running: return ThemeColor.controlTint.opacity(0.06)
+    case .needsInput: return ThemeColor.system(.pink).opacity(0.06)
+    default: return .system(.clear)
     }
   }
 
@@ -283,7 +283,8 @@ private struct TaskRowView: View {
       TaskMeta(row: row)
         .font(.caption.monospacedDigit())
         .foregroundStyle(
-          row.state == .running ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Theme.secondary)
+          row.state == .running
+            ? AnyShapeStyle(ThemeColor.controlTint) : AnyShapeStyle(Theme.secondary)
         )
         .padding(.top, 2)
     }

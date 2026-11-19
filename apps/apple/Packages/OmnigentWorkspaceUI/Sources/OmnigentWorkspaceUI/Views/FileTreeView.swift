@@ -226,7 +226,10 @@ private struct FileTreeRow: View {
     .padding(.leading, CGFloat(row.depth) * 14 + 6)
     .padding(.trailing, 8)
     .frame(height: 22)
-    .background(isSelected ? Color.accentColor.opacity(0.22) : .clear, in: .rect(cornerRadius: 4))
+    .background(
+      isSelected ? AnyShapeStyle(TintShapeStyle.tint.opacity(0.22)) : AnyShapeStyle(.clear),
+      in: .rect(cornerRadius: 4)
+    )
     .padding(.horizontal, 4)
   }
 
@@ -249,7 +252,9 @@ private struct FileTreeRow: View {
         Color.clear.frame(width: 12)
       }
       Image(systemName: icon(for: entry, isExpanded: isExpanded))
-        .foregroundStyle(entry.kind.isDirectory ? Color.accentColor : .secondary)
+        .foregroundStyle(
+          entry.kind.isDirectory ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(.secondary)
+        )
         .frame(width: 16)
         .accessibilityHidden(true)
       Text(entry.name)
@@ -275,7 +280,9 @@ private struct FileTreeRow: View {
     case .match(let entry):
       Color.clear.frame(width: 12)
       Image(systemName: icon(for: entry, isExpanded: false))
-        .foregroundStyle(entry.kind.isDirectory ? Color.accentColor : .secondary)
+        .foregroundStyle(
+          entry.kind.isDirectory ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(.secondary)
+        )
         .frame(width: 16)
         .accessibilityHidden(true)
       Text(entry.name)

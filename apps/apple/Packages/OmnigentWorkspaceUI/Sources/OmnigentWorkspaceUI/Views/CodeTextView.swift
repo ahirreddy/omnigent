@@ -106,7 +106,7 @@ private struct CodeLine: View {
         HStack(spacing: 2) {
           Image(systemName: "text.bubble.fill")
             .font(.system(size: 9))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(TintShapeStyle.tint)
           Text(String(number))
             .font(WorkspaceTheme.gutter)
             .foregroundStyle(.secondary)
