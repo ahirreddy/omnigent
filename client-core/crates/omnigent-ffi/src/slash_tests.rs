@@ -26,6 +26,7 @@ const NO_OPTIONS: SlashOptions = SlashOptions {
     claude_sdk_clears: false,
     rewinds: false,
     goal: false,
+    workflows: false,
 };
 
 #[test]
@@ -53,6 +54,10 @@ fn options_and_skills_round_trip_each_field() {
         },
         SlashOptions {
             goal: true,
+            ..NO_OPTIONS
+        },
+        SlashOptions {
+            workflows: true,
             ..NO_OPTIONS
         },
     ] {

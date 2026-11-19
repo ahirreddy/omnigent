@@ -47,6 +47,10 @@ public final class LaunchCompletionsStore {
   @ObservationIgnored private var skillsTarget: Target?
   @ObservationIgnored private var mentionQuery: String?
   @ObservationIgnored private var mentionTask: Task<Void, Never>?
+  /// The server has workflows on, so the workflow skills are offered.
+  @ObservationIgnored private var offersWorkflows = false
+  /// ``offersWorkflows`` was read; it is read once.
+  @ObservationIgnored private var readWorkflows = false
 
   init(core: ClientCore) {
     self.core = core
@@ -70,8 +74,15 @@ public final class LaunchCompletionsStore {
       let catalog = try await core.hostSkills(
         hostId: target.hostID, harness: target.harness ?? "", path: target.folder,
         agentId: target.agentID)
+      if !readWorkflows {
+        readWorkflows = true
+        offersWorkflows = (try? await core.slashOptions())?.workflows ?? false
+      }
       guard skillsTarget == target else { return }
-      skills = OmnigentCoreFFI.skillCommands(harness: target.harness, skills: catalog.skills)
+      let shown = catalog.skills.filter {
+        offersWorkflows || !OmnigentCoreFFI.isWorkflowSkill(name: $0.name)
+      }
+      skills = OmnigentCoreFFI.skillCommands(harness: target.harness, skills: shown)
       skillsNote =
         catalog.warnings.isEmpty
         ? nil : "Some skills could not be read: \(catalog.warnings.joined(separator: "; "))"

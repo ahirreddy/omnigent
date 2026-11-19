@@ -53,6 +53,9 @@ pub struct SlashOptions {
     /// The session has a Goal control; the composer sets it for its own session.
     #[uniffi(default = false)]
     pub goal: bool,
+    /// The server has workflows on, so the workflow skills are offered.
+    #[uniffi(default = false)]
+    pub workflows: bool,
 }
 
 impl From<SlashOptions> for core::SlashOptions {
@@ -64,6 +67,7 @@ impl From<SlashOptions> for core::SlashOptions {
             claude_sdk_clears: options.claude_sdk_clears,
             rewinds: options.rewinds,
             goal: options.goal,
+            workflows: options.workflows,
         }
     }
 }
@@ -77,6 +81,7 @@ impl From<core::SlashOptions> for SlashOptions {
             claude_sdk_clears: options.claude_sdk_clears,
             rewinds: options.rewinds,
             goal: options.goal,
+            workflows: options.workflows,
         }
     }
 }
@@ -350,6 +355,13 @@ pub fn slash_commands(
         .into_iter()
         .map(Into::into)
         .collect()
+}
+
+/// Whether `name` is a workflow skill, which the menus leave out while workflows are off.
+#[must_use]
+#[uniffi::export]
+pub fn is_workflow_skill(name: String) -> bool {
+    core::is_workflow_skill(&name)
 }
 
 /// `skills` as `/` menu rows for `harness` (`$` for Codex), for a composer with no session yet.

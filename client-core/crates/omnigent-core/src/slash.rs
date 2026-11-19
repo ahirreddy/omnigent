@@ -84,6 +84,8 @@ pub struct SlashOptions {
     /// The session has a Goal control (`goal_control`). The composer sets it for its own
     /// session; `/v1/info` never does.
     pub goal: bool,
+    /// The `workflows` feature: the workflow skills have their tools and routes.
+    pub workflows: bool,
 }
 
 impl SlashOptions {
@@ -110,8 +112,23 @@ impl SlashOptions {
             claude_sdk_clears: opt_bool(object, "session_claude_sdk_clear")?.unwrap_or(false),
             rewinds: opt_bool(object, "session_rewind")?.unwrap_or(false),
             goal: false,
+            workflows: opt_object(object, "features")?
+                .and_then(|features| features.get("workflows"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         })
     }
+}
+
+/// The framework skills that run and save workflows (the web's `WORKFLOW_SKILL` and
+/// `SAVE_WORKFLOW_SKILL`), hidden while the server has workflows off.
+const WORKFLOW_SKILLS: [&str; 2] = ["workflow", "save-workflow"];
+
+/// Whether `name` is a workflow skill, which the menus leave out while workflows are off (the
+/// web's `filterWorkflowSkills`).
+#[must_use]
+pub fn is_workflow_skill(name: &str) -> bool {
+    WORKFLOW_SKILLS.contains(&name)
 }
 
 /// The native harnesses Smart Routing picks between.
@@ -311,6 +328,9 @@ pub fn slash_commands(
     }
     commands.push(builtin("help", HELP));
     let mut skill_rows = skill_commands(Some(&harness), skills);
+    if !options.workflows {
+        skill_rows.retain(|row| !is_workflow_skill(&row.name));
+    }
     if options.goal {
         // `/goal` opens the Goal sheet, so a same-named `/` skill steps aside; Codex's `$goal`
         // stays.
