@@ -609,7 +609,10 @@ fn a_session_joins_a_nest_or_leaves_its_own_and_both_nests_are_read_again() {
     );
     let (core, recorder) = family_core(transport);
     let moved = block_on(core.move_to_nest("solo", Some("lead"))).unwrap();
-    assert_eq!(moved.family.map(|family| family.id).as_deref(), Some("lead"));
+    assert_eq!(
+        moved.family.map(|family| family.id).as_deref(),
+        Some("lead")
+    );
     assert_eq!(
         body_json(&core.transport().writes()[0]),
         json!({"nest_source_id": "lead"})
@@ -624,7 +627,11 @@ fn a_session_joins_a_nest_or_leaves_its_own_and_both_nests_are_read_again() {
             "PATCH /v1/sessions/solo"
         ]
     );
-    assert!(changed_rows(&recorder)[0].iter().any(|row| row.id == "solo"));
+    assert!(
+        changed_rows(&recorder)[0]
+            .iter()
+            .any(|row| row.id == "solo")
+    );
 
     // Leaving sends a null nest; the nest it left is read again.
     let transport = RouteTransport::local();
