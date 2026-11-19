@@ -372,6 +372,8 @@ fn server_pages_map_each_flag_to_its_own_field() {
         automation_harness_settings: false,
         automation_approval_skipping_modes: false,
         session_create_permission_modes: false,
+        workflows: false,
+        workflow_sharing: false,
     };
     assert_eq!(read(&mut harness, r#"{"single_user":true}"#), none);
     for (body, expected) in [
@@ -421,6 +423,15 @@ fn server_pages_map_each_flag_to_its_own_field() {
             r#"{"single_user":true,"features":{"canvas":true}}"#,
             ServerPages {
                 canvas: true,
+                ..none
+            },
+        ),
+        (
+            r#"{"single_user":false,"features":{"workflows":true},"workflows":true,"workflow_sharing":true}"#,
+            ServerPages {
+                workflows: true,
+                workflow_sharing: true,
+                sharing: true,
                 ..none
             },
         ),

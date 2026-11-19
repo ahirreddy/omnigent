@@ -421,6 +421,17 @@ fn pages_follow_what_the_server_advertises() {
     assert!(!ServerPages::from_value(&json!({})).unwrap().project_kanban);
     let kanban = json!({"features": {"project_kanban": true}});
     assert!(ServerPages::from_value(&kanban).unwrap().project_kanban);
+    // Workflows need the feature and a server that keeps them; sharing them needs other users.
+    let feature_only = json!({"features": {"workflows": true}, "workflow_sharing": true});
+    assert!(!ServerPages::from_value(&feature_only).unwrap().workflows);
+    let workflows = json!({"features": {"workflows": true}, "workflows": true,
+                           "workflow_sharing": true, "single_user": false});
+    let pages = ServerPages::from_value(&workflows).unwrap();
+    assert!(pages.workflows && pages.workflow_sharing);
+    let alone = json!({"features": {"workflows": true}, "workflows": true,
+                       "workflow_sharing": true, "single_user": true});
+    let pages = ServerPages::from_value(&alone).unwrap();
+    assert!(pages.workflows && !pages.workflow_sharing);
     assert!(ServerPages::from_value(&json!({"sharing_mode": 1})).is_err());
     // Moving sessions between nests needs a server that says it can.
     assert!(

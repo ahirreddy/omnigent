@@ -418,10 +418,24 @@ pub fn paused_label(
     entries: &[JournalEntry],
     session_working: bool,
 ) -> Option<PausedLabel> {
-    let revision = plan_graph_revision(entries);
-    let complete = revision
-        .as_ref()
-        .is_some_and(|revision| is_plan_complete(progress, Some(revision)));
+    paused_label_at(
+        progress,
+        entries,
+        session_working,
+        plan_graph_revision(entries).as_ref(),
+    )
+}
+
+/// [`paused_label`] for a plan whose graph revision is known apart from `entries`, such as a
+/// workflow run's, whose entries are only its steps' statuses.
+#[must_use]
+pub fn paused_label_at(
+    progress: &[StepProgress],
+    entries: &[JournalEntry],
+    session_working: bool,
+    revision: Option<&GraphRevision>,
+) -> Option<PausedLabel> {
+    let complete = revision.is_some_and(|revision| is_plan_complete(progress, Some(revision)));
     if session_working
         || complete
         || progress

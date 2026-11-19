@@ -121,8 +121,10 @@ fn a_selection_keeps_every_field() {
         project_id: Some("p".into()),
         smart_routing: true,
         mcp_registry_services: vec!["docs".into()],
+        workflow_id: Some("w".into()),
     });
     assert_eq!(on_core.mcp_registry_services, ["docs"]);
+    assert_eq!(on_core.workflow_id.as_deref(), Some("w"));
     assert_eq!(on_core.host_id, "h");
     assert_eq!(on_core.agent_id, "a");
     assert_eq!(on_core.workspace, "/w");

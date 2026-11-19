@@ -1,0 +1,19 @@
+{
+  "id": "0123456789abcdef0123456789abcdef",
+  "object": "workflow",
+  "name": "Triage flaky tests",
+  "description": "Rerun the suite and file an issue for each flaky test. Give it: the test suite.",
+  "created_at": 1762900000,
+  "updated_at": 1762900500,
+  "is_draft": false,
+  "viewer_role": "owner",
+  "owner_display_name": null,
+  "shareable": true,
+  "steps": [
+    {"id": "explore", "name": "Explore the failing tests", "goal": "**Inputs:** the suite.", "depends_on": []},
+    {"id": "rerun", "name": "Rerun the suite", "goal": null, "depends_on": ["explore"]},
+    {"id": "file", "name": "File issues", "goal": "**Outputs:** one issue per flaky test.", "depends_on": ["rerun"]}
+  ],
+  "planning_session_id": "fedcba9876543210fedcba9876543210",
+  "description_source": null
+}

@@ -76,6 +76,7 @@ mod skills;
 mod terminals;
 pub mod usage;
 pub mod user_settings;
+mod workflows;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};

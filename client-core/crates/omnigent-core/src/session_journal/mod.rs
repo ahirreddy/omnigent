@@ -170,9 +170,11 @@ pub struct JournalEntry {
     pub version: Option<i64>,
     /// `content.graph_revision`.
     pub graph_revision: Option<GraphRevision>,
+    /// `content.description`: the workflow description a planning chat proposed with its plan.
+    pub description: Option<String>,
 }
 
-fn plan_steps(content: &Map<String, Value>) -> Vec<PlanStep> {
+pub(crate) fn plan_steps(content: &Map<String, Value>) -> Vec<PlanStep> {
     let Some(Value::Array(steps)) = content.get("steps") else {
         return vec![];
     };
@@ -243,7 +245,17 @@ impl JournalEntry {
             steps: plan_steps(content),
             version: content.get("version").and_then(Value::as_i64),
             graph_revision: content.get("graph_revision").and_then(GraphRevision::of),
+            description: string("description"),
         })
+    }
+
+    /// The workflow description a planning chat proposed with this plan, when it is not blank
+    /// (`planDescription`).
+    #[must_use]
+    pub fn plan_description(&self) -> Option<&str> {
+        self.description
+            .as_deref()
+            .filter(|description| !description.trim().is_empty())
     }
 
     /// A plan's name, when it has a non-blank one (`planName`).

@@ -103,6 +103,49 @@ pub struct JournalEntry {
     pub version: Option<i64>,
     /// The graph revision it was written against.
     pub graph_revision: Option<GraphRevision>,
+    /// The workflow description a planning chat proposed with this plan.
+    #[uniffi(default)]
+    pub description: Option<String>,
+}
+
+impl From<core::PlanStep> for PlanStep {
+    fn from(step: core::PlanStep) -> Self {
+        Self {
+            id: step.id,
+            name: step.name,
+            goal: step.goal,
+            depends_on: step.depends_on,
+        }
+    }
+}
+
+impl From<PlanStep> for core::PlanStep {
+    fn from(step: PlanStep) -> Self {
+        Self {
+            id: step.id,
+            name: step.name,
+            goal: step.goal,
+            depends_on: step.depends_on,
+        }
+    }
+}
+
+impl From<core::GraphRevision> for GraphRevision {
+    fn from(revision: core::GraphRevision) -> Self {
+        match revision {
+            core::GraphRevision::Text(value) => Self::Text { value },
+            core::GraphRevision::Number(value) => Self::Number { value },
+        }
+    }
+}
+
+impl From<GraphRevision> for core::GraphRevision {
+    fn from(revision: GraphRevision) -> Self {
+        match revision {
+            GraphRevision::Text { value } => Self::Text(value),
+            GraphRevision::Number { value } => Self::Number(value),
+        }
+    }
 }
 
 fn kind_name(kind: &core::JournalEntryKind) -> String {
@@ -130,21 +173,10 @@ impl From<core::JournalEntry> for JournalEntry {
             status: entry.status.map(Into::into),
             text: entry.text,
             name: entry.name,
-            steps: entry
-                .steps
-                .into_iter()
-                .map(|step| PlanStep {
-                    id: step.id,
-                    name: step.name,
-                    goal: step.goal,
-                    depends_on: step.depends_on,
-                })
-                .collect(),
+            steps: entry.steps.into_iter().map(Into::into).collect(),
             version: entry.version,
-            graph_revision: entry.graph_revision.map(|revision| match revision {
-                core::GraphRevision::Text(value) => GraphRevision::Text { value },
-                core::GraphRevision::Number(value) => GraphRevision::Number { value },
-            }),
+            graph_revision: entry.graph_revision.map(Into::into),
+            description: entry.description,
         }
     }
 }
@@ -162,21 +194,10 @@ impl From<JournalEntry> for core::JournalEntry {
             status: entry.status.map(Into::into),
             text: entry.text,
             name: entry.name,
-            steps: entry
-                .steps
-                .into_iter()
-                .map(|step| core::PlanStep {
-                    id: step.id,
-                    name: step.name,
-                    goal: step.goal,
-                    depends_on: step.depends_on,
-                })
-                .collect(),
+            steps: entry.steps.into_iter().map(Into::into).collect(),
             version: entry.version,
-            graph_revision: entry.graph_revision.map(|revision| match revision {
-                GraphRevision::Text { value } => core::GraphRevision::Text(value),
-                GraphRevision::Number { value } => core::GraphRevision::Number(value),
-            }),
+            graph_revision: entry.graph_revision.map(Into::into),
+            description: entry.description,
         }
     }
 }

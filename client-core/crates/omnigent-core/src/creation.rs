@@ -333,6 +333,9 @@ pub struct CreationSelection {
     /// Server-configured MCP services the session starts with (`mcp_registry_services`), from
     /// [`launch_mcp_services`]; empty sends none.
     pub mcp_registry_services: Vec<String>,
+    /// The saved workflow the session runs (`workflow_id`), so it lists among the workflow's
+    /// runs.
+    pub workflow_id: Option<String>,
 }
 
 /// The MCP services a launch sends (the web's `servicesForLaunch`).
@@ -958,6 +961,9 @@ pub(crate) fn insert_run_configuration(
 ) {
     if let Some(project) = &selection.project_id {
         body.insert("project_id".into(), Value::String(project.clone()));
+    }
+    if let Some(workflow) = &selection.workflow_id {
+        body.insert("workflow_id".into(), Value::String(workflow.clone()));
     }
     if !selection.mcp_registry_services.is_empty() {
         body.insert(
@@ -1651,6 +1657,22 @@ mod tests {
         assert!(
             creation_body(&selection(), "", &codex, None)
                 .get("mcp_registry_services")
+                .is_none()
+        );
+        // A workflow's run names its workflow, on a host or a new sandbox.
+        let run = CreationSelection {
+            workflow_id: Some("0123456789abcdef0123456789abcdef".to_owned()),
+            ..selection()
+        };
+        for body in [
+            creation_body(&run, "", &codex, None),
+            sandbox_creation_body(&run, &SandboxTarget::default(), "", &codex),
+        ] {
+            assert_eq!(body["workflow_id"], "0123456789abcdef0123456789abcdef");
+        }
+        assert!(
+            creation_body(&selection(), "", &codex, None)
+                .get("workflow_id")
                 .is_none()
         );
     }
