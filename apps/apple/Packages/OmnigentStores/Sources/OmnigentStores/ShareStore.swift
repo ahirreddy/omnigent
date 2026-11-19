@@ -27,8 +27,11 @@ public final class ShareStore {
   }
 
   /// Anyone with the link can read.
-  public var isPublic: Bool {
-    grants.value?.contains { $0.userId == publicGrantee() } ?? false
+  public var isPublic: Bool { publicLevel != nil }
+
+  /// What anyone with the link may do: 1 read, 2 edit; `nil` when the link opens nothing.
+  public var publicLevel: UInt8? {
+    grants.value?.first { $0.userId == publicGrantee() }?.level
   }
 
   /// Reads the grants.
@@ -60,8 +63,14 @@ public final class ShareStore {
   /// Lets anyone with the link read the session, or stops it.
   /// - Parameter isPublic: Whether the link opens it.
   public func setPublic(_ isPublic: Bool) async {
-    if isPublic {
-      await grant(publicGrantee(), level: 1)
+    await setPublicLevel(isPublic ? 1 : nil)
+  }
+
+  /// Lets anyone with the link read (1) or edit (2) the session, or stops it (`nil`).
+  /// - Parameter level: What the link grants.
+  public func setPublicLevel(_ level: UInt8?) async {
+    if let level {
+      await grant(publicGrantee(), level: level)
     } else {
       await revoke(publicGrantee())
     }

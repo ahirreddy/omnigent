@@ -60,6 +60,8 @@ pub struct ServerPages {
     pub sharing_read_only: bool,
     /// `sharing_mode` is `restricted_read_only`: home and root folders are not shared either.
     pub sharing_restricted: bool,
+    /// `public_sharing_max_level` is `edit`: a public link may let anyone with it edit.
+    pub public_edit: bool,
     /// The `project_repository_creation` feature: New project can start from a repository.
     pub project_repository_creation: bool,
     /// `scheduled_task_subhour`: hosts and continued sessions run schedules under an hour.
@@ -153,6 +155,7 @@ impl ServerPages {
             public_sharing: opt_bool(object, "public_sharing_enabled")? != Some(false),
             sharing_read_only: sharing_restricted || sharing_mode.as_deref() == Some("read_only"),
             sharing_restricted,
+            public_edit: opt_str(object, "public_sharing_max_level")?.as_deref() == Some("edit"),
             project_repository_creation: feature("project_repository_creation")?,
         })
     }

@@ -426,6 +426,11 @@ fn pages_follow_what_the_server_advertises() {
     );
     let moves = json!({"session_nest_moves": true});
     assert!(ServerPages::from_value(&moves).unwrap().session_nest_moves);
+    // A public link may grant Edit only where the server raises its cap.
+    let edit = json!({"public_sharing_max_level": "edit"});
+    assert!(ServerPages::from_value(&edit).unwrap().public_edit);
+    let read = json!({"public_sharing_max_level": "read"});
+    assert!(!ServerPages::from_value(&read).unwrap().public_edit);
 }
 
 #[test]
