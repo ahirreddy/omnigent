@@ -169,6 +169,7 @@ public struct ConnectedServerView: View {
     state.showsAutomations = connection.pages?.offered?.automations == true
     state.showsUsage = connection.pages?.offered?.usage == true
     state.showsCanvas = connection.pages?.offered?.canvas == true
+    state.projectBoards = connection.pages?.offered?.projectKanban == true
     state.showsSharedScope = connection.pages?.offered?.sharing ?? true
     state.projectRunChoices = newProjectRunChoices
     state.pagesFailure = SidebarAdapter.pagesFailure(connection)
@@ -178,11 +179,6 @@ public struct ConnectedServerView: View {
     state.account = signOutAccount
     state.offlineNotice = SidebarAdapter.offlineNotice(connection)
     return state
-  }
-
-  private var searchBinding: Binding<String> {
-    let list = connection.sessionList
-    return Binding(get: { list.searchText }, set: { list.searchText = $0 })
   }
 
   private var editErrorPresented: Binding<Bool> {
@@ -228,6 +224,8 @@ public struct ConnectedServerView: View {
       AutomationsAdapter(connection: connection) { selection = .session($0) }
     case .usage:
       UsageAdapter(connection: connection) { selection = .session($0) }
+    case .project(let id):
+      projectBoard(id)
     case nil:
       ContentUnavailableView {
         Label("No Session Selected", systemImage: "bubble.left.and.text.bubble.right")
@@ -239,7 +237,7 @@ public struct ConnectedServerView: View {
 
   /// A session's chat, once its conversation is open. A side chat or sub-agent shows in a tab
   /// of `ownerID`, whose workspace the window's right panel shows.
-  private func chat(
+  func chat(
     _ id: String, in ownerID: String? = nil, sideChatOf source: String? = nil
   ) -> ConversationContainer? {
     guard let conversation = connection.openConversation(id) else { return nil }
@@ -334,7 +332,7 @@ extension ConnectedServerView {
     let tabs = session.tabs
     return Group {
       switch tab.content {
-      case .chat, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage:
+      case .chat, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .project:
         detail(tab.content.destination)
       case .newTab:
         newTabPage(tab, routes: routes)

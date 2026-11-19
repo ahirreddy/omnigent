@@ -219,6 +219,8 @@ private struct CatalogDetail: View {
       AutomationsView(state: PreviewData.automations, actions: AutomationsActions())
     case .usage:
       UsageView(state: PreviewData.usage, actions: UsageActions(formatCost: PreviewData.cost))
+    case .project:
+      PreviewData.projectBoard { model.selection = .session($0) }
     case .session:
       ConversationScreen(
         state: model.conversation, composer: model.composer, draft: $model.draft,

@@ -17,6 +17,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   case automations
   /// Usage.
   case usage
+  /// A project's board, by its folder id.
+  case project(folderID: String)
   /// A session's conversation.
   case chat(sessionID: String)
   /// A user shell of a session.
@@ -44,7 +46,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .chat(let id), .harness(let id), .agentBrowser(let id): id
     case .terminal(let id, _), .sideChat(let id, _), .remoteBrowser(let id, _): id
     case .sideChatSession(let id, _), .subagent(let id, _): id
-    case .newTab, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .browser:
+    case .newTab, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .project,
+      .browser:
       nil
     }
   }
@@ -55,8 +58,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .chat(let id): id
     case .sideChatSession(_, let childID): childID
     case .subagent(_, let childID): childID
-    case .newTab, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .terminal,
-      .harness, .sideChat, .browser, .agentBrowser, .remoteBrowser:
+    case .newTab, .newSession, .nestedSession, .inbox, .canvas, .automations, .usage, .project,
+      .terminal, .harness, .sideChat, .browser, .agentBrowser, .remoteBrowser:
       nil
     }
   }
@@ -77,6 +80,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .canvas: .canvas
     case .automations: .automations
     case .usage: .usage
+    case .project: .project
     case .chat, .subagent: .chat
     case .terminal: .terminal
     case .harness: .agentTerminal
@@ -92,7 +96,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   public var focusesExisting: Bool {
     switch self {
     case .newTab, .newSession, .nestedSession, .browser: false
-    case .inbox, .canvas, .automations, .usage, .chat, .terminal, .harness, .sideChat,
+    case .inbox, .canvas, .automations, .usage, .project, .chat, .terminal, .harness, .sideChat,
       .subagent, .agentBrowser, .remoteBrowser:
       true
     // Every new side chat is a tab of its own until it has a session.
@@ -122,6 +126,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .canvas: .canvas
     case .automations: .automations
     case .usage: .usage
+    case .project(let id): .project(id)
     case .newTab, .terminal, .harness, .sideChat, .sideChatSession, .subagent, .browser,
       .agentBrowser, .remoteBrowser:
       nil
@@ -139,6 +144,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .canvas: self = .canvas
     case .automations: self = .automations
     case .usage: self = .usage
+    case .project(let id): self = .project(folderID: id)
     }
   }
 }

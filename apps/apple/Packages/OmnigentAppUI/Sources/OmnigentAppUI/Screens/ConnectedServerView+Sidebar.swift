@@ -151,6 +151,12 @@ extension ConnectedServerView {
     return account
   }
 
+  /// The sidebar's search field, which the core matches.
+  var searchBinding: Binding<String> {
+    let list = connection.sessionList
+    return Binding(get: { list.searchText }, set: { list.searchText = $0 })
+  }
+
   var sidebarActions: SidebarActions {
     let model = sidebarModel
     var actions = SidebarActions(

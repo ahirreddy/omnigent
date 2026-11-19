@@ -54,6 +54,10 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case viewersVideo = "viewers-video"
   case viewersTable = "viewers-table"
   case viewersTableFiltered = "viewers-table-filtered"
+  case projectBoard = "project-board"
+  case projectBoardEmpty = "project-board-empty"
+  case projectBoardQuickView = "project-board-quick-view"
+  case projectBoardComposer = "project-board-composer"
 
   var testDescription: String { rawValue }
 
@@ -69,6 +73,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     switch self {
     case .prChanges, .prFind, .prCommits, .inboxSuggestion, .inboxFailure: 900
     case .viewersTable, .viewersTableFiltered: 820
+    case .projectBoard, .projectBoardEmpty, .projectBoardQuickView, .projectBoardComposer: 1_360
     case .composerMcp, .markersChat, .viewersPDF, .viewersVideo: 736
     case .composerRewind, .tasksPlan, .tasksStopping, .prFileHeader: 480
     case .tasksHistory: 420
@@ -92,6 +97,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 560
     case .viewersPDF: 520
     case .viewersTable, .viewersTableFiltered: 480
+    case .projectBoard, .projectBoardEmpty, .projectBoardQuickView, .projectBoardComposer: 780
     default: nil
     }
   }
@@ -152,6 +158,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .viewersVideo: return AnyView(Fixture.video)
     case .viewersTable: return AnyView(Fixture.dataTableViewer)
     case .viewersTableFiltered: return AnyView(Fixture.dataTableFiltered)
+    case .projectBoard, .projectBoardEmpty, .projectBoardQuickView, .projectBoardComposer:
+      return AnyView(LookFixtures.board(self))
     }
   }
 }

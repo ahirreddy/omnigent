@@ -276,7 +276,7 @@ extension SidebarView {
     }
     let pages = ProjectFolderPages(
       project: project, sessions: sessions, paging: state.paging,
-      shown: shownInProject[project.id] ?? 0, selectedID: selection?.sessionID,
+      shown: shownInProject[project.id] ?? 0, selection: selection, boards: state.projectBoards,
       load: actions.loadProjectPage, setShown: { shownInProject[project.id] = $0 })
     let layout = familyLayout(
       sessions, listedCount: pages.visibleCount, scope: .project(project.id))

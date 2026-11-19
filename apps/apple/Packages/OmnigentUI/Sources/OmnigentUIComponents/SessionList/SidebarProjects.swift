@@ -14,6 +14,10 @@ struct ProjectFolderPages {
   let showMore: () -> Void
   /// Read the folder's first page, or its next.
   let load: (() -> Void)?
+  /// The server offers project boards, so a click on the row may open the folder's board.
+  var offersBoard = false
+  /// Its board is shown.
+  var isBoardShown = false
 }
 
 extension ProjectFolderPages {
@@ -21,9 +25,10 @@ extension ProjectFolderPages {
   /// the loaded rows run out.
   @MainActor init(
     project: SessionProject, sessions: [SessionSummary], paging: SidebarPaging, shown: Int,
-    selectedID: String?, load: (@MainActor (SessionProject) -> Void)?,
-    setShown: @escaping (Int) -> Void
+    selection: SidebarDestination?, boards: Bool = false,
+    load: (@MainActor (SessionProject) -> Void)?, setShown: @escaping (Int) -> Void
   ) {
+    let selectedID = selection?.sessionID
     let selectedIndex = selectedID.flatMap { id in sessions.firstIndex { $0.id == id } }
     let visible = ProjectFolderPaging.visibleCount(
       count: sessions.count, shown: shown, selectedIndex: selectedIndex)
@@ -37,7 +42,7 @@ extension ProjectFolderPages {
         setShown(next)
         if next > sessions.count { loadPage?() }
       },
-      load: loadPage)
+      load: loadPage, offersBoard: boards, isBoardShown: selection == .project(project.id))
   }
 }
 
@@ -61,6 +66,9 @@ struct ProjectFolder<Row: View>: View {
   let listed: [SessionSummary]
 
   @State private var isHovered = false
+  /// With boards offered and on, a click on the row opens the project's board, as the list's
+  /// selection; only the expand button shows or hides its sessions (the web's project row).
+  @AppStorage(InterfacePreferences.projectBoardKey) private var boardsOn = true
   @Environment(\.defaultMinListRowHeight) private var rowHeight
 
   var body: some View {
@@ -103,9 +111,11 @@ struct ProjectFolder<Row: View>: View {
     }
     // Flush left, where a family's chevron starts, so a folder reads apart from its sessions.
     .contentShape(Rectangle())
-    // A click on the row shows or hides its sessions, as the web's project header.
-    .onTapGesture(perform: toggle)
-    .accessibilityAddTraits(.isButton)
+    .modifier(
+      ProjectFolderClick(
+        project: project, opensBoard: pages.offersBoard && boardsOn,
+        isBoardShown: pages.isBoardShown, box: isExpanded ? .top : .single, toggle: toggle)
+    )
     .onHover { isHovered = $0 }
     .contextMenu { menu.items }
     .draggable(SidebarDragItem.project(project.id).payload)
@@ -118,7 +128,6 @@ struct ProjectFolder<Row: View>: View {
       }
     }
     .accessibilityIdentifier("sidebar-project-\(project.id)")
-    .listRowBackground(SidebarProjectBox(part: isExpanded ? .top : .single))
     // An expanded folder reads its own first page, as the web's (collapsed ones cost nothing).
     .task(id: isExpanded && !pages.isLoaded) {
       if isExpanded, !pages.isLoaded { pages.load?() }
@@ -215,6 +224,30 @@ struct ProjectFolder<Row: View>: View {
     .labelStyle(.iconOnly)
     .buttonStyle(.borderless)
     .foregroundStyle(.secondary)
+  }
+}
+
+/// What a click on a folder's row does: without boards it shows or hides the folder's sessions,
+/// as the web's project header; with them the row is the list's selection for the project's
+/// board, drawn selected while the board shows.
+private struct ProjectFolderClick: ViewModifier {
+  let project: SessionProject
+  let opensBoard: Bool
+  let isBoardShown: Bool
+  let box: SidebarBoxPart
+  let toggle: () -> Void
+
+  func body(content: Content) -> some View {
+    if opensBoard {
+      content
+        .tag(SidebarDestination.project(project.id))
+        .sidebarSelection(isBoardShown, box: box)
+    } else {
+      content
+        .onTapGesture(perform: toggle)
+        .accessibilityAddTraits(.isButton)
+        .listRowBackground(SidebarProjectBox(part: box))
+    }
   }
 }
 

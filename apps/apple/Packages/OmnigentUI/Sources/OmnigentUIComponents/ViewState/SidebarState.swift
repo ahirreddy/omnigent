@@ -247,6 +247,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   /// Why the pages the server offers could not be read, when none were: Automations, Usage and
   /// Canvas are missing because of it, and a quiet row says so where they would be.
   public var pagesFailure: String?
+  /// The server offers project boards: a project row opens its board unless Settings says no.
+  public var projectBoards = false
 
   /// Creates sidebar state.
   /// - Parameters:

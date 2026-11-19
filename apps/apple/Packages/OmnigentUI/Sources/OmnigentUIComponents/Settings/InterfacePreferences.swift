@@ -18,6 +18,9 @@ nonisolated public enum InterfacePreferences {
   /// `omnigent:harness-icon`: how a session row and the new-session agent menu draw the harness's
   /// mark (``HarnessIconStyle``).
   public static let harnessIconKey = "omnigent:harness-icon"
+  /// `omnigent:project-kanban-board` (the web's key): a project opens its board, where the server
+  /// offers one. On unless turned off.
+  public static let projectBoardKey = "omnigent:project-kanban-board"
 
   /// A Boolean preference; unset reads as `false`, as on the web.
   /// - Parameters:

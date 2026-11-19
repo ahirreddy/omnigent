@@ -541,6 +541,13 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **`/rewind` attachments:** a rewound prompt's files come back through the preview reader,
   so only the types it previews (images, PDF, text, JSON, CSV) return to the composer; the
   others are named in the warning to attach again.
+- [ ] **Project boards** (the web's `project_kanban` home), parts not ported yet:
+  - `/projects/<name>` links don't open a board; the link router has no project route.
+  - The header's project icon isn't a picker of its own; Rename project sets it.
+  - Other users' automation runs shared with the viewer don't join the default automation
+    project's board: list rows carry no labels, so the core can't tell a shared run.
+  - Left and Right on a selected project row don't collapse and expand its folder; its button
+    does.
 
 ## Product decisions
 

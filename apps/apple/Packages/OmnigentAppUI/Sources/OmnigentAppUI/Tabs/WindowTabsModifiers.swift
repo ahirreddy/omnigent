@@ -90,7 +90,7 @@ struct ShownPageReport: ViewModifier {
 extension SessionTabGroups {
   /// The session whose chat is on screen, for notification suppression.
   var viewedSessionID: String? {
-    guard let tabs = current else { return nil }
+    guard let tabs = current else { return quickViewSessionID }
     let visible = tabs.visibleIDs.compactMap(tabs.tab)
     return visible.lazy.compactMap { tab -> String? in
       if case .chat(let id) = tab.content { return id }
