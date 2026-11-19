@@ -20,6 +20,12 @@ struct AutomationsAdapter: View {
   @State private var saveError: String?
   @State private var detailID: String?
   @State private var sharing: SharingTarget?
+  /// The web's toasts: "Automation created", "Run triggered…".
+  @State private var banner: TransientBanner?
+  /// Bumped by the guide's button to show it again.
+  @State private var introRequests = 0
+  /// Each trigger type's fields, kept while a new automation switches between them.
+  @State private var typeDrafts: [String: AutomationDraftState] = [:]
 
   /// The sheet's subject: a new automation, or the one with this id.
   private struct Editing: Identifiable {
@@ -75,6 +81,7 @@ struct AutomationsAdapter: View {
         .onChange(of: pages.pendingAutomationSource) { openPendingSource(pages) }
         .sheet(item: $editing) { target in editor(pages, target: target) }
         .sheet(item: $sharing) { target in shareSheet(pages, target: target) }
+        .transientBanner($banner)
         // The Inbox's Open automation lands on that automation's page.
         .onChange(of: pages.requestedAutomationID, initial: true) { _, requested in
           guard let requested else { return }
@@ -92,7 +99,8 @@ struct AutomationsAdapter: View {
         pages: pages, automation: automation, open: open,
         back: { self.detailID = nil },
         edit: { edit(pages, id: detailID) },
-        share: shareAction(pages, automation: automation))
+        share: shareAction(pages, automation: automation),
+        notify: { banner = TransientBanner(message: $0) })
     } else {
       TimelineView(.periodic(from: .now, by: 60)) { context in
         AutomationsView(
@@ -100,8 +108,35 @@ struct AutomationsAdapter: View {
             pages: pages, filter: filter, search: search, now: context.date),
           actions: actions(pages))
       }
-      .automationsIntro(connection, defaults: defaults)
+      .automationsIntro(connection, defaults: defaults, reopenRequests: introRequests)
     }
+  }
+
+  /// Starts a run from the list, saying so as the web's toast.
+  private func runNow(_ pages: PagesStore, id: String) async {
+    await Self.runNow(
+      pages, id: id,
+      started:
+        "Run triggered, it will start shortly. Open automation details to check run history.",
+      notify: { banner = TransientBanner(message: $0) })
+  }
+
+  /// Starts a run of `id`, saying so as the web's toast; a run in flight is not an error.
+  @MainActor @discardableResult
+  static func runNow(
+    _ pages: PagesStore, id: String, started: String, notify: @escaping @MainActor (String) -> Void
+  ) async -> Bool {
+    if await pages.runAutomation(id) {
+      notify(started)
+      return true
+    }
+    if case .HttpStatus(409, _) = pages.automationError {
+      notify("This run is already in progress")
+    } else {
+      notify("Couldn\u{2019}t start the run")
+    }
+    pages.dismissAutomationError()
+    return false
   }
 
   /// The caller's automation, or one shared with them.
@@ -121,6 +156,7 @@ struct AutomationsAdapter: View {
       }
     }
     inputs.replaceSchedule = { draft.schedule = $0 }
+    inputs.switchTriggerType = { switchTriggerType(pages, to: $0) }
     return AutomationEditorSheet(
       draft: $draft, context: AutomationEditorMapping.context(pages: pages, inputs: inputs),
       save: { save(pages, saved: saved) },
@@ -223,7 +259,8 @@ struct AutomationsAdapter: View {
       actions.openDetail = { detailID = $0 }
     }
     actions.setPaused = { id, paused in Task { await pages.setAutomationPaused(id, paused) } }
-    actions.runNow = { id in Task { await pages.runAutomation(id) } }
+    actions.runNow = { id in Task { await runNow(pages, id: id) } }
+    actions.showIntro = { introRequests += 1 }
     actions.delete = { id in Task { await pages.deleteAutomation(id) } }
     if pages.offered?.automationSharing == true {
       actions.share = { id in
@@ -273,7 +310,18 @@ extension AutomationsAdapter {
 
   private func present(id: String) {
     saveError = nil
+    typeDrafts = [:]
     editing = Editing(id: id)
+  }
+
+  /// Switches a new automation between a schedule (`nil`) and an integration, as the web's.
+  private func switchTriggerType(_ pages: PagesStore, to id: String?) {
+    let current = draft.trigger?.source
+    draft = AutomationTriggerMapping.switchedType(
+      draft, to: id, kept: &typeDrafts, offered: pages.offered)
+    if id != nil, id != current, pages.offered?.automationMcpServices == true {
+      Task { await pages.loadAutomationMcpServices() }
+    }
   }
 
   private func save(_ pages: PagesStore, saved: Automation?) {
@@ -305,6 +353,7 @@ extension AutomationsAdapter {
       isSaving = false
       if didSave {
         editing = nil
+        if saved == nil { banner = TransientBanner(message: "Automation created") }
         // As the web, a new automation made from a session opens its page.
         if fromSession, pages.offered?.automationsV2 == true,
           let created = pages.automations.value?.first(where: {

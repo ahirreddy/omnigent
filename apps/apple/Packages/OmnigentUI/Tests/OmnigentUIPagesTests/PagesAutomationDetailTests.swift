@@ -107,6 +107,8 @@
       defer { screen.close() }
       #expect(screen.switches.isEmpty)
       #expect(try screen.shows("Summarize"))
+      #expect(try !screen.shows("Build Mac"), "the configuration starts folded, as the web's")
+      try screen.clickElement("automation-detail-configuration")
       #expect(try screen.shows("Build Mac"))
       #expect(try screen.shows("No runs yet."))
       #expect(screen.controlFrames.count == 1, "only the Configuration disclosure")
@@ -147,6 +149,7 @@
       #expect(try screen.shows("Runs when new items match"))
       #expect(try screen.shows("Instructions"))
       #expect(try !screen.shows("Run now"))
+      try screen.clickElement("automation-detail-configuration")
       #expect(try screen.shows("COST LIMIT PER RUN"))
       #expect(try screen.shows("$5.00"))
       #expect(try screen.shows("The continued session may have changed settings."))
@@ -286,6 +289,55 @@
       for frame in screen.controlFrames {
         #expect(frame.minX >= 0 && frame.maxX <= width, "\(frame)")
       }
+    }
+
+    @Test("the page reads as the web's: back, title with its actions, status, prompt, runs")
+    func layout() throws {
+      var detail = state()
+      detail.canShare = true
+      var actions = actions
+      actions.share = {}
+      var run = AutomationRunRow(id: "1", indicator: .completed, timestamp: "Today, 8:00 AM")
+      run.sessionID = "s1"
+      detail.runs = [run]
+      let screen = page(detail, actions: actions)
+      defer { screen.close() }
+      let identifiers = [
+        "automation-detail-back", "automation-detail-title", "automation-detail-share",
+        "automation-detail-edit", "automation-detail-delete", "automation-detail-run-now",
+        "automation-detail-active", "automation-detail-state", "automation-detail-schedule",
+        "automation-detail-prompt", "automation-detail-configuration", "automation-detail-runs",
+      ]
+      let frames = try screen.withAccessibilityTree {
+        try identifiers.reduce(into: [String: CGRect]()) {
+          $0[$1] = try screen.accessibilityFrame($1)
+        }
+      }
+      func frame(_ id: String) throws -> CGRect { try #require(frames[id]) }
+      let back = try frame("automation-detail-back")
+      let title = try frame("automation-detail-title")
+      #expect(back.maxY <= title.minY, "the way back leads")
+      let actionsInOrder = try [
+        "automation-detail-share", "automation-detail-edit", "automation-detail-delete",
+        "automation-detail-run-now",
+      ].map(frame)
+      for (leading, trailing) in zip(actionsInOrder, actionsInOrder.dropFirst()) {
+        #expect(leading.maxX <= trailing.minX, "Share, Edit, Delete, then Run now")
+      }
+      let runNow = try frame("automation-detail-run-now")
+      #expect(runNow.maxX > 600, "the actions sit at the right")
+      let toggle = try frame("automation-detail-active")
+      let pill = try frame("automation-detail-state")
+      let schedule = try frame("automation-detail-schedule")
+      #expect(title.maxY <= toggle.minY)
+      #expect(toggle.maxX <= pill.minX && pill.maxX <= schedule.minX, "switch, pill, schedule")
+      #expect(abs(toggle.midY - schedule.midY) < 4)
+      let prompt = try frame("automation-detail-prompt")
+      let configuration = try frame("automation-detail-configuration")
+      #expect(schedule.maxY <= prompt.minY && prompt.maxY <= configuration.minY)
+      #expect(try !screen.shows("AGENT"), "the configuration starts folded")
+      let runRow = try frame("automation-detail-runs")
+      #expect(configuration.maxY + 24 <= runRow.minY)
     }
   }
 #endif

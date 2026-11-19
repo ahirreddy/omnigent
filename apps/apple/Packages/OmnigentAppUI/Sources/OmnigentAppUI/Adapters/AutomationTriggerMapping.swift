@@ -11,8 +11,63 @@ enum AutomationTriggerMapping {
       let template = triggerTemplate(source: source)
       return AutomationTemplateCard(
         id: id(source), title: template.title, description: template.description,
-        requirement: "Requires \(template.toolsExample).", systemImage: systemImage(source))
+        requirement: "Requires \(template.toolsExample).",
+        systemImage: AutomationTemplateCard.symbol(forSource: id(source)))
     }
+  }
+
+  /// The integrations the editor's Trigger type offers, by their service names.
+  static var types: [AutomationOption] {
+    triggerSources().map { AutomationOption(id: id($0), name: serviceName($0)) }
+  }
+
+  /// `draft` switched to watch the integration `id`, or back to a schedule with `nil`, as the
+  /// web's Trigger type: each type's fields are kept in `kept` and come back when it is chosen
+  /// again; a name the user typed and the instructions carry over to a type chosen first.
+  static func switchedType(
+    _ draft: AutomationDraftState, to id: String?, kept: inout [String: AutomationDraftState],
+    offered: ServerPages?
+  ) -> AutomationDraftState {
+    let current = draft.trigger?.source ?? scheduleType
+    let target = id ?? scheduleType
+    guard current != target else { return draft }
+    kept[current] = draft
+    let typedName =
+      !draft.name.trimmingCharacters(in: .whitespaces).isEmpty
+      && draft.name != defaultName(current)
+    let instructions = draft.trigger?.instructions ?? draft.prompt
+    var next = draft
+    if let saved = kept[target] {
+      next.name = saved.name
+      next.prompt = saved.prompt
+      next.systemPrompt = saved.systemPrompt
+      next.trigger = saved.trigger
+      next.isTrigger = saved.isTrigger
+      next.schedule = saved.schedule
+      next.continuesSession = saved.continuesSession
+    } else if let id, let source = source(id) {
+      let schedule = AutomationsMapping.triggerSchedule(
+        offered, continuesSession: true, inSandbox: draft.runsInSandbox)
+      next = newDraft(source, base: draft, schedule: schedule)
+      next.trigger?.instructions = instructions
+      if typedName { next.name = draft.name }
+    } else {
+      next.trigger = nil
+      next.isTrigger = false
+      next.systemPrompt = nil
+      next.prompt = instructions
+      next.schedule = ScheduleChoice()
+      next.continuesSession = false
+      next.name = typedName ? draft.name : ""
+    }
+    return next
+  }
+
+  private static let scheduleType = "schedule"
+
+  /// The name a new automation watching `id` starts with; empty for a schedule.
+  static func defaultName(_ id: String) -> String {
+    source(id).map { triggerTemplate(source: $0).name } ?? ""
   }
 
   /// The source of a card or draft id.
@@ -130,13 +185,16 @@ enum AutomationTriggerMapping {
               .init(
                 word: $0.word, label: $0.label, placeholder: $0.placeholder, hint: $0.hint,
                 isRequired: $0.required)
-            })
+            }, authorAction: event.authorAction)
         )
       }, uniquingKeysWith: { first, _ in first })
     view.scopeOperators = template.scopeOperators.map {
       AutomationOption(id: scopeOperatorID($0.operator), name: $0.label)
     }
     view.budgetHint = budget.upgradeHint
+    view.serviceName = template.serviceName
+    view.toolsExample = template.toolsExample
+    view.systemImage = AutomationTemplateCard.symbol(forSource: id(source))
     return view
   }
 
@@ -214,16 +272,6 @@ enum AutomationTriggerMapping {
   /// The service's display name, e.g. "PagerDuty".
   static func serviceName(_ source: TriggerSource) -> String {
     triggerTemplate(source: source).serviceName
-  }
-
-  private static func systemImage(_ source: TriggerSource) -> String {
-    switch source {
-    case .jira: "ticket"
-    case .slack: "number"
-    case .github: "smallcircle.filled.circle"
-    case .linear: "line.3.horizontal.decrease.circle"
-    case .pagerDuty: "bell.badge"
-    }
   }
 
   private static let operations: [(String, TriggerOperator)] = [

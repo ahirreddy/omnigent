@@ -54,11 +54,11 @@
       #expect(try screen.titles(inPopUp: preset).contains("Custom schedule"))
       try screen.choose("Every week", inPopUp: preset)
       #expect(choice.value.preset == .weekly)
-      #expect(try screen.shows("Mon"))
+      #expect(try screen.shows("On"), "the weekdays row")
       try screen.choose("Every hour", inPopUp: try #require(screen.popUps.first))
       #expect(choice.value.preset == .hourly)
       #expect(try screen.shows("At minute"))
-      #expect(try !screen.shows("Mon"))
+      #expect(try !screen.shows("On"))
     }
 
     @Test("clicking days adds and removes them, but never the last one")
@@ -166,7 +166,7 @@
       #expect([time.hour, time.minute, time.second] == [23, 59, 59])
       try screen.choose("After", inPopUp: try ends())
       #expect(choice.value.end == .count(2))
-      #expect(try screen.shows("2 runs"))
+      #expect(try screen.shows("2 occurrences"))
       let stepper = try #require(screen.allViews.compactMap { $0 as? NSStepper }.last)
       let frame = stepper.convert(stepper.bounds, to: screen.host)
       try screen.click(CGPoint(x: frame.midX, y: frame.minY + 3))
@@ -189,7 +189,7 @@
       let choice = EditedValue(ScheduleChoice(end: .count(5)))
       let screen = screen(choice, anchored: false)
       defer { screen.close() }
-      #expect(try screen.shows("5 runs"))
+      #expect(try screen.shows("5 occurrences"))
       let stepper = try #require(screen.allViews.compactMap { $0 as? NSStepper }.first)
       #expect(!stepper.isEnabled)
     }
@@ -206,7 +206,7 @@
       #expect(choice.value.frequency == .minutely)
       #expect(choice.value.interval == 10)
       #expect(try screen.shows("Every 10 minutes"))
-      #expect(try !screen.shows("At"), "a minute rule has no time")
+      #expect(try !screen.shows("Time"), "a minute rule has no time")
       try screen.choose("Every day", inPopUp: try #require(screen.popUps.first))
       #expect(choice.value.preset == .daily)
     }

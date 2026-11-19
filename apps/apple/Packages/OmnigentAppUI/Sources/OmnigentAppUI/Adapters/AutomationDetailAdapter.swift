@@ -14,6 +14,8 @@ struct AutomationDetailAdapter: View {
   let back: @MainActor () -> Void
   let edit: @MainActor () -> Void
   var share: (@MainActor () -> Void)?
+  /// Shows one of the web's toasts.
+  var notify: @MainActor (String) -> Void = { _ in }
   var readsRunsEvery: Duration = .seconds(30)
   @Environment(\.openURL) private var openURL
 
@@ -49,9 +51,12 @@ struct AutomationDetailAdapter: View {
         if await pages.deleteAutomation(id) { back() }
       }
     }
+    let notify = notify
     actions.runNow = {
       Task {
-        if await pages.runAutomation(id) { await pages.loadAutomationRuns(id) }
+        let started = await AutomationsAdapter.runNow(
+          pages, id: id, started: "Run triggered, it will start shortly", notify: notify)
+        if started { await pages.loadAutomationRuns(id) }
       }
     }
     actions.setPaused = { paused in Task { await pages.setAutomationPaused(id, paused) } }
