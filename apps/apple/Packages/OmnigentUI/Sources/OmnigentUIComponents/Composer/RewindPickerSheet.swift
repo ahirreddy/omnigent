@@ -162,7 +162,10 @@ public struct RewindPickerSheet: View {
     private var sheet: some View {
       NavigationStack {
         content
-          .searchable(text: $query, prompt: "Rewind to a prompt\u{2026}")
+          .searchable(
+            text: $query, placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Rewind to a prompt\u{2026}"
+          )
           .onSubmit(of: .search, chooseFirst)
           .navigationTitle("Rewind conversation")
           .navigationBarTitleDisplayMode(.inline)
@@ -196,8 +199,9 @@ public struct RewindPickerSheet: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 } icon: {
+                  // A list tints a label's icon with the accent; these stay grey.
                   Image(systemName: Self.isAttachmentOnly(prompt) ? "paperclip" : "text.bubble")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -210,7 +214,8 @@ public struct RewindPickerSheet: View {
         // Shown whatever the search, so an older prompt stays reachable.
         if let older = olderTitle {
           Button(older, systemImage: "clock.arrow.circlepath", action: actions.loadOlder)
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
+            .foregroundStyle(.tint)
             .disabled(state.older == .loading)
             .accessibilityIdentifier("rewind-load-older")
         }

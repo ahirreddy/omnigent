@@ -96,18 +96,20 @@ public struct PullRequestFileActionsView: View {
       }
       menu
       if state.offersViewed, let toggleViewed {
-        if state.changedSinceViewed {
-          Label("Changed since viewed", systemImage: "exclamationmark.circle")
-            .font(.caption)
-            .foregroundStyle(Theme.warning)
-            .lineLimit(1)
+        VStack(alignment: .trailing, spacing: Theme.Spacing.tiny) {
+          PullRequestCheckbox(
+            title: "Viewed", isOn: state.viewed, accessibilityLabel: "Viewed \(state.path)",
+            toggle: toggleViewed
+          )
+          .font(.caption)
+          .controlSize(.small)
+          if state.changedSinceViewed {
+            Label("Changed since viewed", systemImage: "exclamationmark.circle")
+              .font(.caption2)
+              .foregroundStyle(Theme.warning)
+              .fixedSize()
+          }
         }
-        PullRequestCheckbox(
-          title: "Viewed", isOn: state.viewed, accessibilityLabel: "Viewed \(state.path)",
-          toggle: toggleViewed
-        )
-        .font(.caption)
-        .controlSize(.small)
       }
     }
     .buttonStyle(.borderless)

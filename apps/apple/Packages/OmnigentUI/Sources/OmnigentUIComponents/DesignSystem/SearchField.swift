@@ -7,7 +7,7 @@ import SwiftUI
 #endif
 
 /// The system's search field, for a search or filter inside a pane, a list or a sheet:
-/// `NSSearchField` on a Mac, `UISearchBar`'s field on iPhone and iPad. Return calls `submit`;
+/// `NSSearchField` on a Mac, `UISearchTextField` on iPhone and iPad. Return calls `submit`;
 /// Escape calls `escape`, which says whether it took the key (otherwise the field clears itself).
 /// `isFocused` follows the keyboard and, set to `true`, puts the keyboard in the field.
 struct SearchField {
@@ -118,45 +118,49 @@ struct SearchField {
   }
 #else
   extension SearchField: UIViewRepresentable {
-    func makeUIView(context: Context) -> UISearchBar {
-      let bar = UISearchBar()
-      bar.searchBarStyle = .minimal
-      bar.placeholder = prompt
-      bar.autocapitalizationType = .none
-      bar.delegate = context.coordinator
-      bar.setContentHuggingPriority(.defaultLow, for: .horizontal)
-      if let identifier { bar.searchTextField.accessibilityIdentifier = identifier }
-      return bar
+    func makeUIView(context: Context) -> UISearchTextField {
+      let view = UISearchTextField()
+      view.placeholder = prompt
+      view.autocapitalizationType = .none
+      view.returnKeyType = .search
+      view.delegate = context.coordinator
+      view.addTarget(
+        context.coordinator, action: #selector(Coordinator.edited(_:)), for: .editingChanged)
+      view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+      view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+      if let identifier { view.accessibilityIdentifier = identifier }
+      return view
     }
 
-    func updateUIView(_ bar: UISearchBar, context: Context) {
+    func updateUIView(_ view: UISearchTextField, context: Context) {
       context.coordinator.field = self
-      if bar.text != text { bar.text = text }
-      if bar.placeholder != prompt { bar.placeholder = prompt }
-      bar.isUserInteractionEnabled = context.environment.isEnabled
-      guard isFocused?.wrappedValue == true, !bar.searchTextField.isFirstResponder else { return }
-      Task { @MainActor [weak bar] in
-        guard let bar, !bar.searchTextField.isFirstResponder else { return }
-        bar.searchTextField.becomeFirstResponder()
+      if view.text != text { view.text = text }
+      if view.placeholder != prompt { view.placeholder = prompt }
+      view.isEnabled = context.environment.isEnabled
+      guard isFocused?.wrappedValue == true, !view.isFirstResponder else { return }
+      // The field may not be in its window yet on the update that asks for the keyboard.
+      Task { @MainActor [weak view] in
+        guard let view, !view.isFirstResponder else { return }
+        view.becomeFirstResponder()
       }
     }
   }
 
-  extension SearchField.Coordinator: UISearchBarDelegate {
-    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-      changed(searchText)
-    }
+  extension SearchField.Coordinator: UITextFieldDelegate {
+    /// Typing, pasting and the clear button.
+    @objc func edited(_ sender: UISearchTextField) { changed(sender.text ?? "") }
 
-    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) { focusChanged(true) }
+    func textFieldDidBeginEditing(_ textField: UITextField) { focusChanged(true) }
 
-    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) { focusChanged(false) }
+    func textFieldDidEndEditing(_ textField: UITextField) { focusChanged(false) }
 
-    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
       if let submit = field.submit {
         submit()
       } else {
-        searchBar.resignFirstResponder()
+        textField.resignFirstResponder()
       }
+      return true
     }
   }
 #endif
