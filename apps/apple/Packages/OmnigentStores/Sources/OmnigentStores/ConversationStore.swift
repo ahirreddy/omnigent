@@ -78,10 +78,9 @@ public final class ConversationStore {
   public private(set) var isHydrated = false
   /// The latest readable turn failure.
   public private(set) var lastFailure: String?
-  /// Failures in this session, newest last. Never dropped silently.
-  public private(set) var errors: [CoreError] = []
-  /// The server answered 404 for a session this store never loaded, as a tab saved before the
-  /// session was deleted does.
+  /// Failures in this session, newest last; connection failures go once it is back.
+  public internal(set) var errors: [CoreError] = []
+  /// The server answered 404 for a session never loaded here, as a stale saved tab's does.
   public private(set) var answeredNotFoundBeforeLoading = false
   private var hasLoaded = false
   /// The last terminal or browser read found the runner offline: the agent is asleep until a
