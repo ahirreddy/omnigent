@@ -166,6 +166,21 @@
       #expect(NSAnimationContext.current.duration > 0)
     }
 
+    @Test("A collapse outside an animation group leaves the context as it found it")
+    func collapseOutsideAGroup() {
+      let split = Split(mode: .prerendered)
+      defer { split.close() }
+      let context = NSAnimationContext.current
+      let duration = context.duration
+      split.sidebarItem.isCollapsed = true
+      // Held while the window lays out at its new widths, given back before the frame.
+      #expect(context.duration == 0)
+      MainLoop.run(for: 0.05)
+      #expect(context.duration == duration)
+      #expect(!context.allowsImplicitAnimation)
+      #expect(!SidebarSlide.holdsAnimations)
+    }
+
     @Test("Without pictures the collapse still takes one layout, and nothing moves")
     func instantLaysOutOnce() {
       let split = Split(mode: .instant)

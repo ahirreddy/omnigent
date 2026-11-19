@@ -102,8 +102,9 @@
     private var clipped: [(layer: CALayer, wasMasking: Bool)] = []
     private var clicks: Any?
     private var generation = 0
-    /// The animation group a collapse runs in, and its settings before ``holdAnimationGroup()``.
-    private var heldGroup: HeldGroup?
+    /// The animation group a collapse runs in, and its settings before ``holdAnimationGroup()``;
+    /// kept by the type, so they come back should the slide go before the collapse is laid out.
+    private static var heldGroup: HeldGroup?
 
     private struct HeldGroup {
       let group: NSAnimationContext
@@ -140,7 +141,7 @@
           } else if changed {
             self?.didSlide()
           } else {
-            self?.settle()
+            Self.settle()
           }
         }
       }
@@ -170,7 +171,7 @@
       // SwiftUI reports the collapse with an animated transaction; animating its views to their
       // new frames would lay the window out at every frame of the slide.
       Self.holdsAnimations = true
-      holdAnimationGroup()
+      Self.holdAnimationGroup()
       guard mode == .prerendered, let controller, controller.isViewLoaded,
         let window = unsafe controller.view.window, window.isVisible, !window.inLiveResize,
         let sidebar = sidebarItem, let detail = detailItem?.viewController.view
@@ -211,14 +212,14 @@
       MainRunLoop.perform { [weak self] in
         MainActor.assumeIsolated {
           self?.animate()
-          self?.settle()
+          Self.settle()
         }
       }
     }
 
     /// The collapse is laid out: animations run again as they did.
-    private func settle() {
-      Self.holdsAnimations = false
+    private static func settle() {
+      holdsAnimations = false
       if let held = heldGroup {
         held.group.duration = held.duration
         held.group.allowsImplicitAnimation = held.allowsImplicitAnimation
@@ -229,7 +230,7 @@
     /// AppKit's toggle collapses inside an animation group that animates every frame changed
     /// in it: the toolbar's items and the hosting views would lay out again at every frame. At
     /// no duration the window takes its new layout at once.
-    private func holdAnimationGroup() {
+    private static func holdAnimationGroup() {
       let group = NSAnimationContext.current
       if heldGroup == nil {
         heldGroup = HeldGroup(
