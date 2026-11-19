@@ -1,6 +1,7 @@
-//! Jira, Slack, GitHub, Linear and PagerDuty trigger automations: the editor's templates, the
-//! manager prompt, and the header that reopens a saved trigger in its form. The rules are
-//! `omnigent_core::automation_triggers`'.
+//! Jira, Slack, GitHub, Linear and PagerDuty trigger automations.
+//!
+//! The editor's templates, the manager prompt, and the header that reopens a saved trigger in
+//! its form. The rules are `omnigent_core::automation_triggers`'.
 
 use omnigent_core::automation_triggers as core;
 

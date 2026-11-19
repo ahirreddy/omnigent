@@ -40,9 +40,10 @@ pub struct RecalledMessage {
 }
 
 /// `text`, a sent message, back as the composer takes it to edit (the web's
-/// `recallFileMentions`): the marker lines [`mention_preamble`] put ahead of it become `@`
-/// paths again, in either harness's wording, and the rest is the text. A message without them
-/// comes back whole.
+/// `recallFileMentions`).
+///
+/// The marker lines [`mention_preamble`] put ahead of it become `@` paths again, in either
+/// harness's wording, and the rest is the text. A message without them comes back whole.
 #[must_use]
 pub fn recall_sent_message(text: &str) -> RecalledMessage {
     let mut mentions = Vec::new();
@@ -116,7 +117,10 @@ mod tests {
                 text: String::new(),
             }
         );
-        assert_eq!(recall_sent_message("[Attached: ]\nhi").mentions, Vec::<String>::new());
+        assert_eq!(
+            recall_sent_message("[Attached: ]\nhi").mentions,
+            Vec::<String>::new()
+        );
     }
 
     #[test]

@@ -416,7 +416,8 @@ fn a_rejected_token_a_list_read_alone_noticed_still_asks_to_sign_in() {
 #[test]
 fn the_pages_hold_archived_sessions_only_while_the_sidebar_shows_them() {
     let (mut harness, cursor) = connected_with_first_page();
-    let last = |harness: &Harness, name: &str| list_queries(harness, name).last().cloned().flatten();
+    let last =
+        |harness: &Harness, name: &str| list_queries(harness, name).last().cloned().flatten();
     // The web's sidebar query: archived sessions are not read to be hidden.
     assert_eq!(last(&harness, "include_archived"), None);
     assert_eq!(last(&harness, "visibility").as_deref(), Some("all"));
@@ -518,7 +519,11 @@ fn the_pins_are_read_beside_the_first_page_and_show_with_it() {
         .map(|request| url::Url::parse(&request.url).unwrap())
         .filter(|url| url.path() == "/v1/sessions" && is_pinned_read(url))
         .collect();
-    assert_eq!((harness.http.list_reads(), pinned.len()), (1, 1), "both at once");
+    assert_eq!(
+        (harness.http.list_reads(), pinned.len()),
+        (1, 1),
+        "both at once"
+    );
     // With the pinned families, as the web's Pinned query.
     assert!(
         pinned[0]
@@ -564,7 +569,10 @@ fn pins_after_the_page_join_it_and_a_reload_keeps_them_until_its_own_land() {
     assert_eq!(list_changes(&harness.events.take()), ["upsert b"]);
     harness.core.refresh_sessions();
     harness.pump();
-    assert_eq!(list_changes(&harness.events.take()), ["reset a b", "upsert b"]);
+    assert_eq!(
+        list_changes(&harness.events.take()),
+        ["reset a b", "upsert b"]
+    );
 }
 
 #[test]

@@ -47,7 +47,10 @@ fn server() -> Harness {
     );
     harness.http.route(
         "/v1/projects/order",
-        respond(200, r#"{"sort_mode":"manual","ordered_project_ids":["p1"]}"#),
+        respond(
+            200,
+            r#"{"sort_mode":"manual","ordered_project_ids":["p1"]}"#,
+        ),
     );
     harness.http.route_query(
         "/v1/sessions",
@@ -209,12 +212,16 @@ fn a_kept_folder_row_shows_as_it_stands_now_not_as_its_read_found_it() {
     harness.pump();
     page.send(()).unwrap();
     harness.pump();
-    let reset = harness.events.take().into_iter().find_map(|event| match event {
-        CoreEvent::SessionListChanged {
-            change: SessionListChange::Reset { sessions },
-        } => Some(sessions),
-        _ => None,
-    });
+    let reset = harness
+        .events
+        .take()
+        .into_iter()
+        .find_map(|event| match event {
+            CoreEvent::SessionListChanged {
+                change: SessionListChange::Reset { sessions },
+            } => Some(sessions),
+            _ => None,
+        });
     let kept = reset
         .unwrap()
         .into_iter()
@@ -304,9 +311,10 @@ fn a_folder_that_cannot_be_read_says_so_for_that_folder() {
 #[test]
 fn projects_that_cannot_be_read_are_reported() {
     let mut harness = server();
-    harness
-        .http
-        .route("/v1/sessions/projects", respond(500, r#"{"detail":"boom"}"#));
+    harness.http.route(
+        "/v1/sessions/projects",
+        respond(500, r#"{"detail":"boom"}"#),
+    );
     connect(&mut harness);
     harness.pump();
     assert!(

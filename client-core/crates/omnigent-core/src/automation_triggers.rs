@@ -1,6 +1,7 @@
-//! Jira, Slack, GitHub, Linear and PagerDuty trigger automations: the editor's templates, the
-//! manager prompt each run sends, and the header that lets the form reopen a saved trigger
-//! (`web/src/components/scheduled/triggerTemplates.ts`).
+//! Jira, Slack, GitHub, Linear and PagerDuty trigger automations.
+//!
+//! The editor's templates, the manager prompt each run sends, and the header that lets the form
+//! reopen a saved trigger (`web/src/components/scheduled/triggerTemplates.ts`).
 //!
 //! A trigger automation keeps one session that checks the service every run and starts one
 //! worker session per new matching item, or sends every match to one task session.
@@ -370,11 +371,7 @@ use TriggerOperator::{About, Contains, Empty, Is, IsNot, Matches, NotContains, N
 const IS_OR_NOT: &[TriggerOperator] = &[Is, IsNot];
 const IS_OR_IN: &[TriggerScopeOperator] = &[TriggerScopeOperator::Is, TriggerScopeOperator::In];
 
-const fn event(
-    id: &'static str,
-    label: &'static str,
-    author_action: &'static str,
-) -> TriggerEvent {
+const fn event(id: &'static str, label: &'static str, author_action: &'static str) -> TriggerEvent {
     TriggerEvent {
         id,
         label,
@@ -530,11 +527,7 @@ const GITHUB: TriggerTemplate = TriggerTemplate {
     events: &[
         TriggerEvent {
             hidden_fields: &["reviewer"],
-            ..event(
-                "issue",
-                "Issue opened",
-                "open an issue in this repository",
-            )
+            ..event("issue", "Issue opened", "open an issue in this repository")
         },
         TriggerEvent {
             item_plural: Some("pull requests"),
@@ -740,7 +733,9 @@ pub fn trigger_scope(source: TriggerSource, event_id: &str) -> TriggerScope {
     let event = trigger_event(source, event_id);
     TriggerScope {
         label: event.scope_label.unwrap_or(template.scope_label),
-        placeholder: event.scope_placeholder.unwrap_or(template.scope_placeholder),
+        placeholder: event
+            .scope_placeholder
+            .unwrap_or(template.scope_placeholder),
         prefix: event.scope_prefix,
         is_group: event.scope_is_group,
     }
@@ -792,14 +787,13 @@ pub fn with_trigger_event(
         .iter()
         .map(|field| field.id)
         .collect();
-    let mut scope_operator = if same_scope {
+    let scope_operator = if after.is_group {
+        Some(TriggerScopeOperator::In)
+    } else if same_scope {
         fields.scope_operator
     } else {
         Some(TriggerScopeOperator::Is)
     };
-    if after.is_group {
-        scope_operator = Some(TriggerScopeOperator::In);
-    }
     let after_event = trigger_event(source, event_id);
     TriggerFields {
         event: event_id.to_owned(),
@@ -835,7 +829,7 @@ pub fn trigger_event_description(source: TriggerSource, event_id: &str) -> Strin
     let event = trigger_event(source, event_id);
     let plural = event
         .item_plural
-        .unwrap_or(trigger_template(source).item_plural);
+        .unwrap_or_else(|| trigger_template(source).item_plural);
     event.description.map_or_else(
         || {
             format!(
@@ -888,8 +882,9 @@ pub enum TriggerPollingTarget {
     },
 }
 
-/// The full budget only when the server and the polling host both deliver long messages. A
-/// managed sandbox can't report support before it starts, so sandboxes keep the older budget.
+/// The full budget only when the server and the polling host both deliver long messages.
+///
+/// A managed sandbox can't report support before it starts, so sandboxes keep the older budget.
 /// A trigger saved with the full budget keeps it. `server_max_chars` 0 is an older server.
 #[must_use]
 pub fn trigger_message_budget(
@@ -899,9 +894,7 @@ pub fn trigger_message_budget(
 ) -> TriggerMessageBudget {
     let full = "16,000";
     let upgrade_hint = if server_max_chars < SESSION_MESSAGE_MAX_CHARS {
-        Some(format!(
-            "Update the Omnigent server to allow up to {full}."
-        ))
+        Some(format!("Update the Omnigent server to allow up to {full}."))
     } else if saved_max_chars.unwrap_or(0) >= SESSION_MESSAGE_MAX_CHARS {
         None
     } else {
@@ -993,7 +986,7 @@ fn js_length(text: &str) -> usize {
 
 /// Whether the scope operator takes one value, so a comma can't separate a list.
 #[must_use]
-pub fn single_value_scope(fields: &TriggerFields) -> bool {
+pub const fn single_value_scope(fields: &TriggerFields) -> bool {
     matches!(
         fields.scope_operator,
         Some(TriggerScopeOperator::Is | TriggerScopeOperator::Contains)
@@ -1125,7 +1118,9 @@ fn jira_custom_field(name: &str) -> String {
         .filter(|head| head.eq_ignore_ascii_case("cf["))
         .and_then(|_| trimmed.get(3..))
         .and_then(|rest| rest.strip_suffix(']'));
-    if digits.is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())) {
+    if digits.is_some_and(|digits| {
+        !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+    }) {
         return trimmed.to_owned();
     }
     let unquoted = trimmed
@@ -1310,10 +1305,9 @@ pub fn parse_github_reviewer(reviewer: &str) -> Option<GithubReviewer> {
     let parts: Vec<&str> = value.split('/').collect();
     match parts.as_slice() {
         [login] if github_login(login) => Some(GithubReviewer::User((*login).to_owned())),
-        [org, slug] if github_login(org) && github_team_slug(slug) => Some(GithubReviewer::Team(
-            (*org).to_owned(),
-            (*slug).to_owned(),
-        )),
+        [org, slug] if github_login(org) && github_team_slug(slug) => {
+            Some(GithubReviewer::Team((*org).to_owned(), (*slug).to_owned()))
+        }
         _ => None,
     }
 }
@@ -1718,74 +1712,17 @@ fn slack_text(fields: &TriggerFields, handled: &str) -> SourceText {
     let base = SourceText {
         created_at: "posted",
         link_back: format!("Reply \"{{link}}\" in the thread of each message {handled}."),
-        ..SourceText::new("message", "slack-message", "\"Slack <channel> <message ts>\"")
-    };
-    if fields.event == "dm" || fields.event == "group_dm" {
-        let people = slack_people(&fields.scope);
-        let watched = filtered(&filter);
-        if fields.event == "dm" {
-            let they = if people.len() == 1 {
-                "they"
-            } else {
-                "each of them"
-            };
-            return SourceText {
-                watch: format!(
-                    "Watch: new Slack direct messages sent to you by {}{watched}",
-                    join_and(&people)
-                ),
-                search: format!(
-                    "{} Then read the messages {they} sent you since that time in your one-to-one direct message with them, oldest first. Your own messages and replies inside a thread don't start a new session.{}{}",
-                    slack_find_people(&people),
-                    only.as_deref().unwrap_or(" Every other message counts."),
-                    slack_cant_read("your direct messages")
-                ),
-                details: "the sender, the direct message's channel ID, the message text and permalink"
-                    .to_owned(),
-                ..base
-            };
-        }
-        return SourceText {
-            watch: format!(
-                "Watch: new Slack messages in your group DM with {}{watched}",
-                join_and(&people)
-            ),
-            search: format!(
-                "{} Then find the group DM whose members are exactly you and those people; a group DM that also includes anyone else doesn't count. If any name has no match, the names resolve to fewer than two people besides you, or there's no such group DM, skip to your reply and say so. Read the top-level messages posted in it since that time, oldest first. Your own messages and replies inside a thread don't start a new session.{}{}",
-                slack_find_people(&people),
-                only.as_deref()
-                    .unwrap_or(" Every other top-level message counts."),
-                slack_cant_read("your group DMs")
-            ),
-            details: "the group DM's channel ID, the author, the message text and permalink"
-                .to_owned(),
-            ..base
-        };
-    }
-    let channels = slack_channels(&fields.scope);
-    // The channel list can be too large to return, so give one command that finds the ids.
-    let names: Vec<String> = scope_list(&strip_scope_prefix(&fields.scope, "#"))
-        .into_iter()
-        .filter(|channel| !slack_id(channel))
-        .map(|channel| channel.to_lowercase())
-        .filter(|channel| slack_channel_name(channel))
-        .collect();
-    let lookup = if names.is_empty() {
-        String::new()
-    } else {
-        let name_match: Vec<String> = names
-            .iter()
-            .map(|name| format!(".name == {}", json_string(name)))
-            .collect();
-        let program = format!(
-            ".result | fromjson | (.channels[] | select({}) | {{id, name}}), .response_metadata.next_cursor",
-            name_match.join(" or ")
-        );
-        format!(
-            " The list is large; if your tool saves it to a file instead of returning it, get the IDs by running one command on that file with your shell tool, jq -c {} <file>, and read the next page with that cursor only while a channel is still missing.",
-            shell_quote(&program)
+        ..SourceText::new(
+            "message",
+            "slack-message",
+            "\"Slack <channel> <message ts>\"",
         )
     };
+    if fields.event == "dm" || fields.event == "group_dm" {
+        return slack_direct_text(fields, &filter, only.as_deref(), base);
+    }
+    let channels = slack_channels(&fields.scope);
+    let lookup = slack_channel_lookup(&fields.scope);
     // The privacy filter can redact user ids, so it answers author conditions as columns.
     let author_columns = if fields.conditions.iter().any(|row| row.field == "author") {
         ", adding one yes/no column per author ID the conditions name, such as author_U0123ABCD, and apply author conditions with those columns, since the filter may hide the user field"
@@ -1793,10 +1730,14 @@ fn slack_text(fields: &TriggerFields, handled: &str) -> SourceText {
         ""
     };
     SourceText {
-        watch: format!("Watch: new Slack messages in {channels}{}", filtered(&filter)),
+        watch: format!(
+            "Watch: new Slack messages in {channels}{}",
+            filtered(&filter)
+        ),
         search: format!(
             "Your most recent reply's \"{SLACK_IDS}\" line, when there is one, gives each channel's ID, the workspace URL and the Slack user ID of each author the conditions name: use them and skip those lookups. Otherwise look up only what's missing, once: find each channel's ID with your Slack tool's users.conversations (types public_channel,private_channel, exclude_archived true, limit 1000), which lists only your channels, rather than a full conversations.list.{lookup} Call auth.test for the workspace URL and your own user ID; and find any other author with users.lookupByEmail for an email, users.info for a user ID, or users.list for a handle or display name. An author who matches no one or more than one person counts as no match: say so in your reply and save no ID for them. If a saved ID stops working, for example with channel_not_found, look it up again. Then use your Slack tools to read the top-level messages posted in {channels} since that time, oldest first. If you read a channel with conversations.history, call it once with the channel ID, oldest set to that time as a Unix timestamp, inclusive false, limit 200 and caching off, and if your Slack tool takes an analysis_prompt (it filters message data for privacy), pass {SLACK_HISTORY_ANALYSIS_PROMPT}{author_columns}. History pages come newest first, so read every page, following the cursor only while has_more is true, before handling any message, then handle them oldest first. Don't pass a bash_query to a message read, and don't repeat a read. Replies inside a thread (thread_ts set and different from ts) don't start a new session.{} When a message has no permalink, build it as the workspace URL followed by archives/<channel ID>/p<ts without its dot>.",
-            only.as_deref().unwrap_or(" Every top-level message counts.")
+            only.as_deref()
+                .unwrap_or(" Every top-level message counts.")
         ),
         details: "the channel, author, message text and permalink".to_owned(),
         // An unread history page can hold older messages, so a partial run keeps its window.
@@ -1806,6 +1747,79 @@ fn slack_text(fields: &TriggerFields, handled: &str) -> SourceText {
         )),
         ..base
     }
+}
+
+/// The wording for a direct message or group DM with the people the scope names.
+fn slack_direct_text(
+    fields: &TriggerFields,
+    filter: &str,
+    only: Option<&str>,
+    base: SourceText,
+) -> SourceText {
+    let people = slack_people(&fields.scope);
+    let watched = filtered(filter);
+    if fields.event == "dm" {
+        let they = if people.len() == 1 {
+            "they"
+        } else {
+            "each of them"
+        };
+        return SourceText {
+            watch: format!(
+                "Watch: new Slack direct messages sent to you by {}{watched}",
+                join_and(&people)
+            ),
+            search: format!(
+                "{} Then read the messages {they} sent you since that time in your one-to-one direct message with them, oldest first. Your own messages and replies inside a thread don't start a new session.{}{}",
+                slack_find_people(&people),
+                only.unwrap_or(" Every other message counts."),
+                slack_cant_read("your direct messages")
+            ),
+            details: "the sender, the direct message's channel ID, the message text and permalink"
+                .to_owned(),
+            ..base
+        };
+    }
+    SourceText {
+        watch: format!(
+            "Watch: new Slack messages in your group DM with {}{watched}",
+            join_and(&people)
+        ),
+        search: format!(
+            "{} Then find the group DM whose members are exactly you and those people; a group DM that also includes anyone else doesn't count. If any name has no match, the names resolve to fewer than two people besides you, or there's no such group DM, skip to your reply and say so. Read the top-level messages posted in it since that time, oldest first. Your own messages and replies inside a thread don't start a new session.{}{}",
+            slack_find_people(&people),
+            only.unwrap_or(" Every other top-level message counts."),
+            slack_cant_read("your group DMs")
+        ),
+        details: "the group DM's channel ID, the author, the message text and permalink".to_owned(),
+        ..base
+    }
+}
+
+/// The channel list can be too large to return, so give one command that finds the named
+/// channels' ids in a saved copy; empty when the scope names none.
+fn slack_channel_lookup(scope: &str) -> String {
+    let names: Vec<String> = scope_list(&strip_scope_prefix(scope, "#"))
+        .into_iter()
+        .filter(|channel| !slack_id(channel))
+        .map(|channel| channel.to_lowercase())
+        .filter(|channel| slack_channel_name(channel))
+        .collect();
+    if names.is_empty() {
+        return String::new();
+    }
+    let name_match: Vec<String> = names
+        .iter()
+        .map(|name| format!(".name == {}", json_string(name)))
+        .collect();
+    let program = format!(
+        ".result | fromjson | (.channels[] | select({}) | {{id, name}}), .response_metadata.next_cursor",
+        name_match.join(" or ")
+    );
+    format!(
+        " The list is large; if your tool saves it to a file instead of returning it, get the IDs by running one command on that file with your shell tool, jq -c {} <file>, and read the next page with that cursor only while a channel is still missing.",
+        shell_quote(&program)
+    )
 }
 
 fn linear_text(fields: &TriggerFields, handled: &str, start_none: &str) -> SourceText {
@@ -1846,19 +1860,23 @@ fn pagerduty_text(fields: &TriggerFields, handled: &str, start_none: &str) -> So
         (None, [only]) => format!("service {only}"),
         (None, all) => format!("services {}", all.join(", ")),
     };
-    let find = match &name_text {
-        Some(text) => format!(
-            "Use your PagerDuty tools to find every service whose name contains {text}, ignoring case, for example GET /services with query set to {text}, reading every page and keeping only names that contain it. If none does, say so in your reply and list no incidents, since an incident list without service IDs covers every service."
-        ),
-        None => format!(
-            "Use your PagerDuty tools to find {} by name or ID. A name that matches no service or more than one counts as no match: say so in your reply.",
-            if one {
-                "that service"
-            } else {
-                "each of those services"
-            }
-        ),
-    };
+    let find = name_text.as_ref().map_or_else(
+        || {
+            format!(
+                "Use your PagerDuty tools to find {} by name or ID. A name that matches no service or more than one counts as no match: say so in your reply.",
+                if one {
+                    "that service"
+                } else {
+                    "each of those services"
+                }
+            )
+        },
+        |text| {
+            format!(
+                "Use your PagerDuty tools to find every service whose name contains {text}, ignoring case, for example GET /services with query set to {text}, reading every page and keeping only names that contain it. If none does, say so in your reply and list no incidents, since an incident list without service IDs covers every service."
+            )
+        },
+    );
     let filter = describe_pagerduty_filter(fields);
     let counts = if filter.is_empty() {
         " Every incident counts.".to_owned()
@@ -1868,7 +1886,10 @@ fn pagerduty_text(fields: &TriggerFields, handled: &str, start_none: &str) -> So
         )
     };
     SourceText {
-        watch: format!("Watch: new PagerDuty incidents on {place}{}", filtered(&filter)),
+        watch: format!(
+            "Watch: new PagerDuty incidents on {place}{}",
+            filtered(&filter)
+        ),
         search: format!(
             "{find} Then list the incidents created on {} since that time, in any status and not only the ones assigned to you, for example GET /incidents with service_ids[] set to {}, since set to that time in ISO 8601 and sort_by \"created_at:asc\".{counts}",
             if one { "it" } else { "them" },
@@ -1889,7 +1910,12 @@ fn pagerduty_text(fields: &TriggerFields, handled: &str, start_none: &str) -> So
     }
 }
 
-fn github_text(fields: &TriggerFields, shared: bool, handled: &str, start_none: &str) -> SourceText {
+fn github_text(
+    fields: &TriggerFields,
+    shared: bool,
+    handled: &str,
+    start_none: &str,
+) -> SourceText {
     let query = compile_github_query(fields);
     if fields.event == "review" {
         let target = fields.target.as_deref().unwrap_or_default();
@@ -2045,7 +2071,7 @@ pub fn render_trigger_prompt(
         .as_deref()
         .map(str::trim)
         .filter(|title| !title.is_empty())
-        .unwrap_or(trigger_template(source).name);
+        .unwrap_or_else(|| trigger_template(source).name);
     let bounded: String = title.chars().take(TASK_SESSION_TITLE_MAX_CHARS).collect();
     let task_session_title = json_string(bounded.trim_end());
     let mut create_args = vec![
@@ -2090,10 +2116,18 @@ pub fn render_trigger_prompt(
         2
     };
     let stopping = match (shared, manager_posts_link) {
-        (true, true) => "Stopping means sending no more matches in this run; still post link-backs for the matches you did send and write your reply.",
-        (true, false) => "Stopping means sending no more matches in this run; still write your reply.",
-        (false, true) => "Stopping means starting no more sessions in this run; still post link-backs for the sessions you did start and write your reply.",
-        (false, false) => "Stopping means starting no more sessions in this run; still write your reply.",
+        (true, true) => {
+            "Stopping means sending no more matches in this run; still post link-backs for the matches you did send and write your reply."
+        }
+        (true, false) => {
+            "Stopping means sending no more matches in this run; still write your reply."
+        }
+        (false, true) => {
+            "Stopping means starting no more sessions in this run; still post link-backs for the sessions you did start and write your reply."
+        }
+        (false, false) => {
+            "Stopping means starting no more sessions in this run; still write your reply."
+        }
     };
     let tool_loading = format!(
         "If your tools load on demand, load every tool this run needs in one tool search before your first call, naming them all: your {service} tools and each sys_session tool the steps below use, and sys_session_get_info, which returns your session and agent IDs."
@@ -2204,9 +2238,14 @@ pub fn render_trigger_prompt(
     });
     if manager_posts_link {
         let link = format!("Omnigent session: {}", context.session_link);
+        #[allow(
+            clippy::literal_string_with_formatting_args,
+            reason = "the link-back wording spells its placeholder this way"
+        )]
+        let link_back = text.link_back.replace("{link}", &link);
         steps.push(format!(
             "{} End each one with a line \"{OMNIGENT_ATTRIBUTION}\", since it posts with the owner's account. Replace {SESSION_LINK_ID_PLACEHOLDER} with {}, and post each link with its own command or tool call so a permission rule for that command can allow it. If posting fails, don't retry it in this run: list it as \"<title> <conversation_id>\" on a \"{LINK_BACK_PENDING}\" line in your reply.",
-            text.link_back.replace("{link}", &link),
+            link_back,
             if shared {
                 "the conversation_id of the task session that item went to, which differs from the current one if it was replaced later in the run"
             } else {
@@ -2304,7 +2343,10 @@ pub fn render_trigger_prompt(
 
 /// The prompt the model receives for `config`, without the header line.
 #[must_use]
-pub fn render_trigger_config_prompt(config: &TriggerConfig, context: &TriggerConfigContext) -> String {
+pub fn render_trigger_config_prompt(
+    config: &TriggerConfig,
+    context: &TriggerConfigContext,
+) -> String {
     let filled = |value: &str| (!value.is_empty()).then(|| value.to_owned());
     render_trigger_prompt(
         config.source,
@@ -2535,17 +2577,17 @@ fn canonical_config(config: &TriggerConfig) -> String {
         .conditions
         .iter()
         .map(|row| {
-            let mut condition = format!(
-                "{{\"field\":{},\"operator\":{},\"value\":{}",
+            let name = row
+                .name
+                .as_ref()
+                .map(|name| format!(",\"name\":{}", json_string(name)))
+                .unwrap_or_default();
+            format!(
+                "{{\"field\":{},\"operator\":{},\"value\":{}{name}}}",
                 json_string(&row.field),
                 json_string(row.operator.id()),
                 json_string(&row.value)
-            );
-            if let Some(name) = &row.name {
-                condition.push_str(&format!(",\"name\":{}", json_string(name)));
-            }
-            condition.push('}');
-            condition
+            )
         })
         .collect();
     parts.push(format!("\"conditions\":[{}]", conditions.join(",")));
@@ -2691,7 +2733,11 @@ fn decode_config(raw: &Map<String, Value>) -> Result<TriggerConfig, ()> {
         .ok_or(())?;
     let template = trigger_template(source);
     let event = required_string(raw, "event")?;
-    if !template.events.iter().any(|candidate| candidate.id == event) {
+    if !template
+        .events
+        .iter()
+        .any(|candidate| candidate.id == event)
+    {
         return Err(());
     }
     let scope_operator = match optional_string(raw, "scopeOperator")? {

@@ -262,7 +262,10 @@ impl ScheduleLimits {
 
 /// The smallest interval `frequency` allows under `limits`: 1, or 10 or 60 minutes.
 #[must_use]
-pub const fn minimum_schedule_interval(frequency: ScheduleFrequency, limits: ScheduleLimits) -> u16 {
+pub const fn minimum_schedule_interval(
+    frequency: ScheduleFrequency,
+    limits: ScheduleLimits,
+) -> u16 {
     if !matches!(frequency, ScheduleFrequency::Minutely) {
         return 1;
     }

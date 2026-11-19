@@ -34,7 +34,8 @@ fn reads_saved_instructions_and_the_servers_limit() {
         }
     );
 
-    core.transport().ok(PATH, r#"{"instructions":7,"max_chars":4000}"#);
+    core.transport()
+        .ok(PATH, r#"{"instructions":7,"max_chars":4000}"#);
     assert!(matches!(
         block_on(core.session_title_instructions()),
         Err(SessionError::MalformedResponse { detail }) if detail.contains(PATH)

@@ -1,6 +1,8 @@
-//! The caller's own server-side settings (`/v1/settings`): the guidance the server adds to the
-//! prompt that names the caller's sessions, as the web's `SessionTitleInstructionsControl`.
-//! Servers advertise it with `/v1/info.session_title_instructions`.
+//! The caller's own server-side settings (`/v1/settings`).
+//!
+//! The guidance the server adds to the prompt that names the caller's sessions, as the web's
+//! `SessionTitleInstructionsControl`. Servers advertise it with
+//! `/v1/info.session_title_instructions`.
 
 use serde_json::{Value, json};
 
@@ -77,9 +79,7 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<SessionTitleInstructions, SessionError> {
         let trimmed = instructions.map(str::trim).filter(|text| !text.is_empty());
         let body = json!({ "instructions": trimmed });
-        let result = self
-            .write_json("PUT", TITLE_INSTRUCTIONS_PATH, &body)
-            .await;
+        let result = self.write_json("PUT", TITLE_INSTRUCTIONS_PATH, &body).await;
         self.dispatch();
         SessionTitleInstructions::from_value(&result?).map_err(|detail| {
             SessionError::DeliveryUncertain {

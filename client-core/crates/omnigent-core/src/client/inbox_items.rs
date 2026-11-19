@@ -1,7 +1,9 @@
-//! The Inbox's server-side feeds beside the sessions: items agents post for their owner
-//! (`/v1/inbox/items`, the web's `lib/proactiveInbox.ts`), and the latest failed runs of
-//! automations that never made a session (`/v1/scheduled-tasks/inbox`, `useAutomationInbox`).
-//! Servers advertise them with `/v1/info.inbox_items_available` and `scheduled_task_inbox`.
+//! The Inbox's server-side feeds beside the sessions.
+//!
+//! Items agents post for their owner (`/v1/inbox/items`, the web's `lib/proactiveInbox.ts`), and
+//! the latest failed runs of automations that never made a session
+//! (`/v1/scheduled-tasks/inbox`, `useAutomationInbox`). Servers advertise them with
+//! `/v1/info.inbox_items_available` and `scheduled_task_inbox`.
 
 use std::collections::BTreeSet;
 
@@ -282,9 +284,8 @@ pub fn inbox_item_preview(body_md: &str) -> String {
     else {
         return String::new();
     };
-    let chars: Vec<char> = line.chars().collect();
-    if chars.len() > PREVIEW_CHARS {
-        let mut cut: String = chars[..PREVIEW_CHARS - 1].iter().collect();
+    if line.chars().count() > PREVIEW_CHARS {
+        let mut cut: String = line.chars().take(PREVIEW_CHARS - 1).collect();
         cut.push('\u{2026}');
         cut
     } else {
@@ -295,11 +296,12 @@ pub fn inbox_item_preview(body_md: &str) -> String {
 fn strip_markers(line: &str) -> &str {
     let rest = line.trim_start();
     let digits = rest.chars().take_while(char::is_ascii_digit).count();
-    let rest = if digits > 0 && rest[digits..].starts_with('.') {
-        &rest[digits + 1..]
-    } else {
-        rest.trim_start_matches(['#', '>', '*', '-'])
-    };
+    // The digits are ASCII, so their count is also their length in bytes.
+    let rest = rest
+        .get(digits..)
+        .filter(|_| digits > 0)
+        .and_then(|after| after.strip_prefix('.'))
+        .unwrap_or_else(|| rest.trim_start_matches(['#', '>', '*', '-']));
     rest.trim()
 }
 
@@ -382,33 +384,7 @@ fn chart_from(raw: &Value) -> Option<InboxChart> {
         return None;
     }
     let has = |label: &str| labels.iter().any(|known| known == label);
-    let series_values = raw.get("series")?.as_array()?;
-    if series_values.is_empty() || series_values.len() > MAX_CHART_SERIES {
-        return None;
-    }
-    let series = series_values
-        .iter()
-        .map(|entry| {
-            let entry = entry.as_object()?;
-            let values: Vec<Option<f64>> = entry
-                .get("values")?
-                .as_array()?
-                .iter()
-                .map(|value| match value {
-                    Value::Null => Some(None),
-                    other => other.as_f64().filter(|v| v.is_finite()).map(Some),
-                })
-                .collect::<Option<_>>()?;
-            (values.len() == labels.len()).then(|| InboxChartSeries {
-                name: non_empty(entry, "name").unwrap_or_default(),
-                values,
-                emphasis: entry.get("emphasis").and_then(Value::as_bool) == Some(true),
-            })
-        })
-        .collect::<Option<Vec<_>>>()?;
-    if series.iter().any(|entry| entry.name.is_empty()) {
-        return None;
-    }
+    let series = chart_series(raw, labels.len())?;
     let highlight = match raw.get("highlight") {
         None | Some(Value::Null) => None,
         Some(band) => {
@@ -420,22 +396,7 @@ fn chart_from(raw: &Value) -> Option<InboxChart> {
             Some((from.to_owned(), to.to_owned()))
         }
     };
-    let marker_values = match raw.get("markers") {
-        None | Some(Value::Null) => &Vec::new(),
-        Some(markers) => markers.as_array()?,
-    };
-    if marker_values.len() > MAX_CHART_MARKERS {
-        return None;
-    }
-    let markers = marker_values
-        .iter()
-        .map(|marker| {
-            let marker = marker.as_object()?;
-            let at = marker.get("x")?.as_str()?;
-            let label = non_empty(marker, "label")?;
-            has(at).then(|| (at.to_owned(), label))
-        })
-        .collect::<Option<Vec<_>>>()?;
+    let markers = chart_markers(raw, &labels)?;
     let source = match raw.get("source") {
         None | Some(Value::Null) => None,
         Some(source) => {
@@ -465,6 +426,61 @@ fn chart_from(raw: &Value) -> Option<InboxChart> {
     })
 }
 
+/// A chart's named series, each with one value or gap per label; `None` when any is malformed.
+fn chart_series(raw: &Map<String, Value>, label_count: usize) -> Option<Vec<InboxChartSeries>> {
+    let series_values = raw.get("series")?.as_array()?;
+    if series_values.is_empty() || series_values.len() > MAX_CHART_SERIES {
+        return None;
+    }
+    let series = series_values
+        .iter()
+        .map(|entry| {
+            let entry = entry.as_object()?;
+            let values: Vec<Option<f64>> = entry
+                .get("values")?
+                .as_array()?
+                .iter()
+                .map(|value| match value {
+                    Value::Null => Some(None),
+                    other => other.as_f64().filter(|v| v.is_finite()).map(Some),
+                })
+                .collect::<Option<_>>()?;
+            (values.len() == label_count).then(|| InboxChartSeries {
+                name: non_empty(entry, "name").unwrap_or_default(),
+                values,
+                emphasis: entry.get("emphasis").and_then(Value::as_bool) == Some(true),
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    series
+        .iter()
+        .all(|entry| !entry.name.is_empty())
+        .then_some(series)
+}
+
+/// A chart's labelled markers on its `labels`; `None` when any is malformed or there are too
+/// many.
+fn chart_markers(raw: &Map<String, Value>, labels: &[String]) -> Option<Vec<(String, String)>> {
+    let marker_values = match raw.get("markers") {
+        None | Some(Value::Null) => return Some(Vec::new()),
+        Some(markers) => markers.as_array()?,
+    };
+    if marker_values.len() > MAX_CHART_MARKERS {
+        return None;
+    }
+    marker_values
+        .iter()
+        .map(|marker| {
+            let marker = marker.as_object()?;
+            let at = marker.get("x")?.as_str()?;
+            let label = non_empty(marker, "label")?;
+            labels
+                .iter()
+                .any(|known| known == at)
+                .then(|| (at.to_owned(), label))
+        })
+        .collect()
+}
 
 fn item_from(value: &Value) -> Result<AgentInboxItem, String> {
     let object = as_object(value, "item")?;
@@ -593,7 +609,6 @@ impl AutomationFailurePage {
     }
 }
 
-
 fn validate_item_id(item_id: &str) -> Result<(), SessionError> {
     if item_id.len() == 32 && item_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         Ok(())
@@ -620,7 +635,11 @@ impl<T: HttpTransport> ClientCore<T> {
         after: Option<&str>,
     ) -> Result<AgentInboxPage, SessionError> {
         let mut query = vec![("limit", INBOX_PAGE_SIZE.to_string())];
-        query.extend(OPEN_STATUSES.iter().map(|status| ("status", (*status).to_owned())));
+        query.extend(
+            OPEN_STATUSES
+                .iter()
+                .map(|status| ("status", (*status).to_owned())),
+        );
         if let Some(after) = after {
             query.push(("after", after.to_owned()));
         }

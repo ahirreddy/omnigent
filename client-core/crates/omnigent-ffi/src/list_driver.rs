@@ -16,9 +16,9 @@ use omnigent_core::sessions::{
 };
 
 use crate::engine::{Engine, Msg};
-use crate::project_driver::{FolderRead, Folders};
 use crate::errors::CoreError;
 use crate::events::{CoreEvent, ErrorScope};
+use crate::project_driver::{FolderRead, Folders};
 use crate::runtime::post;
 use crate::sessions::SessionListChange;
 
@@ -213,7 +213,9 @@ impl Engine {
                 let mut shown = page.sessions;
                 let listed: BTreeSet<String> = shown.iter().map(|row| row.id.clone()).collect();
                 let early = self.list.early_pins.take();
-                let pins = early.as_ref().map_or(&self.list.pins, |early| &early.sessions);
+                let pins = early
+                    .as_ref()
+                    .map_or(&self.list.pins, |early| &early.sessions);
                 // Pins and open folders past the page keep showing while their reads run, as
                 // the rows stand now: an edit since their read shows.
                 let mut kept = listed;

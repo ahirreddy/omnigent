@@ -410,9 +410,10 @@ fn the_inbox_feeds_follow_main_s_info() {
 fn sharing_policy_follows_the_mode_and_public_switch() {
     let on = ServerPages::from_value(&json!({})).unwrap();
     assert!(on.public_sharing && !on.sharing_read_only && !on.sharing_restricted);
-    let read_only =
-        ServerPages::from_value(&json!({"sharing_mode": "read_only", "public_sharing_enabled": true}))
-            .unwrap();
+    let read_only = ServerPages::from_value(
+        &json!({"sharing_mode": "read_only", "public_sharing_enabled": true}),
+    )
+    .unwrap();
     assert!(read_only.sharing_read_only && !read_only.sharing_restricted);
     let restricted =
         ServerPages::from_value(&json!({"sharing_mode": "restricted_read_only"})).unwrap();
@@ -651,15 +652,19 @@ fn decodes_mains_task_fields() {
     assert!(trigger.shared_with_me);
     assert_eq!(trigger.owner_name, "ana@example.com");
     // A rendered prompt on a new-session automation runs on its schedule.
-    let scheduled = automation_from(&json!({"id": "t", "name": "Jira", "rrule": "x", "state": "active",
-        "prompt": trigger.prompt, "max_cost_usd": 5, "owner_display_name": "Ana"}))
+    let scheduled = automation_from(
+        &json!({"id": "t", "name": "Jira", "rrule": "x", "state": "active",
+        "prompt": trigger.prompt, "max_cost_usd": 5, "owner_display_name": "Ana"}),
+    )
     .unwrap();
     assert!(!scheduled.is_trigger && !scheduled.shared_with_me);
     assert_eq!(scheduled.max_cost_usd.as_deref(), Some("5"));
     assert_eq!(scheduled.owner_name, "Ana");
     assert!(
-        automation_from(&json!({"id": "t", "name": "J", "rrule": "x", "state": "active",
-        "mcp_services": [3]}))
+        automation_from(
+            &json!({"id": "t", "name": "J", "rrule": "x", "state": "active",
+        "mcp_services": [3]})
+        )
         .is_err()
     );
 }
@@ -689,7 +694,10 @@ fn run_rows_carry_cost_approvals_and_failure_detail() {
     assert!(ok.session_running);
     let sessionless = run(json!({"conversation_id": null, "session_cost_usd": 0.004}));
     assert!(!sessionless.needs_approval);
-    assert_eq!(sessionless.session_cost.as_deref(), Some("Session cost <$0.01"));
+    assert_eq!(
+        sessionless.session_cost.as_deref(),
+        Some("Session cost <$0.01")
+    );
     assert_eq!(format_cost_usd(0.0), "$0.00");
     assert_eq!(format_cost_usd(12.5), "$12.50");
     assert_eq!(
@@ -795,6 +803,10 @@ fn a_rendered_trigger_prompt_is_sent_as_it_is() {
     assert_eq!(body["prompt"], rendered);
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one journey through the shared-automation calls"
+)]
 #[test]
 fn reads_shared_automations_run_pull_requests_and_grants() {
     let transport = RouteTransport::local();
@@ -830,20 +842,34 @@ fn reads_shared_automations_run_pull_requests_and_grants() {
     let core = connected(transport);
     let page = block_on(core.shared_automations(Some("c1"))).unwrap();
     assert_eq!(page.next_cursor.as_deref(), Some("c2"));
-    assert!(page.automations.iter().all(|automation| automation.shared_with_me));
+    assert!(
+        page.automations
+            .iter()
+            .all(|automation| automation.shared_with_me)
+    );
     let runs = block_on(core.automation_run_pull_requests("t1")).unwrap();
     let [run] = runs.as_slice() else {
         unreachable!("one run's pull requests: {runs:?}")
     };
     assert_eq!(run.run_id, "r1");
-    let numbers: Vec<&str> = run.pull_requests.iter().map(|pr| pr.number.as_str()).collect();
+    let numbers: Vec<&str> = run
+        .pull_requests
+        .iter()
+        .map(|pr| pr.number.as_str())
+        .collect();
     assert_eq!(numbers, ["#7", "!8"]);
     assert_eq!(
-        run.pull_requests.iter().map(|pr| pr.status).collect::<Vec<_>>(),
+        run.pull_requests
+            .iter()
+            .map(|pr| pr.status)
+            .collect::<Vec<_>>(),
         [RunPullRequestStatus::Merged, RunPullRequestStatus::Draft]
     );
     assert!(run.pull_requests[0].created_by_run && !run.pull_requests[1].created_by_run);
-    assert_eq!(run_pull_requests_summary(&run.pull_requests), "PRs: 1 draft, 1 merged");
+    assert_eq!(
+        run_pull_requests_summary(&run.pull_requests),
+        "PRs: 1 draft, 1 merged"
+    );
     assert_eq!(
         run_pull_requests_summary(&run.pull_requests[..1]),
         "PR #7 merged"

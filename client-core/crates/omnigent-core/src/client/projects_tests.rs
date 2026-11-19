@@ -222,7 +222,10 @@ fn working_members_are_counted_across_pages_archived_included() {
         query_value(&reads[0], "include_archived").as_deref(),
         Some("true")
     );
-    assert!(core.transport().writes().is_empty(), "counting writes nothing");
+    assert!(
+        core.transport().writes().is_empty(),
+        "counting writes nothing"
+    );
 }
 
 #[test]

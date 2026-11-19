@@ -697,7 +697,10 @@ impl ClientCore {
     /// # Errors
     ///
     /// [`CoreError::Session`]: the read errors.
-    pub async fn project_working_sessions(&self, project: ProjectSummary) -> Result<u32, CoreError> {
+    pub async fn project_working_sessions(
+        &self,
+        project: ProjectSummary,
+    ) -> Result<u32, CoreError> {
         self.sessions()
             .project_working_sessions(&project.into())
             .await

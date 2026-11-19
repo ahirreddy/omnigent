@@ -574,7 +574,9 @@ fn goal_opens_the_sheet_bare_and_sends_an_objective() {
             &[skill("goal"), skill("review")],
             &options
         )),
-        ["/compact", "/context", "/mcp", "/goal", "/new", "/side", "/help", "/review"]
+        [
+            "/compact", "/context", "/mcp", "/goal", "/new", "/side", "/help", "/review"
+        ]
     );
     assert_eq!(
         slash_action("/goal", false, &polly, &[skill("goal")], &options),
