@@ -219,7 +219,7 @@ enum ConversationAdapter {
       // A healthy stream recycling (no failed attempt yet) is back before anyone could read it.
       guard failures > 0 else { return nil }
       let attempt = failures > 1 ? " attempt \(failures)" : ""
-      return "Reconnecting\u{2026}\(attempt) \u{00B7} \(reason.message)"
+      return "Reconnecting\u{2026}\(attempt) \u{00B7} \(ConnectionReason.text(reason))"
     case .closed: return "The stream closed."
     case .stopped: return "Disconnected."
     case .failed(let error): return "The stream failed: \(error.message)"

@@ -253,6 +253,7 @@ public struct ConnectedServerView: View {
       opener: linkOpener(from: id, in: ownerID ?? id),
       openSession: { selection = .session($0) },
       retry: { session.reconnect() }, server: connection.connectedServer,
+      connectionHealth: connection.health,
       hostEnvironment: { connection.sessionList.hostEnvironments[$0] },
       sessionTitle: { connection.sessionList.sessionWithoutActivity($0)?.title },
       tabRoutes: windowTabs.routes(for: id, in: ownerID, subagentsApart: openSubagentsApart),

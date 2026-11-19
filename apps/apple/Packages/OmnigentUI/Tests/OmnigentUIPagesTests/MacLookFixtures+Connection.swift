@@ -6,21 +6,18 @@ extension LookFixtures {
   // MARK: Connection
 
   /// A session's detail while the server is away, coming back and back: the connection line on
-  /// top, the transcript, and the composer's own line where it has one.
+  /// top and the transcript. The composer's line shows offline only; while the window's line
+  /// covers an outage, the composer does not repeat it.
   @ViewBuilder
   static func connection(_ screen: LookScreen) -> some View {
     VStack(spacing: 0) {
       switch screen {
       case .connectionReconnecting:
         ConnectionStatusBanner(
-          state: .reconnecting(
-            detail: "Could not reach the server: Could not connect to the server."),
-          retry: {})
+          state: .reconnecting(detail: "Could not connect to the server."), retry: {})
       case .connectionUnreachable:
         ConnectionStatusBanner(
-          state: .unreachable(
-            detail: "Could not reach the server: The network connection was lost."),
-          retry: {})
+          state: .unreachable(detail: "The network connection was lost."), retry: {})
       case .connectionReconnected:
         ConnectionStatusBanner(state: .reconnected, retry: {})
       default:
@@ -38,9 +35,6 @@ extension LookFixtures {
 
   private static func connectionNotice(_ screen: LookScreen) -> ComposerConnectionNotice? {
     switch screen {
-    case .connectionReconnecting:
-      ComposerConnectionNotice(
-        message: "Reconnecting\u{2026} attempt 3 \u{00B7} Could not connect to the server.")
     case .connectionOffline:
       ComposerConnectionNotice(
         message: "Offline \u{2014} showing saved messages", isOffline: true)
