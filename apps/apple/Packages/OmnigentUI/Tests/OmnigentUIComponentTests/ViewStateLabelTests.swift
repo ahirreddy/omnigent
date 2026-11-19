@@ -70,9 +70,12 @@ struct ViewStateLabelTests {
     #expect(
       ServerSettingsPane.allCases.map(\.title) == [
         "Account", "Harnesses", "Custom Agents", "MCP", "Sandbox Integrations", "Sessions", "Git",
-        "Import Sessions", "Members", "Policies", "Sharing", "Archived Sessions",
+        "Import Sessions", "General", "Members", "Policies", "Sharing", "Archived Sessions",
       ])
-    #expect(ServerSettingsPane.allCases.filter(\.isAdmin) == [.members, .policies, .sharing])
+    #expect(
+      ServerSettingsPane.allCases.filter(\.isAdmin) == [
+        .adminGeneral, .members, .policies, .sharing,
+      ])
     #expect(
       Set(ServerSettingsPane.allCases.map(\.systemImage)).count == ServerSettingsPane.allCases.count
     )
