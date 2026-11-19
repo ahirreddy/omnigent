@@ -108,7 +108,7 @@ struct AutomationRunRowView: View {
     case .sessionRunning:
       ProgressView().controlSize(.mini).help("Session still running")
     case .unread:
-      Circle().fill(Theme.brandAccent).frame(width: 8, height: 8)
+      Circle().fill(Theme.unread).frame(width: 8, height: 8)
         .help("Unread").accessibilityLabel("Unread")
     case .completed:
       Circle().fill(.secondary.opacity(0.4)).frame(width: 8, height: 8)
