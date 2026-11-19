@@ -10,7 +10,7 @@ struct InboxKindTile: View {
       AuthorAvatar(name: comment.author, size: 32)
     } else {
       Image(systemName: symbol)
-        .font(.system(size: 15, weight: .medium))
+        .font(.body.weight(.medium))
         .foregroundStyle(tone)
         .frame(width: 32, height: 32)
         .background(tone.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.small))

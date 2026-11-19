@@ -12,7 +12,7 @@ struct InboxFeedBanners: View {
         "Couldn\u{2019}t save your response to this suggestion. Try again.",
         systemImage: "exclamationmark.triangle"
       )
-      .font(.callout).foregroundStyle(.red)
+      .font(.callout).foregroundStyle(Theme.failure)
       .accessibilityIdentifier("inbox-suggestion-write-error")
     }
     if state.suggestionsFailed {
@@ -31,7 +31,7 @@ struct InboxFeedBanners: View {
     _ message: String, retry: String, action: (@MainActor () -> Void)?, id: String
   ) -> some View {
     HStack {
-      Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+      Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(Theme.failure)
       Spacer()
       if let action { Button(retry, action: action) }
     }
