@@ -369,11 +369,11 @@ public final class ConnectionStore {
   }
 
   private func startPump() {
-    let events = relay.events
+    let relay = relay
     pump = Task { [weak self] in
-      for await event in events {
+      for await _ in relay.wakes {
         guard let self else { return }
-        self.apply(event)
+        for event in relay.drain() { self.apply(event) }
       }
     }
   }
