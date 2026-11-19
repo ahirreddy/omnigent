@@ -411,7 +411,9 @@ def report(args: argparse.Namespace) -> None:
 def summarize(marks: list[dict], launched: float, last_read_ms: float) -> None:
     """Prints when the sidebar first had rows and when it had the whole list, from launch, and
     the main thread's time to each."""
-    builds = [mark for mark in marks if mark["name"] == "sidebar state"]
+    # When each state was drawn (the main queue's turn after its pass), else when it was built.
+    drawn = [mark for mark in marks if mark["name"] == "sidebar drawn"]
+    builds = drawn or [mark for mark in marks if mark["name"] == "sidebar state"]
 
     def since_launch(mark: dict) -> float:
         return (mark["at"] - launched) * 1000

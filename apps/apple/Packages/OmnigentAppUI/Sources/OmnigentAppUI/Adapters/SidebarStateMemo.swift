@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 import OmnigentCoreFFI
 import OmnigentStores
@@ -66,6 +67,11 @@ final class SidebarStateMemo: SessionListFollower {
     cached = state
     isStale = false
     builds += 1
+    if SidebarLoadSignposts.isEnabled {
+      // After the pass that draws this state: the main queue's next turn.
+      let detail = Self.signpostDetail(state)
+      DispatchQueue.main.async { SidebarLoadSignposts.mark("sidebar drawn", detail) }
+    }
     return state
   }
 
