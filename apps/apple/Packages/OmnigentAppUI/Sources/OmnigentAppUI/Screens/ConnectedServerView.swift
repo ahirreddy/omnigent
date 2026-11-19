@@ -99,7 +99,7 @@ public struct ConnectedServerView: View {
           tabDetail
             .safeAreaInset(edge: .top, spacing: 0) {
               VStack(spacing: 0) {
-                ConnectionIssuesBanner(connection: connection)
+                ConnectionIssuesBanner(connection: connection) { session.reconnect() }
                 if let tabFailure {
                   TabFailureBanner(message: tabFailure) { self.tabFailure = nil }
                 }

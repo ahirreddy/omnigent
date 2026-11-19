@@ -3,24 +3,29 @@ import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
 
-/// Connection-level failures and the updates socket's state, above the detail. Failures stay
-/// until the user dismisses them.
+/// The connection's state and connection-level failures, above the detail. The state line comes
+/// from the one reachability, shows "Reconnected" for a moment once the server is back, and
+/// clears itself; other failures stay until the user dismisses them.
 struct ConnectionIssuesBanner: View {
   let connection: ConnectionStore
+  /// Tries the server now.
+  var retry: (@MainActor () -> Void)?
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
+    let status = Self.status(connection.health)
+    let issues = Self.shownIssues(connection)
     VStack(spacing: 0) {
-      if let status = Self.describe(connection.updatesLink) {
-        Self.bannerRow(systemImage: "arrow.triangle.2.circlepath", text: status, isError: false)
-          .accessibilityIdentifier("connection.status")
+      if let status {
+        ConnectionStatusBanner(state: status, retry: retry)
+          .transition(.move(edge: .top).combined(with: .opacity))
       }
-      if let issue = connection.issues.last {
+      if let issue = issues.last {
         HStack {
           Self.bannerRow(
             systemImage: "exclamationmark.triangle",
-            text: connection.issues.count > 1
-              ? "\(issue.error.message) (\(connection.issues.count) problems)"
-              : issue.error.message,
+            text: issues.count > 1
+              ? "\(issue.error.message) (\(issues.count) problems)" : issue.error.message,
             isError: true
           )
           .accessibilityIdentifier("connection.issue")
@@ -33,8 +38,27 @@ struct ConnectionIssuesBanner: View {
       }
     }
     .background(.bar)
+    .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: status)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("connection.issues")
+  }
+
+  /// The state line: "Reconnected" just after a return, else the disruption. Offline has its
+  /// own lines under the sidebar and the composer.
+  static func status(_ health: ConnectionHealth) -> ConnectionBannerState? {
+    if health.showsReconnected { return .reconnected }
+    switch health.reachability {
+    case .online, .offline: return nil
+    case .reconnecting(let reason, _): return .reconnecting(detail: reason.message)
+    case .unreachable(let error): return .unreachable(detail: error.message)
+    }
+  }
+
+  /// The failures to show: while the server can't be reached the state line says so, and its
+  /// return clears them, so failures that only say the network is down wait unseen.
+  static func shownIssues(_ connection: ConnectionStore) -> [CoreIssue] {
+    guard connection.health.reachability.isDisrupted else { return connection.issues }
+    return connection.issues.filter { !$0.error.isConnectivityProblem }
   }
 
   static func bannerRow(systemImage: String, text: String, isError: Bool) -> some View {
@@ -45,19 +69,6 @@ struct ConnectionIssuesBanner: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.horizontal, 12)
       .padding(.vertical, 6)
-  }
-
-  /// The updates socket's state when it is not live, `nil` while live or idle.
-  static func describe(_ state: LinkState) -> String? {
-    switch state {
-    case .idle, .live, .stopped: return nil
-    case .connecting: return "Connecting to live updates\u{2026}"
-    case .reconnecting(let reason, _, let delayMs):
-      let seconds = max(1, Int((Double(delayMs) / 1_000).rounded()))
-      return "Live updates reconnecting in \(seconds)s: \(reason.message)"
-    case .closed: return "Live updates closed."
-    case .failed(let error): return "Live updates failed: \(error.message)"
-    }
   }
 }
 

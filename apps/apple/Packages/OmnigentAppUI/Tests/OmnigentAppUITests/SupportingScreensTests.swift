@@ -1,7 +1,6 @@
 import Foundation
 import OmnigentCoreFFI
 import OmnigentDesktop
-import OmnigentStores
 import OmnigentTestSupport
 import OmnigentViewTesting
 import OmnigentViewTextReading
@@ -10,6 +9,7 @@ import SwiftUI
 import Testing
 
 @testable import OmnigentAppUI
+@testable import OmnigentStores
 @testable import OmnigentUIComponents
 
 /// The smaller pieces around a session: banners, workspace links and the menu bar's windows.
@@ -29,19 +29,41 @@ struct SupportingScreensTests {
     #expect(dismissed.count == 1)
   }
 
-  @Test("The updates link says it's reconnecting, in whole seconds of at least one")
-  func linkStates() {
-    let reason = CoreError.InvalidState(message: "lost it")
-    #expect(ConnectionIssuesBanner.describe(.idle) == nil)
-    #expect(ConnectionIssuesBanner.describe(.live) == nil)
-    #expect(
-      ConnectionIssuesBanner.describe(.reconnecting(reason: reason, failures: 1, delayMs: 1))
-        == "Live updates reconnecting in 1s: lost it")
-    #expect(
-      ConnectionIssuesBanner.describe(.reconnecting(reason: reason, failures: 1, delayMs: 2_600))
-        == "Live updates reconnecting in 3s: lost it")
-    #expect(
-      ConnectionIssuesBanner.describe(.failed(error: reason)) == "Live updates failed: lost it")
+  @Test("The connection line follows the one reachability and says Reconnected after a return")
+  func connectionLine() {
+    let health = ConnectionHealth()
+    let lost = CoreError.Link(kind: .connection, message: "lost it", requiresSignIn: false)
+    let server = "http://127.0.0.1:6767"
+    _ = health.observe(server: server, signal: .reachable)
+    #expect(ConnectionIssuesBanner.status(health) == nil, "a first connect says nothing")
+    _ = health.observe(server: server, signal: .disrupted(.reconnecting(reason: lost, failures: 2)))
+    #expect(ConnectionIssuesBanner.status(health) == .reconnecting(detail: "lost it"))
+    _ = health.observe(server: server, signal: .disrupted(.unreachable(lost)))
+    #expect(ConnectionIssuesBanner.status(health) == .unreachable(detail: "lost it"))
+    _ = health.observe(server: server, signal: .reachable)
+    #expect(ConnectionIssuesBanner.status(health) == .reconnected)
+    _ = health.observe(server: server, signal: .disrupted(.offline))
+    #expect(ConnectionIssuesBanner.status(health) == nil, "offline has its own lines")
+  }
+
+  @Test("The connection line reads its state and offers Retry Now until the server is back")
+  func connectionLineView() throws {
+    final class Retried { var count = 0 }
+    let retried = Retried()
+    let down = OffscreenWindow(
+      ConnectionStatusBanner(state: .unreachable(detail: "refused")) { retried.count += 1 },
+      width: 500, height: 80)
+    defer { down.close() }
+    #expect(try down.shows("Can\u{2019}t reach the server"))
+    #expect(try down.shows("refused"))
+    try down.clickControl(at: 0)
+    #expect(retried.count == 1)
+
+    let back = OffscreenWindow(
+      ConnectionStatusBanner(state: .reconnected) { retried.count += 1 }, width: 500, height: 80)
+    defer { back.close() }
+    #expect(try back.shows("Reconnected"))
+    #expect(!(try back.shows("Retry Now")))
   }
 
   @Test("A cited file opens in the viewer; a cited folder shows in the Files tree")
