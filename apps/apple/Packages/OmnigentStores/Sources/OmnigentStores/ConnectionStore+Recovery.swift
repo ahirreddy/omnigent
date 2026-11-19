@@ -57,6 +57,10 @@ extension ConnectionStore {
     }
     sessionList.connectionRecovered()
     for conversation in conversations.values { conversation.connectionRecovered() }
+    // File changes pushed while away are not replayed: each open workspace reads its files again.
+    for open in workspaceStores.keys {
+      withMutation(keyPath: \.[fileChangesIn: open]) { fileChangeCounts[open, default: 0] += 1 }
+    }
     // The core reads the list, the projects and the hosts again as its socket resumes.
     reloadOfferedPages()
   }
