@@ -11,8 +11,9 @@ extension SessionSummary {
   }
 
   /// This summary without what its own row says (title, preview, time, status, requests,
-  /// background work, terminal prompt, failure): what is left decides where the row is and what
-  /// is around it.
+  /// background work, terminal prompt, failure, whether its host and runner are up): what is
+  /// left decides where the row is and what is around it. A watch's first snapshot tells each
+  /// row's liveness, which the list reads leave out, and moves nothing.
   var placement: SessionSummary {
     var summary = withoutActivity
     summary.title = ""
@@ -22,6 +23,10 @@ extension SessionSummary {
     summary.blockedOn = nil
     summary.failureMessage = nil
     summary.canStop = false
+    summary.configuration?.hostOnline = nil
+    summary.configuration?.runnerOnline = nil
+    summary.configuration?.runnerBound = nil
+    summary.configuration?.hostResumable = nil
     return summary
   }
 }

@@ -266,6 +266,8 @@ fn show_more_reads_the_next_page_after_the_first() {
     harness.core.load_project_folder(alpha(), true);
     harness.pump();
     assert_eq!(harness.last_query("after").as_deref(), Some("f1"));
+    // Later pages are larger, so Show All Sessions reads a big folder in few round trips.
+    assert_eq!(harness.last_query("limit").as_deref(), Some("100"));
     assert_eq!(
         folders(&harness.events.take()),
         Some(vec![loaded("p1", false)])
@@ -335,4 +337,37 @@ fn a_label_only_projects_folder_is_named_by_its_label() {
         icon: None,
     };
     assert_eq!(project_folder_id(label), "label:Beta");
+}
+
+/// The `watch` frames the updates socket sent, as their ids.
+fn watches(socket: &crate::test_support::FakeSocket) -> Vec<Vec<String>> {
+    lock(&socket.sent)
+        .iter()
+        .filter_map(|text| serde_json::from_str::<Value>(text).ok())
+        .filter(|frame| frame["type"] == "watch")
+        .map(|frame| {
+            let ids = frame["session_ids"].as_array().cloned().unwrap_or_default();
+            ids.iter()
+                .filter_map(|id| id.as_str().map(str::to_owned))
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn a_load_watches_its_page_pins_and_folders_in_one_watch() {
+    let mut harness = server();
+    harness.core.set_open_project_folders(vec!["p1".into()]);
+    connect(&mut harness);
+    let (_, sink, socket) = harness.sockets.last();
+    sink.opened();
+    harness.pump();
+    // The page and the folder landed a moment apart; one watch names both.
+    harness.advance(crate::engine::WATCH_COALESCE_MS);
+    let sent = watches(&socket);
+    let named: Vec<&Vec<String>> = sent.iter().filter(|ids| !ids.is_empty()).collect();
+    assert_eq!(named.len(), 1, "{sent:?}");
+    let mut ids = named[0].clone();
+    ids.sort();
+    assert_eq!(ids, ["a", "f1"]);
 }
