@@ -91,7 +91,7 @@ fn every_source_names_its_service_template_and_header_id() {
         assert_eq!(TriggerSource::from_id(source.id()), Some(source));
         let template = trigger_template(source);
         assert_eq!(template.source, source);
-        assert!(!template.events.is_empty());
+        assert_ne!(template.events, []);
         assert!(template.tools_example.contains(source.service_name()));
     }
     assert_eq!(trigger_template(TriggerSource::Github).title, "GitHub");
@@ -148,17 +148,9 @@ fn completeness_needs_scope_values_and_bounded_instructions() {
     // The budget counts UTF-16 units, as the web's `length`.
     let mut emoji = fields();
     emoji.instructions = "\u{1F642}".repeat(1_000);
-    assert!(trigger_fields_complete(
-        TriggerSource::Jira,
-        &emoji,
-        2_000
-    ));
+    assert!(trigger_fields_complete(TriggerSource::Jira, &emoji, 2_000));
     emoji.instructions.push('x');
-    assert!(!trigger_fields_complete(
-        TriggerSource::Jira,
-        &emoji,
-        2_000
-    ));
+    assert!(!trigger_fields_complete(TriggerSource::Jira, &emoji, 2_000));
 }
 
 #[test]
@@ -209,7 +201,10 @@ fn switching_events_clears_what_the_new_event_reads_differently() {
         "Runs your automation on all new issues that match these conditions. Older issues are skipped, even if they are edited to match later."
     );
     assert!(trigger_event_description(TriggerSource::Jira, "assigned").contains("assigned again"));
-    assert_eq!(strip_scope_prefix("#eng, ##bugs,  #ops", "#"), "eng, bugs,  ops");
+    assert_eq!(
+        strip_scope_prefix("#eng, ##bugs,  #ops", "#"),
+        "eng, bugs,  ops"
+    );
     assert_eq!(slack_channels("eng, C0123ABCD"), "#eng, C0123ABCD");
     assert_eq!(
         slack_people("alice, @Alice, U0123ABCD, bob@example.com"),
@@ -377,12 +372,18 @@ fn describes_linear_and_pagerduty_rows_as_the_web() {
         ]),
         r#"that have label "Bug", don't have status "Done", have priority "Urgent", aren't in project "Mobile app", were created by you and don't have "flaky" in the title or description"#
     );
-    assert_eq!(linear(vec![row("assignee", Is, "me")]), "that are assigned to you");
+    assert_eq!(
+        linear(vec![row("assignee", Is, "me")]),
+        "that are assigned to you"
+    );
     assert_eq!(
         linear(vec![row("assignee", IsNot, "ana@example.com")]),
         r#"that aren't assigned to "ana@example.com""#
     );
-    assert_eq!(linear(vec![row("assignee", Empty, "")]), "that are unassigned");
+    assert_eq!(
+        linear(vec![row("assignee", Empty, "")]),
+        "that are unassigned"
+    );
     assert_eq!(
         linear(vec![row("assignee", NotEmpty, "")]),
         "that are assigned to someone"
@@ -643,7 +644,10 @@ fn renders_one_task_session_for_every_match() {
 fn a_header_round_trips_the_form() {
     for source in TriggerSource::ALL {
         let saved = encode_trigger_prompt(&config(source), &config_context());
-        assert!(saved.starts_with("<!-- omnigent-trigger v1 {\"source\":"), "{saved}");
+        assert!(
+            saved.starts_with("<!-- omnigent-trigger v1 {\"source\":"),
+            "{saved}"
+        );
         assert_eq!(decode_trigger_prompt(&saved), Some(config(source)));
         assert!(is_trigger_prompt(&saved));
         assert_eq!(trigger_prompt_source(&saved), Some(source));
@@ -702,7 +706,10 @@ fn a_header_edited_outside_the_form_opens_as_free_text() {
         saved.replace("\"source\":\"jira\"", "\"source\":\"zendesk\""),
         saved.replace("\"event\":\"created\"", "\"event\":\"edited\""),
         saved.replace("\"scope\":\"abc\"", "\"scope\":\"xyz\""),
-        saved.replace("Instructions for each session:\nDo the work.", "Instructions for each session:\nDo nothing."),
+        saved.replace(
+            "Instructions for each session:\nDo the work.",
+            "Instructions for each session:\nDo nothing.",
+        ),
         format!("Note\n{saved}"),
     ] {
         assert_eq!(decode_trigger_prompt(&edited), None, "{edited}");
@@ -751,7 +758,10 @@ fn an_older_trigger_splits_into_its_instructions() {
         combine_trigger_prompt(&parts.user_prompt, parts.system_prompt.as_deref()),
         github
     );
-    for free in ["Summarize the day.", "This automation watches Jira but nothing else."] {
+    for free in [
+        "Summarize the day.",
+        "This automation watches Jira but nothing else.",
+    ] {
         assert_eq!(split_trigger_prompt(free).system_prompt, None, "{free}");
     }
     assert_eq!(read_trigger_message_max_chars(&prompt), Some(32_000));
@@ -793,11 +803,17 @@ fn the_message_budget_needs_the_server_and_the_host() {
         long_messages,
     };
     let full = trigger_message_budget(32_000, &host(true), None);
-    assert_eq!((full.message_max_chars, full.instructions_max_chars), (32_000, 16_000));
+    assert_eq!(
+        (full.message_max_chars, full.instructions_max_chars),
+        (32_000, 16_000)
+    );
     assert_eq!(full.upgrade_hint, None);
     let old_server = trigger_message_budget(0, &host(true), None);
     assert_eq!(
-        (old_server.message_max_chars, old_server.instructions_max_chars),
+        (
+            old_server.message_max_chars,
+            old_server.instructions_max_chars
+        ),
         (8_000, 2_000)
     );
     assert_eq!(
@@ -859,8 +875,16 @@ fn renders_and_encodes_byte_for_byte_as_the_web() {
         let encoded = case["encoded"].as_str().unwrap_or_default();
         let body = render_trigger_config_prompt(&config, &context);
         assert_eq!(body, strip_trigger_header(encoded), "{name}: body");
-        assert_eq!(encode_trigger_prompt(&config, &context), encoded, "{name}: header");
-        assert_eq!(decode_trigger_prompt(encoded), Some(config), "{name}: decode");
+        assert_eq!(
+            encode_trigger_prompt(&config, &context),
+            encoded,
+            "{name}: header"
+        );
+        assert_eq!(
+            decode_trigger_prompt(encoded),
+            Some(config),
+            "{name}: decode"
+        );
         assert_eq!(
             is_task_session_trigger_prompt(&body),
             case["taskSession"].as_bool().unwrap_or_default(),
@@ -891,7 +915,7 @@ fn the_fingerprint_is_the_published_cyrb53() {
 fn every_operator_has_a_generic_label_and_header_id() {
     for operator in TriggerOperator::ALL {
         assert_eq!(TriggerOperator::from_id(operator.id()), Some(operator));
-        assert!(!operator.label().is_empty());
+        assert_ne!(operator.label(), "");
     }
     let assignee = &trigger_template(TriggerSource::Jira).fields[4];
     assert_eq!(assignee.operator_label(Empty), "is unassigned");

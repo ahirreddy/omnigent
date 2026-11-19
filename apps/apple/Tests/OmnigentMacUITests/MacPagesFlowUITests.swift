@@ -34,9 +34,13 @@ final class MacPagesFlowUITests: XCTestCase {
     let prompt = live.element("automation-prompt", in: app)
     live.click(prompt, "the prompt field")
     prompt.typeText("Say hello from the flow.")
-    // Every ten minutes, as the web's Interval schedule.
-    live.click(live.element("automation-schedule-preset", in: app), "the schedule picker")
-    live.clickMenuItem("Interval", in: app)
+    // Every ten minutes, as the web's Interval schedule, from the schedule button's menu.
+    live.click(live.element("automation-schedule", in: app), "the schedule button")
+    live.click(app.radioButtons["Interval"].firstMatch, "the Interval frequency")
+    live.click(nameField, "the name field, closing the schedule menu")
+    XCTAssertTrue(
+      live.element("automation-schedule-menu", in: app).disappears(within: 10),
+      "the schedule menu stayed")
     pickHostAndSave(live, app, workspace: workspace)
 
     let listed = live.text(containing: name, in: app)
@@ -68,11 +72,13 @@ final class MacPagesFlowUITests: XCTestCase {
     let scope = live.element("automation-trigger-scope", in: app)
     live.click(scope, "the project field", timeout: 15)
     scope.typeText("ES")
+    // As the web's, the instructions have a tab of their own.
+    live.click(live.element("automation-trigger-tab-instructions", in: app), "the Instructions tab")
     let field = live.element("automation-trigger-instructions", in: app)
     live.click(field, "the instructions field")
     field.typeText(instructions)
     XCTAssertFalse(
-      live.element("automation-schedule-preset", in: app).exists,
+      live.element("automation-schedule", in: app).exists,
       "a trigger polls, so its schedule stays out of the form")
     pickHostAndSave(live, app, workspace: workspace)
 
@@ -105,6 +111,35 @@ final class MacPagesFlowUITests: XCTestCase {
     XCTAssertTrue(rule.disappears(within: 15), "the trigger stayed")
   }
 
+  /// A new automation's Trigger type swaps the schedule and instructions for a trigger's form,
+  /// and back, keeping what was typed, as the web's.
+  @MainActor
+  func testTheTriggerTypeSwitchesTheForm() throws {
+    let live = MacLiveUITestSupport(self)
+    let app = live.launch()
+    defer { app.terminate() }
+    live.click(live.element("sidebar-automations", in: app), "Automations", timeout: 30)
+    let intro = app.sheets.buttons["Maybe later"].firstMatch
+    if intro.appears(within: 5) { intro.click() }
+    XCTAssertTrue(intro.disappears(within: 10), "the intro stayed")
+    live.click(live.element("automations-new", in: app), "New", timeout: 20)
+
+    let prompt = live.element("automation-prompt", in: app)
+    live.click(prompt, "the prompt field", timeout: 15)
+    prompt.typeText("Look into it.")
+    live.click(live.element("automation-trigger-type", in: app), "the trigger type")
+    live.clickMenuItem("Jira", in: app)
+    let scope = live.element("automation-trigger-scope", in: app)
+    XCTAssertTrue(scope.appears(within: 10), "no trigger form\n\(app.debugDescription)")
+    XCTAssertFalse(live.element("automation-schedule", in: app).exists, "a trigger has no schedule")
+    live.click(live.element("automation-trigger-type", in: app), "the trigger type")
+    live.clickMenuItem("Schedule", in: app)
+    XCTAssertTrue(prompt.appears(within: 10), "the schedule's form didn't come back")
+    XCTAssertEqual(prompt.value as? String, "Look into it.", "the instructions were lost")
+    app.typeKey(.escape, modifierFlags: [])
+    XCTAssertTrue(prompt.disappears(within: 10), "the editor stayed")
+  }
+
   /// Picks the first host, pins the fixture folder when offered, and saves.
   @MainActor
   private func pickHostAndSave(
@@ -116,7 +151,11 @@ final class MacPagesFlowUITests: XCTestCase {
       return
     }
     host.click()
+    // The folder is under Advanced settings, folded until opened, as the web's.
     let folder = live.element("automation-workspace", in: app)
+    if !folder.exists {
+      live.click(live.element("automation-advanced", in: app), "Advanced settings")
+    }
     if folder.appears(within: 5) {
       // The form is taller than a small screen: bring its last fields above the buttons.
       app.sheets.firstMatch.scrollViews.firstMatch.scroll(byDeltaX: 0, deltaY: -600)

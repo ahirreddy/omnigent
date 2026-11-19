@@ -175,4 +175,54 @@ struct AutomationsPageMappingTests {
           messageMaxChars: nil), withHeader: true
       ).isEmpty)
   }
+
+  @Test("What blocks Save is said in the form")
+  func blockers() {
+    var draft = AutomationDraftState()
+    #expect(
+      AutomationEditorMapping.blocker(draft, isEditing: false)
+        == "Pick the host this automation runs on.")
+    #expect(AutomationEditorMapping.blocker(draft, isEditing: true) == nil)
+    draft.workspace = "/w"
+    #expect(
+      AutomationEditorMapping.blocker(draft, isEditing: true)
+        == "Pick a host before pinning a workspace.")
+    draft.runsInSandbox = true
+    #expect(AutomationEditorMapping.blocker(draft, isEditing: false) == nil)
+  }
+
+  @Test("The editor's Trigger type offers each integration by its service's name")
+  func triggerTypes() {
+    let types = AutomationTriggerMapping.types
+    #expect(types.map(\.id) == ["jira", "slack", "github", "linear", "pagerduty"])
+    #expect(types.map(\.name) == ["Jira", "Slack", "GitHub", "Linear", "PagerDuty"])
+    #expect(AutomationTriggerMapping.defaultName("schedule").isEmpty)
+    #expect(!AutomationTriggerMapping.defaultName("jira").isEmpty)
+    #expect(AutomationTriggerMapping.cards.map(\.systemImage).allSatisfy { $0 != "bolt" })
+  }
+
+  @Test("Switching the Trigger type keeps each type's fields, and carries the instructions over")
+  func switchingTriggerTypes() {
+    var kept: [String: AutomationDraftState] = [:]
+    var draft = AutomationDraftState(name: "", prompt: "Look into it.", agentID: "a1")
+    draft.hostID = "h1"
+    let jira = AutomationTriggerMapping.switchedType(draft, to: "jira", kept: &kept, offered: nil)
+    #expect(jira.trigger?.source == "jira")
+    #expect(jira.trigger?.instructions == "Look into it.", "the instructions carry over")
+    #expect(jira.name == AutomationTriggerMapping.defaultName("jira"))
+    #expect(jira.continuesSession && jira.isTrigger)
+    #expect(jira.hostID == "h1", "where it runs stays")
+    var edited = jira
+    edited.trigger?.scope = "ENG"
+    let back = AutomationTriggerMapping.switchedType(edited, to: nil, kept: &kept, offered: nil)
+    #expect(back.trigger == nil && !back.isTrigger)
+    #expect(back.prompt == "Look into it.", "the schedule's own fields come back")
+    #expect(!back.continuesSession)
+    let again = AutomationTriggerMapping.switchedType(back, to: "jira", kept: &kept, offered: nil)
+    #expect(again.trigger?.scope == "ENG", "the trigger's edits come back too")
+    var typed = back
+    typed.name = "Triage"
+    let slack = AutomationTriggerMapping.switchedType(typed, to: "slack", kept: &kept, offered: nil)
+    #expect(slack.name == "Triage", "a typed name carries over")
+  }
 }

@@ -31,11 +31,12 @@ struct AutomationRowView: View {
 
   var body: some View {
     HStack(spacing: Theme.Spacing.medium) {
-      VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
         HStack(spacing: Theme.Spacing.small) {
-          Text(row.name).font(.headline).lineLimit(1)
+          Text(row.name).font(AutomationStyle.cardTitle).lineLimit(1)
           if row.lastRunFailed {
             Image(systemName: "exclamationmark.triangle")
+              .font(.callout)
               .foregroundStyle(Theme.failure)
               .help("Last run failed")
               .accessibilityLabel("Last run failed")
@@ -43,12 +44,13 @@ struct AutomationRowView: View {
           }
           if row.isPaused {
             Text("Paused").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
-              .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.tiny)
-              .background(Capsule().fill(.quaternary))
+              .padding(.horizontal, 6).padding(.vertical, Theme.Spacing.tiny)
+              .background(Capsule().fill(AutomationStyle.mutedFill))
+              .fixedSize()
               .accessibilityIdentifier("automation-paused-\(row.id)")
           }
         }
-        Text(row.subtitle).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+        Text(row.subtitle).foregroundStyle(.secondary.opacity(0.8)).lineLimit(1)
           .accessibilityIdentifier("automation-schedule-\(row.id)")
       }
       Spacer(minLength: 0)
@@ -56,20 +58,29 @@ struct AutomationRowView: View {
       Menu {
         menuItems
       } label: {
+        // Only the mark hides: the menu itself stays reachable by click and by keyboard.
         Image(systemName: "ellipsis")
+          .foregroundStyle(.secondary)
+          .opacity(showsMenu ? 1 : 0)
+          .frame(width: Theme.Control.target, height: Theme.Control.target)
+          .contentShape(Rectangle())
       }
       .menuStyle(.button)
       .buttonStyle(.borderless)
       .menuIndicator(.hidden)
       .fixedSize()
       .disabled(row.isBusy)
-      .opacity(isHovered || row.isBusy ? 1 : 0.4)
       .accessibilityLabel("Actions for \(row.name)")
       .accessibilityIdentifier("automation-menu-\(row.id)")
     }
     .padding(.vertical, Theme.Spacing.medium)
-    .padding(.horizontal, Theme.Spacing.large)
-    .cardSurface(cornerRadius: Theme.Radius.medium)
+    .padding(.leading, Theme.Spacing.large)
+    .padding(.trailing, Theme.Spacing.small)
+    .background(
+      RoundedRectangle(cornerRadius: Theme.Radius.medium + 4, style: .continuous)
+        .fill(isHovered ? AutomationStyle.mutedFill.opacity(0.4) : .clear)
+    )
+    .cardSurface(cornerRadius: Theme.Radius.medium + 4)
     .contentShape(Rectangle())
     .onHover { isHovered = $0 }
     .onTapGesture(count: actions.open == nil ? 2 : 1) {
@@ -85,6 +96,15 @@ struct AutomationRowView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("automation-\(row.id)")
+  }
+
+  /// As the web's: a pointer reveals the menu on hover; touch screens always show it.
+  private var showsMenu: Bool {
+    #if os(macOS)
+      isHovered || row.isBusy
+    #else
+      true
+    #endif
   }
 
   @ViewBuilder private var menuItems: some View {

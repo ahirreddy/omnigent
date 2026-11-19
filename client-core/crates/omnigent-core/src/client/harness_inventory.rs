@@ -1,7 +1,8 @@
-//! A harness's MCP servers, skills and plugins on a host, for its Settings page, as the web's
-//! `HarnessCatalog` and `useHarnessInventory` read them: `GET /v1/hosts/{id}/mcp-servers`,
-//! `GET /v1/skills?host_id&harness&path=~`, Claude's `GET /v1/hosts/{id}/plugins` and a skill's
-//! `GET /v1/hosts/{id}/harnesses/{h}/skills/{name}`.
+//! A harness's MCP servers, skills and plugins on a host, for its Settings page.
+//!
+//! As the web's `HarnessCatalog` and `useHarnessInventory` read them:
+//! `GET /v1/hosts/{id}/mcp-servers`, `GET /v1/skills?host_id&harness&path=~`, Claude's
+//! `GET /v1/hosts/{id}/plugins` and a skill's `GET /v1/hosts/{id}/harnesses/{h}/skills/{name}`.
 
 use std::collections::BTreeMap;
 
@@ -74,6 +75,10 @@ pub struct HostMcpServer {
 
 /// One plugin installed for Claude (`PluginSummary`).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent facts the host reports about one plugin"
+)]
 pub struct HostPlugin {
     /// Its id; `None` from an older host.
     pub id: Option<String>,
@@ -198,7 +203,7 @@ pub struct HostInventory {
     pub plugins: InventoryRead,
 }
 
-fn read_state<V>(result: &Result<V, SessionError>) -> InventoryRead {
+const fn read_state<V>(result: &Result<V, SessionError>) -> InventoryRead {
     match result {
         Ok(_) => InventoryRead::Loaded,
         Err(SessionError::HttpStatus { status: 501 }) => InventoryRead::Unsupported,
@@ -228,7 +233,10 @@ fn mcp_row(family: &str, server: &HostMcpServer) -> McpRow {
             .unwrap_or_else(|| format!("{family}:{plugin_part}{}", server.name)),
         title: mcp_server_display_name(&server.name),
         detail: join([
-            server.plugin.as_ref().map(|plugin| format!("{plugin} plugin")),
+            server
+                .plugin
+                .as_ref()
+                .map(|plugin| format!("{plugin} plugin")),
             server.url_host.clone(),
         ]),
         plugin: server.plugin.clone(),
@@ -236,9 +244,10 @@ fn mcp_row(family: &str, server: &HostMcpServer) -> McpRow {
     }
 }
 
-/// The inventory's tabs from what the host reported (`buildInventoryContext`): `family`'s MCP
-/// servers, the skills no plugin ships (a `plugin:skill` name belongs to its plugin) and the
-/// plugins, from Claude's plugin list when the host has one, else from the names.
+/// The inventory's tabs from what the host reported (`buildInventoryContext`).
+///
+/// `family`'s MCP servers, the skills no plugin ships (a `plugin:skill` name belongs to its
+/// plugin) and the plugins, from Claude's plugin list when the host has one, else from the names.
 #[must_use]
 pub fn harness_inventory(
     family: &str,
@@ -250,7 +259,11 @@ pub fn harness_inventory(
     let mut plugin_skills: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut plain = Vec::new();
     for skill in skills {
-        match skill.name.split_once(':').filter(|(plugin, _)| !plugin.is_empty()) {
+        match skill
+            .name
+            .split_once(':')
+            .filter(|(plugin, _)| !plugin.is_empty())
+        {
             Some((plugin, name)) => plugin_skills
                 .entry(plugin.to_owned())
                 .or_default()
@@ -263,15 +276,20 @@ pub fn harness_inventory(
             }),
         }
     }
-    let plugins = match plugins {
-        Some(plugins) => plugins
-            .iter()
-            .map(|plugin| plugin_row(family, plugin, &servers))
-            .collect(),
-        None => legacy_plugins(family, &plugin_skills, &servers),
-    };
+    let plugins = plugins.map_or_else(
+        || legacy_plugins(family, &plugin_skills, &servers),
+        |plugins| {
+            plugins
+                .iter()
+                .map(|plugin| plugin_row(family, plugin, &servers))
+                .collect()
+        },
+    );
     HarnessInventory {
-        mcp_servers: servers.iter().map(|server| mcp_row(family, server)).collect(),
+        mcp_servers: servers
+            .iter()
+            .map(|server| mcp_row(family, server))
+            .collect(),
         skills: plain,
         plugins,
     }
@@ -311,7 +329,15 @@ fn legacy_plugins(
                 .collect();
             PluginRow {
                 id: format!("{family}:{name}"),
-                detail: plugin_detail(None, None, None, skills.len(), mcp_servers.len(), false, false),
+                detail: plugin_detail(
+                    None,
+                    None,
+                    None,
+                    skills.len(),
+                    mcp_servers.len(),
+                    false,
+                    false,
+                ),
                 name,
                 description: None,
                 skills,
@@ -438,8 +464,14 @@ fn mcp_server_from(value: &Value) -> Result<HostMcpServer, String> {
     })
 }
 
-fn entries(object: &serde_json::Map<String, Value>, key: &str, names: &str)
--> Result<(Vec<(Option<String>, String)>, bool), String> {
+/// A plugin's entries: entry id and name, or names alone from an older host.
+type Entries = Vec<(Option<String>, String)>;
+
+fn entries(
+    object: &serde_json::Map<String, Value>,
+    key: &str,
+    names: &str,
+) -> Result<(Entries, bool), String> {
     if let Some(entries) = opt_array(object, key)? {
         let list = entries
             .iter()
@@ -525,16 +557,21 @@ impl<T: HttpTransport> ClientCore<T> {
             Ok(None)
         };
         let both_failed = servers.is_err() && skills.is_err();
-        let plugins_read = match &plugins {
-            Ok(Some(_)) => InventoryRead::Loaded,
-            Ok(None) if both_failed => InventoryRead::Failed,
-            Ok(None) => InventoryRead::Loaded,
-            Err(_) => InventoryRead::Failed,
+        let plugins_read = if plugins
+            .as_ref()
+            .is_ok_and(|found| found.is_some() || !both_failed)
+        {
+            InventoryRead::Loaded
+        } else {
+            InventoryRead::Failed
         };
         let inventory = harness_inventory(
             family,
             servers.as_deref().unwrap_or_default(),
-            skills.as_ref().map(|catalog| catalog.skills.as_slice()).unwrap_or_default(),
+            skills
+                .as_ref()
+                .map(|catalog| catalog.skills.as_slice())
+                .unwrap_or_default(),
             plugins.as_ref().ok().and_then(Option::as_deref),
         );
         Ok(HostInventory {
@@ -555,7 +592,10 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    pub async fn host_mcp_servers(&self, host_id: &str) -> Result<Vec<HostMcpServer>, SessionError> {
+    pub async fn host_mcp_servers(
+        &self,
+        host_id: &str,
+    ) -> Result<Vec<HostMcpServer>, SessionError> {
         validate_identifier(host_id)?;
         let path = format!("/v1/hosts/{host_id}/mcp-servers");
         let value = self.get_json(&path, &[]).await;

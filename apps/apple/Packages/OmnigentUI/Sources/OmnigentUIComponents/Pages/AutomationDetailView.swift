@@ -1,14 +1,16 @@
 import OmnigentPlatform
 public import SwiftUI
 
-/// One automation's page: name and actions, the active switch with its schedule, the session
-/// it starts from, the prompt, its saved configuration, and its run history. A shared one is
-/// read-only: its actions show disabled and say why.
+/// One automation's page, laid out as the web's `/tasks/:id`: the way back, the name with Share,
+/// Edit, Delete and Run now, the active switch with its state and schedule, the session it
+/// starts from, the prompt, its saved configuration (folded away), and its run history. A
+/// shared one is read-only: its actions show disabled and say why.
 public struct AutomationDetailView: View {
   private let state: AutomationDetailState
   private let actions: AutomationDetailActions
   @State private var confirmingDelete = false
-  @State private var showsConfiguration = true
+  @State private var showsConfiguration = false
+  @Environment(\.layoutWidth) private var layoutWidth
 
   /// Creates the page.
   public init(state: AutomationDetailState, actions: AutomationDetailActions) {
@@ -19,26 +21,42 @@ public struct AutomationDetailView: View {
   /// The page.
   public var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: Theme.Spacing.large) {
+      VStack(alignment: .leading, spacing: 0) {
         if let back = actions.back {
-          Button("Automations", systemImage: "chevron.left", action: back)
-            .buttonStyle(.borderless)
-            .accessibilityIdentifier("automation-detail-back")
+          Button(action: back) {
+            Label("Automations", systemImage: "chevron.left")
+          }
+          .buttonStyle(.borderless)
+          .foregroundStyle(.secondary)
+          .accessibilityIdentifier("automation-detail-back")
+          .padding(.bottom, Theme.Spacing.large)
         }
         header
-        statusLine
-        if let error = state.actionError { errorBanner(error) }
+        statusLine.padding(.top, Theme.Spacing.medium)
+        if let error = state.actionError {
+          AutomationErrorBanner(
+            message: error, actionTitle: actions.dismissError == nil ? nil : "Dismiss",
+            action: actions.dismissError
+          )
+          .padding(.top, Theme.Spacing.large)
+        }
         if let startsFrom = state.startsFrom { startsFromSection(startsFrom) }
         section(state.promptTitle) {
           Text(state.prompt.isEmpty && state.startsFrom != nil ? "None" : state.prompt)
+            .foregroundStyle(.primary.opacity(0.9))
             .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("automation-detail-prompt")
         }
-        configuration
-        Divider()
-        section("Runs") { runs }
+        configuration.padding(.top, Theme.Spacing.extraLarge)
+        Divider().padding(.vertical, Theme.Spacing.extraLarge)
+        Text("Runs").font(AutomationStyle.sectionLabel).foregroundStyle(.secondary)
+          .accessibilityAddTraits(.isHeader)
+          .padding(.bottom, Theme.Spacing.small)
+        runs
       }
-      .padding(Theme.Spacing.gutter)
+      .padding(.horizontal, AutomationStyle.gutter(layoutWidth))
+      .padding(.vertical, Theme.Spacing.extraLarge)
       .frame(maxWidth: Theme.inboxWidth, alignment: .leading)
       .frame(maxWidth: .infinity)
     }
@@ -51,29 +69,50 @@ public struct AutomationDetailView: View {
     }
   }
 
-  private var header: some View {
-    HStack(alignment: .top) {
-      VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-        Text(state.name).font(.largeTitle.weight(.semibold))
-          .accessibilityIdentifier("automation-detail-title")
-        if let owner = state.sharedBy {
-          Text("Shared by \(owner)").foregroundStyle(.secondary)
-            .accessibilityIdentifier("automation-detail-owner")
-        }
+  /// The name with its actions beside it; on a phone the actions go under the name, which
+  /// they would otherwise squeeze a letter at a time.
+  @ViewBuilder private var header: some View {
+    if layoutWidth == .compact {
+      VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+        titleBlock
+        headerActions
       }
-      Spacer()
+    } else {
+      HStack(alignment: .top, spacing: Theme.Spacing.large) {
+        titleBlock
+        Spacer(minLength: 0)
+        headerActions
+      }
+    }
+  }
+
+  private var titleBlock: some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
+      Text(state.name).font(AutomationStyle.pageTitle.weight(.semibold))
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("automation-detail-title")
+      if let owner = state.sharedBy {
+        Text("Shared by \(owner)").font(.callout).foregroundStyle(.secondary)
+          .accessibilityIdentifier("automation-detail-owner")
+      }
+    }
+  }
+
+  private var headerActions: some View {
+    HStack(spacing: Theme.Spacing.small) {
       shareButton
       if let edit = actions.edit {
         ownerOnly(OwnerOnlyReason.edit) {
-          Button("Edit automation", systemImage: "pencil", action: edit)
-            .labelStyle(.iconOnly).disabled(state.isBusy || state.isReadOnly)
+          iconButton("Edit automation", systemImage: "pencil", action: edit)
+            .disabled(state.isBusy || state.isReadOnly)
         }
         .accessibilityIdentifier("automation-detail-edit")
       }
       if actions.delete != nil {
         ownerOnly(OwnerOnlyReason.delete) {
-          Button("Delete automation", systemImage: "trash") { confirmingDelete = true }
-            .labelStyle(.iconOnly).disabled(state.isBusy || state.isReadOnly)
+          iconButton("Delete automation", systemImage: "trash") { confirmingDelete = true }
+            .disabled(state.isBusy || state.isReadOnly)
         }
         .accessibilityIdentifier("automation-detail-delete")
       }
@@ -91,6 +130,7 @@ public struct AutomationDetailView: View {
             }
           }
           .buttonStyle(.borderedProminent)
+          .fixedSize()
           .disabled(state.isBusy || state.isReadOnly)
         }
         .accessibilityIdentifier("automation-detail-run-now")
@@ -98,19 +138,35 @@ public struct AutomationDetailView: View {
     }
   }
 
+  /// A ghost icon button, as the web's header actions.
+  private func iconButton(
+    _ title: String, systemImage: String, action: @escaping @MainActor () -> Void
+  ) -> some View {
+    Button(action: action) {
+      Image(systemName: systemImage)
+        .foregroundStyle(.primary)
+        .frame(width: Theme.Control.target, height: Theme.Control.target)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.borderless)
+    .tint(.primary)
+    .hoverHighlight()
+    .help(title)
+    .accessibilityLabel(title)
+  }
+
   @ViewBuilder private var shareButton: some View {
     if state.isReadOnly {
-      Button("Share automation", systemImage: "square.and.arrow.up") {}
-        .labelStyle(.iconOnly).disabled(true).help(OwnerOnlyReason.share)
+      iconButton("Share automation", systemImage: "square.and.arrow.up") {}
+        .disabled(true).help(OwnerOnlyReason.share)
         .accessibilityIdentifier("automation-detail-share")
     } else if state.canShare {
       if let reason = state.shareDisabledReason {
-        Button("Share automation", systemImage: "square.and.arrow.up") {}
-          .labelStyle(.iconOnly).disabled(true).help(reason)
+        iconButton("Share automation", systemImage: "square.and.arrow.up") {}
+          .disabled(true).help(reason)
           .accessibilityIdentifier("automation-detail-share")
       } else if let share = actions.share {
-        Button("Share automation", systemImage: "square.and.arrow.up", action: share)
-          .labelStyle(.iconOnly)
+        iconButton("Share automation", systemImage: "square.and.arrow.up", action: share)
           .accessibilityIdentifier("automation-detail-share")
       }
     }
@@ -123,6 +179,7 @@ public struct AutomationDetailView: View {
     if state.isReadOnly { content().help(reason) } else { content() }
   }
 
+  /// The active switch (on is active), the state pill, and the schedule with its next run.
   private var statusLine: some View {
     HStack(spacing: Theme.Spacing.small) {
       if let setPaused = actions.setPaused {
@@ -139,57 +196,88 @@ public struct AutomationDetailView: View {
       }
       Text(state.isPaused ? "Paused" : "Active")
         .font(.caption.weight(.medium))
-        .foregroundStyle(state.isPaused ? Color.secondary : Color.green)
+        .foregroundStyle(state.isPaused ? AnyShapeStyle(.secondary) : AnyShapeStyle(Theme.success))
         .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.tiny)
         .background(
           Capsule().fill(
-            state.isPaused ? AnyShapeStyle(.quaternary) : AnyShapeStyle(Color.green.opacity(0.15))))
+            state.isPaused
+              ? AnyShapeStyle(AutomationStyle.mutedFill)
+              : AnyShapeStyle(Theme.success.opacity(0.15))
+          )
+        )
+        .fixedSize()
+        .accessibilityIdentifier("automation-detail-state")
       Text(state.scheduleText).foregroundStyle(.secondary)
         .accessibilityIdentifier("automation-detail-schedule")
     }
     .font(.callout)
   }
+}
 
+/// The page's sections: the session it starts from, the configuration and the runs.
+extension AutomationDetailView {
   private func startsFromSection(_ title: String) -> some View {
     section("Starts from") {
       if let id = state.startsFromSessionID, let open = actions.openSession {
-        Button(title) { open(id) }.buttonStyle(.link)
+        Button(title) { open(id) }.automationLinkStyle()
           .accessibilityIdentifier("automation-detail-starts-from")
         Text("Each run starts with a copy of this session\u{2019}s history.")
           .font(.callout).foregroundStyle(.secondary)
+          .padding(.top, Theme.Spacing.extraSmall)
       } else {
-        Text(title).foregroundStyle(.secondary)
+        Text(title).font(.callout).foregroundStyle(.secondary)
           .accessibilityIdentifier("automation-detail-starts-from")
       }
     }
   }
 
+  /// The saved launch settings, folded away until asked for, as the web's Configuration.
   private var configuration: some View {
-    DisclosureGroup(isExpanded: $showsConfiguration) {
-      VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-        LazyVGrid(
-          columns: [GridItem(.adaptive(minimum: 220), alignment: .topLeading)],
-          alignment: .leading, spacing: Theme.Spacing.medium
-        ) {
-          ForEach(state.configuration) { field in
-            VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-              Text(field.label.uppercased()).font(.caption).foregroundStyle(.secondary)
-              Text(field.value).textSelection(.enabled)
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      Button {
+        withAnimation(Theme.Motion.disclosure) { showsConfiguration.toggle() }
+      } label: {
+        HStack(spacing: Theme.Spacing.extraSmall) {
+          Image(systemName: "chevron.down")
+            .font(.caption.weight(.semibold))
+            .rotationEffect(.degrees(showsConfiguration ? 0 : -90))
+          Text("Configuration")
+        }
+        .font(AutomationStyle.sectionLabel)
+        .foregroundStyle(.secondary)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityAddTraits(.isHeader)
+      .accessibilityValue(showsConfiguration ? "Expanded" : "Collapsed")
+      .accessibilityIdentifier("automation-detail-configuration")
+      if showsConfiguration {
+        VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+          LazyVGrid(
+            columns: Array(
+              repeating: GridItem(
+                .flexible(), spacing: Theme.Spacing.large, alignment: .topLeading),
+              count: layoutWidth == .compact ? 1 : 2),
+            alignment: .leading, spacing: Theme.Spacing.large
+          ) {
+            ForEach(state.configuration) { field in
+              VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+                Text(field.label.uppercased()).font(.callout).tracking(0.5)
+                  .foregroundStyle(.secondary)
+                Text(field.value).textSelection(.enabled)
+                  .fixedSize(horizontal: false, vertical: true)
+              }
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .accessibilityElement(children: .combine)
+              .accessibilityIdentifier("automation-detail-config-\(field.label)")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("automation-detail-config-\(field.label)")
+          }
+          if let note = state.configurationNote {
+            Text(note).font(.callout).foregroundStyle(.secondary)
           }
         }
-        if let note = state.configurationNote {
-          Text(note).font(.caption).foregroundStyle(.secondary)
-        }
       }
-      .padding(.top, Theme.Spacing.small)
-    } label: {
-      Text("Configuration").font(.callout.weight(.medium)).foregroundStyle(.secondary)
     }
-    .accessibilityIdentifier("automation-detail-configuration")
   }
 
   @ViewBuilder private var runs: some View {
@@ -197,17 +285,19 @@ public struct AutomationDetailView: View {
       Text(
         "Session cost is each session\u{2019}s current recorded total. Runs sharing a session show the same total. Separate sub-agent sessions are excluded."
       )
-      .font(.caption).foregroundStyle(.secondary)
+      .font(.callout).foregroundStyle(.secondary)
+      .padding(.bottom, Theme.Spacing.small)
     }
     if state.isLoadingRuns {
-      LoadingCaption(title: "Loading runs\u{2026}").frame(maxWidth: .infinity).padding()
+      AutomationLoadingRow(title: "Loading runs\u{2026}", verticalPadding: Theme.Spacing.extraLarge)
     } else if let error = state.runsError {
-      HStack {
+      HStack(spacing: Theme.Spacing.small) {
         Text("Couldn\u{2019}t load run history.").foregroundStyle(.secondary)
         Text(error).font(.caption).foregroundStyle(.tertiary).lineLimit(2)
-        Spacer()
-        if let retry = actions.retry { Button("Retry", action: retry) }
+        Spacer(minLength: 0)
+        if let retry = actions.retry { Button("Retry", action: retry).controlSize(.small) }
       }
+      .accessibilityIdentifier("automation-detail-runs-error")
     } else if state.runs.isEmpty {
       Text("No runs yet.").foregroundStyle(.secondary)
         .accessibilityIdentifier("automation-detail-runs-empty")
@@ -227,137 +317,13 @@ public struct AutomationDetailView: View {
     return { open(id) }
   }
 
+  /// A titled block with a muted label, 24 points below what precedes it.
   private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      Text(title).font(.callout.weight(.medium)).foregroundStyle(.secondary)
+      Text(title).font(AutomationStyle.sectionLabel).foregroundStyle(.secondary)
+        .accessibilityAddTraits(.isHeader)
       content()
     }
-  }
-
-  private func errorBanner(_ message: String) -> some View {
-    HStack {
-      Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
-      Spacer()
-      if let dismiss = actions.dismissError { Button("Dismiss", action: dismiss) }
-    }
-    .font(.callout)
-    .padding(Theme.Spacing.medium)
-    .cardSurface(cornerRadius: Theme.Radius.medium)
-  }
-}
-
-/// One run: its status icon, when it fired, how long it took, its session's cost, what it is
-/// doing or waiting on, why it failed, and the PRs it made. A run with a session opens it.
-struct AutomationRunRowView: View {
-  let run: AutomationRunRow
-  let open: (@MainActor () -> Void)?
-  var openPullRequest: (@MainActor (URL) -> Void)?
-  @State private var isHovered = false
-
-  var body: some View {
-    let row = HStack(
-      alignment: run.failureReason == nil ? .center : .top, spacing: Theme.Spacing.medium
-    ) {
-      indicator.frame(width: 20)
-      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
-          Text(run.timestamp)
-          if let duration = run.duration {
-            Text(duration).font(.caption).foregroundStyle(.secondary)
-          }
-          if let cost = run.sessionCost {
-            Text(cost).font(.caption).foregroundStyle(.secondary)
-              .accessibilityIdentifier("automation-run-cost-\(run.id)")
-          }
-          if let label = run.statusLabel, !run.needsApproval {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-          }
-        }
-        if run.needsApproval {
-          Text("Session needs approval \u{00B7} Open to review")
-            .font(.caption).foregroundStyle(.orange)
-            .accessibilityIdentifier("automation-run-approval-\(run.id)")
-        }
-        if let reason = run.failureReason {
-          Text(failureText(reason)).font(.caption).foregroundStyle(.secondary)
-          if let detail = run.errorDetail {
-            Text(detail).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-              .accessibilityIdentifier("automation-run-detail-\(run.id)")
-          }
-        }
-      }
-      Spacer(minLength: 0)
-    }
-    .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.small)
-    .background(
-      RoundedRectangle(cornerRadius: Theme.Radius.small)
-        .fill(isHovered && open != nil ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
-    )
-    .contentShape(Rectangle())
-    .accessibilityIdentifier("automation-run-\(run.id)")
-    HStack(alignment: .top, spacing: Theme.Spacing.small) {
-      if let open {
-        Button(action: open) { row }.buttonStyle(.plain).onHover { isHovered = $0 }
-      } else {
-        row
-      }
-      if let summary = run.pullRequestSummary, !run.pullRequests.isEmpty {
-        pullRequests(summary).padding(.top, Theme.Spacing.small)
-      }
-    }
-  }
-
-  /// The run's PRs as one line that opens the list, as the web's `RunPullRequests`.
-  private func pullRequests(_ summary: String) -> some View {
-    Menu {
-      ForEach(run.pullRequests) { pullRequest in
-        Button {
-          openPullRequest?(pullRequest.url)
-        } label: {
-          Text("\(pullRequest.number) \(pullRequest.title)")
-          Text(
-            "\(pullRequest.status) \u{00B7} \(pullRequest.repository) \u{00B7} \(pullRequest.origin)"
-          )
-        }
-      }
-    } label: {
-      Text(summary).font(.caption).underline()
-    }
-    .menuStyle(.button)
-    .buttonStyle(.borderless)
-    .menuIndicator(.hidden)
-    .fixedSize()
-    .accessibilityLabel("\(summary). Show pull requests")
-    .accessibilityIdentifier("automation-run-prs-\(run.id)")
-  }
-
-  private func failureText(_ reason: String) -> AttributedString {
-    guard let stage = run.failureStage else { return AttributedString(reason) }
-    var text = AttributedString(stage)
-    text.font = .caption.weight(.medium)
-    return text + AttributedString(" \u{00B7} \(reason)")
-  }
-
-  @ViewBuilder private var indicator: some View {
-    switch run.indicator {
-    case .failed:
-      Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-        .help("Failed").accessibilityLabel("Failed")
-    case .skipped:
-      Image(systemName: "calendar.badge.minus").foregroundStyle(.secondary)
-        .help("Skipped").accessibilityLabel("Skipped")
-    case .inFlight:
-      ProgressView().controlSize(.mini)
-    case .sessionRunning:
-      ProgressView().controlSize(.mini).help("Session still running")
-    case .unread:
-      Circle().fill(Theme.accent).frame(width: 8, height: 8)
-        .help("Unread").accessibilityLabel("Unread")
-    case .completed:
-      Circle().fill(.tertiary).frame(width: 8, height: 8)
-        .help("Completed").accessibilityLabel("Completed")
-    case .queued:
-      Circle().fill(.tertiary).frame(width: 8, height: 8).accessibilityLabel("Queued")
-    }
+    .padding(.top, Theme.Spacing.extraLarge)
   }
 }

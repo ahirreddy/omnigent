@@ -9,7 +9,6 @@ use omnigent_core::server_admin::{
 };
 use omnigent_core::user_settings::SessionTitleInstructions;
 
-
 use crate::client::ClientCore;
 use crate::errors::CoreError;
 use crate::sessions::SessionSummary;
@@ -327,7 +326,6 @@ impl From<SessionTitleInstructions> for SessionTitleInstructionsRecord {
         }
     }
 }
-
 
 #[uniffi::export]
 impl ClientCore {

@@ -135,12 +135,16 @@
       }
     }
 
-    @Test("A sidebar collapsing beside the transcript holds its text until the widths stop")
-    func sidebarCollapseHoldsTheText() throws {
+    @Test(
+      "A sidebar collapsing beside the transcript holds its text until the widths stop, unless it collapses at once",
+      arguments: [false, true])
+    func sidebarCollapseHoldsTheText(atOnce: Bool) throws {
       NSApplication.shared.setActivationPolicy(.accessory)
       let sidebar = NSViewController()
       sidebar.view = NSView(frame: CGRect(x: 0, y: 0, width: Self.slide, height: Self.height))
       let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+      // As the shell's prerendered slide has it: the transcript takes one width, exactly.
+      if atOnce { sidebarItem.animations = ["collapsed": SidebarSlide.collapse] }
       let split = NSSplitViewController()
       split.addSplitViewItem(sidebarItem)
       let content = NSSplitViewItem(
@@ -170,7 +174,7 @@
       #expect(controller.widthHolds.isEmpty)
 
       sidebarItem.isCollapsed = true
-      #expect(controller.widthHolds.contains(.columnMotion))
+      #expect(controller.widthHolds.contains(.columnMotion) == !atOnce)
       MainLoop.run(for: TranscriptTableController.columnMotionLimit + 0.2)
       #expect(controller.widthHolds.isEmpty)
       #expect(!controller.textStyle.isLiveResizing)

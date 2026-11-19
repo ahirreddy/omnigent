@@ -86,7 +86,10 @@ fn a_failed_clone_creates_nothing_and_says_why() {
         Some("POST"),
         "/v1/hosts/host_1/repositories/clone",
         None,
-        Reply::json(409, r#"{"detail":"host clone failed: /Users/me/app already exists"}"#),
+        Reply::json(
+            409,
+            r#"{"detail":"host clone failed: /Users/me/app already exists"}"#,
+        ),
     );
     let error =
         block_on(core.create_repository_project(&request(ProjectTarget::Host("host_1".into()))))
@@ -138,7 +141,7 @@ fn bad_inputs_are_refused_before_any_request() {
         reason(block_on(core.create_repository_project(&nowhere)).unwrap_err()),
         "Choose where to clone the repository."
     );
-    assert!(core.transport().writes().is_empty());
+    assert_eq!(core.transport().writes(), []);
 }
 
 #[test]

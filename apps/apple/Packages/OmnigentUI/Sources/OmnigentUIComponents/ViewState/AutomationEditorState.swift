@@ -180,6 +180,12 @@ public struct AutomationEditorContext {
   public var triggerScheduleUnsupported = false
   /// Replaces a trigger's hidden schedule with one that fits.
   public var useSupportedTriggerSchedule: (@MainActor () -> Void)?
+  /// The integrations a new automation can watch instead of a schedule (id, service name), as
+  /// the web's Trigger type; empty where the server runs no triggers.
+  public var triggerTypes: [AutomationOption] = []
+  /// Switches a new automation to watch an integration by its id, or back to a schedule with
+  /// `nil`, keeping each type's draft.
+  public var switchTriggerType: (@MainActor (String?) -> Void)?
 
   /// Creates a context.
   public init(

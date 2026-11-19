@@ -196,7 +196,10 @@ fn end_conditions_round_trip() {
 fn validation_matches_the_web() {
     let now = 1_793_865_600;
     let mut daily = model(SchedulePreset::Daily);
-    assert_eq!(validate_schedule(&daily, now, false, ScheduleLimits::SAVED), None);
+    assert_eq!(
+        validate_schedule(&daily, now, false, ScheduleLimits::SAVED),
+        None
+    );
     daily.end = ScheduleEnd::Count(1);
     assert!(
         validate_schedule(&daily, now, false, ScheduleLimits::SAVED)
@@ -208,7 +211,10 @@ fn validation_matches_the_web() {
         validate_schedule(&daily, now, false, ScheduleLimits::SAVED).as_deref(),
         Some("Choose an end date in the future.")
     );
-    assert_eq!(validate_schedule(&daily, now, true, ScheduleLimits::SAVED), None);
+    assert_eq!(
+        validate_schedule(&daily, now, true, ScheduleLimits::SAVED),
+        None
+    );
     let weekly = ScheduleModel {
         weekdays: Vec::new(),
         ..model(SchedulePreset::Weekly)
@@ -390,7 +396,10 @@ fn minutes(interval: u16) -> ScheduleModel {
 #[test]
 fn minute_rules_read_as_intervals() {
     // `scheduleText.test.ts`: unrestricted minute intervals.
-    assert_eq!(describe_schedule("FREQ=MINUTELY;INTERVAL=1"), "Every minute");
+    assert_eq!(
+        describe_schedule("FREQ=MINUTELY;INTERVAL=1"),
+        "Every minute"
+    );
     assert_eq!(describe_schedule("FREQ=MINUTELY"), "Every minute");
     assert_eq!(
         describe_schedule("FREQ=MINUTELY;INTERVAL=10"),

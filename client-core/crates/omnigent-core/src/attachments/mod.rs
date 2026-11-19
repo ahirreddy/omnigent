@@ -21,8 +21,8 @@ pub use draft::{
     DraftItemId, DraftKey, HoldId, UploadAttempt, UploadState,
 };
 pub use policy::{
-    FileProbe, FilesystemAttachments, UploadFile, UploadFileReader, byte_limit,
-    resolve_media_type, resolve_media_type_under,
+    FileProbe, FilesystemAttachments, UploadFile, UploadFileReader, byte_limit, resolve_media_type,
+    resolve_media_type_under,
 };
 pub use preview::{
     AttachmentPreview, PreviewError, attachment_file_id, preview_extension, preview_from_response,

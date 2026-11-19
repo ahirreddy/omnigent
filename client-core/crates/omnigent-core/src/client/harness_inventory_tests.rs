@@ -122,7 +122,11 @@ fn claudes_plugin_list_replaces_the_names_with_details_and_notices() {
         old.mcp_notice.as_deref(),
         Some("This plugin is disabled. Enable it in Claude Code to inspect MCP tools.")
     );
-    assert!(old.skills_notice.as_deref().is_some_and(|text| text.starts_with("Update")));
+    assert!(
+        old.skills_notice
+            .as_deref()
+            .is_some_and(|text| text.starts_with("Update"))
+    );
 }
 
 #[test]
@@ -132,7 +136,10 @@ fn one_failed_read_leaves_the_others() {
         Some("GET"),
         "/v1/hosts/h1/mcp-servers",
         None,
-        Reply::json(501, r#"{"detail":"update the host to list its MCP servers"}"#),
+        Reply::json(
+            501,
+            r#"{"detail":"update the host to list its MCP servers"}"#,
+        ),
     );
     core.transport().ok(
         "/v1/skills",
@@ -182,7 +189,10 @@ fn reads_mcp_servers_plugins_and_skill_contents() {
         Some("GET"),
         "/v1/hosts/h1/plugins",
         None,
-        Reply::json(501, r#"{"detail":"update the host to see installed plugins"}"#),
+        Reply::json(
+            501,
+            r#"{"detail":"update the host to see installed plugins"}"#,
+        ),
     );
     assert_eq!(block_on(core.host_plugins("h1")), Ok(None));
     core.transport().respond(
@@ -218,7 +228,10 @@ fn reads_mcp_servers_plugins_and_skill_contents() {
         Some("GET"),
         "/v1/hosts/h1/mcp-servers",
         None,
-        Reply::json(409, r#"{"error":{"code":"conflict","message":"host is offline"}}"#),
+        Reply::json(
+            409,
+            r#"{"error":{"code":"conflict","message":"host is offline"}}"#,
+        ),
     );
     assert!(matches!(
         block_on(core.host_mcp_servers("h1")),

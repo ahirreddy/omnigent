@@ -64,6 +64,20 @@
     }
   }
 
+  /// The sidebar's peek over the shell, reading whether the sidebar is hidden in a modifier of
+  /// its own, so a toggle renders the peek and not the shell.
+  struct SidebarPeekBesideShell<Panel: View>: ViewModifier {
+    let space: TitlebarStripSpace
+    let startsShown: Bool
+    @ViewBuilder let panel: () -> Panel
+
+    func body(content: Content) -> some View {
+      content.modifier(
+        SidebarPeekOverlay(
+          isCollapsed: space.isSidebarHidden, startsShown: startsShown, panel: panel))
+    }
+  }
+
   /// Reports the pointer's distance from the window's leading edge as it moves over the view,
   /// and `nil` when it leaves. It takes no clicks, and reports only in the key window, so a
   /// sheet over the window stops it.

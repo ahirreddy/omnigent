@@ -52,9 +52,6 @@ fn settings_info_maps_each_capability_to_its_own_field() {
             agent_config_edit: true,
             session_title_instructions: true,
         }
-
-
-
     );
     harness.http.route(
         "/v1/info",
@@ -203,7 +200,10 @@ fn title_instructions_are_read_and_saved_for_the_caller() {
     let path = "/v1/settings/session-title-instructions";
     harness.http.route(
         path,
-        reply(200, r#"{"instructions":"Prefix with OMNI.","max_chars":4000}"#),
+        reply(
+            200,
+            r#"{"instructions":"Prefix with OMNI.","max_chars":4000}"#,
+        ),
     );
     let saved = harness
         .call(|core| async move { core.session_title_instructions().await })
@@ -228,7 +228,6 @@ fn title_instructions_are_read_and_saved_for_the_caller() {
 
 #[test]
 fn sharing_maps_every_setting_and_sends_only_what_changed() {
-
     let mut harness = connected();
     harness.http.route(
         "/v1/sharing",

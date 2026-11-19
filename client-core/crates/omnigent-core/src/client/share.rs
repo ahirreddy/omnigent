@@ -20,8 +20,10 @@ pub const PUBLIC_GRANTEE: &str = "__public__";
 const MAX_GRANT_PAGES: usize = 10;
 
 /// Whether `workspace` is a home or root folder, which a `restricted_read_only` server refuses
-/// to share (the web's `workspaceSharingBlocked`): `/`, `/root`, or a direct child of `/home`,
-/// `/Users` or `/var/home`, after `.` and `..` resolve. A relative path is not blocked.
+/// to share (the web's `workspaceSharingBlocked`).
+///
+/// Those are `/`, `/root`, or a direct child of `/home`, `/Users` or `/var/home`, after `.` and
+/// `..` resolve. A relative path is not blocked.
 #[must_use]
 pub fn workspace_sharing_blocked(workspace: &str) -> bool {
     if !workspace.starts_with('/') {
@@ -37,10 +39,10 @@ pub fn workspace_sharing_blocked(workspace: &str) -> bool {
             part => parts.push(part),
         }
     }
-    match parts.as_slice() {
-        [] | ["root"] | ["home" | "Users", _] | ["var", "home", _] => true,
-        _ => false,
-    }
+    matches!(
+        parts.as_slice(),
+        [] | ["root"] | ["home" | "Users", _] | ["var", "home", _]
+    )
 }
 
 /// One grant on a session.
@@ -222,7 +224,14 @@ mod tests {
         ] {
             assert!(workspace_sharing_blocked(blocked), "{blocked}");
         }
-        for open in ["/home/alice/proj", "/Users", "/srv/app", "relative/path", "", "/rootish"] {
+        for open in [
+            "/home/alice/proj",
+            "/Users",
+            "/srv/app",
+            "relative/path",
+            "",
+            "/rootish",
+        ] {
             assert!(!workspace_sharing_blocked(open), "{open}");
         }
     }

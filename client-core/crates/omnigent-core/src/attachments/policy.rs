@@ -1,4 +1,5 @@
 //! What may be attached: filename and media-type validation, size caps, and bounded file reads.
+//!
 //! Archives, Office documents and databases go to the agent as files under the server's
 //! `filesystem_attachments` policy (the web's `classifyAttachment`).
 
@@ -58,7 +59,10 @@ impl FilesystemAttachments {
     /// one), get the default extensions, as on the web.
     #[must_use]
     pub fn from_info(info: &Value) -> Self {
-        let Some(policy) = info.get("filesystem_attachments").and_then(Value::as_object) else {
+        let Some(policy) = info
+            .get("filesystem_attachments")
+            .and_then(Value::as_object)
+        else {
             return Self::default();
         };
         let Some(extensions) = policy.get("extensions").and_then(Value::as_array) else {
@@ -91,7 +95,10 @@ impl FilesystemAttachments {
         } else if extensions.is_empty() {
             "images, PDF, and text/code files".to_owned()
         } else {
-            format!("images, PDF, text/code, and {} files", extensions.join(", "))
+            format!(
+                "images, PDF, text/code, and {} files",
+                extensions.join(", ")
+            )
         }
     }
 }
@@ -297,7 +304,8 @@ pub fn resolve_media_type_under(
     let suffix = filename
         .rfind('.')
         .filter(|&dot| dot > 0)
-        .map(|dot| filename[dot..].to_lowercase());
+        .and_then(|dot| filename.get(dot..))
+        .map(str::to_lowercase);
     if let Some(suffix) = &suffix {
         if policy.delivers(suffix) {
             return Ok(FILESYSTEM_MEDIA_TYPE.to_owned());
@@ -550,7 +558,8 @@ mod tests {
         for name in fixture["filesystemNames"].as_array().unwrap() {
             let name = name.as_str().unwrap();
             // A browser or picker may mislabel these; the extension decides.
-            let file = UploadFile::new(name, Some("text/plain"), vec![1; filesystem_limit]).unwrap();
+            let file =
+                UploadFile::new(name, Some("text/plain"), vec![1; filesystem_limit]).unwrap();
             assert_eq!(file.media_type(), FILESYSTEM_MEDIA_TYPE, "{name}");
             assert!(!file.is_image(), "{name}");
             assert_eq!(
@@ -592,9 +601,8 @@ mod tests {
 
     /// The policy main's server reports: `.gz`, `.har` and `.zip` as files, nothing else.
     fn main_policy() -> FilesystemAttachments {
-        let envelope = crate::client::test_support::fixture_json(
-            "sessions/ComposerParity--v1-info-main.json",
-        );
+        let envelope =
+            crate::client::test_support::fixture_json("sessions/ComposerParity--v1-info-main.json");
         FilesystemAttachments::from_info(&envelope["response"])
     }
 
@@ -625,7 +633,10 @@ mod tests {
             all_types: true,
             ..policy
         };
-        assert_eq!(resolved("movie.mp4", None, &everything), FILESYSTEM_MEDIA_TYPE);
+        assert_eq!(
+            resolved("movie.mp4", None, &everything),
+            FILESYSTEM_MEDIA_TYPE
+        );
         assert_eq!(resolved("notes.md", None, &everything), "text/plain");
     }
 
@@ -645,7 +656,7 @@ mod tests {
         let none = FilesystemAttachments::from_info(&serde_json::json!({
             "filesystem_attachments": {"extensions": [], "all_types": false}
         }));
-        assert!(none.extensions.is_empty());
+        assert_eq!(none.extensions, Vec::<String>::new());
         assert_eq!(none.supported_types(), "images, PDF, and text/code files");
         assert!(resolved("a.zip", None, &none).starts_with("refused"));
         assert_eq!(

@@ -236,7 +236,7 @@ fn offers_compact(harness: &str) -> bool {
 
 /// Whether the server runs `/clear` for `harness`: in the session terminal for Claude Code and
 /// Codex, as a new session for claude-sdk (the web's `composerOffersClear`).
-fn offers_clear(harness: &str, options: &SlashOptions) -> bool {
+fn offers_clear(harness: &str, options: SlashOptions) -> bool {
     match harness {
         "claude-sdk" => options.claude_sdk_clears,
         "claude-native" | "codex-native" => options.server_clears,
@@ -245,7 +245,7 @@ fn offers_clear(harness: &str, options: &SlashOptions) -> bool {
 }
 
 /// Whether `/rewind` opens the picker for `harness` (the web's `composerOffersRewind`).
-fn offers_rewind(harness: &str, options: &SlashOptions) -> bool {
+fn offers_rewind(harness: &str, options: SlashOptions) -> bool {
     matches!(harness, "claude-native" | "claude-sdk") && options.rewinds
 }
 
@@ -282,10 +282,10 @@ pub fn slash_commands(
     if offers_compact(&harness) {
         commands.push(builtin("compact", COMPACT));
     }
-    if offers_clear(&harness, options) {
+    if offers_clear(&harness, *options) {
         commands.push(builtin("clear", CLEAR));
     }
-    if offers_rewind(&harness, options) {
+    if offers_rewind(&harness, *options) {
         commands.push(builtin("rewind", REWIND));
     }
     commands.push(builtin("context", CONTEXT));
@@ -349,9 +349,10 @@ fn skill_description(skill: &Skill) -> String {
     }
 }
 
-/// The command `text` invokes, split from its arguments: the longest known name that prefixes
-/// the trimmed text at a word boundary. Built-ins match in any case, skills exactly (as on the
-/// web). `None` for ordinary text and file paths.
+/// The command `text` invokes, split from its arguments.
+///
+/// The longest known name that prefixes the trimmed text at a word boundary. Built-ins match in
+/// any case, skills exactly (as on the web). `None` for ordinary text and file paths.
 #[must_use]
 pub fn match_invocation<'a>(
     text: &str,
@@ -371,7 +372,7 @@ pub fn match_invocation<'a>(
                 if !head.eq_ignore_ascii_case(&command.name) {
                     return None;
                 }
-                &after_prefix[command.name.len()..]
+                after_prefix.get(command.name.len()..)?
             };
             (rest.is_empty() || rest.starts_with(char::is_whitespace))
                 .then(|| (command, rest.trim().to_owned()))
@@ -431,11 +432,11 @@ fn builtin_action(
         "new" => no_arguments("new", SlashAction::NewSession),
         "clear" => no_arguments("clear", SlashAction::Clear),
         "rewind" => no_arguments("rewind", SlashAction::Rewind),
-        "goal" => match crate::client::session_tools::goal_command(&arguments) {
-            None => SlashAction::Goal,
-            // The objective goes out as a message in its canonical `/goal …` form.
-            Some(message) => SlashAction::SendGoal { message },
-        },
+        // The objective goes out as a message in its canonical `/goal …` form.
+        "goal" => crate::client::session_tools::goal_command(&arguments)
+            .map_or(SlashAction::Goal, |message| SlashAction::SendGoal {
+                message,
+            }),
         "permissions" => no_arguments("permissions", SlashAction::Permissions),
         "context" => SlashAction::Context,
         "mcp" if arguments.is_empty() => SlashAction::Mcp,

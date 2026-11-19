@@ -335,9 +335,10 @@ pub struct CreationSelection {
     pub mcp_registry_services: Vec<String>,
 }
 
-/// The MCP services a launch sends: the remembered or toggled `selected` ids that the registry
-/// still `offered` (its services' ids), in selection order (the web's `servicesForLaunch`). A
-/// service no longer offered stays remembered but is not sent.
+/// The MCP services a launch sends (the web's `servicesForLaunch`).
+///
+/// The remembered or toggled `selected` ids that the registry still `offered` (its services'
+/// ids), in selection order. A service no longer offered stays remembered but is not sent.
 #[must_use]
 pub fn launch_mcp_services(selected: &[String], offered: &[String]) -> Vec<String> {
     let mut sent: Vec<String> = Vec::new();
@@ -1597,9 +1598,8 @@ mod tests {
 
     #[test]
     fn the_mcp_registry_offers_services_that_a_launch_sends() {
-        let envelope = crate::client::test_support::fixture_json(
-            "sessions/ComposerParity--v1-info-main.json",
-        );
+        let envelope =
+            crate::client::test_support::fixture_json("sessions/ComposerParity--v1-info-main.json");
         assert!(
             CreationCapabilities::from_value(&envelope["response"])
                 .unwrap()
@@ -1609,9 +1609,17 @@ mod tests {
         let capabilities = CreationCapabilities::from_value(&github_only).unwrap();
         assert!(capabilities.github_connection && !capabilities.mcp_registry);
 
-        let ids = |names: &[&str]| names.iter().map(|&name| name.to_owned()).collect::<Vec<_>>();
+        let ids = |names: &[&str]| {
+            names
+                .iter()
+                .map(|&name| name.to_owned())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
-            launch_mcp_services(&ids(&["wiki", "gone", "docs", "wiki"]), &ids(&["docs", "wiki"])),
+            launch_mcp_services(
+                &ids(&["wiki", "gone", "docs", "wiki"]),
+                &ids(&["docs", "wiki"])
+            ),
             ids(&["wiki", "docs"])
         );
         assert_eq!(launch_mcp_problem(&[], true, true), None);

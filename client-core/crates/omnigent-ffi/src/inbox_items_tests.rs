@@ -132,6 +132,9 @@ fn automation_failures_carry_the_reason_and_time() {
         .unwrap();
     assert_eq!(page.next_cursor.as_deref(), Some("1:t1"));
     let failure = &page.failures[0];
-    assert_eq!(failure.reason, "Host \u{00B7} None of your hosts was online.");
+    assert_eq!(
+        failure.reason,
+        "Host \u{00B7} None of your hosts was online."
+    );
     assert_eq!(failure.at, 10);
 }
