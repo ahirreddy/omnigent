@@ -264,6 +264,7 @@ fn sharing_maps_every_setting_and_sends_only_what_changed() {
                 public_sharing: Some(false),
                 public_max_level: Some("edit".into()),
                 default_public_sessions: Some("none".into()),
+                nested_agent_destinations: Some("current_host".into()),
             })
             .await
         })
@@ -275,6 +276,7 @@ fn sharing_maps_every_setting_and_sends_only_what_changed() {
     assert_eq!(body["public_sharing_max_level"], json!("edit"));
     assert_eq!(body["default_public_sessions"], json!("none"));
     assert_eq!(body["sharing_mode"], json!("off"));
+    assert_eq!(body["sibling_session_destinations"], json!("current_host"));
 }
 
 #[test]
