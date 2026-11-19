@@ -24,11 +24,12 @@ struct InboxFeedsPolling: ViewModifier {
     "\(connection.connectedServer?.baseUrl ?? "").\(connection.connectedServer?.userId ?? "")"
   }
 
-  /// The server, account and feeds offered: a change starts the reads again.
+  /// The server, account and feeds offered, and each return of the connection: a change starts
+  /// the reads again.
   private var feedsSignature: String {
     let offered = connection.pages?.offered
     return "\(Self.owner(connection)):\(offered?.inboxItems == true):"
-      + "\(offered?.automationInbox == true)"
+      + "\(offered?.automationInbox == true):\(connection.health.reconnections)"
   }
 
   /// Sessions with comments and their counts.

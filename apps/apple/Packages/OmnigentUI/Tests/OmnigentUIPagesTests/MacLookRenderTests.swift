@@ -73,6 +73,12 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case workflowDetailShared = "workflows-detail-shared"
   case workflowRunSheet = "workflows-run-sheet"
   case workflowTasks = "workflows-tasks"
+  /// The connection line while the core restores the connection, once retrying stopped, the
+  /// moment it is back, and the saved copy shown offline.
+  case connectionReconnecting = "connection-reconnecting"
+  case connectionUnreachable = "connection-unreachable"
+  case connectionReconnected = "connection-reconnected"
+  case connectionOffline = "connection-offline"
 
   var testDescription: String { rawValue }
 
@@ -200,6 +206,9 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .workflowsList, .workflowsEmpty, .workflowNew, .workflowDetail, .workflowDetailProposal,
       .workflowDetailDraft, .workflowDetailShared, .workflowRunSheet, .workflowTasks:
       return LookFixtures.workflows(self)
+    case .connectionReconnecting, .connectionUnreachable, .connectionReconnected,
+      .connectionOffline:
+      return AnyView(LookFixtures.connection(self))
     }
   }
 }

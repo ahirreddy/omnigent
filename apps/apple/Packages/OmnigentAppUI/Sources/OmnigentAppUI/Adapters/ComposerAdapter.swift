@@ -14,10 +14,13 @@ enum ComposerAdapter {
   ///   - dismissedError: A send failure the user dismissed; it stays hidden until a new one.
   ///   - server: The connected server, for the execution context.
   ///   - submitWithCommandReturn: Return inserts a newline and Command-Return sends.
+  ///   - windowShowsOutage: The window's line says the server can't be reached, so the
+  ///     composer's line, the same outage, stays away.
   /// - Returns: The state.
   static func state(
     _ store: ConversationStore, isStopping: Bool, dismissedError: CoreError?,
-    server: OmnigentCoreFFI.ConnectedServer? = nil, submitWithCommandReturn: Bool = false
+    server: OmnigentCoreFFI.ConnectedServer? = nil, submitWithCommandReturn: Bool = false,
+    windowShowsOutage: Bool = false
   ) -> ComposerViewState {
     let composer = store.composer
     let settings = store.header?.settings
@@ -54,7 +57,7 @@ enum ComposerAdapter {
     state.approvalPickerRequest = composer.approvalPickerRequests
     state.asksToReplaceDraft = composer.pendingEdit != nil
     state.editLoads = composer.editLoads
-    state.connection = connection(store)
+    state.connection = windowShowsOutage && !store.isOffline ? nil : connection(store)
     state.statusPlaceholder = statusPlaceholder(store, connection: state.connection)
     state.liveness = LivenessAdapter.notice(store, serverURL: server?.baseUrl)
     if let fraction = contextFraction(store.sections) {
@@ -71,20 +74,6 @@ enum ComposerAdapter {
     OmnigentUIComponents.SlashCommand(
       name: command.name, prefix: command.prefix, description: command.description,
       isSkill: command.isSkill)
-  }
-
-  /// The stream's state under the composer while it is not live. A closed or superseded
-  /// session has its own banner, so it shows nothing here.
-  static func connection(_ store: ConversationStore) -> ComposerConnectionNotice? {
-    guard !store.isClosed, store.supersededBy == nil,
-      let message = ConversationAdapter.connectionStatus(store)
-    else { return nil }
-    if store.isOffline { return ComposerConnectionNotice(message: message, isOffline: true) }
-    switch store.link {
-    case .closed, .stopped, .failed:
-      return ComposerConnectionNotice(message: message, isFailure: true)
-    default: return ComposerConnectionNotice(message: message)
-    }
   }
 
   /// Whether the session can never take a message from this viewer (read-only, archived, closed
@@ -220,7 +209,13 @@ enum ComposerAdapter {
     if store.isOffline {
       return .unavailable(reason: "Offline \u{2014} you can send once the server is back.")
     }
-    if !store.isHydrated { return .unavailable(reason: "Waiting for the session to load\u{2026}") }
+    if !store.isHydrated {
+      // A stream retrying after a failure is reconnecting, not loading for the first time.
+      if case .reconnecting(_, let failures, _) = store.link, failures > 0 {
+        return .unavailable(reason: "Reconnecting\u{2026}")
+      }
+      return .unavailable(reason: "Waiting for the session to load\u{2026}")
+    }
     return .available
   }
 

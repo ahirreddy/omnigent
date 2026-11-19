@@ -5,10 +5,7 @@ public import OmnigentCoreFFI
 /// ``ConnectionStore/phase``.
 extension ConnectionStore {
   /// Whether discovery is in flight.
-  public var isLoading: Bool {
-    if case .loading = state { return true }
-    return false
-  }
+  public var isLoading: Bool { if case .loading = state { true } else { false } }
 
   /// Whether discovery succeeded and the server is usable.
   public var isConnected: Bool { discovery != nil }

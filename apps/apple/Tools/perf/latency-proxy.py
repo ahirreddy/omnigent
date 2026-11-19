@@ -10,6 +10,12 @@ through after its headers.
 
     latency-proxy.py serve --listen 6791 --upstream 6790 --rtt-ms 150 --log proxy.jsonl
     latency-proxy.py report proxy.jsonl [--since-path /.well-known/omnigent.json]
+    latency-proxy.py report proxy.jsonl --launched EPOCH --signposts signposts.ndjson
+
+With `--launched` (the app's launch, in epoch seconds) and the app's sidebar signposts from
+`log stream --signpost --style ndjson`, the report counts from the launch, merges the app's list
+events and sidebar builds into the timeline, and says when the first rows and the whole list
+showed and what the main thread spent until then.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ import json
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 from urllib.parse import parse_qsl, urlsplit
@@ -202,6 +209,8 @@ class Proxy:
         self.half_rtt = args.rtt_ms / 2000
         self.bytes_per_second = args.mbps * 125_000 if args.mbps else None
         self.started = time.monotonic()
+        # The wall clock at `started`, so a report can line the log up with the app's signposts.
+        self.started_epoch = time.time()
         self.connections = 0
         self.log = log
 
@@ -211,7 +220,8 @@ class Proxy:
     def record(self, exchange: Exchange) -> None:
         if self.log is None:
             return
-        self.log.write(json.dumps(exchange.__dict__) + "\n")
+        row = {**exchange.__dict__, "started_epoch": self.started_epoch}
+        self.log.write(json.dumps(row) + "\n")
         self.log.flush()
 
     async def handle(self, client_reader, client_writer) -> None:
@@ -314,6 +324,39 @@ def kind(target: str) -> str:
     return path
 
 
+def signposts(path: str) -> list[dict]:
+    """The app's sidebar signposts from `log stream --style ndjson --signpost`: each event, and
+    each interval at its start with its duration, at wall-clock seconds."""
+    opened: dict[tuple, float] = {}
+    found = []
+    for line in Path(path).read_text().splitlines():
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            # The stream's banner line.
+            continue
+        signpost = entry.get("signpostType")
+        if signpost not in ("begin", "end", "event"):
+            continue
+        at = datetime.strptime(entry["timestamp"], "%Y-%m-%d %H:%M:%S.%f%z").timestamp()
+        key = (entry.get("signpostID"), entry.get("signpostName"))
+        if signpost == "begin":
+            opened[key] = at
+            continue
+        began = opened.pop(key, at) if signpost == "end" else at
+        message = entry.get("eventMessage", "")
+        found.append(
+            {
+                "at": began,
+                "ms": (at - began) * 1000,
+                "name": entry.get("signpostName", ""),
+                "message": message,
+                "detail": dict(part.split("=", 1) for part in message.split() if "=" in part),
+            }
+        )
+    return sorted(found, key=lambda mark: mark["at"])
+
+
 def report(args: argparse.Namespace) -> None:
     rows = [json.loads(line) for line in Path(args.log).read_text().splitlines() if line.strip()]
     rows.sort(key=lambda row: row["requested_ms"])
@@ -321,7 +364,13 @@ def report(args: argparse.Namespace) -> None:
         (row["requested_ms"] for row in rows if urlsplit(row["target"]).path == args.since_path),
         rows[0]["requested_ms"] if rows else 0,
     )
-    print(f"{'from':>7} {'to':>7} {'ms':>6} {'bytes':>8}  status request")
+    # Given the launch's wall-clock time, the requests and the app's signposts count from it.
+    launched = args.launched if rows and "started_epoch" in rows[0] else None
+    marks = signposts(args.signposts) if args.signposts and launched is not None else []
+    marks = [mark for mark in marks if mark["at"] >= (launched or 0)]
+    if launched is not None:
+        start = (launched - rows[0]["started_epoch"]) * 1000
+    lines = []
     sidebar_ends = []
     first_page = None
     for row in rows:
@@ -331,19 +380,69 @@ def report(args: argparse.Namespace) -> None:
         end = (row["answered_ms"] or row["requested_ms"]) - start
         streaming = " (stream)" if row["streaming"] else ""
         name = kind(row["target"])
-        print(
-            f"{begin:7.0f} {end:7.0f} {end - begin:6.0f} {row['response_bytes']:8d}  "
-            f"{row['status']} {row['method']} {name}{streaming}"
+        lines.append(
+            (
+                begin,
+                f"{begin:7.0f} {end:7.0f} {end - begin:6.0f} {row['response_bytes']:8d}  "
+                f"{row['status']} {row['method']} {name}{streaming}",
+            )
         )
         if row["method"] == "GET" and name.split("?")[0] in SIDEBAR_READS:
             sidebar_ends.append(end)
             if first_page is None and name.startswith("/v1/sessions?") and "after" not in name:
                 first_page = end
+    for mark in marks:
+        at = (mark["at"] - launched) * 1000
+        what = f"app {mark['name']}: {mark['message']}"
+        lines.append((at, f"{at:7.0f} {'':>7} {mark['ms']:6.1f} {'':>8}  {what}"))
+    print(f"{'from':>7} {'to':>7} {'ms':>6} {'bytes':>8}  status request")
+    for _, line in sorted(lines, key=lambda line: line[0]):
+        print(line)
     print(f"requests: {sum(row['requested_ms'] >= start for row in rows)}")
+    print(f"sidebar reads: {len(sidebar_ends)}")
     answered = "never" if first_page is None else f"{round(first_page)} ms"
     print(f"first sessions page answered: {answered}")
     if sidebar_ends:
         print(f"last sidebar read answered: {round(max(sidebar_ends))} ms")
+    if marks:
+        summarize(marks, launched, max(sidebar_ends, default=0))
+
+
+def summarize(marks: list[dict], launched: float, last_read_ms: float) -> None:
+    """Prints when the sidebar first had rows and when it had the whole list, from launch, and
+    the main thread's time to each."""
+    builds = [mark for mark in marks if mark["name"] == "sidebar state"]
+
+    def since_launch(mark: dict) -> float:
+        return (mark["at"] - launched) * 1000
+
+    def rows(mark: dict) -> int:
+        return int(mark["detail"].get("sessions", "0"))
+
+    first = next((mark for mark in builds if rows(mark) > 0), None)
+    # The whole list: the first build after the last sidebar read landed.
+    after_reads = (mark for mark in builds if since_launch(mark) >= last_read_ms)
+    full = next(after_reads, builds[-1] if builds else None)
+    for label, mark in (("first rows", first), ("full list", full)):
+        if mark is None:
+            print(f"{label}: never")
+            continue
+        # The core's marks are on its own thread; the others are the main thread's.
+        until = [
+            other for other in marks if other["at"] <= mark["at"] and other["name"] != "core event"
+        ]
+        spent = sum(other["ms"] for other in until)
+        print(
+            f"{label}: {since_launch(mark):.0f} ms, {rows(mark)} rows, "
+            f"{mark['detail'].get('foldered', '?')} in folders; main thread "
+            f"{mark['detail'].get('cpu', '?')} ms CPU since launch, {spent:.0f} ms in "
+            f"{len(until)} list events and sidebar builds"
+        )
+    counts = collections.Counter(mark["name"] for mark in marks)
+    print(
+        f"sidebar builds: {counts['sidebar state']}, list events applied: "
+        f"{counts['list event']}, sent by the core: {counts['core event']}"
+    )
 
 
 def main() -> None:
@@ -359,6 +458,12 @@ def main() -> None:
     report_parser.add_argument("log")
     report_parser.add_argument(
         "--since-path", default="/.well-known/omnigent.json", help="time zero: its first request"
+    )
+    report_parser.add_argument(
+        "--launched", type=float, help="time zero instead: the app's launch, in epoch seconds"
+    )
+    report_parser.add_argument(
+        "--signposts", help="the app's sidebar signposts (log stream --style ndjson) to merge"
     )
     args = parser.parse_args()
     if args.command == "serve":

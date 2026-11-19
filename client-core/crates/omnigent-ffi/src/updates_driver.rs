@@ -34,6 +34,16 @@ impl Engine {
         self.update_watch();
     }
 
+    /// Like [`Self::start_updates`], and also makes a pending reconnect now and replaces a
+    /// socket that went silent while the device slept.
+    pub(crate) fn resume_updates(&mut self) {
+        if self.transports.sockets.is_none() {
+            return;
+        }
+        self.updates_input(UpdatesInput::Resume);
+        self.update_watch();
+    }
+
     pub(crate) fn stop_updates(&mut self) {
         self.updates_input(UpdatesInput::Stop);
         for timer in self.updates_timers.values() {
@@ -111,7 +121,10 @@ impl Engine {
             }
             UpdatesOutput::Live { resumed, .. } => {
                 if resumed {
+                    // Pushes missed while the socket was down are read again.
                     self.refresh_list();
+                    self.read_projects();
+                    self.emit(CoreEvent::HostsChanged);
                 }
             }
             UpdatesOutput::Frame { frame } => self.updates_frame(frame),

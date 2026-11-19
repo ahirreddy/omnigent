@@ -16,6 +16,8 @@
 //! the 70 s silence watchdog (two missed heartbeats). Reconnects use the shared backoff. After
 //! a reconnect, [`UpdatesOutput::Live`] carries `resumed: true`. The caller must then refetch
 //! the session list, because discovery pushes sent while disconnected are not replayed.
+//! [`UpdatesInput::Resume`], sent when the app comes back, makes a pending reconnect now and
+//! replaces a live socket silent for [`UpdatesConfig::stale_after_ms`] (45 s).
 //!
 //! Session rows are kept as JSON behind [`SessionRow`] until WP1's typed
 //! `omnigent_protocol::sessions` list item lands. Only [`SessionRow::decode`] changes then.
@@ -390,6 +392,9 @@ pub struct UpdatesConfig {
     /// (`HEARTBEAT_WATCHDOG_MS` in `web/src/lib/sessionUpdatesSocket.ts`, a little over two
     /// 30 s heartbeats).
     pub silence_timeout_ms: u64,
+    /// Silence, in ms, after which [`UpdatesInput::Resume`] replaces a live socket: it may have
+    /// died while the device slept. The default is 45 s, half again the 30 s heartbeat.
+    pub stale_after_ms: u64,
 }
 
 impl Default for UpdatesConfig {
@@ -397,6 +402,7 @@ impl Default for UpdatesConfig {
         Self {
             retry: RetryConfig::default(),
             silence_timeout_ms: 70_000,
+            stale_after_ms: 45_000,
         }
     }
 }
@@ -408,6 +414,10 @@ pub enum UpdatesInput {
     /// Start (or restart after `Stopped` or `Failed`) with a fresh backoff ramp. This does
     /// nothing while already running.
     Start,
+    /// The app is back (foreground, wake, network restored): what ended starts as with
+    /// [`Self::Start`], a pending reconnect is made now, and a live socket silent for
+    /// [`UpdatesConfig::stale_after_ms`] is replaced. An attempt in flight is left alone.
+    Resume,
     /// Stop and close the socket.
     Stop,
     /// [`super::WebSocketTransport::connect`] resolved `Err`.
@@ -597,6 +607,7 @@ impl<J: JitterSource> SessionUpdates<J> {
         let mut out = Vec::new();
         match input {
             UpdatesInput::Start => self.start(now_ms, &mut out),
+            UpdatesInput::Resume => self.resume(now_ms, &mut out),
             UpdatesInput::Stop => self.stop(&mut out),
             UpdatesInput::ConnectFailed { attempt, error } => {
                 if self.is_current(attempt) {
@@ -654,6 +665,25 @@ impl<J: JitterSource> SessionUpdates<J> {
                 self.connect(now_ms, out);
             }
         }
+    }
+
+    fn resume(&mut self, now_ms: u64, out: &mut Vec<UpdatesOutput>) {
+        if let Some(token) = self.reconnect_timer.take() {
+            out.push(UpdatesOutput::CancelTimer { token });
+            self.connect(now_ms, out);
+            return;
+        }
+        let stale_silence = self
+            .attempt
+            .as_ref()
+            .filter(|attempt| attempt.live_at_ms.is_some())
+            .map(|attempt| now_ms.saturating_sub(attempt.last_activity_ms))
+            .filter(|silent_ms| *silent_ms >= self.config.stale_after_ms);
+        if let Some(silent_ms) = stale_silence {
+            self.lose(now_ms, LinkError::Stalled { silent_ms }, true, out);
+            return;
+        }
+        self.start(now_ms, out);
     }
 
     fn stop(&mut self, out: &mut Vec<UpdatesOutput>) {
@@ -1006,6 +1036,88 @@ mod tests {
             .iter()
             .map(|id| id.as_str().unwrap().to_owned())
             .collect()
+    }
+
+    fn offline_end() -> SocketEnd {
+        SocketEnd::Failed(ConnectionFailure::Transport(TransportError::Offline {
+            message: "Could not connect to the server.".into(),
+        }))
+    }
+
+    #[test]
+    fn resume_makes_a_pending_reconnect_now_and_keeps_the_ramp() {
+        let mut harness = Harness::new();
+        harness.live();
+        harness.now += 1_000;
+        let outputs = harness.end(offline_end());
+        let Some((token, _)) = timer(&outputs, TimerKind::Reconnect) else {
+            panic!("expected a reconnect timer: {outputs:?}");
+        };
+
+        let outputs = harness.run(UpdatesInput::Resume);
+        assert!(outputs.contains(&UpdatesOutput::CancelTimer { token }));
+        assert_eq!(connects(&outputs), [AttemptId(2)]);
+        assert_eq!(
+            last_state(&outputs),
+            None,
+            "still reconnecting, with its count"
+        );
+        assert_eq!(harness.run(UpdatesInput::TimerFired { token }), []);
+
+        assert_eq!(
+            harness.run(UpdatesInput::Resume),
+            [],
+            "an attempt is in flight"
+        );
+        let outputs = harness.end(offline_end());
+        assert!(matches!(
+            last_state(&outputs),
+            Some(ConnectionState::Reconnecting { failures: 2, .. })
+        ));
+    }
+
+    #[test]
+    fn resume_replaces_a_live_socket_silent_since_before_a_sleep() {
+        let mut harness = Harness::new();
+        let first = harness.live();
+        harness.now += 44_999;
+        assert_eq!(
+            harness.run(UpdatesInput::Resume),
+            [],
+            "a heartbeat is still due"
+        );
+
+        harness.now += 1;
+        let outputs = harness.run(UpdatesInput::Resume);
+        assert!(outputs.iter().any(|output| matches!(
+            output,
+            UpdatesOutput::Close { attempt, .. } if *attempt == first
+        )));
+        assert_eq!(
+            last_state(&outputs),
+            Some(&ConnectionState::Reconnecting {
+                reason: LinkError::Stalled { silent_ms: 45_000 },
+                failures: 0,
+                delay_ms: 0
+            })
+        );
+        assert_eq!(connects(&outputs), [AttemptId(2)]);
+        harness.open();
+        let outputs = harness.recv(&json!({"type": "snapshot", "items": []}));
+        assert!(outputs.contains(&UpdatesOutput::Live {
+            attempt: AttemptId(2),
+            resumed: true
+        }));
+    }
+
+    #[test]
+    fn resume_starts_what_ended_like_start() {
+        let mut harness = Harness::new();
+        assert_eq!(connects(&harness.run(UpdatesInput::Resume)), [AttemptId(1)]);
+        harness.run(UpdatesInput::Stop);
+        let outputs = harness.run(UpdatesInput::Resume);
+        assert_eq!(last_state(&outputs), Some(&ConnectionState::Connecting));
+        assert_eq!(connects(&outputs), [AttemptId(2)]);
     }
 
     #[test]

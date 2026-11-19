@@ -213,8 +213,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var projectRunChoices: [ProjectRunChoice] = []
   /// The provisional rows of open Add nested agent composers, by row id: each one's source.
   public var nestedDrafts: [String: String] = [:]
-  /// The server cannot be reached and the list is what this device saved: the line under it.
-  public var offlineNotice: String?
+  /// The list is what this device saved: the line under it, offline or while it is refreshed.
+  public var savedListNotice: SidebarSavedListNotice?
   /// Why the pages the server offers could not be read, when none were: Automations, Usage and
   /// Canvas are missing because of it, and a quiet row says so where they would be.
   public var pagesFailure: String?

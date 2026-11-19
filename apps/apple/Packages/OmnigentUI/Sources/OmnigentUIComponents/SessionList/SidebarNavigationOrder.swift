@@ -85,7 +85,8 @@ public enum SidebarNavigationOrder {
       return state.projects.filter { expandedProjects.contains($0.id) }.flatMap { project in
         let members = SidebarSections.sessions(of: project, in: state)
         let count = ProjectFolderPaging.visibleCount(
-          count: members.count, shown: shownInProject[project.id] ?? 0, selectedIndex: nil)
+          count: members.count,
+          shown: shownInProject[project.id] ?? ProjectShowAll.shown(project.id), selectedIndex: nil)
         return state.visibleRows(members.prefix(count), in: .project(project.id))
           .map(\.id)
       }

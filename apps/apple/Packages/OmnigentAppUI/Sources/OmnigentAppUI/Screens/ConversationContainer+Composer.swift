@@ -29,4 +29,11 @@ extension ConversationContainer {
     addHostMoves(to: &extras.liveness, sheets: livenessSheets)
     return extras
   }
+
+  /// The session menu's Fork copies the whole session.
+  func forkable(_ actions: SessionListActions) -> SessionListActions {
+    var actions = actions
+    if let fork = forkSession { actions.fork = { _ in fork() } }
+    return actions
+  }
 }

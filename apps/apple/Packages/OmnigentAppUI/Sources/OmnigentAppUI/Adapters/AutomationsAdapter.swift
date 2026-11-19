@@ -79,7 +79,8 @@ struct AutomationsAdapter: View {
   var body: some View {
     if let pages = connection.pages {
       page(pages)
-        .task {
+        // Read again each time the connection comes back, as what failed may load now.
+        .task(id: connection.health.reconnections) {
           await pages.loadAutomations()
           await pages.loadAutomationCatalog()
           if pages.offered?.automationProjects == true { await pages.loadAutomationProjects() }

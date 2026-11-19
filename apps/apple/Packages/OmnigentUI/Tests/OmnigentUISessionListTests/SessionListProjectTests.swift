@@ -36,7 +36,7 @@
       #expect(
         menu.titles == [
           "New session", "Rename project\u{2026}", "Project settings\u{2026}",
-          "Sort sessions by", "Move", "Delete project\u{2026}",
+          "Sort sessions by", "Show All Sessions", "Move", "Delete project\u{2026}",
         ])
       try screen.choose("New session", in: menu)
       try screen.choose("Project settings\u{2026}", in: menu)
@@ -141,51 +141,25 @@
       #expect(!screen.allViews.contains { $0 is NSProgressIndicator })
     }
 
-    @Test("Show more lists five more, and reads the next page when loaded rows run out")
-    func showMore() throws {
-      var calls: [Int] = []
-      var loads = 0
-      let sessions = (0..<7).map { SessionSummary(id: "s\($0)", title: "S\($0)") }
-      func pages(shown: Int) -> ProjectFolderPages {
-        ProjectFolderPages(
-          project: work, sessions: sessions, paging: SidebarPaging(), shown: shown, selection: nil,
-          load: { _ in loads += 1 }, setShown: { calls.append($0) })
-      }
-      let first = pages(shown: 0)
-      #expect(first.visibleCount == ProjectFolderPaging.pageSize)
-      first.showMore()
-      #expect(calls == [10])
-      #expect(loads == 1)
-      first.load?()
-      #expect(loads == 2)
-      let noLoad = ProjectFolderPages(
-        project: work, sessions: sessions, paging: SidebarPaging(), shown: 0,
-        selection: .session("s6"),
-        load: nil, setShown: { _ in })
-      // The open session stays listed even past the first page.
-      #expect(noLoad.visibleCount == sessions.count)
-      noLoad.showMore()
-      #expect(noLoad.load == nil)
-    }
-
     @Test("Show more on the folder's row works, and waits while the page is loading")
     func showMoreRow() throws {
-      let ids = (0..<7).map { "s\($0)" }
+      let size = ProjectFolderPaging.pageSize
+      let ids = (0..<size + 2).map { "s\($0)" }
       var state = SidebarFixture.state
       state.list.sessions += ids.map { SessionSummary(id: $0, title: $0) }
       state.projects = [SessionProject(id: "big", name: "Big", sessionIds: ids)]
       state.paging.loadedProjects = ["big"]
       let spy = SidebarSpy(state)
       UserDefaults.standard.set("big", forKey: SidebarNavigationOrder.expandedProjectsKey)
-      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 900)
+      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 1_200)
       defer { screen.close() }
       let table = try #require(screen.list)
       let before = table.numberOfRows
-      // Rows: 7 Projects, 8 Big, 9 to 13 its first five, 14 Show more.
-      let more = try #require(try screen.plainButtons(inRow: 14).first)
+      // Rows: 7 Projects, 8 Big, then its first page, then Show more.
+      let more = try #require(try screen.plainButtons(inRow: 9 + size).first)
       try screen.click(more)
       #expect(table.numberOfRows == before + 1)
-      // Five more runs past the two left, so the next server page is read.
+      // A page more runs past the two left, so the next server page is read.
       #expect(spy.calls == ["load project big"])
     }
 
@@ -193,22 +167,23 @@
       "Show more takes a click anywhere on its row, and its marker is drawn only",
       arguments: [SessionAttentionState.needsYou, .working])
     func showMoreRowTakesClicks(hidden: SessionAttentionState) throws {
-      let ids = (0..<7).map { "s\($0)" }
+      let size = ProjectFolderPaging.pageSize
+      let ids = (0..<size + 2).map { "s\($0)" }
       var state = SidebarFixture.state
       state.list.sessions += ids.map {
-        SessionSummary(id: $0, title: $0, attention: $0 == "s6" ? hidden : nil)
+        SessionSummary(id: $0, title: $0, attention: $0 == ids.last ? hidden : nil)
       }
       state.projects = [SessionProject(id: "big", name: "Big", sessionIds: ids)]
       state.paging.loadedProjects = ["big"]
-      // Rows: 7 Projects, 8 Big, 9 to 13 its first five, 14 Show more with s6's marker.
+      // Rows: 7 Projects, 8 Big, then its first page, then Show more with the last's marker.
       for place in ["gap", "marker", "top edge", "bottom edge"] {
         let spy = SidebarSpy(state)
         UserDefaults.standard.set("big", forKey: SidebarNavigationOrder.expandedProjectsKey)
-        let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 900)
+        let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 1_200)
         defer { screen.close() }
         let table = try #require(screen.list)
         let before = table.numberOfRows
-        let row = table.convert(table.rect(ofRow: 14), to: screen.host)
+        let row = table.convert(table.rect(ofRow: 9 + size), to: screen.host)
         // A progress control would stand in for the button, in accessibility and for clicks.
         #expect(
           !screen.allViews.contains { view in

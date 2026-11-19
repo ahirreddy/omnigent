@@ -34,6 +34,9 @@ struct ConversationContainer: View {
   let retry: @MainActor () -> Void
   /// The connected server, for the composer's execution context.
   var server: OmnigentCoreFFI.ConnectedServer?
+  /// The server connection's health: while the window's line shows an outage, the composer's
+  /// line does not repeat it.
+  var connectionHealth: ConnectionHealth?
   /// Where a session on a host runs, for the titlebar's sandbox status.
   var hostEnvironment: @MainActor (String) -> SessionEnvironment? = { _ in nil }
   /// A session's title, for the line over a message another session sent.
@@ -208,7 +211,8 @@ struct ConversationContainer: View {
   private func composerState(_ screen: ConversationViewState) -> ComposerViewState {
     var composer = ComposerAdapter.state(
       conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server,
-      submitWithCommandReturn: composerPreferences.submitWithCommandReturn)
+      submitWithCommandReturn: composerPreferences.submitWithCommandReturn,
+      windowShowsOutage: connectionHealth.map(ConnectionIssuesBanner.showsOutage) ?? false)
     composer.prefersSteer = composerPreferences.alwaysSteer
     if conversation.header?.settings?.sideChatSourceId != nil {
       composer.placeholder = SideChatCopy.placeholder
@@ -281,13 +285,6 @@ struct ConversationContainer: View {
       actions.openSession = tabRoutes.openSession
     }
     SessionToolsAdapter.addSelectionActions(to: &actions, store: conversation, routes: toolRoutes)
-    return actions
-  }
-
-  /// The session menu's Fork copies the whole session.
-  func forkable(_ actions: SessionListActions) -> SessionListActions {
-    var actions = actions
-    if let fork = forkSession { actions.fork = { _ in fork() } }
     return actions
   }
 

@@ -491,6 +491,17 @@ pub enum CoreEvent {
         /// The server whose saved copy shows, while offline.
         server_url: Option<String>,
     },
+    /// A connect to `server_url` began, and the session list shows what this device saved of it
+    /// until the server's own list replaces it; `None` once it has, or once the connect ended
+    /// without it (a sign-in screen, a disconnect, a failure; an unreachable server says
+    /// `OfflineChanged` first). Sent before the saved list.
+    SavedListShown {
+        /// The server whose saved list shows while the app connects.
+        server_url: Option<String>,
+        /// The account the saved list was read for, which owns its folders' rows; `None` when
+        /// the list did not save it (or once it no longer shows).
+        viewer_id: Option<String>,
+    },
     /// An open session shows what this device saved of it (or nothing, when nothing was saved)
     /// because the server cannot be reached, or it no longer does. Sent after `TranscriptReset`
     /// when true, and whenever it changes.

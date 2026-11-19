@@ -58,8 +58,10 @@ final class SidebarStateMemo: SessionListFollower {
       cached.paging = SidebarAdapter.paging(list.paging)
       return cached
     }
-    let state = SidebarAdapter.state(
-      list: list, display: display, sorts: sorts, server: server, servers: servers)
+    let state = SidebarLoadSignposts.measure("sidebar state", detail: Self.signpostDetail) {
+      SidebarAdapter.state(
+        list: list, display: display, sorts: sorts, server: server, servers: servers)
+    }
     inputs = current
     cached = state
     isStale = false
@@ -80,6 +82,19 @@ final class SidebarStateMemo: SessionListFollower {
       list: list, display: inputs.display, sorts: inputs.sorts, server: inputs.server,
       servers: inputs.servers)
     if SidebarArrangement(next) != SidebarArrangement(cached) { rearrangements += 1 }
+  }
+
+  /// The counts a sidebar build's signpost carries.
+  private static func signpostDetail(_ state: SidebarViewState) -> String {
+    let foldered = state.projects.reduce(0) { $0 + $1.sessionIds.count }
+    let phase =
+      switch state.list.phase {
+      case .loaded: "loaded"
+      case .loading: "loading"
+      case .failed: "failed"
+      }
+    return "sessions=\(state.list.sessions.count) projects=\(state.projects.count) "
+      + "foldered=\(foldered) phase=\(phase)"
   }
 
   /// Whether a row's own status, marks, time or title can move it: grouping by status or last

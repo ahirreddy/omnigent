@@ -30,9 +30,10 @@ final class MacProjectFolderFlowUITests: XCTestCase {
   private static let places: [Place] = [
     .pill, .gap, .pillAfterItsTooltip, .topEdge, .pill, .bottomEdge, .text,
   ]
-  /// Five listed and three under Show more: one click lists all, with Show more still in the
-  /// small VM screen's sidebar.
-  private static let sessionCount = 8
+  /// A folder's page in the sidebar.
+  private static let pageSize = 10
+  /// A page listed and three under Show more: one click lists all.
+  private static let sessionCount = pageSize + 3
   /// The newest sessions, renamed over and over; the others wait on a request.
   private static let renamedCount = 3
 
@@ -46,9 +47,9 @@ final class MacProjectFolderFlowUITests: XCTestCase {
     super.tearDown()
   }
 
-  /// A folder of eight, five waiting on a request: each expansion lists five, and every click on
-  /// Show more lists the rest wherever it lands, across renames that stream in and the sidebar's
-  /// minute-long reconcile.
+  /// A folder of thirteen, ten waiting on a request: each expansion lists a page, and every click
+  /// on Show more lists the rest wherever it lands, across renames that stream in and the
+  /// sidebar's minute-long reconcile.
   @MainActor
   func testShowMoreTakesEveryClickBesideANeedsYouPill() async throws {
     let live = MacLiveUITestSupport(self)
@@ -78,7 +79,8 @@ final class MacProjectFolderFlowUITests: XCTestCase {
     while tally.clicks < 8 || Date().timeIntervalSince(start) < 75 {
       try toggle(folder, live: live, app: app)
       XCTAssertTrue(
-        live.waitUntil(timeout: 15) { rows.count == 5 }, "the folder lists \(rows.count)")
+        live.waitUntil(timeout: 15) { rows.count == Self.pageSize },
+        "the folder lists \(rows.count)")
       if tally.clicks == 0 { live.shot(app, "the folder open") }
       try await showAll(showMore, rows: rows, tally: &tally, live: live, app: app)
       try toggle(folder, live: live, app: app)
@@ -104,8 +106,8 @@ final class MacProjectFolderFlowUITests: XCTestCase {
     let sessions: [String]
   }
 
-  /// A project of eight, all but the newest three waiting on a request, so that the three under
-  /// Show more wait on one. All are deleted once the test ends.
+  /// A project of thirteen, all but the newest three waiting on a request, so that the three
+  /// under Show more wait on one. All are deleted once the test ends.
   @MainActor
   private func seedFolder(_ live: MacLiveUITestSupport) async throws -> SeededFolder {
     let fixture = try await live.serverJSON("GET", "/v1/sessions/\(try live.fixtureSession())")
@@ -137,7 +139,7 @@ final class MacProjectFolderFlowUITests: XCTestCase {
       let place = Self.places[tally.clicks % Self.places.count]
       // Pointer events go to the window in front: another app's window must not take them.
       app.activate()
-      let row = try revealShowMore(below: rows, live: live, app: app)
+      let row = try revealShowMore(showMore, below: rows, live: live, app: app)
       if hasPill(showMore, in: row, app: app) { tally.clicksBesidePill += 1 }
       let point = place.point(in: row)
       try await click(point, in: app, waitingForTooltip: place == .pillAfterItsTooltip)
@@ -159,13 +161,22 @@ final class MacProjectFolderFlowUITests: XCTestCase {
   /// Show more's own frame reads empty while it is below the window: the rows above place it.
   @MainActor
   private func revealShowMore(
-    below rows: XCUIElementQuery, live: MacLiveUITestSupport, app: XCUIApplication
+    _ showMore: XCUIElement, below rows: XCUIElementQuery, live: MacLiveUITestSupport,
+    app: XCUIApplication
   ) throws -> CGRect {
     let window = app.windows.firstMatch
     let bottom = window.frame.maxY - 60
     var row = try Self.showMoreRow(below: rows)
     let pointer = window.coordinate(withNormalizedOffset: .zero)
       .withOffset(CGVector(dx: row.midX - window.frame.minX, dy: window.frame.height / 2))
+    // Rows past the window's bottom are not laid out, so they can't place Show more: scroll
+    // until Show more itself is in the window.
+    for _ in 0..<30 where showMore.frame.isEmpty || showMore.frame.maxY > bottom {
+      let before = showMore.frame
+      pointer.scroll(byDeltaX: 0, deltaY: -40)
+      _ = live.waitUntil(timeout: 1) { showMore.frame != before }
+    }
+    row = try Self.showMoreRow(below: rows)
     for _ in 0..<20 where row.maxY > bottom {
       let before = row.minY
       pointer.scroll(byDeltaX: 0, deltaY: -40)
@@ -180,7 +191,9 @@ final class MacProjectFolderFlowUITests: XCTestCase {
   /// apart, as wide. A row reports its content's frame, centered in the row.
   @MainActor
   private static func showMoreRow(below rows: XCUIElementQuery) throws -> CGRect {
-    let listed = rows.allElementsBoundByIndex.map(\.frame).sorted { $0.minY < $1.minY }
+    // A row the list has not laid out reads an empty frame.
+    let listed = rows.allElementsBoundByIndex.map(\.frame).filter { !$0.isEmpty }
+      .sorted { $0.minY < $1.minY }
     let above = try XCTUnwrap(listed.last, "no session listed above Show more")
     let pitch = above.minY - (listed.dropLast().last ?? above).minY
     return CGRect(

@@ -5,17 +5,30 @@ extension ConnectionStore {
     eventsApplied += 1
     defer { if !eventWaiters.isEmpty { resumeEventWaiters() } }
     logSavedCopyFailure(event)
+    guard SidebarLoadSignposts.isEnabled, let kind = SidebarLoadSignposts.kind(of: event) else {
+      applyEvent(event)
+      return
+    }
+    SidebarLoadSignposts.measure("list event", detail: { _ in kind }, { applyEvent(event) })
+  }
+
+  private func applyEvent(_ event: CoreEvent) {
     switch event {
     case .connectionChanged(let phase):
       connectionChanged(phase)
+      observeReachability()
     case .updatesLinkChanged(let state):
       if state != updatesLink { updatesLink = state }
+      observeReachability()
     case .sessionListChanged(let change):
       sessionList.apply(change)
     case .sessionListLoaded:
       sessionList.loaded()
     case .offlineChanged(let serverURL):
       offlineChanged(serverURL)
+      observeReachability()
+    case .savedListShown(let serverURL, let viewerID):
+      savedListShown(serverURL, viewerID: viewerID)
     case .sessionOfflineChanged(let id, let offline):
       conversations[id]?.offlineChanged(offline)
     default:
@@ -37,6 +50,7 @@ extension ConnectionStore {
       // answer, one of them would show the connection as not made until the last arrives.
       await eventsSentSoFarApplied()
       phase = connected
+      observeReachability()
     } catch {
       record(scope: .connection, coreError(error))
     }

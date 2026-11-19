@@ -92,6 +92,7 @@ mod list_driver;
 mod message_cache;
 mod read_driver;
 mod runtime;
+mod saved_list_driver;
 mod stream_driver;
 mod terminal_driver;
 mod updates_driver;
