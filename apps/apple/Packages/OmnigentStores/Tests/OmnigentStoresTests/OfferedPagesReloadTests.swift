@@ -143,6 +143,9 @@ struct OfferedPagesReloadTests {
     server.route("/v1/info", .json(undecodablePages))
     let store = try await connected(server, retryDelay: .seconds(30))
     let pages = try #require(store.pages)
+    // The connect's own read, and the retry it waits on, end first: only the reads below count.
+    store.offeredPagesReload?.cancel()
+    await store.offeredPagesReload?.value
     #expect(await pages.loadOffered() != nil)
     #expect(pages.offered == nil)
     #expect(pages.offeredReadFailure != nil)
