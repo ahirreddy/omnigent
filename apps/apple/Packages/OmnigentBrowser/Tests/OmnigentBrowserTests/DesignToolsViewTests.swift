@@ -79,6 +79,28 @@
       #expect(tools.tool == nil && tools.notice?.message == BrowserDesignTools.pageChangedNotice)
     }
 
+    @Test("with no tool open the page takes its clicks, notice or not; an open tool takes them")
+    func clicksReachThePageOnlyWithoutATool() throws {
+      let fixture = try fixture { _ in }
+      let tools = fixture.model.designTools
+      let page = ClickCountingView()
+      let screen = OffscreenWindow(
+        ZStack {
+          ClickTarget(view: page)
+          BrowserDesignOverlay(model: fixture.model)
+        }, width: 600, height: 400)
+      defer { screen.close() }
+      try screen.click(CGPoint(x: 300, y: 200))
+      tools.show("Sent to agent.", isError: false)
+      screen.settle()
+      try screen.click(CGPoint(x: 300, y: 200))
+      #expect(page.clicks == 2)
+      tools.open(.draw)
+      screen.settle()
+      try screen.click(CGPoint(x: 300, y: 300))
+      #expect(page.clicks == 2)
+    }
+
     @Test("the input layer reports the pointer from the top left and takes Escape")
     func inputLayer() throws {
       var events: [String] = []
@@ -104,5 +126,21 @@
       #expect(events == ["down 20,10", "escape"])
       #expect(view.menu(for: event) == nil)
     }
+  }
+
+  /// A stand-in for the page's view that counts the clicks reaching it.
+  final class ClickCountingView: NSView {
+    private(set) var clicks = 0
+
+    override func mouseDown(with event: NSEvent) { clicks += 1 }
+  }
+
+  /// Shows a given view, so the test keeps hold of it.
+  struct ClickTarget: NSViewRepresentable {
+    let view: ClickCountingView
+
+    func makeNSView(context: Context) -> ClickCountingView { view }
+
+    func updateNSView(_ nsView: ClickCountingView, context: Context) {}
   }
 #endif

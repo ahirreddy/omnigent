@@ -32,6 +32,9 @@
           .accessibilityIdentifier("browser.design.\(tool.rawValue)Layer")
         }
       }
+      // The page's size with no tool open too, so a notice sits at its bottom; the empty
+      // space takes no clicks.
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
       .overlay(alignment: .bottom) {
         if let notice = tools.notice {
           BrowserDesignNoticeView(notice: notice) { tools.dismiss(notice) }
