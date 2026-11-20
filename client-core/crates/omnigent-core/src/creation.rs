@@ -525,6 +525,12 @@ pub struct CreationCapabilities {
     /// `enabled_connections` has `mcp`: sessions can start with server-configured MCP
     /// services (the web's `McpRegistryLaunchPicker`).
     pub mcp_registry: bool,
+    /// `picker.restrict_to_agent_names`: the only agents the deployment offers, in its order;
+    /// empty offers every agent.
+    pub restrict_to_agent_names: Vec<String>,
+    /// `picker.default_agent_name`: the agent a new session starts with when the user picked
+    /// none; never one the restriction leaves out.
+    pub default_agent_name: Option<String>,
 }
 
 impl CreationCapabilities {
@@ -566,6 +572,27 @@ impl CreationCapabilities {
         self.agent_install
     }
 
+    /// `agents` as the deployment's picker curation offers them: only the restricted names, in
+    /// the restriction's order; all of them without a restriction (the web's
+    /// `selectableSessionAgents`).
+    #[must_use]
+    pub fn curated(&self, agents: Vec<CreationAgent>) -> Vec<CreationAgent> {
+        if self.restrict_to_agent_names.is_empty() {
+            return agents;
+        }
+        let rank = |agent: &CreationAgent| {
+            self.restrict_to_agent_names
+                .iter()
+                .position(|name| *name == agent.name)
+        };
+        let mut kept: Vec<(usize, CreationAgent)> = agents
+            .into_iter()
+            .filter_map(|agent| rank(&agent).map(|position| (position, agent)))
+            .collect();
+        kept.sort_by_key(|(position, _)| *position);
+        kept.into_iter().map(|(_, agent)| agent).collect()
+    }
+
     /// Decodes the creation fields of a `/v1/info` body.
     ///
     /// # Errors
@@ -573,6 +600,7 @@ impl CreationCapabilities {
     /// A description of the first field with the wrong shape.
     pub fn from_value(value: &Value) -> Result<Self, String> {
         let object = as_object(value, "/v1/info")?;
+        let (restrict_to_agent_names, default_agent_name) = picker_curation(object);
         let sandbox_providers = opt_array(object, "sandbox_providers")?
             .map(|providers| {
                 providers
@@ -634,15 +662,50 @@ impl CreationCapabilities {
             github_connection,
             fork_workspaces: opt_bool(object, "session_fork_workspaces")?.unwrap_or(false),
             agent_detail: opt_bool(object, "agent_detail")?.unwrap_or(false),
+            // A curated picker has no Smart Routing row.
             smart_routing: {
                 let options = crate::slash::SlashOptions::from_info(value)?;
-                options.smart_routing && options.routes_native_panes
+                options.smart_routing
+                    && options.routes_native_panes
+                    && restrict_to_agent_names.is_empty()
             },
             sibling_sessions: crate::session_families::sibling_sessions_enabled(object),
             sibling_destinations: crate::session_families::SiblingDestinations::from_info(object),
             mcp_registry: connection("mcp"),
+            restrict_to_agent_names,
+            default_agent_name,
         })
     }
+}
+
+/// `/v1/info.picker`, as the web's `parsePicker` reads it: blank names are unset, a list with a
+/// non-string member is ignored whole, and a default outside the restriction is dropped.
+fn picker_curation(object: &Map<String, Value>) -> (Vec<String>, Option<String>) {
+    let Some(picker) = object.get("picker").and_then(Value::as_object) else {
+        return (Vec::new(), None);
+    };
+    let names: Vec<String> = picker
+        .get("restrict_to_agent_names")
+        .and_then(Value::as_array)
+        .filter(|names| names.iter().all(Value::is_string))
+        .map(|names| {
+            names
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let default = picker
+        .get("default_agent_name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .filter(|name| names.is_empty() || names.iter().any(|allowed| allowed == name))
+        .map(str::to_owned);
+    (names, default)
 }
 
 /// Whether a provider's `sandbox_provider_capabilities` entry sets `name` to `true`.
@@ -1696,5 +1759,46 @@ mod tests {
                 .get("workflow_id")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn a_curated_picker_offers_only_its_agents_in_its_order() {
+        let value = serde_json::json!({
+            "smart_routing_enabled": true,
+            "picker": {"restrict_to_agent_names": [" codex ", "claude", ""],
+                       "default_agent_name": "claude"},
+        });
+        let capabilities = CreationCapabilities::from_value(&value).unwrap();
+        assert_eq!(capabilities.restrict_to_agent_names, ["codex", "claude"]);
+        assert_eq!(capabilities.default_agent_name.as_deref(), Some("claude"));
+        assert!(
+            !capabilities.smart_routing,
+            "a curated picker has no Smart Routing row"
+        );
+        let named = |id: &str, name: &str| CreationAgent {
+            name: name.into(),
+            ..agent(id, Some("claude-sdk"))
+        };
+        let offered = capabilities.curated(vec![
+            named("a1", "claude"),
+            named("a2", "polly"),
+            named("a3", "codex"),
+        ]);
+        let ids: Vec<_> = offered.iter().map(|agent| agent.id.as_str()).collect();
+        assert_eq!(ids, ["a3", "a1"]);
+
+        let outside = serde_json::json!({"picker": {"restrict_to_agent_names": ["codex"],
+                                                    "default_agent_name": "claude"}});
+        let capabilities = CreationCapabilities::from_value(&outside).unwrap();
+        assert_eq!(
+            capabilities.default_agent_name, None,
+            "a default the list leaves out"
+        );
+        let mixed = serde_json::json!({"picker": {"restrict_to_agent_names": ["codex", 1],
+                                                  "default_agent_name": "claude"}});
+        let capabilities = CreationCapabilities::from_value(&mixed).unwrap();
+        assert_eq!(capabilities.restrict_to_agent_names, Vec::<String>::new());
+        assert_eq!(capabilities.default_agent_name.as_deref(), Some("claude"));
+        assert_eq!(capabilities.curated(vec![named("a2", "polly")]).len(), 1);
     }
 }

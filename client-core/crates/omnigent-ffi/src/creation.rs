@@ -160,6 +160,13 @@ pub struct CreationCatalog {
     /// services.
     #[uniffi(default)]
     pub mcp_registry: bool,
+    /// `picker.default_agent_name`: the agent a new session starts with when none was picked.
+    #[uniffi(default)]
+    pub default_agent_name: Option<String>,
+    /// `picker.restrict_to_agent_names`: the only agents offered; the core already left the
+    /// rest out of `agents`.
+    #[uniffi(default)]
+    pub restrict_to_agent_names: Vec<String>,
 }
 
 /// A new sandbox for a session.
@@ -384,6 +391,8 @@ impl From<core::CreationCatalog> for CreationCatalog {
             sibling_sessions: catalog.capabilities.sibling_sessions,
             sibling_session_destinations: Some(catalog.capabilities.sibling_destinations.into()),
             mcp_registry: catalog.capabilities.mcp_registry,
+            default_agent_name: catalog.capabilities.default_agent_name,
+            restrict_to_agent_names: catalog.capabilities.restrict_to_agent_names,
         }
     }
 }
@@ -414,6 +423,8 @@ impl From<CreationCatalog> for core::CreationCatalog {
                     .map(Into::into)
                     .unwrap_or_default(),
                 mcp_registry: catalog.mcp_registry,
+                restrict_to_agent_names: catalog.restrict_to_agent_names,
+                default_agent_name: catalog.default_agent_name,
             },
         }
     }

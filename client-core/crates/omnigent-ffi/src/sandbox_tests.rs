@@ -50,6 +50,8 @@ fn catalog() -> CreationCatalog {
         sibling_sessions: false,
         sibling_session_destinations: None,
         mcp_registry: false,
+        default_agent_name: None,
+        restrict_to_agent_names: vec![],
     }
 }
 
