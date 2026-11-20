@@ -217,6 +217,10 @@ extension SidebarFamilySectionsTests {
       rows.map { kind(layout.family(of: $0)) } == [
         "expanded head", "nested, continued", "nested", "standalone",
       ])
+    #expect(
+      rows.map { layout.detail(of: $0) } == [
+        "Nested sessions: 2", "Nested in: \(rows[0].title)", "Nested in: \(rows[0].title)", nil,
+      ])
     if case .head(_, let toggle) = layout.family(of: rows[0]) { toggle() }
     #expect(log.calls == ["true \(scope.key(family: "coord"))"])
     state.collapsedFamilies = [scope.key(family: "coord")]

@@ -103,7 +103,7 @@ extension ConnectedServerView {
           store,
           link: SidebarAdapter.webURL(
             server: connection.connectedServer, sessionID: store.sessionID)),
-        actions: ShareAdapter.actions(store)
+        actions: ShareAdapter.actions(store, openAutomation: openAutomationSharing)
       ) { sidebarModel.share = nil }
     }
   }

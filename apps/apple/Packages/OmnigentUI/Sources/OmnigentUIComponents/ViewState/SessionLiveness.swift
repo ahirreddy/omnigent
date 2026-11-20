@@ -235,6 +235,8 @@ public struct SessionLivenessActions {
   public var switchHost: HostMoveRoute?
   /// Starts a session bound to no host on one of the user's machines.
   public var resume: HostMoveRoute?
+  /// Reconnects this Mac's own host, when the offline host is this Mac; returns a status line.
+  public var reconnectThisMachine: (@MainActor () async -> String?)?
   /// Which sheet shows, kept by the conversation so a send can open Resume on a Machine;
   /// `nil` keeps it in the row.
   public var sheets: SessionLivenessSheets?

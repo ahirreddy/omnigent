@@ -180,7 +180,10 @@ extension ConversationContainer {
   func share(over shareStore: ShareStore?) -> (state: ShareViewState, actions: ShareActions)? {
     guard offersShare, let shareStore else { return nil }
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
-    return (ShareAdapter.state(shareStore, link: link), ShareAdapter.actions(shareStore))
+    return (
+      ShareAdapter.state(shareStore, link: link),
+      ShareAdapter.actions(shareStore, openAutomation: openAutomationSharing)
+    )
   }
 
   /// Reads the whole transcript, then asks where to save it.

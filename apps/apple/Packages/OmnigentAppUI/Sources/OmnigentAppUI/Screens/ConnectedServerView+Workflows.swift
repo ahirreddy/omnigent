@@ -12,6 +12,18 @@ extension ConnectedServerView {
     WorkflowsAdapter(connection: connection, routes: workflowRoutes)
   }
 
+  /// The Automations page; a run that follows a workflow opens it on the Workflows page.
+  var automationsPage: some View {
+    let selection = selectionBinding
+    let connection = connection
+    return AutomationsAdapter(
+      connection: connection, open: { selection.wrappedValue = .session($0) },
+      openWorkflow: { id in
+        connection.workflows?.requestedWorkflowID = id
+        selection.wrappedValue = .workflows
+      })
+  }
+
   /// Where the Workflows pages lead: sessions, a session's task, automations, and the
   /// new-session page set to run or plan a workflow.
   var workflowRoutes: WorkflowRoutes {

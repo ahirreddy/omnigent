@@ -58,6 +58,8 @@ public final class CreationStore {
   /// The project the sidebar's "New session in project" chose: the new session is filed there
   /// and the form takes its defaults. The form clears it once read.
   public var pendingProject: ProjectSummary?
+  /// The project the open New session page files into, for the sidebar's row in its folder.
+  public var composingProject: ProjectSummary?
   /// Composer text kept per Add nested agent source, and under `""` a draft handed to the next
   /// new session's page ("Continue in a new session").
   public var composerDrafts: [String: String] = [:]
@@ -182,21 +184,6 @@ public final class CreationStore {
   > {
     do {
       return .success(try await core.projectSettings(project: project))
-    } catch {
-      return .failure(coreError(error))
-    }
-  }
-
-  /// The directories in `path` on `hostID` (its home when `nil`), for the folder browser.
-  /// - Parameters:
-  ///   - hostID: The host.
-  ///   - path: An absolute folder, or `nil` for the home folder.
-  /// - Returns: The listing, or why it could not be read.
-  public func directory(hostID: String, path: String?) async -> Result<
-    HostDirectoryListing, CoreError
-  > {
-    do {
-      return .success(try await core.hostDirectory(hostId: hostID, path: path))
     } catch {
       return .failure(coreError(error))
     }

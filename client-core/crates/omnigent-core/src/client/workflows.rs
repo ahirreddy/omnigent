@@ -9,6 +9,7 @@ use super::requests::{rejection_message, validate_identifier};
 use super::{ClientCore, SessionError};
 use crate::http::HttpTransport;
 use crate::session_journal::{JournalPage, PlanStep};
+use crate::workflows::automation_runs::{AutomationRunSteps, run_steps_page};
 use crate::workflows::proposal::DescriptionWrite;
 use crate::workflows::{
     DESCRIPTION_MAX_CHARS, NAME_MAX_CHARS, WorkflowDetail, WorkflowPage, WorkflowRunPage,
@@ -21,6 +22,10 @@ const OWNED_PAGE_SIZE: u32 = 200;
 const SHARED_PAGE_SIZE: u32 = 100;
 /// Runs per page.
 const RUNS_PAGE_SIZE: u32 = 20;
+/// Automation runs per page of their plans: the server's most.
+const RUN_STEPS_PAGE_SIZE: u32 = 50;
+/// Pages of automation run plans read: as many runs as an automation's history shows.
+const RUN_STEPS_PAGES: usize = 2;
 /// Clone tries "(copy)", "(copy 2)", … up to this many names before giving up.
 const MAX_CLONE_NAMES: u32 = 100;
 
@@ -427,6 +432,48 @@ impl<T: HttpTransport> ClientCore<T> {
             }
             let value = self.get_json(&path, &query).await?;
             WorkflowRunPage::from_value(&value).map_err(malformed(&path))
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// The plans the newest runs of automation `id` follow
+    /// (`GET /v1/scheduled-tasks/{id}/run-steps`), two pages of 50 runs at most, as many as its
+    /// history shows. Runs that wrote no plan are left out; a viewer gets none.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; the read errors; [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn automation_run_steps(
+        &self,
+        id: &str,
+    ) -> Result<Vec<AutomationRunSteps>, SessionError> {
+        let result = async {
+            validate_identifier(id)?;
+            let path = format!("/v1/scheduled-tasks/{id}/run-steps");
+            let mut runs = Vec::new();
+            let mut after: Option<String> = None;
+            for _ in 0..RUN_STEPS_PAGES {
+                let mut query = vec![("limit", RUN_STEPS_PAGE_SIZE.to_string())];
+                if let Some(cursor) = &after {
+                    query.push(("after", cursor.clone()));
+                }
+                let value = self.get_json(&path, &query).await?;
+                let (page, next) = run_steps_page(&value).map_err(malformed(&path))?;
+                runs.extend(page);
+                match next {
+                    Some(cursor) if after.as_deref() != Some(cursor.as_str()) => {
+                        after = Some(cursor);
+                    }
+                    _ => break,
+                }
+            }
+            Ok(runs)
         }
         .await;
         self.dispatch();

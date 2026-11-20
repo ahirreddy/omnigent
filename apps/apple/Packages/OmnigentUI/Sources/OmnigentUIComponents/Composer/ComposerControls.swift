@@ -178,7 +178,8 @@ struct ComposerTrayView: View {
   var leadingItems: some View {
     HStack(spacing: Theme.Spacing.medium) {
       if let context {
-        ExecutionContextRow(context: context, isPresented: showsContextDetails)
+        ExecutionContextRow(
+          context: context, liveness: actions.liveness, isPresented: showsContextDetails)
       }
       // The context line names the workspace; without one the tray names the folder itself.
       if let directory = tray.directory, context == nil {

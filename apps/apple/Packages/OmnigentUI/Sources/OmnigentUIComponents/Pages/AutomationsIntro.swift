@@ -25,6 +25,8 @@ public struct AutomationsIntro: View {
   private let appName: String
   private let dismiss: () -> Void
   @State private var index = 0
+  /// The examples show in place of the steps.
+  @State private var showsExamples = false
   @Environment(\.layoutWidth) private var layoutWidth
 
   /// Creates the guide.
@@ -93,7 +95,10 @@ public struct AutomationsIntro: View {
   /// step's caption, as the web's narrow dialog.
   public var body: some View {
     Group {
-      if layoutWidth == .compact {
+      if showsExamples {
+        AutomationExamplesView(back: { showsExamples = false }, done: dismiss)
+          .frame(minWidth: layoutWidth == .compact ? nil : 800, minHeight: 480)
+      } else if layoutWidth == .compact {
         ScrollView {
           VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
             stepsColumn(showsEveryDetail: false)
@@ -149,6 +154,9 @@ public struct AutomationsIntro: View {
 
   private var buttons: some View {
     HStack {
+      Button("See Examples", systemImage: "lightbulb") { showsExamples = true }
+        .buttonStyle(.borderless)
+        .accessibilityIdentifier("automations-intro-examples")
       Spacer()
       Button("Maybe later", action: dismiss)
         .accessibilityIdentifier("automations-intro-dismiss")

@@ -14,16 +14,25 @@ public enum AppShortcuts {
   public static let findSession = KeyboardShortcut("s", modifiers: [.command, .option])
   /// This sheet.
   public static let keyboardShortcuts = KeyboardShortcut("/", modifiers: .command)
+  /// Back to the page shown before, as Safari and Finder go back (the web's desktop key).
+  public static let goBack = KeyboardShortcut("[", modifiers: .command)
+  /// Forward to the page Back left.
+  public static let goForward = KeyboardShortcut("]", modifiers: .command)
+  /// The recent-sessions switcher, held open with Control; each Tab moves down the list.
+  public static let recentSessions = KeyboardShortcut(.tab, modifiers: .control)
+  /// The recent-sessions switcher, moving up the list.
+  public static let recentSessionsBack = KeyboardShortcut(.tab, modifiers: [.control, .shift])
   /// The previous session in the sidebar.
-  public static let previousSession = KeyboardShortcut("[", modifiers: .command)
+  public static let previousSession = KeyboardShortcut(.upArrow, modifiers: [.command, .control])
   /// The next session in the sidebar.
-  public static let nextSession = KeyboardShortcut("]", modifiers: .command)
+  public static let nextSession = KeyboardShortcut(.downArrow, modifiers: [.command, .control])
 
-  /// The pinned session at a position, 0-based; 9 is the tenth (the 0 key). Command-digit selects
-  /// tabs, so pins take Control-Command-digit (the web's browser build moves them off it too).
+  /// The sidebar's session at a position, 0-based; 9 is the tenth (the 0 key). Command-digit
+  /// selects tabs, so these take Control-Command-digit (the web's browser build moves them off
+  /// it too).
   /// - Parameter index: The position, 0 to 9.
   /// - Returns: Control-Command and the digit.
-  public static func pinnedSession(_ index: Int) -> KeyboardShortcut {
+  public static func sidebarSession(_ index: Int) -> KeyboardShortcut {
     KeyboardShortcut(
       KeyEquivalent(Character("\((index + 1) % 10)")), modifiers: [.command, .control])
   }
@@ -97,14 +106,11 @@ public enum AppShortcuts {
   public static let closeTab = KeyboardShortcut("w", modifiers: .command)
   /// Reopen the last closed tab.
   public static let reopenClosedTab = KeyboardShortcut("t", modifiers: [.command, .shift])
-  /// The next tab.
-  public static let nextTab = KeyboardShortcut(.tab, modifiers: .control)
-  /// The previous tab.
-  public static let previousTab = KeyboardShortcut(.tab, modifiers: [.control, .shift])
-  /// The next tab, with Safari's Shift-Command-]. Shift turns ] into }.
-  public static let nextTabAlias = KeyboardShortcut("}", modifiers: .command)
+  /// The next tab, with Safari's Shift-Command-]. Shift turns ] into }. Control-Tab is the
+  /// recent-sessions switcher, as on the web's desktop app.
+  public static let nextTab = KeyboardShortcut("}", modifiers: .command)
   /// The previous tab, with Safari's Shift-Command-[.
-  public static let previousTabAlias = KeyboardShortcut("{", modifiers: .command)
+  public static let previousTab = KeyboardShortcut("{", modifiers: .command)
   /// Every tab in a list.
   public static let showAllTabs = KeyboardShortcut("\\", modifiers: [.command, .shift])
   /// A session's terminal, or back to its chat.

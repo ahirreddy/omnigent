@@ -89,9 +89,10 @@ extension WorkflowsStore {
   }
 
   /// Asks a run's main agent to stop the plan and its workers; the row shows "Stopping…" until
-  /// the session is seen idle. A failure is in ``actionError``.
+  /// the session is seen idle. A failure is in ``actionError``. `workflowID` names the workflow
+  /// whose runs are read again; `nil` for a run another page lists, such as an automation's.
   @discardableResult
-  public func stop(_ run: WorkflowRun, planName: String?, workflowID: String) async -> Bool {
+  public func stop(_ run: WorkflowRun, planName: String?, workflowID: String?) async -> Bool {
     let sent = await message(run, stopPlanMessage(planName: planName), workflowID: workflowID)
     if sent { stoppingRuns.insert(run.id) }
     return sent
@@ -99,7 +100,7 @@ extension WorkflowsStore {
 
   /// Asks a run's main agent to pick its plan back up; a failure is in ``actionError``.
   @discardableResult
-  public func continuePlan(_ run: WorkflowRun, planName: String?, workflowID: String) async
+  public func continuePlan(_ run: WorkflowRun, planName: String?, workflowID: String?) async
     -> Bool
   {
     stoppingRuns.remove(run.id)
@@ -108,7 +109,7 @@ extension WorkflowsStore {
 
   /// Sends a task's action to a run's session; a failure is in ``actionError``.
   @discardableResult
-  public func perform(_ action: TaskAction, task: String, in run: WorkflowRun, workflowID: String)
+  public func perform(_ action: TaskAction, task: String, in run: WorkflowRun, workflowID: String?)
     async -> Bool
   {
     if action == .stop { return await stop(run, planName: nil, workflowID: workflowID) }
@@ -116,20 +117,20 @@ extension WorkflowsStore {
     return await message(run, text, workflowID: workflowID)
   }
 
-  private func message(_ run: WorkflowRun, _ text: String, workflowID: String) async -> Bool {
+  private func message(_ run: WorkflowRun, _ text: String, workflowID: String?) async -> Bool {
     guard !runActions.contains(run.id) else { return false }
     runActions.insert(run.id)
     defer { runActions.remove(run.id) }
+    var sent = true
     do {
       try await core.sendWorkflowRunMessage(
         sessionId: run.sessionId, workflowRunId: run.id, text: text)
     } catch {
       actionError = coreError(error)
-      await loadRuns(workflowID)
-      return false
+      sent = false
     }
-    await loadRuns(workflowID)
-    return true
+    if let workflowID { await loadRuns(workflowID) }
+    return sent
   }
 
   /// A Stop ends once its run's session is seen not working.

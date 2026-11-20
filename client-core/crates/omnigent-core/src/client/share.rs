@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 
 use super::json::{as_object, opt_array, opt_str, opt_u64, req_str};
 use super::requests::validate_identifier;
+use super::sessions::decode_snapshot_value;
 use super::{ClientCore, SessionError};
 use crate::http::HttpTransport;
 
@@ -54,6 +55,58 @@ pub struct SessionGrant {
     pub level: u8,
 }
 
+/// The automation that keeps a session's shares (`managed_by_automation`): each of its runs,
+/// and each change to its sharing, replaces them with its own list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagingAutomation {
+    /// Its id.
+    pub id: String,
+    /// Its name.
+    pub name: String,
+}
+
+/// A session's sharing as its permissions page reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionPermissions {
+    /// Every grant, the owner's included.
+    pub grants: Vec<SessionGrant>,
+    /// The automation that keeps the shares, when one does.
+    pub managed_by: Option<ManagingAutomation>,
+}
+
+/// Whether people with read access may browse a session's files (`share_workspace_files`), and
+/// the folder they would browse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceSharing {
+    /// Read access includes the session's files and changes.
+    pub enabled: bool,
+    /// The session's working directory; `None` when it has none, so there is nothing to share.
+    pub workspace: Option<String>,
+}
+
+impl WorkspaceSharing {
+    fn from_snapshot(path: &str, value: Value) -> Result<Self, SessionError> {
+        let decoded =
+            decode_snapshot_value(value).map_err(|detail| SessionError::MalformedResponse {
+                detail: format!("{path}: {detail}"),
+            })?;
+        Ok(Self {
+            enabled: decoded
+                .snapshot
+                .share_workspace_files
+                .value()
+                .copied()
+                .unwrap_or(false),
+            workspace: decoded
+                .snapshot
+                .workspace
+                .value()
+                .filter(|workspace| !workspace.trim().is_empty())
+                .cloned(),
+        })
+    }
+}
+
 impl SessionGrant {
     /// The owner's own grant, which cannot be changed here.
     #[must_use]
@@ -77,6 +130,22 @@ pub(super) fn validate_grantee(value: &str) -> Result<(), SessionError> {
         });
     }
     Ok(())
+}
+
+/// The first permissions page's `managed_by_automation`: `{id, name}` or `null`.
+fn managing_automation(
+    object: &serde_json::Map<String, Value>,
+) -> Result<Option<ManagingAutomation>, String> {
+    match object.get("managed_by_automation") {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => {
+            let automation = as_object(value, "managed_by_automation")?;
+            Ok(Some(ManagingAutomation {
+                id: req_str(automation, "id")?,
+                name: opt_str(automation, "name")?.unwrap_or_default(),
+            }))
+        }
+    }
 }
 
 fn decode_grant(value: &Value) -> Result<SessionGrant, String> {
@@ -104,6 +173,79 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         session_id: &str,
     ) -> Result<Vec<SessionGrant>, SessionError> {
+        self.session_permissions(session_id)
+            .await
+            .map(|permissions| permissions.grants)
+    }
+
+    /// Whether people with read access may browse `session_id`'s files, and its folder
+    /// (`GET /v1/sessions/{id}`).
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; the read errors; [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn workspace_sharing(
+        &self,
+        session_id: &str,
+    ) -> Result<WorkspaceSharing, SessionError> {
+        let result = async {
+            validate_identifier(session_id)?;
+            let path = format!("/v1/sessions/{session_id}");
+            let value = self.get_json(&path, &[]).await?;
+            WorkspaceSharing::from_snapshot(&path, value)
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Lets people with read access browse `session_id`'s files, or stops it (needs manage
+    /// access). Never retried.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; the write errors; [`SessionError::MalformedResponse`] for an
+    /// unreadable answer.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn set_workspace_sharing(
+        &self,
+        session_id: &str,
+        enabled: bool,
+    ) -> Result<WorkspaceSharing, SessionError> {
+        let result = async {
+            validate_identifier(session_id)?;
+            let path = format!("/v1/sessions/{session_id}");
+            let value = self
+                .write_json("PATCH", &path, &json!({"share_workspace_files": enabled}))
+                .await?;
+            WorkspaceSharing::from_snapshot(&path, value)
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Every grant on `session_id`, following `next_cursor`, and the automation that keeps
+    /// them, which the first page names (needs manage access).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::session_grants`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn session_permissions(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionPermissions, SessionError> {
         let result = async {
             validate_identifier(session_id)?;
             let path = format!("/v1/sessions/{session_id}/permissions");
@@ -111,6 +253,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 detail: format!("{path}: {detail}"),
             };
             let mut grants = Vec::new();
+            let mut managed_by = None;
             let mut cursors = BTreeSet::new();
             let mut after: Option<String> = None;
             for _ in 0..MAX_GRANT_PAGES {
@@ -120,6 +263,9 @@ impl<T: HttpTransport> ClientCore<T> {
                 }
                 let value = self.get_json(&path, &query).await?;
                 let object = as_object(&value, "permissions").map_err(malformed)?;
+                if after.is_none() {
+                    managed_by = managing_automation(object).map_err(malformed)?;
+                }
                 for row in opt_array(object, "permissions")
                     .map_err(malformed)?
                     .ok_or_else(|| malformed("`permissions` is missing".into()))?
@@ -127,12 +273,12 @@ impl<T: HttpTransport> ClientCore<T> {
                     grants.push(decode_grant(row).map_err(malformed)?);
                 }
                 match opt_str(object, "next_cursor").map_err(malformed)? {
-                    None => return Ok(grants),
+                    None => break,
                     Some(cursor) if cursors.insert(cursor.clone()) => after = Some(cursor),
                     Some(_) => return Err(SessionError::InvalidPagination),
                 }
             }
-            Ok(grants)
+            Ok(SessionPermissions { grants, managed_by })
         }
         .await;
         self.dispatch();
@@ -358,3 +504,7 @@ mod tests {
         assert_eq!(core.transport().writes().len(), 0);
     }
 }
+
+#[cfg(test)]
+#[path = "share_tests.rs"]
+mod permission_tests;

@@ -59,6 +59,42 @@ struct SidebarAdapterTests {
     #expect(grouped.projects.isEmpty)
   }
 
+  @Test("Others' automation runs join the automation folder, a placeholder until it exists")
+  func sharedRuns() {
+    var run = session("run", owner: "other")
+    run.isAutomationRun = true
+    var pinnedRun = session("pinned-run", owner: "other", pinned: true)
+    pinnedRun.isAutomationRun = true
+    var ownRun = session("own-run", owner: "me")
+    ownRun.isAutomationRun = true
+    let sessions = [run, pinnedRun, ownRun, session("theirs", owner: "other")]
+    func folders(
+      _ projects: [ProjectSummary], show: SessionShowScope = .all, manualOrder: Bool = false
+    ) -> [SessionProject] {
+      SidebarAdapter.layout(
+        sessions: sessions, projects: projects, display: SessionDisplayOptions(show: show),
+        members: { rows in
+          projectMembers(projects: projects, sessions: rows, viewerId: "me")
+        }, isOwned: isOwned, manualOrder: manualOrder
+      ).projects
+    }
+    let named = [
+      ProjectSummary(id: "p1", name: "Alpha", icon: nil),
+      ProjectSummary(id: "p2", name: "Zeta", icon: nil),
+    ]
+    let placed = folders(named)
+    #expect(placed.map(\.name) == ["Alpha", "Omnigent Automation", "Zeta"])
+    #expect(placed.map(\.isPlaceholder) == [false, true, false])
+    #expect(placed[1].sessionIds == ["run"])
+    #expect(folders(named, manualOrder: true).last?.isPlaceholder == true)
+    // Shared views list them among their rows; My sessions files them too.
+    #expect(!folders(named, show: .shared).contains { $0.isPlaceholder })
+    #expect(folders(named, show: .mine).contains { $0.isPlaceholder })
+
+    let real = folders([ProjectSummary(id: "p3", name: "Omnigent Automation", icon: nil)])
+    #expect(real.count == 1 && !real[0].isPlaceholder && real[0].sessionIds == ["run"])
+  }
+
   @Test("Row info marks shared sessions and names the workspace folder")
   func rowInfo() {
     let info = SidebarAdapter.rowInfo(session("a", owner: "other"), isOwned: false)

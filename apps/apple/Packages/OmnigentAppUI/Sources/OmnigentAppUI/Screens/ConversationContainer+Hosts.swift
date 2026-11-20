@@ -18,6 +18,7 @@ extension ConversationContainer {
       actions.switchHost = HostMoveRoute(
         kind: .switchHost(currentHostID: header.settings?.hostId),
         actions: hostMoveActions { await switchHost($0, stoppingFirst: false) })
+      actions.reconnectThisMachine = reconnectThisMachine(header.settings?.hostId)
     } else if Self.switchesOnlineHost(header), !hasSandbox {
       actions.switchHost = HostMoveRoute(
         kind: .switchHost(currentHostID: header.settings?.hostId),
@@ -30,6 +31,15 @@ extension ConversationContainer {
           preferredHostID: nil, workspace: workspace?.hasPrefix("/") == true ? workspace : nil),
         actions: hostMoveActions { await resumeOnHost($0, sheets: sheets) })
     }
+  }
+
+  /// One click starts this Mac's host again when the offline host is this Mac, as the web's
+  /// desktop app reconnects "this machine"; `nil` elsewhere or where the edition can't host.
+  private func reconnectThisMachine(_ hostID: String?) -> (@MainActor () async -> String?)? {
+    guard let hostID, hostEnvironment(hostID) == .thisMachine, let useThisMachine,
+      let url = server.flatMap({ URL(string: $0.baseUrl) })
+    else { return nil }
+    return { await useThisMachine(url) }
   }
 
   /// An owned, editable session bound to a host can move to another one (the web's host badge

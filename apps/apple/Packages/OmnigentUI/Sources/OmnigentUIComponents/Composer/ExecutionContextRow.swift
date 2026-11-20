@@ -2,19 +2,51 @@ import SwiftUI
 
 /// The execution-context line in the composer tray: `Codex · Mac Studio · omnigent / auth-refresh`
 /// with the host's status, and a warning when nothing can run there. Click for the server, host,
-/// sandbox and directory.
+/// sandbox and directory, and, as the web's host badge, Reconnect Host and Switch Host.
 struct ExecutionContextRow: View {
   let context: ExecutionContext
+  /// The session's reconnect and host moves; the offline host's sheets show from its notice.
+  var liveness = SessionLivenessActions()
 
   @State private var isPresented: Bool
+  @State private var isSwitching = false
 
   /// Creates the row.
   /// - Parameters:
   ///   - context: What to show.
+  ///   - liveness: The session's reconnect and host moves.
   ///   - isPresented: Start with the details open (playground captures).
-  init(context: ExecutionContext, isPresented: Bool = false) {
+  init(
+    context: ExecutionContext, liveness: SessionLivenessActions = SessionLivenessActions(),
+    isPresented: Bool = false
+  ) {
     self.context = context
+    self.liveness = liveness
     _isPresented = State(initialValue: isPresented)
+  }
+
+  /// Reconnect Host while the host is offline, and Switch Host where the session can move.
+  private var hostActions: ExecutionHostActions {
+    var actions = ExecutionHostActions()
+    if context.isHostOnline == false, let sheets = liveness.sheets {
+      // The offline notice under the composer holds the reconnect and move sheets.
+      actions.reconnect = {
+        isPresented = false
+        sheets.shown = .reconnect
+      }
+      if liveness.switchHost != nil {
+        actions.switchHost = {
+          isPresented = false
+          sheets.shown = .switchHost
+        }
+      }
+    } else if liveness.switchHost != nil {
+      actions.switchHost = {
+        isPresented = false
+        Task { isSwitching = true }
+      }
+    }
+    return actions
   }
 
   private var summary: String { context.summary() }
@@ -54,10 +86,23 @@ struct ExecutionContextRow: View {
     .accessibilityHint("Shows the server, host, sandbox and directory")
     .accessibilityIdentifier("composer-context")
     .popover(isPresented: $isPresented, arrowEdge: .bottom) {
-      ExecutionContextDetails(context: context)
+      ExecutionContextDetails(context: context, hostActions: hostActions)
         .presentationCompactAdaptation(.popover)
     }
+    .sheet(isPresented: $isSwitching) {
+      if let route = liveness.switchHost {
+        HostMoveSheet(kind: route.kind, actions: route.actions) { isSwitching = false }
+      }
+    }
   }
+}
+
+/// What the context details offer for the session's host.
+struct ExecutionHostActions {
+  /// Opens the reconnect sheet.
+  var reconnect: (@MainActor () -> Void)?
+  /// Opens Switch Host.
+  var switchHost: (@MainActor () -> Void)?
 }
 
 /// A host status dot: filled when online, hollow when not.
@@ -76,6 +121,7 @@ private struct StatusDot: View {
 /// The context row's popover: every part of where the session runs, labelled.
 struct ExecutionContextDetails: View {
   let context: ExecutionContext
+  var hostActions = ExecutionHostActions()
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
@@ -98,6 +144,21 @@ struct ExecutionContextDetails: View {
         row("Sandbox", context.sandbox)
         row("Directory", context.directory, monospaced: true)
         row("Branch", context.branch, monospaced: true)
+      }
+      if hostActions.reconnect != nil || hostActions.switchHost != nil {
+        Divider()
+        HStack(spacing: Theme.Spacing.small) {
+          if let reconnect = hostActions.reconnect {
+            Button("Reconnect Host", systemImage: "arrow.clockwise", action: reconnect)
+              .accessibilityIdentifier("composer-context-reconnect")
+          }
+          if let switchHost = hostActions.switchHost {
+            Button("Switch Host\u{2026}", systemImage: "arrow.left.arrow.right", action: switchHost)
+              .accessibilityIdentifier("composer-context-switch-host")
+          }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
       }
     }
     .padding(Theme.Spacing.large)

@@ -525,6 +525,9 @@ pub struct CreationCapabilities {
     /// `enabled_connections` has `mcp`: sessions can start with server-configured MCP
     /// services (the web's `McpRegistryLaunchPicker`).
     pub mcp_registry: bool,
+    /// The default sandbox provider's `sandbox_provider_automation_notices` entry: what an
+    /// automation running in its sandboxes should know.
+    pub automation_notice: Option<String>,
     /// `picker.restrict_to_agent_names`: the only agents the deployment offers, in its order;
     /// empty offers every agent.
     pub restrict_to_agent_names: Vec<String>,
@@ -646,13 +649,15 @@ impl CreationCapabilities {
             connections.is_some_and(|names| names.iter().any(|name| name.as_str() == Some(wanted)))
         };
         let github_connection = connection("github");
+        let default_sandbox_provider =
+            opt_str(object, "sandbox_provider")?.filter(|provider| !provider.is_empty());
+        let automation_notice = automation_notice(object, default_sandbox_provider.as_deref())?;
         Ok(Self {
             agent_install: opt_bool(object, "agent_install")?.unwrap_or(false),
             managed_sandboxes: opt_bool(object, "managed_sandboxes_enabled")?.unwrap_or(false),
             sandbox_providers,
             codex_plan_at_launch: feature("codex_plan_at_launch"),
-            default_sandbox_provider: opt_str(object, "sandbox_provider")?
-                .filter(|provider| !provider.is_empty()),
+            default_sandbox_provider,
             multi_repo_providers,
             model_preview_providers,
             default_model_providers,
@@ -672,10 +677,27 @@ impl CreationCapabilities {
             sibling_sessions: crate::session_families::sibling_sessions_enabled(object),
             sibling_destinations: crate::session_families::SiblingDestinations::from_info(object),
             mcp_registry: connection("mcp"),
+            automation_notice,
             restrict_to_agent_names,
             default_agent_name,
         })
     }
+}
+
+/// The default provider's `sandbox_provider_automation_notices` entry, when it says something.
+fn automation_notice(
+    object: &Map<String, Value>,
+    provider: Option<&str>,
+) -> Result<Option<String>, String> {
+    let notices = opt_object(object, "sandbox_provider_automation_notices")?;
+    Ok(provider.and_then(|provider| {
+        notices
+            .and_then(|notices| notices.get(provider))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|notice| !notice.is_empty())
+            .map(str::to_owned)
+    }))
 }
 
 /// `/v1/info.picker`, as the web's `parsePicker` reads it: blank names are unset, a list with a
@@ -1315,6 +1337,32 @@ mod tests {
             creation_body(&planned, "", &claude, None)["labels"]
                 .get(CODEX_COLLABORATION_MODE_LABEL)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn the_default_providers_automation_notice_is_read_and_others_are_not() {
+        let notices = serde_json::json!({
+            "sandbox_provider": "cloud",
+            "sandbox_provider_automation_notices": {
+                "cloud": " Keep your laptop signed in. ", "other": "Not this one."
+            }
+        });
+        let capabilities = CreationCapabilities::from_value(&notices).unwrap();
+        assert_eq!(
+            capabilities.automation_notice.as_deref(),
+            Some("Keep your laptop signed in.")
+        );
+        let unnamed = CreationCapabilities::from_value(&serde_json::json!({
+            "sandbox_provider_automation_notices": {"cloud": "Not without a default."}
+        }))
+        .unwrap();
+        assert_eq!(unnamed.automation_notice, None);
+        assert!(
+            CreationCapabilities::from_value(&serde_json::json!({
+                "sandbox_provider_automation_notices": []
+            }))
+            .is_err()
         );
     }
 

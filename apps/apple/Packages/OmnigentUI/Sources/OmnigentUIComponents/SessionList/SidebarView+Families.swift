@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// Where a row sits: its place in its family, where a drop on it lands, and its tooltip's
+/// family line.
+struct SidebarRowPlace {
+  let family: SessionRowFamily
+  let target: SidebarDropTarget?
+  let detail: String?
+}
+
 extension SidebarView {
   /// How a section or folder draws its families: `rows` family-ordered, `listedCount` of them on
   /// its page, collapsed in `scope`.
@@ -15,19 +23,23 @@ extension SidebarView {
   /// with its family stands for the section, so nothing lands inside a family.
   func rowPlace(
     _ session: SessionSummary, in section: SidebarSections.Section, layout: SidebarFamilyLayout
-  ) -> (family: SessionRowFamily, target: SidebarDropTarget?) {
+  ) -> SidebarRowPlace {
     let family = layout.family(of: session)
     let isNested = family.movesWithFamily(session)
-    return (family, dropHandler.rowTarget(session, in: section, isNested: isNested))
+    return SidebarRowPlace(
+      family: family, target: dropHandler.rowTarget(session, in: section, isNested: isNested),
+      detail: layout.detail(of: session))
   }
 
   /// How a row of `project`'s folder sits in its family, and where a drop on it lands.
   func rowPlace(
     _ session: SessionSummary, in project: SessionProject, layout: SidebarFamilyLayout
-  ) -> (family: SessionRowFamily, target: SidebarDropTarget) {
+  ) -> SidebarRowPlace {
     let family = layout.family(of: session)
     let isNested = family.movesWithFamily(session)
-    return (family, isNested ? .project(project) : .projectSlot(project, session.id))
+    return SidebarRowPlace(
+      family: family, target: isNested ? .project(project) : .projectSlot(project, session.id),
+      detail: layout.detail(of: session))
   }
 
   func summary(_ id: String) -> SessionSummary? {

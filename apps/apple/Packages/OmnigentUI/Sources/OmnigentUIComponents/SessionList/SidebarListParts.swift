@@ -181,18 +181,37 @@ struct SessionListRefreshingBar: View {
 #endif
 
 /// A row's hover tooltip: the title, when it was updated, its harness and environment, then
-/// the web's details (Created by, Repo, Branch).
+/// the web's details (its place in its family, Created by, Repo, PR, Branch).
 nonisolated enum SessionRowTooltip {
-  static func text(_ session: SessionSummary, info: SessionRowInfo, now: Date) -> String {
+  /// How long a stored PR state counts as current, as on the web.
+  static let pullRequestFreshness: TimeInterval = 5 * 60
+
+  static func text(
+    _ session: SessionSummary, info: SessionRowInfo, now: Date, family: String? = nil
+  ) -> String {
     var lines = [session.title, "Updated \(RelativeTime.short(session.updatedDate, now: now)) ago"]
     if let harness = info.harness { lines.append(HarnessAppearance(harness: harness).label) }
     if let environment = info.environment { lines.append(environment) }
     let details = [
-      info.createdBy.map { "Created by: \($0)" }, info.repo.map { "Repo: \($0)" },
+      family, info.createdBy.map { "Created by: \($0)" }, info.repo.map { "Repo: \($0)" },
+      info.pullRequest.map { "PR: \(pullRequest($0, now: now))" },
       info.branch.map { "Branch: \($0)" },
     ].compactMap { $0 }
     if !details.isEmpty { lines += [""] + details }
     return lines.joined(separator: "\n")
+  }
+
+  /// "#212 · Merged (as of 2h ago)": the stored state, and how old it is once past fresh.
+  static func pullRequest(_ pullRequest: SessionRowPullRequest, now: Date) -> String {
+    var text = "#\(pullRequest.number)"
+    guard let status = pullRequest.status else { return text }
+    text += " \u{00B7} \(status)"
+    if let checked = pullRequest.checkedAt,
+      now.timeIntervalSince(checked) >= pullRequestFreshness
+    {
+      text += " (as of \(RelativeTime.short(checked, now: now)) ago)"
+    }
+    return text
   }
 }
 

@@ -32,10 +32,12 @@ nonisolated public struct AutomationTriggerDraft: Hashable, Sendable {
   }
 }
 
-/// A saved trigger's worker settings, which this form keeps rather than edits.
+/// A trigger's worker settings: what each session started for a match takes.
 nonisolated public struct AutomationTriggerWorker: Hashable, Sendable {
   /// Workers start in their own sandboxes.
   public var inSandboxes: Bool
+  /// A new trigger's workers run where the automation does, whatever ``inSandboxes`` says.
+  public var followsTarget = false
   /// Their agent; `nil` is the polling session's.
   public var agentID: String?
   /// Their model; empty is the agent's.

@@ -49,7 +49,6 @@ struct WorkflowRunRowView: View {
   let actions: WorkflowDetailActions
   var nested = false
   @State private var isHovered = false
-  @State private var showsGraph = false
 
   var body: some View {
     HStack(alignment: .top, spacing: Theme.Spacing.medium) {
@@ -66,13 +65,15 @@ struct WorkflowRunRowView: View {
         .accessibilityIdentifier("workflow-run-open-\(run.id)")
         line
         if let starter = run.startedBy { startedBy(starter) }
-        if !run.steps.isEmpty { strip.padding(.top, Theme.Spacing.small) }
+        if !run.steps.isEmpty {
+          WorkflowRunStrip(run: run, actions: actions).padding(.top, Theme.Spacing.small)
+        }
         if !nested, let descendants = run.descendants {
           WorkflowDescendantsList(run: run, descendants: descendants, actions: actions)
             .padding(.top, Theme.Spacing.small)
         }
       }
-      controls
+      WorkflowRunControls(run: run, actions: actions)
     }
     .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.small)
     .background(
@@ -116,89 +117,6 @@ struct WorkflowRunRowView: View {
     .help("Open the session that started this run")
     .accessibilityIdentifier("workflow-run-started-by-\(run.id)")
   }
-
-  /// One segment per task, colored by where it stands; a click opens that task in the session.
-  private var strip: some View {
-    HStack(spacing: run.steps.count > 16 ? 1 : 3) {
-      ForEach(run.steps) { step in
-        Button {
-          actions.openTask?(run.sessionID, step.id)
-        } label: {
-          Capsule()
-            .fill(TaskStyle.segment(step.state ?? .waiting))
-            .frame(height: 6)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Task \(step.number) of \(run.steps.count): \(step.name)")
-        .contextMenu {
-          if let action = step.action, let perform = actions.taskAction {
-            Button(action.title, systemImage: TaskStyle.symbol(action.kind)) {
-              perform(run.id, step.id, action.kind)
-            }
-          }
-        }
-        .accessibilityLabel("Task \(step.number), \(step.name)")
-        .accessibilityIdentifier("workflow-run-segment-\(run.id)-\(step.id)")
-      }
-    }
-  }
-
-  @ViewBuilder private var controls: some View {
-    HStack(spacing: Theme.Spacing.extraSmall) {
-      if let control = run.control { runControl(control) }
-      if let workflowID = run.workflowLinkID, let open = actions.openWorkflow {
-        Button("Open the workflow", systemImage: "flowchart") { open(workflowID) }
-          .labelStyle(.iconOnly)
-          .buttonStyle(.borderless)
-          .help("Open the workflow")
-          .accessibilityIdentifier("workflow-run-workflow-\(run.id)")
-      }
-      if let graph = run.graph, !graph.steps.isEmpty {
-        Button("View this run on the graph", systemImage: "arrow.up.left.and.arrow.down.right") {
-          showsGraph = true
-        }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .help("View this run on the graph")
-        .accessibilityIdentifier("workflow-run-graph-\(run.id)")
-        .sheet(isPresented: $showsGraph) {
-          WorkflowRunGraphSheet(run: run, graph: graph, actions: actions) { showsGraph = false }
-        }
-      }
-    }
-    .foregroundStyle(.secondary)
-  }
-
-  @ViewBuilder private func runControl(_ control: WorkflowRunControl) -> some View {
-    switch control {
-    case .stopping:
-      Label {
-        Text("Stopping\u{2026}")
-      } icon: {
-        ProgressView().controlSize(.mini)
-      }
-      .font(.caption)
-      .accessibilityIdentifier("workflow-run-stopping-\(run.id)")
-    case .stop:
-      Button("Stop", systemImage: "stop.fill") { actions.runControl?(run.id, .stop) }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .disabled(run.isActing)
-        .help("Stop")
-        .accessibilityIdentifier("workflow-run-stop-\(run.id)")
-    case .play:
-      Button("Continue the plan", systemImage: "play.fill") { actions.runControl?(run.id, .play) }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .disabled(run.isActing)
-        .help("Continue the plan")
-        .accessibilityIdentifier("workflow-run-continue-\(run.id)")
-    }
-  }
-
 }
 
 /// "Ran N workflows" under a run, open while one of them works or waits; each below its starter
@@ -272,36 +190,5 @@ enum DisclosureChoice: Hashable, Sendable {
     case .open: true
     case .closed: false
     }
-  }
-}
-
-/// A run on its workflow's graph: the title, when it started and where it stands, then each
-/// task's box in its state, with the task's action in its menu.
-private struct WorkflowRunGraphSheet: View {
-  let run: WorkflowRunRowState
-  let graph: WorkflowGraphState
-  let actions: WorkflowDetailActions
-  let close: @MainActor () -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-      HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-          Text(run.title).font(.headline)
-          Text("\(TaskTimes.stamp(run.startedAt, now: .now)) \u{00B7} \(run.stateLabel)")
-            .font(.caption).foregroundStyle(.secondary)
-        }
-        Spacer()
-        Button("Done", action: close).keyboardShortcut(.cancelAction)
-      }
-      WorkflowStepsGraph(graph: graph) { step, action in
-        actions.taskAction?(run.id, step.id, action)
-      }
-    }
-    .padding(Theme.Spacing.large)
-    #if os(macOS)
-      .frame(minWidth: 560, idealWidth: 720, minHeight: 420)
-    #endif
-    .accessibilityIdentifier("workflow-run-graph-sheet")
   }
 }

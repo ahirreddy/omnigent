@@ -115,15 +115,17 @@ enum AutomationsMapping {
       continuesSession: automation.continuesSession)
     draft.hostID = automation.hostId ?? ""
     draft.workspace = automation.workspace ?? ""
+    draft.baseBranch = automation.baseBranch
     draft.runsInSandbox = automation.runsInSandbox
     draft.projectID = automation.projectId ?? ""
     draft.maxCost = automation.maxCostUsd ?? ""
+    draft.timezone = automation.timezone.isEmpty ? draft.timezone : automation.timezone
     draft.mcpServices = automation.mcpServices
     draft.sourceSessionID = automation.sourceSessionId
     draft.isTrigger = automation.isTrigger
     restoreOverrides(&draft, from: automation)
     if automation.isTrigger, let config = decodeTriggerPrompt(prompt: automation.prompt) {
-      return AutomationTriggerMapping.editDraft(config, base: draft)
+      return AutomationTriggerMapping.editDraft(config, base: draft, workflows: workflows)
     }
     let withoutHeader = stripTriggerHeader(prompt: automation.prompt)
     if withoutHeader != automation.prompt {
@@ -134,20 +136,12 @@ enum AutomationsMapping {
       draft.prompt = parts.userPrompt
       draft.systemPrompt = parts.systemPrompt
     }
-    // A saved workflow's run opens as its Workflow, with any additional instructions.
-    if workflows, let run = parseSavedWorkflowMessage(text: draft.prompt) {
-      draft.workflow = AutomationOption(id: run.id, name: run.name)
-      draft.workflowDetailsID = run.details.isEmpty ? nil : run.id
-      draft.prompt = run.details
+    if workflows {
+      let prompt = draft.prompt
+      let details = openWorkflow(prompt, in: &draft)
+      draft.prompt = details
     }
     return draft
-  }
-
-  /// Puts back `automation`'s model, effort and permission mode, as the editor opened with.
-  static func restoreOverrides(_ draft: inout AutomationDraftState, from automation: Automation?) {
-    draft.model = automation?.modelOverride ?? ""
-    draft.effort = automation?.reasoningEffort ?? ""
-    draft.permissionMode = automation?.permissionMode ?? ""
   }
 
   /// The prompt to save: a trigger's, the instructions put back into an older trigger's text,
@@ -181,9 +175,10 @@ enum AutomationsMapping {
     return AutomationDraft(
       name: draft.name, prompt: prompt,
       rrule: draft.schedule.map { buildScheduleRrule(model: model($0)) } ?? saved?.rrule ?? "",
-      agentId: draft.agentID, timezone: saved?.timezone ?? TimeZone.current.identifier,
+      agentId: draft.agentID, timezone: draft.timezone,
       continuesSession: sessionModes ? draft.continuesSession : nil,
       hostId: filled(draft.hostID), workspace: filled(draft.workspace),
+      baseBranch: draft.baseBranch,
       runsInSandbox: draft.runsInSandbox, projectId: filled(draft.projectID),
       sendsOverrides: sendsOverrides, modelOverride: filled(draft.model),
       reasoningEffort: filled(draft.effort), permissionMode: filled(draft.permissionMode),

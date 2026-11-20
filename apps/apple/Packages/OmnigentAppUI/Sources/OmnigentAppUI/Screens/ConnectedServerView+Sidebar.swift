@@ -326,11 +326,20 @@ extension ConnectedServerView {
     }
   }
 
-  /// Control-Command-digit: the pinned session at `index`, in the Pinned section's order.
-  func openPinnedSession(_ index: Int) {
-    let pinned = SidebarNavigationOrder.pinnedIDs(sidebarState)
-    guard pinned.indices.contains(index) else { return }
-    showInPlace(pinned[index])
+  /// Control-Tab's recent-sessions switcher, opening its choice in place.
+  var recentSessionsSwitching: RecentSessionsSwitching {
+    // The open session is read when Control-Tab is pressed, so a page change doesn't render
+    // the window again.
+    let tabs = session.tabs
+    return RecentSessionsSwitching(
+      connection: connection, active: { tabs.currentSessionID }, open: showInPlace)
+  }
+
+  /// Control-Command-digit: the session at `index` among the sidebar's rows on screen.
+  func openNumberedSession(_ index: Int) {
+    let numbered = SidebarNavigationOrder.numberedIDs(sidebarState)
+    guard numbered.indices.contains(index) else { return }
+    showInPlace(numbered[index])
   }
 
   func report() {

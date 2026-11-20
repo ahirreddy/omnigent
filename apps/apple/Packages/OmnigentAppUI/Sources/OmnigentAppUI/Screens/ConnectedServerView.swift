@@ -113,7 +113,8 @@ public struct ConnectedServerView: View {
     .environment(\.tabOverviewPresenter, overviewPresenter)
     .onAppear { overviewPresenter.open = { showsTabOverview = true } }
     .modifier(PaletteAdapter(session: session, selection: $selection))
-    .background { PinnedSessionShortcuts(open: openPinnedSession) }
+    .background { SidebarSessionShortcuts(open: openNumberedSession) }
+    .modifier(recentSessionsSwitching)
     .modifier(groupSortPruning)
     .copyConfirmations()
     .environment(\.transcriptFocus, session.transcriptFocus)
@@ -166,7 +167,7 @@ public struct ConnectedServerView: View {
     state.undo = sidebar.undo?.banner
     state.collapsedFamilies = sidebar.collapsedFamilies
     state = SidebarNestedDraftRows.applied(
-      to: state, drafts: connection.creationStore?.nestedDrafts ?? [], list: connection.sessionList)
+      to: state, creation: connection.creationStore, list: connection.sessionList)
     SidebarAdapter.applyOfferedPages(connection.pages?.offered, to: &state)
     state.projectRunChoices = newProjectRunChoices
     state.pagesFailure = SidebarAdapter.pagesFailure(connection)
@@ -218,7 +219,7 @@ public struct ConnectedServerView: View {
         connection: connection, open: { selection = .session($0) },
         newSession: { selection = .newSession })
     case .automations:
-      AutomationsAdapter(connection: connection) { selection = .session($0) }
+      automationsPage
     case .workflows:
       workflowsPage
     case .usage:
@@ -264,6 +265,7 @@ public struct ConnectedServerView: View {
       makeShareStore: { connection.share(sessionID: id) },
       offersShare: source == nil && ShareAdapter.offered(connection.pages?.offered),
       shareUnavailableReason: ShareAdapter.unavailableReason(connection.pages?.offered),
+      openAutomationSharing: openAutomationSharing,
       linkedWorkspace: ownerID.flatMap { hostsPanel ? session.workspace(of: $0) : nil })
   }
 

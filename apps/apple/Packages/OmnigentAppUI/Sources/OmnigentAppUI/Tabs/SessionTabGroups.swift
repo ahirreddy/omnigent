@@ -34,6 +34,9 @@ public final class SessionTabGroups {
   public private(set) var groups: [String: TabStore] = [:]
   /// Sessions in the order they were last shown, the most recent first.
   public private(set) var recentSessions: [String] = []
+  /// The pages Back and Forward step through. It changes only with ``page``, which views
+  /// already observe.
+  @ObservationIgnored public private(set) var history = PageHistory()
   /// The session a project board's quick view shows beside its lanes; it stays open meanwhile.
   public var quickViewSessionID: String?
   /// Tabs in the order they were last shown, across sessions, the most recent first.
@@ -101,6 +104,22 @@ public final class SessionTabGroups {
   public func show(_ destination: SidebarDestination?) {
     if let sessionID = destination?.sessionID { _ = group(sessionID) }
     guard page != destination else { return }
+    if let page { history.leave(page) }
+    present(destination)
+  }
+
+  /// Goes back to the page shown before this one (Command-[).
+  public func goBack() {
+    if let target = history.goBack(from: page) { present(target) }
+  }
+
+  /// Goes forward to the page Back left (Command-]).
+  public func goForward() {
+    if let target = history.goForward(from: page) { present(target) }
+  }
+
+  private func present(_ destination: SidebarDestination?) {
+    if let sessionID = destination?.sessionID { _ = group(sessionID) }
     // A quick view belongs to the board it opened on.
     quickViewSessionID = nil
     page = destination
@@ -202,6 +221,7 @@ public final class SessionTabGroups {
       if let group = groups.removeValue(forKey: sessionID) { retire(group) }
     }
     recentSessions.removeAll(where: sessionIDs.contains)
+    history.remove(sessions: sessionIDs)
     viewChoices = viewChoices.filter { !sessionIDs.contains($0.key) }
     chromes = chromes.filter { !sessionIDs.contains($0.key) }
     if let shown = currentSessionID, sessionIDs.contains(shown) {

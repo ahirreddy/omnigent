@@ -78,6 +78,26 @@ struct WorkflowsStoreTests {
     #expect(!store.stoppingRuns.contains(runID), "the run stopped")
   }
 
+  @Test("A Stop shows as stopping on the run's row and its session's Tasks tab alike")
+  func sharedStop() async throws {
+    let server = server()
+    let path = "/v1/workflows/\(id)/runs"
+    server.route(path, runs(running: true))
+    server.route("/v1/sessions/\(session)/events", .json(#"{"queued":false}"#))
+    let connection = try await connectedStore(server)
+    let store = try #require(connection.workflows)
+    let tasks = try #require(connection.tasks(session))
+    await store.loadRuns(id)
+    let run = try #require(store.runs[id]?.value?.first)
+    #expect(await connection.stopWorkflowRun(run, planName: "Triage", workflowID: id))
+    #expect(tasks.isPlanStopping(working: true, latest: nil), "the Tasks tab says Stopping…")
+    // A Stop the Tasks tab took shows on the run's row.
+    store.stoppingRuns.removeAll()
+    let stop = tasks.beginPlanStop(latest: nil)
+    tasks.planStopDelivered(stop, taken: true)
+    #expect(connection.stoppingRuns([run]) == [runID])
+  }
+
   @Test("A session's current run of a workflow is read by session, for the runs below it")
   func sessionRun() async throws {
     let server = server()

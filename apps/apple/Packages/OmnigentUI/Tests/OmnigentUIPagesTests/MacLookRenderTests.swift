@@ -34,6 +34,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case composerRewind = "composer-rewind"
   case composerMcp = "composer-mcp"
   case composerEditResend = "composer-edit-resend"
+  /// The composer context's details with Reconnect Host and Switch Host.
+  case composerHostActions = "composer-host-actions"
   case prChanges = "pr-changes"
   case prFind = "pr-find"
   case prCommits = "pr-commits"
@@ -47,11 +49,24 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case settingsPlugin = "settings-plugin"
   case settingsAdminGeneral = "settings-admin-general"
   case sessionsDeleteAutomation = "sessions-delete-automation"
+  case sessionsRecentSwitcher = "sessions-recent-switcher"
+  case sessionsProjectFolders = "sessions-project-folders"
+  case shareManaged = "share-managed"
+  case composerReconnectThisMac = "composer-reconnect-this-mac"
+  case transcriptPresence = "transcript-presence"
   case tasksPlan = "tasks-plan"
   case tasksStopping = "tasks-stopping"
   case tasksHistory = "tasks-history"
   case automationsLegacyShare = "automations-legacy-share"
   case automationsNew = "automations-new"
+  /// Runs that follow a plan: tasks, the agent's last words and the plan's buttons.
+  case automationsRunTasks = "automations-run-tasks"
+  case automationsTriggerWorkflow = "automations-trigger-workflow"
+  case automationsExamples = "automations-examples"
+  case automationsRunHighlight = "automations-run-highlight"
+  case automationsNewDefaults = "automations-new-defaults"
+  case automationsSandboxNotice = "automations-sandbox-notice"
+  case automationsTriggerWorkers = "automations-trigger-workers"
   case viewersPDF = "viewers-pdf"
   case viewersVideo = "viewers-video"
   /// Recording links in a reply: a workspace recording and a remote one.
@@ -105,8 +120,15 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .composerRewind, .tasksPlan, .tasksStopping, .prFileHeader: 480
     case .tasksHistory: 420
     case .sessionsDeleteAutomation: 460
-    case .automationsLegacyShare: 900
-    case .automationsNew: 600
+    case .automationsLegacyShare, .automationsRunTasks, .automationsExamples,
+      .automationsRunHighlight:
+      900
+    case .automationsNew, .automationsTriggerWorkflow, .automationsNewDefaults,
+      .automationsSandboxNotice, .automationsTriggerWorkers:
+      600
+    case .shareManaged, .composerReconnectThisMac: 520
+    case .transcriptPresence: 240
+    case .sessionsProjectFolders: 300
     case .projectsNewFolder, .projectsNewRepository: 460
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin,
       .settingsAdminGeneral:
@@ -123,8 +145,13 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .composerRewind: 460
     case .tasksPlan: 620
     case .tasksStopping: 420
+    case .sessionsProjectFolders: 760
     case .automationsLegacyShare: 640
+    case .automationsRunTasks, .automationsRunHighlight: 900
     case .automationsNew: 760
+    case .automationsNewDefaults, .automationsSandboxNotice, .automationsTriggerWorkers: 1_640
+    case .shareManaged: 760
+    case .composerReconnectThisMac: 820
     case .projectsNewFolder, .projectsNewRepository: 440
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 560
     case .viewersPDF: 520
@@ -176,6 +203,13 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .composerRewind: return AnyView(Fixture.rewind)
     case .composerMcp: return AnyView(Fixture.mcpBar)
     case .composerEditResend: return AnyView(LookEditResend())
+    case .composerHostActions:
+      return AnyView(
+        ExecutionContextDetails(
+          context: ComposerSamples.context,
+          hostActions: ExecutionHostActions(reconnect: {}, switchHost: {})
+        )
+        .omnigentAppearance(.omni))
     case .prChanges: return AnyView(Fixture.changes(find: false))
     case .prFind: return AnyView(Fixture.changes(find: true))
     case .prCommits: return AnyView(Fixture.commits)
@@ -189,11 +223,27 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .settingsPlugin: return AnyView(Fixture.settings { Fixture.pluginPage })
     case .settingsAdminGeneral: return AnyView(Fixture.settings { Fixture.adminGeneral })
     case .sessionsDeleteAutomation: return AnyView(Fixture.deleteAutomationSource)
+    case .sessionsRecentSwitcher: return AnyView(Fixture.recentSwitcher)
+    case .sessionsProjectFolders: return AnyView(Fixture.projectFolders)
+    case .shareManaged: return AnyView(Fixture.shareManaged)
+    case .composerReconnectThisMac: return AnyView(Fixture.reconnectThisMac)
+    case .transcriptPresence: return AnyView(Fixture.presence)
     case .tasksPlan: return AnyView(Fixture.tasks)
     case .tasksStopping: return AnyView(Fixture.tasksStopping)
     case .tasksHistory: return AnyView(Fixture.taskHistory)
     case .automationsLegacyShare: return AnyView(Fixture.legacyShareDetail)
     case .automationsNew: return AnyView(Fixture.newAutomation)
+    case .automationsRunTasks: return AnyView(Fixture.automationRunTasks())
+    case .automationsRunHighlight: return AnyView(Fixture.automationRunTasks(highlighted: "r1"))
+    case .automationsNewDefaults:
+      return AnyView(Fixture.newAutomationDefaults.omnigentAppearance(.omni))
+    case .automationsSandboxNotice:
+      return AnyView(Fixture.sandboxNotice.omnigentAppearance(.omni))
+    case .automationsTriggerWorkers:
+      return AnyView(Fixture.triggerWorkers.omnigentAppearance(.omni))
+    case .automationsExamples:
+      return AnyView(AutomationExamplesView(back: {}, done: {}).omnigentAppearance(.omni))
+    case .automationsTriggerWorkflow: return AnyView(Fixture.triggerWorkflow)
     case .viewersPDF: return AnyView(PDFPreviewView(data: Fixture.pdf, truncated: false))
     case .viewersVideo: return AnyView(Fixture.video)
     case .viewersChatVideo: return AnyView(Fixture.chatVideo)

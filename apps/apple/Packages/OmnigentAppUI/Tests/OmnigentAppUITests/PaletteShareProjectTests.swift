@@ -135,6 +135,42 @@ struct ShareAdapterStoreTests {
     #expect(state.errorMessage == nil)
   }
 
+  @Test("An automation keeping the shares is named, and its link opens it")
+  func managedByAutomation() async throws {
+    let fake = AppServer()
+    fake.route(
+      "/v1/sessions/conv_a/permissions", method: "GET",
+      .json(
+        #"{"permissions":[{"user_id":"local","level":4}],"managed_by_automation":{"id":"t1","name":"Nightly triage"},"next_cursor":null}"#
+      ))
+    let store = try await shared(fake)
+    #expect(ShareAdapter.state(store, link: nil).managedBy == "Nightly triage")
+    var opened: [String] = []
+    ShareAdapter.actions(store) { opened.append($0) }.openManagingAutomation?()
+    #expect(opened == ["t1"])
+    #expect(ShareAdapter.actions(store).openManagingAutomation == nil)
+    #expect(ShareAdapter.state(try await shared(server()), link: nil).managedBy == nil)
+  }
+
+  @Test("Workspace files show for a session with a folder, and the toggle writes the flag")
+  func workspaceFiles() async throws {
+    let fake = server()
+    fake.route(
+      "/v1/sessions/conv_a", method: "GET",
+      .json(#"{"id":"conv_a","status":"idle","created_at":1,"workspace":"/work"}"#))
+    fake.route(
+      "/v1/sessions/conv_a", method: "PATCH",
+      .json(
+        #"{"id":"conv_a","status":"idle","created_at":1,"workspace":"/work","share_workspace_files":true}"#
+      ))
+    let store = try await shared(fake)
+    #expect(ShareAdapter.state(store, link: nil).workspaceFiles == false)
+    let toggle = try #require(ShareAdapter.actions(store).setWorkspaceFiles)
+    toggle(true)
+    try await eventually("the flag") { !fake.requests("PATCH", "/v1/sessions/conv_a").isEmpty }
+    #expect(ShareAdapter.actions(try await shared(server())).setWorkspaceFiles == nil)
+  }
+
   @Test("Each control reaches the server")
   func actions() async throws {
     let fake = server()

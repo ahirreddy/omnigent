@@ -29,6 +29,12 @@ public struct ShareSheet: View {
   public var body: some View {
     NavigationStack {
       Form {
+        if let automation = state.managedBy {
+          Section {
+            ShareManagedNotice(
+              automation: automation, open: actions.openManagingAutomation, close: done)
+          }
+        }
         Section {
           description
           Picker(

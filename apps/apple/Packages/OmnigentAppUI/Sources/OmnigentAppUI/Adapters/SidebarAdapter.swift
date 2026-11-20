@@ -29,7 +29,8 @@ enum SidebarAdapter {
     let filter = OmnigentUIComponents.SessionFilter(list.filter)
     let layout = layout(
       sessions: contents.visible, projects: list.projects, display: display,
-      members: list.members, isOwned: list.isOwned)
+      members: list.members, isOwned: list.isOwned,
+      manualOrder: list.projectSortMode == .manual)
     let idle = SessionAttention(state: .idle, requests: 0)
     let listState = SessionListViewState(
       sessions: layout.sessions.map {
@@ -137,15 +138,16 @@ enum SidebarAdapter {
   ///   - display: The display options.
   ///   - members: Groups sessions into `projects` (the core's `projectMembers`).
   ///   - isOwned: Whether the viewer owns a session.
+  ///   - manualOrder: The folders follow the caller's order rather than their names.
   /// - Returns: The sessions to list and the folders.
   static func layout(
     sessions: [OmnigentCoreFFI.SessionSummary], projects: [ProjectSummary],
     display: SessionDisplayOptions,
     members: ([OmnigentCoreFFI.SessionSummary]) -> [[String]],
-    isOwned: (OmnigentCoreFFI.SessionSummary) -> Bool
+    isOwned: (OmnigentCoreFFI.SessionSummary) -> Bool, manualOrder: Bool = false
   ) -> (sessions: [OmnigentCoreFFI.SessionSummary], projects: [SessionProject]) {
     let pinned = shownPinned(sessions)
-    let folders: [SessionProject]
+    var folders: [SessionProject] = []
     if display.groupBy == .default {
       let groups = members(sessions.filter { !pinned.contains($0.id) })
       folders = zip(projects, groups).map { project, ids in
@@ -153,8 +155,12 @@ enum SidebarAdapter {
           id: projectFolderId(project: project), name: project.name, sessionIds: ids,
           projectID: project.id, icon: project.icon)
       }
-    } else {
-      folders = []
+      // Filing is the owner's, so the Shared view keeps others' runs among its rows.
+      if display.show == .all || display.show == .mine {
+        folders = withSharedRuns(
+          folders, sessions: sessions, isOwned: isOwned, pinned: pinned,
+          manualOrder: manualOrder)
+      }
     }
     let filed = Set(folders.flatMap(\.sessionIds))
     let shown = sessions.filter { session in
@@ -204,6 +210,7 @@ enum SidebarAdapter {
         ?? false)
     info.createdBy = isOwned ? (session.owner == nil ? nil : "You") : session.owner
     info.runsOnHost = configuration?.hostId != nil
+    info.pullRequest = session.pullRequest.map(pullRequest)
     info.hasLiveSandbox = SandboxAdapter.isAlive(
       session, isOwned: isOwned, environments: environments)
     if let launch = SandboxAdapter.launchNote(configuration?.sandboxLaunch) {
@@ -216,6 +223,21 @@ enum SidebarAdapter {
       }
     }
     return info
+  }
+
+  /// The tooltip's PR: its number, and its stored state when its host fetched one.
+  static func pullRequest(_ pullRequest: RowPullRequest) -> SessionRowPullRequest {
+    let status: String? =
+      switch pullRequest.status {
+      case .open: "Open"
+      case .draft: "Draft"
+      case .merged: "Merged"
+      case .closed: "Closed"
+      case .unknown: nil
+      }
+    return SessionRowPullRequest(
+      number: pullRequest.number, status: status,
+      checkedAt: pullRequest.checkedAt.map { Date(timeIntervalSince1970: TimeInterval($0)) })
   }
 
   /// The Environment detail: a session without a host runs on the server's own machine.

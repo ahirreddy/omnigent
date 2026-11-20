@@ -87,8 +87,8 @@ struct AutomationTag: View {
 
 /// A trigger template's fields as form sections behind the web's Trigger and Instructions tabs:
 /// the Trigger tab with what the event does and its tags, the event, scope, inline value,
-/// conditions and link-back; the Instructions tab with what each started session gets and the
-/// prompt it renders.
+/// conditions and link-back; the Instructions tab with the Workflow field, what each started
+/// session gets and the prompt it renders.
 struct AutomationTriggerFields: View {
   @Binding var trigger: AutomationTriggerDraft
   let template: AutomationTriggerTemplate
@@ -98,12 +98,20 @@ struct AutomationTriggerFields: View {
   @Binding var usesMcp: Bool
   /// Switches the event, as the core's `trigger_fields_for_event`.
   var switchEvent: (@MainActor (String) -> Void)?
+  /// The Workflow field above the instructions, where the server runs workflows.
+  var workflowField: AutomationWorkflowField?
+  /// A workflow is chosen, so the instructions are optional details for its runs.
+  var instructionsAreDetails = false
+  /// Runs follow the chosen workflow as saved, so there are no instructions to edit.
+  var hidesInstructions = false
   let editAsPrompt: () -> Void
   @State private var panel: AutomationTriggerPanel = .trigger
 
   private var copy: AutomationTriggerCopy {
     AutomationTriggerCopy(template: template, trigger: trigger)
   }
+
+  private var instructionsTooLong: Bool { !hidesInstructions && copy.instructionsTooLong }
 
   var body: some View {
     Section {
@@ -113,7 +121,7 @@ struct AutomationTriggerFields: View {
       .pickerStyle(.segmented)
       .labelsHidden()
       .accessibilityIdentifier("automation-trigger-tabs")
-      if copy.instructionsTooLong, panel != .instructions {
+      if instructionsTooLong, panel != .instructions {
         HStack(alignment: .firstTextBaseline) {
           Label(copy.tooLongMessage, systemImage: "exclamationmark.triangle.fill")
             .foregroundStyle(.red)
@@ -127,7 +135,11 @@ struct AutomationTriggerFields: View {
     }
     switch panel {
     case .trigger: triggerSection
-    case .instructions: instructionsSection
+    case .instructions:
+      AutomationTriggerInstructions(
+        trigger: $trigger, template: template, renderedPrompt: renderedPrompt,
+        workflowField: workflowField, instructionsAreDetails: instructionsAreDetails,
+        hidesInstructions: hidesInstructions, editAsPrompt: editAsPrompt)
     }
   }
 
@@ -136,7 +148,8 @@ struct AutomationTriggerFields: View {
     case .trigger: "Trigger"
     case .instructions:
       trigger.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        ? "Instructions *" : (copy.instructionsTooLong ? "Instructions \u{26A0}" : "Instructions")
+        && !instructionsAreDetails
+        ? "Instructions *" : (instructionsTooLong ? "Instructions \u{26A0}" : "Instructions")
     }
   }
 
@@ -202,32 +215,6 @@ struct AutomationTriggerFields: View {
     }
   }
 
-  private var instructionsSection: some View {
-    Section {
-      TextField(
-        copy.instructionsLabel, text: $trigger.instructions,
-        prompt: Text(template.instructionsPlaceholder), axis: .vertical
-      )
-      .lineLimit(8...14)
-      .labelsHidden()
-      .accessibilityIdentifier("automation-trigger-instructions")
-      if copy.instructionsTooLong {
-        Text(copy.tooLongMessage).font(.callout).foregroundStyle(.red)
-          .accessibilityIdentifier("automation-trigger-instructions-limit")
-      }
-      if !renderedPrompt.isEmpty {
-        DisclosureGroup("Prompt each run sends") {
-          Text(renderedPrompt).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-        }
-        .accessibilityIdentifier("automation-trigger-prompt-preview")
-        Button("Edit as a prompt", action: editAsPrompt)
-          .accessibilityIdentifier("automation-trigger-edit-prompt")
-      }
-    } header: {
-      Text(copy.instructionsLabel)
-    }
-  }
-
   private var linkBack: Binding<Bool> {
     Binding(
       get: { trigger.linkBack },
@@ -244,6 +231,59 @@ struct AutomationTriggerFields: View {
         guard id != trigger.event else { return }
         if let switchEvent { switchEvent(id) } else { trigger.event = id }
       })
+  }
+}
+
+/// The trigger form's Instructions tab: the Workflow field, then what each started session gets
+/// and the prompt it renders, unless the chosen workflow runs as saved.
+struct AutomationTriggerInstructions: View {
+  @Binding var trigger: AutomationTriggerDraft
+  let template: AutomationTriggerTemplate
+  let renderedPrompt: String
+  var workflowField: AutomationWorkflowField?
+  var instructionsAreDetails = false
+  var hidesInstructions = false
+  let editAsPrompt: () -> Void
+
+  private var copy: AutomationTriggerCopy {
+    AutomationTriggerCopy(template: template, trigger: trigger)
+  }
+
+  private var label: String {
+    instructionsAreDetails ? "Additional instructions (optional)" : copy.instructionsLabel
+  }
+
+  var body: some View {
+    if let workflowField { workflowField }
+    if !hidesInstructions {
+      Section {
+        TextField(
+          label, text: $trigger.instructions,
+          prompt: Text(
+            instructionsAreDetails
+              ? "Leave empty to run the workflow as saved." : template.instructionsPlaceholder),
+          axis: .vertical
+        )
+        .lineLimit(8...14)
+        .labelsHidden()
+        .accessibilityIdentifier("automation-trigger-instructions")
+        if copy.instructionsTooLong {
+          Text(copy.tooLongMessage).font(.callout).foregroundStyle(.red)
+            .accessibilityIdentifier("automation-trigger-instructions-limit")
+        }
+        if !renderedPrompt.isEmpty {
+          DisclosureGroup("Prompt each run sends") {
+            Text(renderedPrompt).font(.caption).foregroundStyle(.secondary)
+              .textSelection(.enabled)
+          }
+          .accessibilityIdentifier("automation-trigger-prompt-preview")
+          Button("Edit as a prompt", action: editAsPrompt)
+            .accessibilityIdentifier("automation-trigger-edit-prompt")
+        }
+      } header: {
+        Text(label)
+      }
+    }
   }
 }
 

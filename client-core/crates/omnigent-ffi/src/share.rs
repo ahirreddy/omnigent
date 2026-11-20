@@ -42,8 +42,100 @@ impl From<core::SessionGrant> for SessionGrant {
     }
 }
 
+/// The automation that keeps a session's shares.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct ManagingAutomation {
+    /// Its id.
+    pub id: String,
+    /// Its name.
+    pub name: String,
+}
+
+/// A session's grants and the automation that keeps them, if one does.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct SessionPermissions {
+    /// Every grant, the owner's included.
+    pub grants: Vec<SessionGrant>,
+    /// The automation whose runs replace the shares with its own list.
+    pub managed_by: Option<ManagingAutomation>,
+}
+
+/// Whether people with read access may browse a session's files, and its folder.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct WorkspaceSharing {
+    /// Read access includes the session's files and changes.
+    pub enabled: bool,
+    /// The session's working directory; `nil` when it has none.
+    pub workspace: Option<String>,
+}
+
+impl From<core::WorkspaceSharing> for WorkspaceSharing {
+    fn from(sharing: core::WorkspaceSharing) -> Self {
+        Self {
+            enabled: sharing.enabled,
+            workspace: sharing.workspace,
+        }
+    }
+}
+
 #[uniffi::export]
 impl ClientCore {
+    /// Whether people with read access may browse `session_id`'s files, and its folder.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`, the read errors and `MalformedResponse`.
+    pub async fn workspace_sharing(
+        &self,
+        session_id: String,
+    ) -> Result<WorkspaceSharing, CoreError> {
+        self.sessions()
+            .workspace_sharing(&session_id)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Lets people with read access browse `session_id`'s files, or stops it. Never retried.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`, the write errors and `MalformedResponse`.
+    pub async fn set_workspace_sharing(
+        &self,
+        session_id: String,
+        enabled: bool,
+    ) -> Result<WorkspaceSharing, CoreError> {
+        self.sessions()
+            .set_workspace_sharing(&session_id, enabled)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Every grant on `session_id`, and the automation that keeps them (needs manage access).
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: as [`Self::session_grants`].
+    pub async fn session_permissions(
+        &self,
+        session_id: String,
+    ) -> Result<SessionPermissions, CoreError> {
+        let permissions = self
+            .sessions()
+            .session_permissions(&session_id)
+            .await
+            .map_err(CoreError::from)?;
+        Ok(SessionPermissions {
+            grants: permissions.grants.into_iter().map(Into::into).collect(),
+            managed_by: permissions.managed_by.map(|automation| ManagingAutomation {
+                id: automation.id,
+                name: automation.name,
+            }),
+        })
+    }
+
     /// Every grant on `session_id` (needs manage access).
     ///
     /// # Errors

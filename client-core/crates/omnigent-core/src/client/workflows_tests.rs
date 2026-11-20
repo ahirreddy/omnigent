@@ -316,3 +316,48 @@ fn grants_list_add_and_remove_read_access() {
     let delete = core.transport().writes().pop().unwrap();
     assert_eq!(path_of(&delete), format!("{path}/bob@example.com"));
 }
+
+#[test]
+fn an_automations_run_plans_read_two_pages_of_fifty_runs() {
+    let core = connected(RouteTransport::local());
+    let path = format!("/v1/scheduled-tasks/{ID}/run-steps");
+    let run = |id: &str| {
+        json!({
+            "run_id": id, "plan_id": ID, "is_current": false, "workflow_id": null,
+            "steps": [{"id": "a", "name": "A", "depends_on": []}], "statuses": [],
+        })
+    };
+    core.transport().enqueue(
+        "GET",
+        &path,
+        vec![
+            Reply::json(
+                200,
+                json!({"runs": [run("r1")], "next_cursor": "r1"}).to_string(),
+            ),
+            Reply::json(
+                200,
+                json!({"runs": [run("r2")], "next_cursor": "r2"}).to_string(),
+            ),
+        ],
+    );
+    let runs = block_on(core.automation_run_steps(ID)).unwrap();
+    let ids: Vec<&str> = runs.iter().map(|run| run.run_id.as_str()).collect();
+    assert_eq!(ids, ["r1", "r2"], "stops after two pages");
+    let requests: Vec<_> = core
+        .transport()
+        .taken()
+        .into_iter()
+        .filter(|request| path_of(request) == path)
+        .collect();
+    let [first, second] = requests.as_slice() else {
+        panic!("two reads: {requests:?}")
+    };
+    assert_eq!(query_value(first, "limit").as_deref(), Some("50"));
+    assert_eq!(query_value(first, "after"), None);
+    assert_eq!(query_value(second, "after").as_deref(), Some("r1"));
+    assert!(matches!(
+        block_on(core.automation_run_steps("../x")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}

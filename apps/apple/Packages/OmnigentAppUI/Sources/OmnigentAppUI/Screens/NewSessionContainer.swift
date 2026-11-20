@@ -330,7 +330,7 @@ extension NewSessionContainer {
   /// A created session opens, except a planning chat: its workflow's page opens with it.
   private func opened(_ sessionID: String, _ creation: CreationStore) {
     let planned = form.planningStarted(
-      sessionID, workflows: connection.workflows, openWorkflow: openWorkflow)
+      sessionID, creation: creation, workflows: connection.workflows, openWorkflow: openWorkflow)
     finish(creation)
     if !planned { open(sessionID) }
   }

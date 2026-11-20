@@ -10,7 +10,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use omnigent_protocol::sessions::{
-    SandboxStatus, SessionFamily, SessionList, SessionListItem, SessionSnapshot, SessionStatus,
+    PullRequestSummary, SandboxStatus, SessionFamily, SessionList, SessionListItem,
+    SessionSnapshot, SessionStatus,
 };
 use omnigent_protocol::{DecodeError, Field, FromWire, ServerStreamEvent};
 use serde_json::{Value, json};
@@ -107,6 +108,57 @@ pub struct SessionSummary {
     pub automation_source_id: Option<String>,
     /// The session family it belongs to; `None` for a standalone session or a shared one.
     pub family: Option<SessionFamily>,
+    /// The first PR the server stores for it (`pull_request`), for its row's tooltip.
+    pub pull_request: Option<RowPullRequest>,
+    /// An automation's run made it, or a run's session tree launched it (the
+    /// `omnigent.scheduled_task_origin` with `_initial_run` labels, or `_launch`).
+    pub is_automation_run: bool,
+}
+
+/// The PR a session's list row names, as the server last stored it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowPullRequest {
+    /// Its number.
+    pub number: u64,
+    /// Where it stood when its host last fetched it; `Unknown` before that.
+    pub status: super::pull_requests::PullRequestStatus,
+    /// When its host last fetched it, Unix seconds.
+    pub checked_at: Option<i64>,
+}
+
+impl RowPullRequest {
+    /// A list row's `pull_request`.
+    #[allow(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "float-to-int `as` saturates, and whole seconds are all a tooltip shows"
+    )]
+    fn from_summary(pull_request: &PullRequestSummary) -> Self {
+        Self {
+            number: pull_request.number,
+            status: super::pull_requests::PullRequestStatus::of(
+                pull_request.state.as_deref(),
+                pull_request.is_draft,
+            ),
+            checked_at: pull_request
+                .state_checked_at
+                .filter(|seconds| seconds.is_finite())
+                .map(|seconds| seconds.floor() as i64),
+        }
+    }
+}
+
+/// Labels an automation's run puts on the session it made, and on those its tree launched.
+const AUTOMATION_ORIGIN_LABEL: &str = "omnigent.scheduled_task_origin";
+const AUTOMATION_INITIAL_RUN_LABEL: &str = "omnigent.scheduled_task_initial_run";
+const AUTOMATION_LAUNCH_LABEL: &str = "omnigent.scheduled_task_launch";
+
+/// Whether `labels` mark a session an automation's run made or launched (the web's
+/// `isSharedAutomationRun` without its ownership check).
+fn is_automation_run(labels: &BTreeMap<String, String>) -> bool {
+    let set = |key: &str| labels.get(key).is_some_and(|value| !value.is_empty());
+    (set(AUTOMATION_ORIGIN_LABEL) && set(AUTOMATION_INITIAL_RUN_LABEL))
+        || set(AUTOMATION_LAUNCH_LABEL)
 }
 
 /// The caller's read state for one session, as the server reports it
@@ -157,6 +209,8 @@ impl SessionSummary {
             client_create_token: None,
             automation_source_id: None,
             family: None,
+            pull_request: None,
+            is_automation_run: false,
         }
     }
 
@@ -362,6 +416,8 @@ pub(crate) struct SessionProjection {
     project_id: Field<String>,
     comments_count: Field<u64>,
     family: Field<SessionFamily>,
+    /// A list row's stored PR; a snapshot does not carry it.
+    pull_request: Field<PullRequestSummary>,
 }
 
 impl SessionProjection {
@@ -438,6 +494,7 @@ impl SessionProjection {
             comments_count: row.comments_count.clone(),
             // A list row omits `family` only when it has none (update rows send `null`).
             family: reported_or_null(&row.family),
+            pull_request: reported_or_null(&row.pull_request),
         }
     }
 
@@ -489,6 +546,7 @@ impl SessionProjection {
             project_id: snapshot.project_id.clone(),
             comments_count: Field::Absent,
             family: snapshot.family.clone(),
+            pull_request: Field::Absent,
         }
     }
 
@@ -668,6 +726,16 @@ impl SessionProjection {
                 Field::Absent => previous.and_then(|previous| previous.family.clone()),
                 Field::Null => None,
                 Field::Present(family) => Some(family.clone()),
+            },
+            pull_request: match &self.pull_request {
+                Field::Absent => previous.and_then(|previous| previous.pull_request),
+                Field::Null => None,
+                Field::Present(pull_request) => Some(RowPullRequest::from_summary(pull_request)),
+            },
+            is_automation_run: match &self.labels {
+                Field::Absent => previous.is_some_and(|previous| previous.is_automation_run),
+                Field::Null => false,
+                Field::Present(labels) => is_automation_run(labels),
             },
         })
     }

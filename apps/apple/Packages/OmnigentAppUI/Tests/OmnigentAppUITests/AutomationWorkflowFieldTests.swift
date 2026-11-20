@@ -83,4 +83,38 @@ struct AutomationWorkflowFieldTests {
     #expect(context.workflowNeedsNewSessions)
     #expect(draft.canSave, "a workflow needs no instructions")
   }
+
+  @Test("A trigger with a workflow runs it for each match and reopens on it")
+  func triggerWorkflow() async throws {
+    let server = newSessionServer()
+    let connection = try await signedInStore(server)
+    server.route(
+      "/v1/info",
+      .json(
+        #"{"single_user":true,"automations_enabled":true,"workflows":true,"scheduled_task_trigger_headers":true,"features":{"workflows":true}}"#
+      ))
+    let pages = try #require(connection.pages)
+    _ = await pages.loadOffered()
+    let source = try #require(AutomationTriggerMapping.source("jira"))
+    var draft = AutomationTriggerMapping.newDraft(
+      source, base: AutomationDraftState(agentID: "ag_claude"),
+      schedule: ScheduleChoice(preset: .interval, frequency: .minutely, interval: 10))
+    draft.trigger?.scope = "ES"
+    #expect(
+      AutomationEditorMapping.triggerPrompt(
+        pages: pages, draft: draft, saved: nil, sessionLink: ""
+      ).isEmpty, "without a workflow the instructions are required")
+    draft.workflow = AutomationOption(id: workflowID, name: "Triage")
+    #expect(!draft.showsInstructions)
+    let saved = AutomationEditorMapping.triggerPrompt(
+      pages: pages, draft: draft, saved: nil, sessionLink: "")
+    #expect(saved.contains("Run the saved workflow") && saved.contains("(ID \(workflowID))"))
+    var trigger = automation(prompt: saved)
+    trigger.isTrigger = true
+    let reopened = AutomationsMapping.draft(trigger, workflows: true)
+    #expect(reopened.workflow?.id == workflowID)
+    #expect(reopened.trigger?.instructions.isEmpty == true)
+    #expect(!reopened.showsInstructions)
+    #expect(reopened.trigger?.scope == "ES")
+  }
 }

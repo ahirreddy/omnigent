@@ -123,4 +123,25 @@ public protocol BrowserTabHosting: AnyObject {
   /// Disconnects a window.
   /// - Parameter window: The window.
   func detach(window: UUID)
+
+  /// Whether a live page can step through its history: back (`-1`) or forward (`1`).
+  /// - Parameters:
+  ///   - id: The page.
+  ///   - offset: The direction.
+  /// - Returns: `true` when there is a page that way.
+  func canStep(_ id: UUID, by offset: Int) -> Bool
+
+  /// Steps a live page back (`-1`) or forward (`1`) through its history.
+  /// - Parameters:
+  ///   - id: The page.
+  ///   - offset: The direction.
+  func step(_ id: UUID, by offset: Int)
+}
+
+extension BrowserTabHosting {
+  /// A host whose pages keep no history.
+  public func canStep(_ id: UUID, by offset: Int) -> Bool { false }
+
+  /// A host whose pages keep no history.
+  public func step(_ id: UUID, by offset: Int) {}
 }

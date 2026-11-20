@@ -167,3 +167,36 @@ fn the_newer_summary_keeps_its_family_whichever_read_arrives_last() {
     };
     assert_eq!(newer.preserving_newer_metadata(Some(&cleared)), cleared);
 }
+
+#[test]
+fn a_list_row_carries_its_stored_pull_request_and_whether_an_automation_ran_it() {
+    use crate::client::pull_requests::PullRequestStatus;
+
+    let core = connected(RouteTransport::local());
+    let mut row = update_row(0);
+    row["pull_request"] = json!({
+        "url": "https://example.com/acme/app/pull/212", "provider": "github",
+        "repository": "acme/app", "number": 212, "state": "MERGED",
+        "state_checked_at": 1_700_000_000.5,
+    });
+    row["labels"] = json!({
+        "omnigent.scheduled_task_origin": "t1", "omnigent.scheduled_task_initial_run": "r1",
+    });
+    let listed = core.apply_session_rows(vec![row.clone()]).unwrap();
+    let pull_request = listed[0].pull_request.unwrap();
+    assert_eq!(pull_request.number, 212);
+    assert_eq!(pull_request.status, PullRequestStatus::Merged);
+    assert_eq!(pull_request.checked_at, Some(1_700_000_000));
+    assert!(listed[0].is_automation_run);
+
+    row["pull_request"] = Value::Null;
+    row["labels"] = json!({"omnigent.scheduled_task_origin": "t1"});
+    let cleared = core.apply_session_rows(vec![row.clone()]).unwrap();
+    assert_eq!(cleared[0].pull_request, None);
+    assert!(
+        !cleared[0].is_automation_run,
+        "a fork keeps the origin but not the run"
+    );
+    row["labels"] = json!({"omnigent.scheduled_task_launch": "t1"});
+    assert!(core.apply_session_rows(vec![row]).unwrap()[0].is_automation_run);
+}

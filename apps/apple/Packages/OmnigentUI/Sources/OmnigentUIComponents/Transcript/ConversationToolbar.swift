@@ -60,6 +60,8 @@ struct ConversationToolbar: ToolbarContent {
     }
     ToolbarItemGroup(placement: .primaryAction) {
       let state = items.state
+      let others = Self.otherViewers(state)
+      if items.isRegular, !others.isEmpty { PresenceAvatars(viewers: others) }
       #if os(macOS)
         if let sandbox = state.sandbox {
           SandboxStatusControl(state: sandbox, actions: items.extras.sandbox)

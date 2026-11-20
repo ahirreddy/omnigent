@@ -225,10 +225,16 @@ extension AutomationEditorSheet {
     if !draft.runsInSandbox {
       rows.append(AdvancedRow("workspace", "Workspace", workspaceField))
     }
+    if AutomationWorktreeRow.shows(draft, check: context.worktreeCheck) {
+      rows.append(
+        AdvancedRow(
+          "worktree", nil, AutomationWorktreeRow(draft: $draft, check: context.worktreeCheck)))
+    }
     if context.supportsProjects {
       rows.append(AdvancedRow("project", "Project", projectPicker))
     }
     rows.append(AdvancedRow("cost", "Cost limit per run (USD)", costField))
+    rows += workerRows
     return rows
   }
 
@@ -326,26 +332,11 @@ extension AutomationEditorSheet {
 
   /// A folder on the pinned host; empty is its home directory.
   private var workspaceField: some View {
-    TextField("Workspace", text: $draft.workspace, prompt: Text("No workspace"))
-      .labelsHidden()
-      .multilineTextAlignment(.trailing)
-      .frame(maxWidth: 280)
-      .disabled(draft.hostID.isEmpty && draft.workspace.isEmpty)
-      .help("An absolute path on the host. Empty runs in the host\u{2019}s home directory.")
-      .accessibilityIdentifier("automation-workspace")
+    AutomationWorkspaceField(draft: $draft, browse: context.browseWorkspace)
   }
 
   private var projectPicker: some View {
-    Picker("Project", selection: $draft.projectID) {
-      Text("No project").tag("")
-      ForEach(context.projects) { Text($0.name).tag($0.id) }
-      if !draft.projectID.isEmpty, !context.projects.contains(where: { $0.id == draft.projectID }) {
-        Text("Project unavailable").tag(draft.projectID)
-      }
-    }
-    .labelsHidden()
-    .fixedSize()
-    .accessibilityIdentifier("automation-project")
+    AutomationProjectMenu(draft: $draft, projects: context.projects)
   }
 
   static let costHelp =
@@ -372,6 +363,10 @@ extension AutomationEditorSheet {
     }
     if let problem = context.mcpProblem {
       Text(problem).font(.callout).foregroundStyle(Theme.failure)
+    }
+    if draft.runsInSandbox, let notice = context.sandboxNotice {
+      Text(notice).font(.callout).foregroundStyle(.secondary)
+        .accessibilityIdentifier("automation-sandbox-notice")
     }
     if scheduleInAdvanced { scheduleProblem }
   }

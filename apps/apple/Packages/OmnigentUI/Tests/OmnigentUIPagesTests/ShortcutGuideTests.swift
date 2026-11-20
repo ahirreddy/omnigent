@@ -10,17 +10,18 @@ struct ShortcutGuideTests {
   func text() {
     #expect(AppShortcuts.text(AppShortcuts.reconnect) == "⌥⇧⌘R")
     #expect(AppShortcuts.text(AppShortcuts.focusComposer) == "⌃⇧L")
-    #expect(AppShortcuts.text(AppShortcuts.previousTab) == "⌃⇧Tab")
+    #expect(AppShortcuts.text(AppShortcuts.recentSessionsBack) == "⌃⇧Tab")
     #expect(AppShortcuts.text(AppShortcuts.send) == "⌘Return")
     #expect(AppShortcuts.text(AppShortcuts.nextMessage) == "⌥⌘↓")
     #expect(AppShortcuts.text(AppShortcuts.selectTab(8)) == "⌘9")
-    #expect(AppShortcuts.text(AppShortcuts.nextTabAlias) == "⇧⌘]")
+    #expect(AppShortcuts.text(AppShortcuts.nextTab) == "⇧⌘]")
   }
 
   @Test("No two shortcuts share keys")
   func unique() {
     let all = [
       AppShortcuts.commandPalette, AppShortcuts.findSession, AppShortcuts.keyboardShortcuts,
+      AppShortcuts.goBack, AppShortcuts.goForward,
       AppShortcuts.previousSession, AppShortcuts.nextSession, AppShortcuts.send,
       AppShortcuts.sendAlternative, AppShortcuts.stopAgent, AppShortcuts.renameSession,
       AppShortcuts.toggleUnread, AppShortcuts.addNestedAgent,
@@ -30,8 +31,8 @@ struct ShortcutGuideTests {
       AppShortcuts.toggleViewMode, AppShortcuts.toggleInspector, AppShortcuts.rightPanel,
       AppShortcuts.toggleSidebar, AppShortcuts.toggleSidebarAlias, AppShortcuts.searchWorkspace,
       AppShortcuts.newTab, AppShortcuts.closeTab, AppShortcuts.reopenClosedTab,
-      AppShortcuts.nextTab, AppShortcuts.previousTab, AppShortcuts.nextTabAlias,
-      AppShortcuts.previousTabAlias, AppShortcuts.showAllTabs,
+      AppShortcuts.nextTab, AppShortcuts.previousTab, AppShortcuts.recentSessions,
+      AppShortcuts.recentSessionsBack, AppShortcuts.showAllTabs,
       AppShortcuts.showTerminal, AppShortcuts.newShell, AppShortcuts.openBrowser,
       AppShortcuts.toggleSplit, AppShortcuts.focusLeftPane, AppShortcuts.focusRightPane,
       AppShortcuts.previousPane, AppShortcuts.nextPane, AppShortcuts.newSession,
@@ -42,7 +43,7 @@ struct ShortcutGuideTests {
     let numbered =
       (0..<9).map(AppShortcuts.selectTab)
       + (0..<InspectorTab.allCases.count).map(AppShortcuts.rightPanelTab)
-      + (0..<10).map(AppShortcuts.pinnedSession)
+      + (0..<10).map(AppShortcuts.sidebarSession)
     let texts = (all + numbered).map(AppShortcuts.text)
     #expect(Set(texts).count == texts.count)
   }
@@ -56,14 +57,17 @@ struct ShortcutGuideTests {
     #expect(rows.filter { $0.value == "⌥⌘V" }.map(\.key) == ["Toggle voice dictation"])
     #expect(rows["Paste as attachment"] == nil)
     #expect(rows["Find a session by name"] == "⌥⌘S")
+    #expect(rows["Go back"] == "⌘[" && rows["Go forward"] == "⌘]")
+    #expect(rows["Previous session"] == "⌃⌘↑" && rows["Next session"] == "⌃⌘↓")
     #expect(rows["Rename current session"] == "⌥⌘R")
     #expect(rows["Mark current session unread or read"] == "⌥⌘U")
     #expect(rows["Pin or unpin current session"] == "⌥⌘P")
     #expect(rows["Archive current session"] == "⇧⌘A")
     #expect(rows["Fork current session"] == "⌥⌘F")
-    #expect(rows["Open pinned session 1–9 / 10"] == "⌃⌘1–9 / ⌃⌘0")
+    #expect(rows["Jump to a sidebar session (1–10)"] == "⌃⌘1–9 / ⌃⌘0")
     #expect(rows["Reconnect"] == "⌥⇧⌘R")
-    #expect(rows["Next / previous tab"] == "⇧⌘] / ⇧⌘[ or ⌃Tab / ⌃⇧Tab")
+    #expect(rows["Next / previous tab"] == "⇧⌘] / ⇧⌘[")
+    #expect(rows["Switch recent sessions"] == "⌃Tab / ⌃⇧Tab")
     #expect(rows["Search workspace contents"] == "⇧⌘F")
     #expect(rows["Select a right panel tab"] == "⌥⌘1–\(InspectorTab.allCases.count)")
     #expect(rows["Expand or collapse the editor"] == "⇧⌘E")

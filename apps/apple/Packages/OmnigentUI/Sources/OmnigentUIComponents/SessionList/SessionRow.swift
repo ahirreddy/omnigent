@@ -32,6 +32,8 @@ struct SessionRow: View {
   /// How it sits in its session family: a head's chevron fills its gutter, a nested row sits a
   /// step in.
   var family = SessionRowFamily.standalone
+  /// Its tooltip's family line: "Nested sessions: 2" or "Nested in: Lead".
+  var familyDetail: String?
 
   @State private var isHovered = false
   @Environment(\.defaultMinListRowHeight) private var rowHeight
@@ -227,7 +229,7 @@ struct SessionRow: View {
   }
 
   private var tooltip: String {
-    SessionRowTooltip.text(session, info: info, now: now ?? Date())
+    SessionRowTooltip.text(session, info: info, now: now ?? Date(), family: familyDetail)
   }
 
   private var accessibilityLabel: String {

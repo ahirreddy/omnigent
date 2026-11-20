@@ -55,6 +55,8 @@ nonisolated public struct ShareViewState: Hashable, Sendable {
   /// Why this session can't be shared at all (its folder is a home or root directory); new
   /// grants are then off, and existing ones can still be removed.
   public var blockedReason: String?
+  /// The automation that keeps the session's shares, by name; the sheet says so.
+  public var managedBy: String?
 
   /// Creates share state.
   /// - Parameters:
@@ -92,6 +94,8 @@ public struct ShareActions {
   public var setRole: (@MainActor (ShareGrant, ShareGrant.Role) -> Void)?
   /// Remove a grant.
   public var removeGrant: (@MainActor (ShareGrant) -> Void)?
+  /// Open the automation that keeps the shares, on its share sheet.
+  public var openManagingAutomation: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:

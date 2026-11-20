@@ -1,4 +1,4 @@
-import Foundation
+public import Foundation
 public import OmnigentAuthUI
 
 /// The web's sidebar "Show" choice.
@@ -114,6 +114,23 @@ nonisolated public struct SessionDisplayOptions: Hashable, Sendable, Codable {
   }
 }
 
+/// The PR a row's tooltip names, as the server last stored it.
+nonisolated public struct SessionRowPullRequest: Hashable, Sendable {
+  /// Its number.
+  public var number: UInt64
+  /// "Open", "Draft", "Merged" or "Closed"; `nil` before its host fetched it.
+  public var status: String?
+  /// When its host last fetched it.
+  public var checkedAt: Date?
+
+  /// Creates a PR.
+  public init(number: UInt64, status: String? = nil, checkedAt: Date? = nil) {
+    self.number = number
+    self.status = status
+    self.checkedAt = checkedAt
+  }
+}
+
 /// Facts the sidebar row shows that the core's `SessionSummary` does not carry yet.
 nonisolated public struct SessionRowInfo: Hashable, Sendable {
   /// The harness id, for Group by Harness and the hover tooltip.
@@ -140,6 +157,8 @@ nonisolated public struct SessionRowInfo: Hashable, Sendable {
   public var runsOnHost = false
   /// Its managed sandbox is launching, waking or up, so its harness mark can show in color.
   public var hasLiveSandbox = false
+  /// The PR the server stores for it, for the tooltip.
+  public var pullRequest: SessionRowPullRequest?
 
   /// Creates row info.
   /// - Parameters:
@@ -175,6 +194,13 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var rowInfo: [String: SessionRowInfo]
   /// Projects.
   public var projects: [SessionProject]
+  /// The projects a session can be filed into: every folder but a placeholder.
+  public var filingProjects: [SessionProject] { projects.filter { !$0.isPlaceholder } }
+  /// A listed folder's New session page is open, so the global New session row isn't drawn
+  /// selected.
+  var composesInFolder: Bool {
+    composingFolderID.map { id in projects.contains { $0.id == id } } ?? false
+  }
   /// The Inbox count.
   public var inboxCount: Int
   /// The server offers Canvas.
@@ -209,6 +235,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var groupSorts = SessionGroupSorts()
   /// The families collapsed under their head, one opaque key per section or folder and family.
   public var collapsedFamilies: Set<String> = []
+  /// The folder whose New session page is open: it lists a "New session" row of its own.
+  public var composingFolderID: String?
   /// New project can start from a repository on these, the first the default; empty without.
   public var projectRunChoices: [ProjectRunChoice] = []
   /// The provisional rows of open Add nested agent composers, by row id: each one's source.

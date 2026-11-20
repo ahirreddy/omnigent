@@ -85,6 +85,9 @@ public struct OmnigentSessionCommands: Commands {
   @FocusedValue(\.sessionCommands) private var actions
   @FocusedValue(\.paletteCommands) private var palette
   @FocusedValue(\.sessionListCommands) private var sessionList
+  @FocusedValue(\.tabCommands) private var tabs
+  @FocusedValue(\.pageBack) private var pageBack
+  @FocusedValue(\.recentSessions) private var recent
 
   /// Creates the commands.
   public init() {}
@@ -95,7 +98,7 @@ public struct OmnigentSessionCommands: Commands {
       SessionListMenuItems(display: sessionList)
     }
     CommandMenu("Navigate") {
-      NavigateMenuItems(palette: palette)
+      NavigateMenuItems(palette: palette, tabs: tabs, pageBack: pageBack, recent: recent)
     }
     CommandMenu("Conversation") {
       ConversationMenuItems(actions: actions)
@@ -103,11 +106,31 @@ public struct OmnigentSessionCommands: Commands {
   }
 }
 
-/// The Navigate menu.
+/// The Navigate menu: Back and Forward through the pages the window showed, then the palette.
 struct NavigateMenuItems: View {
   let palette: PaletteCommandActions?
+  var tabs: TabCommandActions?
+  /// A page's own Back, which goes before the window's history.
+  var pageBack: PageBackAction?
+  /// The recent-sessions switcher, where the window has one (the Mac).
+  var recent: RecentSessionsAction?
 
   var body: some View {
+    Button("Back") {
+      if let pageBack { pageBack.perform() } else { tabs?.goBack?() }
+    }
+    .keyboardShortcut(AppShortcuts.goBack)
+    .disabled(pageBack == nil && tabs?.goBack == nil)
+    Button("Forward") { tabs?.goForward?() }
+      .keyboardShortcut(AppShortcuts.goForward)
+      .disabled(tabs?.goForward == nil)
+    if let recent {
+      Button("Next Recent Session") { recent.step(1) }
+        .keyboardShortcut(AppShortcuts.recentSessions)
+      Button("Previous Recent Session") { recent.step(-1) }
+        .keyboardShortcut(AppShortcuts.recentSessionsBack)
+    }
+    Divider()
     Button("Command Palette…") { palette?.openPalette() }
       .keyboardShortcut(AppShortcuts.commandPalette)
       .disabled(palette == nil)

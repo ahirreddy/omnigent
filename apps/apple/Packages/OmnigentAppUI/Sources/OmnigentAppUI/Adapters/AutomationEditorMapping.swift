@@ -29,6 +29,11 @@ enum AutomationEditorMapping {
     var switchTriggerType: (@MainActor (String?) -> Void)?
     /// The caller's saved workflows, for the Workflow field.
     var workflows: [SavedWorkflow] = []
+    /// Whether the pinned folder is a Git repository, for Random worktree.
+    var worktreeCheck = AutomationWorktreeCheck.unavailable
+    /// Lists a host's folders (by host id), for the Workspace row's Browse.
+    var browseFolders:
+      (@MainActor (String, String?) async -> Result<FolderListing, FolderBrowseError>)?
   }
 
   /// Claude Code's version-agnostic model aliases, offered when the host lists none (the web's
@@ -86,7 +91,7 @@ enum AutomationEditorMapping {
       describe: { AutomationsMapping.describe($0) }, isEditing: inputs.saved != nil,
       isSaving: inputs.isSaving,
       error: inputs.saveError ?? pages.automationCatalog.error?.message)
-    placement(&context, pages: pages)
+    placement(&context, pages: pages, inputs: inputs)
     context.overrides = overrides(
       pages: pages, agentID: draft.agentID, hostID: draft.hostID,
       inSandbox: draft.runsInSandbox, model: draft.model)
@@ -117,18 +122,27 @@ enum AutomationEditorMapping {
         pages: pages, draft: draft, saved: inputs.saved, sessionLink: inputs.sessionLink)
       context.switchTriggerEvent = inputs.switchTriggerEvent
       context.triggerMcp = triggerMcpService(source, services: context.mcpServices)
+      workers(&context, pages: pages, inputs: inputs)
     }
     return context
   }
 
   /// The hosts, the sandbox option and the projects an automation can run with.
-  private static func placement(_ context: inout AutomationEditorContext, pages: PagesStore) {
+  private static func placement(
+    _ context: inout AutomationEditorContext, pages: PagesStore, inputs: Inputs
+  ) {
     let offered = pages.offered
     context.hosts = (pages.automationCatalog.value?.hosts ?? []).map {
       AutomationOption(
         id: $0.hostId, name: $0.status == "online" ? $0.name : "\($0.name) (offline)")
     }
     context.sandboxLabel = offered?.managedSandboxes == true ? "New Sandbox" : nil
+    context.sandboxNotice = pages.automationCatalog.value?.automationSandboxNotice
+    context.worktreeCheck = inputs.worktreeCheck
+    if let browse = inputs.browseFolders, !inputs.draft.hostID.isEmpty {
+      let hostID = inputs.draft.hostID
+      context.browseWorkspace = { path in await browse(hostID, path) }
+    }
     context.supportsProjects = offered?.automationProjects == true
     if context.supportsProjects {
       context.projects = (pages.automationProjects.value ?? []).compactMap { project in
@@ -241,7 +255,13 @@ enum AutomationEditorMapping {
   static func triggerPrompt(
     pages: PagesStore, draft: AutomationDraftState, saved: Automation?, sessionLink: String
   ) -> String {
-    let draft = withWorkflowSessions(draft)
+    var draft = withWorkflowSessions(draft)
+    // With a workflow, each match's instructions are the message that runs it.
+    if let instructions = draft.trigger?.instructions, draft.workflow != nil {
+      let message = AutomationsMapping.withWorkflow(
+        instructions, draft: draft, skillPrefix: skillPrefix(pages, agentID: draft.agentID))
+      draft.trigger?.instructions = message
+    }
     let budget = budget(pages: pages, draft: draft, saved: saved)
     let options = overrides(
       pages: pages, agentID: draft.agentID, hostID: draft.hostID, inSandbox: draft.runsInSandbox)

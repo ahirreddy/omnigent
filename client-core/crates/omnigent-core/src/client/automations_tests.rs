@@ -38,6 +38,7 @@ fn automation(id: &str, name: &str, state: AutomationState, next: Option<i64>) -
         session_id: None,
         host_id: None,
         workspace: None,
+        base_branch: None,
         runs_in_sandbox: false,
         project_id: None,
         is_trigger: false,
@@ -240,6 +241,46 @@ fn create_pins_a_host_or_a_sandbox_with_the_picked_settings() {
             Err(SessionError::Rejected { message: text, .. }) if text == message
         ));
     }
+}
+
+#[test]
+fn a_random_worktree_needs_a_folder_and_an_edit_sends_only_its_change() {
+    let pinned = AutomationDraft {
+        host_id: Some("h1".into()),
+        workspace: Some("/src/app".into()),
+        base_branch: Some("HEAD".into()),
+        ..draft()
+    };
+    assert_eq!(draft_body(&pinned, None).unwrap()["base_branch"], "HEAD");
+    let home = AutomationDraft {
+        workspace: None,
+        ..pinned.clone()
+    };
+    assert!(
+        draft_body(&home, None)
+            .unwrap()
+            .get("base_branch")
+            .is_none()
+    );
+
+    let mut saved = automation("t1", "Triage", AutomationState::Active, None);
+    saved.host_id = Some("h1".into());
+    saved.workspace = Some("/src/app".into());
+    saved.base_branch = Some("HEAD".into());
+    assert!(
+        draft_body(&pinned, Some(&saved))
+            .unwrap()
+            .get("base_branch")
+            .is_none()
+    );
+    let off = AutomationDraft {
+        base_branch: None,
+        ..pinned
+    };
+    assert_eq!(
+        draft_body(&off, Some(&saved)).unwrap()["base_branch"],
+        json!(null)
+    );
 }
 
 #[test]
@@ -982,4 +1023,25 @@ fn share_shows_disabled_with_why() {
         automation_share_disabled_reason(true, false),
         Some("Sharing has been disabled for this Omnigent server.")
     );
+}
+
+#[test]
+fn run_now_returns_the_started_runs_id_when_the_server_names_it() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "POST",
+        "/v1/scheduled-tasks/t1/run",
+        vec![
+            Reply::json(202, r#"{"triggered":true,"id":"t1","run_id":"r9"}"#),
+            Reply::json(202, r#"{"triggered":true,"id":"t1"}"#),
+        ],
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.start_automation_run("t1"))
+            .unwrap()
+            .as_deref(),
+        Some("r9")
+    );
+    assert_eq!(block_on(core.start_automation_run("t1")).unwrap(), None);
 }

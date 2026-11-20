@@ -254,5 +254,23 @@
       try screen.endRowHover()
       #expect(try buttons().count == 1)
     }
+
+    @Test("a folder's open New session page leads it as a row of its own, collapsed or not")
+    func composingRow() throws {
+      let spy = spy()
+      spy.selection = .newSession
+      let plain = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 800)
+      let rows = plain.list?.numberOfRows ?? 0
+      plain.close()
+      #expect(!spy.state.composesInFolder)
+      spy.state.composingFolderID = "p1"
+      #expect(spy.state.composesInFolder)
+      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 800)
+      defer { screen.close() }
+      #expect(screen.list?.numberOfRows == rows + 1)
+      // It is the page that's open, so a click on it stays there.
+      try screen.clickRow(workRow + 1)
+      #expect(spy.selection == .newSession)
+    }
   }
 #endif

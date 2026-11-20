@@ -86,6 +86,18 @@ public final class BrowserTabHost: BrowserTabHosting {
   }
 
   /// See ``BrowserTabHosting``.
+  public func canStep(_ id: UUID, by offset: Int) -> Bool {
+    guard let model = models[id] else { return false }
+    return offset < 0 ? model.canGoBack : model.canGoForward
+  }
+
+  /// See ``BrowserTabHosting``.
+  public func step(_ id: UUID, by offset: Int) {
+    guard let model = models[id] else { return }
+    if offset < 0 { model.goBack() } else { model.goForward() }
+  }
+
+  /// See ``BrowserTabHosting``.
   public func status(of id: UUID) -> BrowserTabStatus? {
     guard let model = models[id] else { return nil }
     let error = model.pageError.map { !$0.isCancellation } ?? false

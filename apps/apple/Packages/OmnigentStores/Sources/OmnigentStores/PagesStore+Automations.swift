@@ -90,6 +90,18 @@ extension PagesStore {
     }
   }
 
+  /// Reads the plans `id`'s newest runs follow; a failure keeps the plans known.
+  public func loadAutomationRunSteps(_ id: String) async {
+    do {
+      let runs = try await core.automationRunSteps(id: id)
+      automationRunSteps[id] = Dictionary(
+        runs.map { ($0.runId, $0) }, uniquingKeysWith: { first, _ in first })
+    } catch {
+      // The run rows stay without their tasks until a later read lands.
+      return
+    }
+  }
+
   /// Reads who `id` is shared with.
   public func loadAutomationGrants(_ id: String) async {
     if automationGrants[id]?.value == nil { automationGrants[id] = .loading }
