@@ -32,7 +32,8 @@ extension ComposerStore {
   @discardableResult
   public func send() async -> ComposerSendOutcome {
     // A refused shell command stays in the draft; the composer's hint says why.
-    if shellInput(permissionLevel: conversationFacts?()?.permissionLevel)?.refusal != nil {
+    let level = conversationFacts?()?.permissionLevel
+    if shellInput(text: text, permissionLevel: level)?.refusal != nil {
       return .handled
     }
     switch slashAction() {
@@ -64,11 +65,14 @@ extension ComposerStore {
     return .handled
   }
 
-  /// The draft as a shell command (a leading `!` in Claude Code and Codex native sessions), with
-  /// why sending it is refused; `nil` for any other draft.
-  /// - Parameter permissionLevel: The viewer's level on the session; `nil` when unknown.
+  /// `text` as a shell command (a leading `!` in Claude Code and Codex native sessions), with
+  /// why sending it with this draft's mentions, quotes and comments is refused; `nil` for any
+  /// other text.
+  /// - Parameters:
+  ///   - text: The draft's text; the field's own while typing.
+  ///   - permissionLevel: The viewer's level on the session; `nil` when unknown.
   /// - Returns: The shell command's state, or `nil`.
-  public func shellInput(permissionLevel: Int64?) -> ShellInput? {
+  public func shellInput(text: String, permissionLevel: Int64?) -> ShellInput? {
     composerShellInput(
       text: text, harness: configuration?.harness, permissionLevel: permissionLevel,
       mentions: !mentions.isEmpty, quotes: !quotes.isEmpty,

@@ -195,6 +195,10 @@ nonisolated public struct ComposerConnectionNotice: Hashable, Sendable {
 
 /// Composer actions beyond send and stop. `nil` hides the control.
 public struct ComposerExtraActions {
+  /// Whether the field's text runs as a shell command, and why its send is refused; asked as
+  /// the composer draws, so typing redraws the composer alone. Overrides
+  /// ``ComposerViewState/shellHint``.
+  public var shellHint: (@MainActor (String) -> ComposerShellHint?)?
   /// Choose a host.
   public var selectHost: (@MainActor (ComposerHost) -> Void)?
   /// Connect a new host.

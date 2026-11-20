@@ -18,6 +18,15 @@ nonisolated public struct ComposerShellHint: Hashable, Sendable {
   }
 }
 
+extension ComposerViewState {
+  /// The state with `hint` as its shell hint.
+  func withShellHint(_ hint: ComposerShellHint?) -> Self {
+    var state = self
+    state.shellHint = hint
+    return state
+  }
+}
+
 /// Whether the composer can send, and why not. The reason comes from the core
 /// (read-only, archived, host offline, runner unbound, ...) and is shown verbatim.
 nonisolated public enum ComposerAvailability: Hashable, Sendable {
