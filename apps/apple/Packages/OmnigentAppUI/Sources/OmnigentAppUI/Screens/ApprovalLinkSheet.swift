@@ -48,7 +48,7 @@ final class ApprovalLinkModel {
     do throws(SupervisionError) {
       state = try await current().map { .pending($0, .pending) } ?? .resolved
     } catch {
-      state = .failed(error.message)
+      state = .failed(Self.describe(error))
     }
   }
 
@@ -67,8 +67,14 @@ final class ApprovalLinkModel {
         state = .submitted(approved: Self.approves(response))
       }
     } catch {
-      state = .pending(card, .failed(message: error.message))
+      state = .pending(card, .failed(message: Self.describe(error)))
     }
+  }
+
+  /// The core's or server's words for a failure; the others as the notifications word them.
+  static func describe(_ error: SupervisionError) -> String {
+    if case .failed(let message) = error { return message }
+    return error.message
   }
 
   private func current() async throws(SupervisionError) -> OmnigentUIComponents.DecisionCard? {

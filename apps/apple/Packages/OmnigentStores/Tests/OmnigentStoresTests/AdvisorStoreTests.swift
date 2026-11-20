@@ -59,7 +59,9 @@ struct AdvisorStoreTests {
     server.route(
       "/v1/inbox/items",
       .json(#"{"data":[],"next_cursor":null,"unread_count":0,"unread_count_capped":false}"#))
-    let advisor = try await advisor(server)
+    // The connection owns the Inbox's feeds, which the switch reads again.
+    let connection = try await connectedStore(server)
+    let advisor = try #require(connection.pages?.feeds.advisor)
     await advisor.loadSettings()
     #expect(advisor.isOn)
 
@@ -72,6 +74,7 @@ struct AdvisorStoreTests {
     #expect(await advisor.setEnabled(.workspace, false) == false)
     #expect(advisor.switchError != nil)
     #expect(advisor.settings.value?.userEnabled == false, "a refusal changes nothing")
+    withExtendedLifetime(connection) {}
   }
 
   @Test("the prompt saves, restores the default, and keeps a refusal")
