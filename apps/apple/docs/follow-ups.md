@@ -558,24 +558,17 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   uncompressed, Snappy, gzip, Brotli, LZ4 and LZ4_RAW, four codecs more than the web);
   `BIT_PACKED` levels and the `GROUP_VAR_INT` encoding are named as unsupported. No fixture file
   is in Brotli or LZ4, so those codecs are checked on hand-made blocks only.
-- [ ] **Browser Annotate and Draw, left** (web `63915cd179`; the Mac tools are done, below):
-  - iPhone and iPad have neither tool: the touch top bar has no buttons for them and the
-    overlay (`BrowserDesignOverlay`, `BrowserDesignInput`) is AppKit only. A UIKit input layer
-    (pointer and pencil) and toolbar items would reuse `BrowserDesignTools` as is.
-  - On Chromium the element picker runs in the page's own world: `BrowserTab`'s
-    `evaluateIsolatedJavaScript` falls back to `evaluateJavaScript` there. The picker is built
-    from checked numbers only and its answer is validated and clamped, and the message
-    sanitizes every field, so a hostile page can only misdescribe its own element. CDP's
-    `Page.createIsolatedWorld` (a context id per document, through `callDevToolsMethod`) would
-    give Chromium WebKit's isolation.
+- [ ] **Browser Annotate and Draw, left** (web `63915cd179`; the Mac, iPhone and iPad tools
+  are done, below):
   - Not ported from the outbox: matching a native terminal session's delivery receipts
     (pending ids) to a failed request, and a request that stalled and then arrived late is
     not marked sent (the outbox stops its send at the give-up). A window that closes leaves its
     unsent requests on disk for the next launch or sign-in; the web's other tabs adopt them at
     once.
-  - Draw's marks stay where they were drawn on screen when the page zooms or scrolls under
-    them (the web's are in page CSS pixels and follow its zoom); Annotate asks again on each
-    move, so its outline follows.
+  - Draw follows the page's own scrolling by reading where it sits four times a second, so a
+    mark lags a page that scrolls itself by up to that long (zoom and the layer's own
+    scrolling are read at once). On iPhone and iPad two fingers scroll the page but don't pinch
+    it; pinching and the page's momentum after a fling aren't passed on.
   - The wheel over Annotate's layer is forwarded to the page so it scrolls; whether WebKit's
     and Chromium's own tracking areas still report the pointer's hover to the page under the
     layer was not checked (clicks and keys stop at the layer).
@@ -632,6 +625,22 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [x] **Terminal split while the agent is down** (web `MainTerminalView`): a split whose shells
   the session still lists keeps its panes, the agent's saying it's unavailable, under a band
   with the state and Resume. 2026-11-20.
+- [x] **Annotate and Draw on iPhone and iPad** (web `63915cd179`): the iPad's address row and
+  the tab menu (iPhone and iPad) have Annotate and Draw. A UIKit layer over the page takes the
+  touches: a tap picks or places, one finger or Apple Pencil aims or draws, two fingers or a
+  trackpad scroll the page, the pointer and Pencil's hover outline, and a keyboard's Escape or
+  Done leaves. Where the system prefers Apple Pencil for drawing, fingers scroll and only Pencil
+  draws; Pencil's double tap undoes or switches to the previous shape, as the system's setting
+  asks. Annotate's card is a popover (a sheet on iPhone); Draw's dock sits along the bottom in
+  two rows on iPhone. 2026-11-20.
+- [x] **Draw's marks in page coordinates** (web `63915cd179`): marks are kept in the page's CSS
+  pixels and drawn through where the page sits (`visualViewport`, read in the tools' own world),
+  so they scroll with the page and scale with its zoom, in the live layer and the screenshot.
+  Marks placed before the page first answers move to where they were drawn. 2026-11-20.
+- [x] **Chromium's element picker in a world of its own:** `ChromiumBrowserTab` evaluates the
+  picker and the viewport read in an isolated world DevTools makes for the page's document
+  (`Page.getFrameTree`, `Page.createIsolatedWorld`, `Runtime.evaluate` with its context), made
+  again after a navigation retires it, as WebKit's content world. 2026-11-20.
 
 - [x] **Automation schedules as RRULE text** (web `2d0b6abbb1`): the schedule picker has a
   Visual | RRULE switch (RRULE needs `automations_v2`). RRULE starts from the visual schedule's
