@@ -39,6 +39,9 @@ public struct SettingsReveal: Equatable {
 extension EnvironmentValues {
   /// The Settings row search just revealed, which marks itself for a moment.
   @Entry var settingsRevealedAnchor: String?
+  /// Where a search result's row waits to be revealed, for panes pushed below the search
+  /// (a server's panes on iPhone and iPad); `nil` where the page reveals rows itself.
+  @Entry public var settingsRevealRequest: Binding<SettingsReveal?>?
 }
 
 extension View {
@@ -56,6 +59,19 @@ extension View {
   /// - Returns: The content.
   public func revealsSettingsRows(_ reveal: Binding<SettingsReveal?>) -> some View {
     modifier(SettingsRevealScroller(reveal: reveal))
+  }
+}
+
+/// Reveals a search result's row in a pane pushed below the search, where one asks for it.
+struct PushedPaneReveal: ViewModifier {
+  @Environment(\.settingsRevealRequest) private var request
+
+  func body(content: Content) -> some View {
+    if let request {
+      content.revealsSettingsRows(request)
+    } else {
+      content
+    }
   }
 }
 

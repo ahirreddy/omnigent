@@ -122,6 +122,8 @@
         )
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        // A server pane a result pushes scrolls to its row, as the app's own pages do.
+        .environment(\.settingsRevealRequest, $reveal)
         .navigationDestination(for: PhoneSettingsPage.self) { page($0) }
         .searchable(
           text: $router.searchQuery, isPresented: $router.isSearching, prompt: "Search Settings"
