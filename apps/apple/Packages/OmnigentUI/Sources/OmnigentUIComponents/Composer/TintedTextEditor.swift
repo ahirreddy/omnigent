@@ -10,14 +10,12 @@ struct TintedTextEditor: View {
   let source: ComposerTokenSource
 
   @State private var editor = AttributedString()
-  @State private var selection = AttributedTextSelection()
-  @Environment(\.self) private var environment
+  @State private var selection = SelectionBox()
+  @Environment(\.controlAccent) private var accent
 
   var body: some View {
-    let style = TintStyle(
-      source: source, tint: ThemeColor.controlTint.resolve(in: environment),
-      fill: ThemeColor.controlTint.resolve(in: environment).opacity(0.12))
-    TextEditor(text: typed, selection: $selection)
+    let style = TintStyle(source: source, tint: accent, fill: accent.opacity(0.12))
+    TextEditor(text: typed, selection: selected)
       .onChange(of: editor) { retint(style) }
       .onChange(of: text, initial: true) { draftChanged(style) }
       .onChange(of: style) { retint(style) }
@@ -36,6 +34,23 @@ struct TintedTextEditor: View {
       return text
     }
 
+    /// Whether `text`'s tints sit on `plain`'s tokens; attributes the editor adds don't count.
+    func isTinted(_ text: AttributedString, plain: String) -> Bool {
+      spans(of: text) == spans(of: styled(plain))
+    }
+
+    private func spans(of text: AttributedString) -> [TintSpan] {
+      text.runs.compactMap { run in
+        let foreground: Color? = run.foregroundColor
+        let background: Color? = run.backgroundColor
+        guard foreground != nil || background != nil else { return nil }
+        return TintSpan(
+          start: text.characters.distance(from: text.startIndex, to: run.range.lowerBound),
+          end: text.characters.distance(from: text.startIndex, to: run.range.upperBound),
+          foreground: foreground, background: background)
+      }
+    }
+
     /// Clears every attribute of `text`, then tints its tokens.
     func apply(to text: inout AttributedString, plain: String) {
       text.setAttributes(AttributeContainer())
@@ -46,6 +61,23 @@ struct TintedTextEditor: View {
         if token.kind == .mention { text[start..<end].backgroundColor = fill }
       }
     }
+  }
+
+  /// A tinted run, by character offsets.
+  private struct TintSpan: Equatable {
+    let start: Int
+    let end: Int
+    let foreground: Color?
+    let background: Color?
+  }
+
+  /// The caret and selection, outside SwiftUI's state: moving them needs no update of the view.
+  private final class SelectionBox {
+    var value = AttributedTextSelection()
+  }
+
+  private var selected: Binding<AttributedTextSelection> {
+    Binding(get: { selection.value }, set: { selection.value = $0 })
   }
 
   /// The editor's text: typing changes it and the draft in the same update, so a key lays the
@@ -64,14 +96,14 @@ struct TintedTextEditor: View {
   private func draftChanged(_ style: TintStyle) {
     guard String(editor.characters) != text else { return }
     editor = style.styled(text)
-    selection = AttributedTextSelection(insertionPoint: editor.endIndex)
+    selection.value = AttributedTextSelection(insertionPoint: editor.endIndex)
   }
 
   /// Puts the tints where the text's tokens are now, keeping the selection, when they moved
   /// (a character typed after a token takes its tint until here).
   private func retint(_ style: TintStyle) {
     let plain = String(editor.characters)
-    guard style.styled(plain) != editor else { return }
-    editor.transform(updating: &selection) { text in style.apply(to: &text, plain: plain) }
+    guard !style.isTinted(editor, plain: plain) else { return }
+    editor.transform(updating: &selection.value) { text in style.apply(to: &text, plain: plain) }
   }
 }
