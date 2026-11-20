@@ -184,8 +184,18 @@ struct ComposerCardSurface: ViewModifier {
   let layout: ComposerLayoutStyle
   let isTargeted: Bool
   let isFocused: Bool
+  /// The window is the card (the New Agent panel), so none is drawn.
+  var fillsWindow = false
 
-  func body(content: Content) -> some View {
+  @ViewBuilder func body(content: Content) -> some View {
+    if fillsWindow {
+      content
+    } else {
+      surface(content)
+    }
+  }
+
+  @ViewBuilder private func surface(_ content: Content) -> some View {
     switch layout {
     case .card: content.modifier(ComposerPillSurface(isTargeted: isTargeted, isFocused: isFocused))
     case .touch: content.composerSurface(isTargeted: isTargeted, isFocused: isFocused)

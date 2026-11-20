@@ -161,7 +161,7 @@ enum AutomationsMapping {
     }
     return AutomationDraft(
       name: draft.name, prompt: prompt,
-      rrule: draft.schedule.map { buildScheduleRrule(model: model($0)) } ?? saved?.rrule ?? "",
+      rrule: draft.schedule.map { rule($0, saved: saved) } ?? saved?.rrule ?? "",
       agentId: draft.agentID, timezone: draft.timezone,
       continuesSession: sessionModes ? draft.continuesSession : nil,
       hostId: filled(draft.hostID), workspace: filled(draft.workspace),
@@ -200,7 +200,7 @@ enum AutomationsMapping {
       return
         "This server does not support custom schedules or occurrence limits. Choose a supported frequency and ending to replace this schedule."
     }
-    let unchanged = saved.map { $0.rrule == buildScheduleRrule(model: rule) } ?? false
+    let unchanged = saved.map { storedRule($0) == buildScheduleRrule(model: rule) } ?? false
     return validateSchedule(
       model: rule, now: Int64(now.timeIntervalSince1970), allowPastEnd: unchanged, limits: limits)
   }
@@ -218,7 +218,7 @@ enum AutomationsMapping {
       frequency: interval ? .minutely : frequency(choice.frequency),
       interval: UInt16(clamping: choice.interval),
       monthDays: choice.monthDays.map { UInt16(clamping: $0) },
-      month: UInt8(clamping: choice.month), end: end(choice.end))
+      month: UInt8(clamping: choice.month), rule: choice.rule, end: end(choice.end))
   }
 
   /// The editor's choice for a rule; a saved minute rule reopens as Interval, as the web's.
@@ -228,7 +228,8 @@ enum AutomationsMapping {
       preset: minutes ? .interval : preset(model.preset), hour: Int(model.hour),
       minute: Int(model.minute), weekdays: Set(model.weekdays.map(\.index)),
       frequency: frequency(model.frequency), interval: Int(model.interval),
-      monthDays: model.monthDays.map(Int.init), month: Int(model.month), end: end(model.end))
+      monthDays: model.monthDays.map(Int.init), month: Int(model.month), rule: model.rule,
+      end: end(model.end))
   }
 
   private static func end(_ end: ScheduleChoice.End) -> ScheduleEnd {
@@ -276,6 +277,7 @@ enum AutomationsMapping {
     case .weekly: .weekly
     case .monthly: .monthly
     case .yearly: .yearly
+    case .rule: .rule
     }
   }
 
@@ -287,6 +289,7 @@ enum AutomationsMapping {
     case .weekly: .weekly
     case .monthly: .monthly
     case .yearly: .yearly
+    case .rule: .rule
     }
   }
 }

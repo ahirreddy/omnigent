@@ -22,6 +22,9 @@ nonisolated public enum ComposerLayoutStyle: Hashable, Sendable {
 extension EnvironmentValues {
   /// The composer's layout; the playground sets `.touch` to preview the iPhone bar on the Mac.
   @Entry public var composerLayoutStyle: ComposerLayoutStyle = .platformDefault
+  /// The composer is its window's whole content, as in the floating New Agent panel: the window
+  /// is its card, its footer sits apart under a line, and its send chord shows beside Send.
+  @Entry public var composerFillsWindow = false
 }
 
 /// Metrics for the touch bar, from the ChatGPT, Claude and Gemini comparison.

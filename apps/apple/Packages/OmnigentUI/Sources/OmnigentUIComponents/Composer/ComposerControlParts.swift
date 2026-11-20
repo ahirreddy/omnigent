@@ -20,6 +20,8 @@ struct ComposerControlParts {
   let perform: (ComposerSendIntent) -> Void
   /// Mic: the host's dictation, else the system's (speech recognition on touch).
   var pillDictate: (@MainActor () -> Void)?
+  /// Shows the send chord beside Send, as the web's New Agent panel does.
+  var showsSendChord = false
 
   /// The touch bar's open row; the model name takes the free width and truncates first. The
   /// host's name (also in the context row) gives way first where the row can't fit it, as on an
@@ -50,6 +52,7 @@ struct ComposerControlParts {
   /// send, then Mic. Expand keeps its shortcut without a button.
   var pillTrailing: some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
+      if showsSendChord { sendChord }
       send
       ComposerEditorButtons(
         dictate: pillDictate, isEditable: isEditable, showsExpand: false,
@@ -128,6 +131,16 @@ struct ComposerControlParts {
     ComposerEditorButtons(
       dictate: pillDictate, isEditable: isEditable,
       showsExpand: layoutWidth == .regular, isExpanded: $isExpanded)
+  }
+
+  /// The chord that sends, which the panel says beside Send: plain Return adds a line there.
+  private var sendChord: some View {
+    Text(state.submitWithCommandReturn ? "\u{2318}\u{21B5}" : "\u{21B5}")
+      .font(.callout)
+      .foregroundStyle(.secondary)
+      .help(state.submitWithCommandReturn ? "Command-Return sends" : "Return sends")
+      .accessibilityHidden(true)
+      .accessibilityIdentifier("composer-send-chord")
   }
 
   private var send: some View {

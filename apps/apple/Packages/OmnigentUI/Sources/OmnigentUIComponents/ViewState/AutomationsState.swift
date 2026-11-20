@@ -298,6 +298,8 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
     case monthly
     /// Years.
     case yearly
+    /// RRULE text the visual controls can't show (``ScheduleChoice/rule``).
+    case rule
 
     /// The unit itself.
     public var id: Self { self }
@@ -311,6 +313,7 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
       case .weekly: "Weeks"
       case .monthly: "Months"
       case .yearly: "Years"
+      case .rule: "RRULE"
       }
     }
   }
@@ -331,6 +334,9 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
   public var monthDays: [Int]
   /// The yearly month, 1-12.
   public var month: Int
+  /// A ``Frequency/rule`` schedule's RRULE text, without `COUNT` or `UNTIL`, which ``end``
+  /// holds.
+  public var rule: String
   /// When it stops.
   public var end: End
 
@@ -348,7 +354,7 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
   public init(
     preset: Preset = .daily, hour: Int = 9, minute: Int = 0, weekdays: Set<Int> = [0],
     frequency: Frequency = .daily, interval: Int = 1, monthDays: [Int] = [1], month: Int = 1,
-    end: End = .never
+    rule: String = "", end: End = .never
   ) {
     self.preset = preset
     self.hour = hour
@@ -358,6 +364,31 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
     self.interval = interval
     self.monthDays = monthDays
     self.month = month
+    self.rule = rule
     self.end = end
+  }
+
+  /// The schedule is RRULE text rather than the visual controls' choices.
+  public var isRule: Bool { preset == .custom && frequency == .rule }
+}
+
+/// Moves a schedule between the visual controls and RRULE text, from the core.
+public struct ScheduleRuleConversion {
+  /// A visual schedule's rule without its ending, which the RRULE editor starts from.
+  public var text: @MainActor (ScheduleChoice) -> String
+  /// The visual schedule RRULE text reads as, or `nil` when the controls can't show it.
+  public var visual: @MainActor (String) -> ScheduleChoice?
+  /// The text's plain-language summary, or `nil` when no phrase states it exactly.
+  public var summary: @MainActor (String) -> String?
+
+  /// Creates a conversion.
+  public init(
+    text: @escaping @MainActor (ScheduleChoice) -> String,
+    visual: @escaping @MainActor (String) -> ScheduleChoice?,
+    summary: @escaping @MainActor (String) -> String?
+  ) {
+    self.text = text
+    self.visual = visual
+    self.summary = summary
   }
 }

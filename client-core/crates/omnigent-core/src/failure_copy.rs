@@ -19,6 +19,9 @@ pub fn failure_description(code: &str) -> Option<&'static str> {
             "The connection to the agent dropped mid-turn; retrying usually continues the turn."
         }
         "context_length_exceeded" => "The conversation grew past the model's context window.",
+        "output_limit_exceeded" => {
+            "The model's response hit its maximum output length and was cut off."
+        }
         "executor_error" => "The agent runtime hit an error while running the turn.",
         "workspace_missing" => "The session workspace no longer exists on the host.",
         "session_agent_missing" => {
@@ -102,6 +105,7 @@ mod tests {
             ("codex_compaction_model_failed", "compact the conversation"),
             ("codex_provider_auth_failed", "sign-in command"),
             ("client_update_required", "too old"),
+            ("output_limit_exceeded", "maximum output length"),
         ] {
             let sentence = failure_description(code).unwrap();
             assert!(sentence.contains(phrase), "{code}: {sentence}");

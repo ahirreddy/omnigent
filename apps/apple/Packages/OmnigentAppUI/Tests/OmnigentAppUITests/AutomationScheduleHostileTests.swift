@@ -112,7 +112,7 @@ struct AutomationScheduleHostileTests {
   func untilFromAModel() {
     let model = ScheduleModel(
       preset: .custom, hour: 0, minute: 0, weekdays: [], frequency: .daily, interval: 1,
-      monthDays: [], month: 1, end: .until(at: .min))
+      monthDays: [], month: 1, rule: "", end: .until(at: .min))
     let choice = AutomationsMapping.choice(model)
     #expect(choice.end == .until(Date(timeIntervalSince1970: TimeInterval(Int64.min))))
     #expect(AutomationsMapping.choice(model).preset == .custom)

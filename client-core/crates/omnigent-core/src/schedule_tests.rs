@@ -90,21 +90,139 @@ fn parsing_round_trips_and_names_the_preset() {
 }
 
 #[test]
-fn rules_the_editor_cannot_make_are_left_alone() {
+fn rules_whose_ending_the_editor_cannot_show_are_left_alone() {
     for rule in [
         "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;COUNT=1",
         "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;COUNT=3;UNTIL=20261231T235959Z",
         "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;UNTIL=20260230T000000Z",
         "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;UNTIL=2026-12-31",
-        "FREQ=DAILY;BYHOUR=8",
-        "FREQ=SECONDLY;BYMINUTE=0",
-        "FREQ=WEEKLY;BYDAY=XX;BYHOUR=8;BYMINUTE=0",
-        "FREQ=DAILY;BYHOUR=25;BYMINUTE=0",
+        "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYHOUR=10",
         "garbage",
         "",
     ] {
         assert_eq!(parse_rrule(rule), None, "{rule}");
     }
+}
+
+/// The model a rule the visual controls can't show opens as: its text, its ending apart.
+fn rule_text(rule: &str, end: ScheduleEnd) -> ScheduleModel {
+    ScheduleModel {
+        preset: SchedulePreset::Custom,
+        frequency: ScheduleFrequency::Rule,
+        rule: rule.to_owned(),
+        end,
+        ..ScheduleModel::default()
+    }
+}
+
+#[test]
+fn rules_the_visual_controls_cannot_show_open_as_rrule_text() {
+    // `scheduleBuilder.test.ts`: written as stored, with COUNT or UNTIL moved to the ending.
+    for rule in [
+        "FREQ=DAILY;BYHOUR=8",
+        "FREQ=SECONDLY;BYMINUTE=0",
+        "FREQ=WEEKLY;BYDAY=XX;BYHOUR=8;BYMINUTE=0",
+        "FREQ=DAILY;BYHOUR=25;BYMINUTE=0",
+        "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9,10,11,12,13,14,15,16,17;BYMINUTE=0",
+    ] {
+        let parsed = parse_rrule(rule);
+        assert_eq!(parsed, Some(rule_text(rule, ScheduleEnd::Never)), "{rule}");
+        assert_eq!(
+            parsed.map(|model| build_rrule(&model)).as_deref(),
+            Some(rule)
+        );
+    }
+    assert_eq!(
+        parse_rrule("FREQ=YEARLY;BYWEEKNO=1;BYDAY=MO;BYHOUR=9;BYMINUTE=0;COUNT=3"),
+        Some(rule_text(
+            "FREQ=YEARLY;BYWEEKNO=1;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
+            ScheduleEnd::Count(3)
+        ))
+    );
+    let until = "FREQ=MONTHLY;BYDAY=1MO;BYHOUR=9;BYMINUTE=0;UNTIL=20271231T155959Z";
+    let parsed = parse_rrule(until).unwrap();
+    assert_eq!(parsed.rule, "FREQ=MONTHLY;BYDAY=1MO;BYHOUR=9;BYMINUTE=0");
+    assert_eq!(build_rrule(&parsed), until);
+    // Stored in any case, with a lower-case prefix and spaces, as the server accepts.
+    let stored = parse_rrule(" rrule:count=3;freq=daily;byhour=9;byminute=0 ").unwrap();
+    assert_eq!(stored.preset, SchedulePreset::Daily);
+    assert_eq!(stored.end, ScheduleEnd::Count(3));
+    assert_eq!(
+        build_rrule(&rule_text(
+            " rrule:freq=yearly;byeaster=0 ",
+            ScheduleEnd::Never
+        )),
+        "FREQ=YEARLY;BYEASTER=0"
+    );
+}
+
+#[test]
+fn rrule_text_is_checked_for_its_shape_only() {
+    let problem = |rule: &str| validate_rule_text(rule);
+    assert_eq!(problem("FREQ=YEARLY;BYEASTER=0"), None);
+    assert_eq!(problem(" rrule:freq=daily;byhour=9,17 "), None);
+    for (rule, words) in [
+        ("  ", "Enter a recurrence rule"),
+        ("FREQ=DAILY\nBYHOUR=9", "one RRULE line"),
+        ("FREQ=DAILY;", "NAME=VALUE pairs"),
+        ("FREQ=DAILY;FREQ=WEEKLY", "NAME=VALUE pairs"),
+        ("FREQ=DAILY;COUNT=3", "under Ends"),
+        (
+            "FREQ=DAILY;DTSTART=20260101",
+            "DTSTART isn't a supported rule field.",
+        ),
+        ("BYHOUR=9", "Include a FREQ"),
+        ("FREQ=FORTNIGHTLY", "Include a FREQ"),
+    ] {
+        let text = problem(rule).unwrap_or_default();
+        assert!(text.contains(words), "{rule:?}: {text}");
+    }
+    let mut ruled = rule_text("FREQ=DAILY;BYHOUR=9,17", ScheduleEnd::Until(10));
+    assert_eq!(
+        validate_schedule(&ruled, 100, false, ScheduleLimits::SAVED).as_deref(),
+        Some("Choose an end date in the future.")
+    );
+    assert_eq!(
+        validate_schedule(&ruled, 100, true, ScheduleLimits::SAVED),
+        None
+    );
+    ruled.rule = "FREQ=DAILY;UNTIL=20261231T235959Z".to_owned();
+    assert!(validate_schedule(&ruled, 0, true, ScheduleLimits::SAVED).is_some());
+    assert_eq!(
+        recurring_rule(&ScheduleModel {
+            end: ScheduleEnd::Count(4),
+            ..model(SchedulePreset::Weekdays)
+        }),
+        "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=8;BYMINUTE=30"
+    );
+    assert_eq!(normalize_rule_text(" Rrule:freq=daily "), "FREQ=DAILY");
+}
+
+#[test]
+fn summaries_show_a_rule_their_phrases_cannot_state_as_written() {
+    // `scheduleText.test.ts`: a summary never describes a different schedule.
+    for rule in [
+        "FREQ=HOURLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9,10,11,12,13,14,15,16,17;BYMINUTE=0",
+        "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9,10,11,12,13,14,15,16,17;BYMINUTE=0",
+        "FREQ=DAILY;BYHOUR=9;BYMINUTE=0,30",
+        "FREQ=DAILY;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
+        "FREQ=MONTHLY;BYDAY=1MO;BYHOUR=9;BYMINUTE=0",
+        "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1;BYHOUR=9;BYMINUTE=0",
+        "FREQ=MONTHLY;BYMONTHDAY=-1;BYHOUR=9;BYMINUTE=0",
+        "FREQ=MONTHLY;BYMONTH=1,4,7,10;BYMONTHDAY=1;BYHOUR=9;BYMINUTE=0",
+        "FREQ=YEARLY;BYMONTHDAY=1;BYHOUR=9;BYMINUTE=0",
+        "FREQ=YEARLY;BYMONTH=1,13;BYMONTHDAY=1;BYHOUR=9;BYMINUTE=0",
+        "FREQ=YEARLY;BYWEEKNO=1;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
+        "FREQ=YEARLY;BYEASTER=0;BYHOUR=9;BYMINUTE=0",
+        "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=30",
+        "FREQ=WEEKLY;INTERVAL=2;WKST=SU;BYDAY=SU,MO;BYHOUR=9;BYMINUTE=0",
+    ] {
+        assert_eq!(describe_schedule(rule), rule);
+    }
+    assert_eq!(
+        describe_schedule("FREQ=WEEKLY;INTERVAL=2;WKST=MO;BYDAY=MO;BYHOUR=9;BYMINUTE=0"),
+        "Every 2 weeks on Monday at 9:00 AM"
+    );
 }
 
 #[test]
@@ -316,10 +434,18 @@ fn custom_rules_build_for_every_unit_and_fall_back_to_the_first_of_the_month() {
 }
 
 #[test]
-fn a_rule_with_a_malformed_part_or_a_part_of_another_unit_is_left_alone() {
+fn a_rule_with_a_malformed_part_is_left_alone() {
     for rule in [
         "FREQ=DAILY;BYHOUR=8=9;BYMINUTE=0",
         "FREQ=DAILY;BYHOUR=8;BYHOUR=9;BYMINUTE=0",
+    ] {
+        assert_eq!(parse_rrule(rule), None, "{rule}");
+    }
+}
+
+#[test]
+fn a_rule_with_a_part_of_another_unit_opens_as_rrule_text() {
+    for rule in [
         "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;BYMONTHDAY=3",
         "FREQ=DAILY;INTERVAL=0;BYHOUR=8;BYMINUTE=0",
         "FREQ=DAILY;INTERVAL=367;BYHOUR=8;BYMINUTE=0",
@@ -328,7 +454,11 @@ fn a_rule_with_a_malformed_part_or_a_part_of_another_unit_is_left_alone() {
         "FREQ=YEARLY;BYHOUR=8;BYMINUTE=0;BYMONTHDAY=3",
         "FREQ=YEARLY;BYHOUR=8;BYMINUTE=0;BYMONTHDAY=3;BYMONTH=13",
     ] {
-        assert_eq!(parse_rrule(rule), None, "{rule}");
+        assert_eq!(
+            parse_rrule(rule),
+            Some(rule_text(rule, ScheduleEnd::Never)),
+            "{rule}"
+        );
     }
 }
 
@@ -447,7 +577,7 @@ fn minute_rules_round_trip_through_the_editor() {
 }
 
 #[test]
-fn minute_rules_the_editor_cannot_show_stay_as_they_are() {
+fn minute_rules_the_visual_controls_cannot_show_open_as_rrule_text() {
     // `scheduleBuilder.test.ts`: no silently discarded fields, and nothing a server refuses.
     for rule in [
         "FREQ=MINUTELY;INTERVAL=10;BYMINUTE=5",
@@ -457,7 +587,11 @@ fn minute_rules_the_editor_cannot_show_stay_as_they_are() {
         "FREQ=MINUTELY",
         "FREQ=MINUTELY;INTERVAL=21961",
     ] {
-        assert_eq!(parse_rrule(rule), None, "{rule}");
+        assert_eq!(
+            parse_rrule(rule),
+            Some(rule_text(rule, ScheduleEnd::Never)),
+            "{rule}"
+        );
     }
 }
 
@@ -546,7 +680,7 @@ fn one_time_rules_read_as_once_as_the_web_names_them() {
     );
     assert_eq!(
         describe_schedule("FREQ=YEARLY;BYMONTH=3;BYMONTHDAY=4;BYHOUR=9,17;BYMINUTE=0;COUNT=1"),
-        "Once: Yearly in March on the 4th at 9:00 AM"
+        "Once: FREQ=YEARLY;BYMONTH=3;BYMONTHDAY=4;BYHOUR=9,17;BYMINUTE=0"
     );
     // More than one run is not one-time.
     assert_eq!(

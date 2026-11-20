@@ -592,6 +592,8 @@ pub enum ScheduleFrequency {
     Monthly,
     /// Years.
     Yearly,
+    /// RRULE text the visual controls can't show ([`ScheduleModel::rule`]).
+    Rule,
 }
 
 /// What the schedule editor holds.
@@ -613,6 +615,8 @@ pub struct ScheduleModel {
     pub month_days: Vec<u16>,
     /// The yearly month, 1-12.
     pub month: u8,
+    /// A `Rule` schedule's RRULE text, without `COUNT` or `UNTIL`, which `end` holds.
+    pub rule: String,
     /// When it stops.
     pub end: ScheduleEnd,
 }
@@ -647,7 +651,7 @@ mirror_enum!(
 mirror_enum!(
     ScheduleFrequency,
     rules::ScheduleFrequency,
-    [Minutely, Hourly, Daily, Weekly, Monthly, Yearly]
+    [Minutely, Hourly, Daily, Weekly, Monthly, Yearly, Rule]
 );
 mirror_enum!(
     AutomationFilter,
@@ -671,6 +675,7 @@ impl From<ScheduleModel> for rules::ScheduleModel {
                 .filter_map(|day| u8::try_from(day).ok())
                 .collect(),
             month: model.month,
+            rule: model.rule,
             end: model.end.into(),
         }
     }
@@ -687,6 +692,7 @@ impl From<rules::ScheduleModel> for ScheduleModel {
             interval: model.interval,
             month_days: model.month_days.into_iter().map(u16::from).collect(),
             month: model.month,
+            rule: model.rule,
             end: model.end.into(),
         }
     }
@@ -900,6 +906,21 @@ pub fn build_schedule_rrule(model: ScheduleModel) -> String {
 #[uniffi::export]
 pub fn parse_schedule_rrule(rrule: String) -> Option<ScheduleModel> {
     rules::parse_rrule(&rrule).map(Into::into)
+}
+
+/// The rule for an editor model without its `COUNT` or `UNTIL`: the RRULE editor's text when
+/// it opens on a visual schedule.
+#[must_use]
+#[uniffi::export]
+pub fn recurring_schedule_rrule(model: ScheduleModel) -> String {
+    rules::recurring_rule(&model.into())
+}
+
+/// RRULE editor text as the server reads it: no `RRULE:` prefix, upper case.
+#[must_use]
+#[uniffi::export]
+pub fn normalize_schedule_rule(rule: String) -> String {
+    rules::normalize_rule_text(&rule)
 }
 
 /// The editor's default schedule: every day at 9:00 AM.

@@ -186,6 +186,8 @@ public struct AutomationEditorContext {
   public var overrides: AutomationOverrideOptions?
   /// The server runs custom schedules and run-count endings (`automations_v2`).
   public var anchoredScheduling = false
+  /// Offers the Visual | RRULE switch, as the web's schedule picker; `nil` offers no RRULE.
+  public var ruleConversion: ScheduleRuleConversion?
   /// The minutes an Interval schedule may repeat every here.
   public var minuteRange: ClosedRange<Int> = 60...21_960
   /// Custom schedules offer minutes: the server and where runs go allow under an hour.
