@@ -95,6 +95,8 @@ public struct ConversationScreen<Terminal: View>: View {
         scrollToLatestRequest: scrollRequest
       )
       .modifier(InlineApproveShortcut(target: approveCandidate))
+      // A sent prompt's leading command is tinted as the composer tints it.
+      .environment(\.promptCommands, composerState.slashCommands)
       .chatDropTarget(
         isEnabled: composerState.acceptsAttachments && composerState.availability == .available,
         add: composerActions.addAttachments

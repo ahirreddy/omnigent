@@ -40,6 +40,8 @@ nonisolated struct MessageTextStyle: Hashable, Sendable {
   var code: MessageCodeFont
   var isDark: Bool
   var link: Color.Resolved
+  /// A sent prompt's leading command (``PromptCommand``), in the composer's tint.
+  var accent: Color.Resolved
   var codeSurface: Color.Resolved
   var hover: Color.Resolved
   var border: Color.Resolved
@@ -63,6 +65,7 @@ nonisolated struct MessageTextStyle: Hashable, Sendable {
       color.resolve(in: environment).resolve(in: environment)
     }
     link = resolved(.link)
+    accent = resolved(.controlTint)
     codeSurface = resolved(.codeSurface)
     hover = resolved(.hover)
     border = resolved(.border)
@@ -78,6 +81,7 @@ nonisolated struct MessageTextPalette: @unchecked Sendable {
   let tertiary: PlatformColor
   let separator: PlatformColor
   let link: PlatformColor
+  let accent: PlatformColor
   let codeSurface: PlatformColor
   let hover: PlatformColor
   let border: PlatformColor
@@ -99,6 +103,7 @@ nonisolated struct MessageTextPalette: @unchecked Sendable {
     inlineCodeBackground = labels.secondary.withAlphaComponent(
       labels.secondary.cgColor.alpha * 0.14)
     link = PlatformColor(Color(style.link))
+    accent = PlatformColor(Color(style.accent))
     codeSurface = PlatformColor(Color(style.codeSurface))
     hover = PlatformColor(Color(style.hover))
     border = PlatformColor(Color(style.border))

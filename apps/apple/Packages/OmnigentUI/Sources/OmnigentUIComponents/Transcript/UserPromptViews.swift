@@ -53,6 +53,10 @@ struct UserPromptBody: View {
   let text: String
   /// Reads a design-tool message as its card; a message from another session stays words.
   var showsDesignRequest = true
+  /// Tints a leading command the session knows (``PromptCommand``); not for a message from
+  /// another session or with attachments, which aren't commands.
+  var tintsCommand = false
+  @Environment(\.promptCommands) private var commands
   @State private var isExpanded = false
 
   var body: some View {
@@ -68,7 +72,8 @@ struct UserPromptBody: View {
         words(shown.request)
         DesignRequestSubject(request: shown)
       } else {
-        words(collapsed.map { $0 + "\u{2026}" } ?? prompt.text)
+        let shown = collapsed.map { $0 + "\u{2026}" } ?? prompt.text
+        words(tintsCommand ? PromptCommand.marked(shown, commands: commands) : shown)
       }
       if collapsed != nil {
         UserPromptToggle(title: UserPrompt.expandTitle(prompt.text), collapses: false) {

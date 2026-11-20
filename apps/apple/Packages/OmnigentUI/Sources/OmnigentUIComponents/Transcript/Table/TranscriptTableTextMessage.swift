@@ -73,10 +73,11 @@
     ///   - ramp: The reading ramp the text splits at.
     ///   - expandsPrompt: A long prompt shows whole; it starts collapsed.
     ///   - expandsOrigin: A message from another session shows whole; it starts collapsed.
+    ///   - commands: The session's commands, whose leading one a prompt tints.
     /// - Returns: The message, or `nil` for a row that stays SwiftUI's.
     static func make(
       _ row: TranscriptTableRow, ramp: TypeRamp, expandsPrompt: Bool = false,
-      expandsOrigin: Bool = false
+      expandsOrigin: Bool = false, commands: [SlashCommand] = []
     ) -> Self? {
       guard case .segment(let entry) = row.content,
         case .item(.message(let message)) =
@@ -100,7 +101,8 @@
           entries: (text.isEmpty ? [.empty] : text) + attachments + unsupported + interrupted)
       case .user:
         // Attachments lead the bubble, then the body, then content this app can't show.
-        let body = promptBody(message, ramp: ramp, expands: expandsPrompt)
+        let body = promptBody(
+          message, ramp: ramp, expands: expandsPrompt, commands: commands)
         made = Self(
           role: .user, row: message, decoration: decoration, markdown: body.markdown,
           split: MessageTextSplits.shared.split(body.markdown, ramp: ramp),
@@ -128,7 +130,9 @@
 
     /// A user's prompt's body as ``UserPromptBody`` stacks it: its mentions' chips, its text
     /// and a long prompt's toggle. A prompt of attachments alone has no body.
-    private static func promptBody(_ message: Row, ramp: TypeRamp, expands: Bool) -> PromptBody {
+    private static func promptBody(
+      _ message: Row, ramp: TypeRamp, expands: Bool, commands: [SlashCommand]
+    ) -> PromptBody {
       // A reply to an agent's questions: each answer under its quoted question, in one run.
       if let reply = QuestionReplyMarkdown.text(message.questionReplies) {
         return PromptBody(markdown: reply, entries: pieces(of: reply, ramp: ramp))
@@ -150,6 +154,8 @@
         if fold == .collapsed { design = design.clipped(to: UserPrompt.collapseThreshold) }
         markdown = design.request
         subject = [.accessory(.designSubject(design))]
+      } else if message.originSessionId == nil, message.attachments.isEmpty {
+        markdown = PromptCommand.marked(markdown, commands: commands)
       }
       let mentions: [Entry] =
         prompt.mentions.isEmpty ? [] : [.accessory(.mentions(prompt.mentions))]
