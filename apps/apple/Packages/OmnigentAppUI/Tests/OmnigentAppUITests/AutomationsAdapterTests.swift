@@ -105,7 +105,7 @@ struct AutomationsAdapterTests {
     #expect(request.continuesSession == nil)
   }
 
-  @Test("End conditions round-trip; a rule the editor cannot show is kept as it is")
+  @Test("End conditions round-trip; a rule whose ending the editor can't show is kept as it is")
   func endsAndKeptRules() throws {
     let counted = AutomationsMapping.draft(
       automation(rrule: "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;COUNT=5"))
@@ -118,7 +118,7 @@ struct AutomationsAdapterTests {
       buildScheduleRrule(model: AutomationsMapping.model(try #require(until.schedule)))
         == "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;UNTIL=20261231T235959Z")
 
-    let rule = "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;BYSETPOS=1"
+    let rule = "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;BYSETPOS=1;COUNT=1"
     let kept = AutomationsMapping.draft(automation(rrule: rule))
     #expect(kept.schedule == nil)
     let request = AutomationsMapping.request(

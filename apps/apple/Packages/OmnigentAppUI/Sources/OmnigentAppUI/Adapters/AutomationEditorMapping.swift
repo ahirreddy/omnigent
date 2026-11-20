@@ -157,6 +157,7 @@ enum AutomationEditorMapping {
     limits: ScheduleLimits
   ) {
     context.anchoredScheduling = offered?.automationsV2 == true
+    context.ruleConversion = AutomationsMapping.ruleConversion
     let minimum = Int(minimumScheduleInterval(frequency: .minutely, limits: limits))
     context.minuteRange = minimum...Int(maximumScheduleInterval(frequency: .minutely))
     context.offersMinutes = minimum < 60

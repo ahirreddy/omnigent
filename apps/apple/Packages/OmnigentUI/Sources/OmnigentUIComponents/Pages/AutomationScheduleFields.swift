@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// The schedule picker, as the web's `ScheduleFields`: the frequency, then the custom unit,
-/// interval and days, and the time. The ending is ``ScheduleEndFields``, which the editor shows
-/// on its own row, as the web's Ends. Interval and custom schedules and run-count endings need a
-/// server with anchored scheduling.
+/// The schedule picker, as the web's `ScheduleFields`: the Visual | RRULE switch, then the
+/// frequency, the custom unit, interval and days, and the time, or the rule's text. The ending is
+/// ``ScheduleEndFields``, which the editor shows on its own row, as the web's Ends. Interval,
+/// custom and RRULE schedules and run-count endings need a server with anchored scheduling.
 struct ScheduleFields: View {
   @Binding var choice: ScheduleChoice
   var anchoredScheduling = true
@@ -13,8 +13,25 @@ struct ScheduleFields: View {
   var offersMinutes = true
   /// Includes the ending; the editor shows it on a row of its own.
   var showsEnding = true
+  /// Offers the RRULE editor; `nil` shows only the visual controls.
+  var rules: ScheduleRuleConversion?
 
   var body: some View {
+    if let rules {
+      ScheduleEditorPicker(choice: $choice, rules: rules, anchoredScheduling: anchoredScheduling)
+    }
+    if choice.isRule {
+      ScheduleRuleFields(choice: $choice, rules: rules, anchoredScheduling: anchoredScheduling)
+    } else {
+      visualFields
+    }
+    if showsEnding {
+      ScheduleEndFields(choice: $choice, anchoredScheduling: anchoredScheduling)
+    }
+  }
+
+  /// The frequency, its unit, interval and days, and the time.
+  @ViewBuilder private var visualFields: some View {
     frequencyPicker
     if choice.preset == .interval {
       Stepper(value: $choice.interval, in: minuteRange) {
@@ -60,9 +77,6 @@ struct ScheduleFields: View {
         .accessibilityIdentifier("automation-schedule-time")
       }
     }
-    if showsEnding {
-      ScheduleEndFields(choice: $choice, anchoredScheduling: anchoredScheduling)
-    }
   }
 
   /// The frequency, as a pop-up menu.
@@ -88,6 +102,7 @@ struct ScheduleFields: View {
       case .weekly: "week"
       case .monthly: "month"
       case .yearly: "year"
+      case .rule: "time"
       }
     return "\(choice.interval) \(unit)\(choice.interval == 1 ? "" : "s")"
   }
@@ -101,7 +116,7 @@ struct ScheduleFields: View {
 
   private var frequencies: [ScheduleChoice.Frequency] {
     ScheduleChoice.Frequency.allCases.filter {
-      $0 != .minutely || offersMinutes || choice.frequency == .minutely
+      $0 != .rule && ($0 != .minutely || offersMinutes || choice.frequency == .minutely)
     }
   }
 
@@ -244,7 +259,7 @@ struct AutomationScheduleRows: View {
         choice: Binding(
           get: { draft.schedule ?? ScheduleChoice() }, set: { draft.schedule = $0 }),
         anchoredScheduling: context.anchoredScheduling, minuteRange: context.minuteRange,
-        offersMinutes: context.offersMinutes, showsEnding: false)
+        offersMinutes: context.offersMinutes, showsEnding: false, rules: context.ruleConversion)
       AutomationTimeZonePicker(timezone: $draft.timezone)
     }
   }

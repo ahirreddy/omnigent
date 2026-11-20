@@ -25,7 +25,8 @@ use crate::automations::{
     AutomationState, ScheduleEnd, ScheduleFrequency, ScheduleLimits, ScheduleModel, SchedulePreset,
     ServerPages, Weekday, arrange_automations, build_schedule_rrule, default_schedule_model,
     describe_schedule, format_next_run, maximum_schedule_interval, minimum_schedule_interval,
-    parse_schedule_rrule, schedule_needs_anchored_scheduling, validate_schedule,
+    normalize_schedule_rule, parse_schedule_rrule, recurring_schedule_rrule,
+    schedule_needs_anchored_scheduling, validate_schedule,
 };
 use crate::automations::{
     RunPullRequestStatus, RunPullRequests, cost_limit_problem, describe_cost_limit,
@@ -179,6 +180,7 @@ fn a_schedule_model_round_trips_and_builds_the_same_rule() {
         interval: 3,
         month_days: vec![1, 31],
         month: 12,
+        rule: String::new(),
         end: ScheduleEnd::Count { count: 5 },
     };
     assert_eq!(
@@ -195,6 +197,32 @@ fn a_schedule_model_round_trips_and_builds_the_same_rule() {
     assert_eq!(parsed.month_days, [1, 31]);
     assert_eq!(parsed.end, ScheduleEnd::Count { count: 5 });
     assert_eq!(parse_schedule_rrule("not a rule".into()), None);
+}
+
+#[test]
+fn a_rule_the_visual_controls_cannot_show_crosses_as_rrule_text() {
+    let parsed =
+        parse_schedule_rrule("rrule:freq=weekly;byday=mo,tu;byhour=9,17;byminute=0;count=4".into())
+            .unwrap();
+    assert_eq!(parsed.frequency, ScheduleFrequency::Rule);
+    assert_eq!(
+        parsed.rule,
+        "FREQ=WEEKLY;BYDAY=MO,TU;BYHOUR=9,17;BYMINUTE=0"
+    );
+    assert_eq!(parsed.end, ScheduleEnd::Count { count: 4 });
+    assert_eq!(
+        build_schedule_rrule(parsed.clone()),
+        "FREQ=WEEKLY;BYDAY=MO,TU;BYHOUR=9,17;BYMINUTE=0;COUNT=4"
+    );
+    assert_eq!(validate_schedule(parsed, 0, false, LIMITS), None);
+    assert_eq!(
+        recurring_schedule_rrule(default_schedule_model()),
+        "FREQ=DAILY;BYHOUR=9;BYMINUTE=0"
+    );
+    assert_eq!(
+        normalize_schedule_rule(" rrule:freq=daily ".into()),
+        "FREQ=DAILY"
+    );
 }
 
 #[test]
