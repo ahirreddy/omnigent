@@ -243,9 +243,8 @@ struct MarkdownImagesAndMathTests {
     #expect(MarkdownParser.parse("[clip](\(signed))") == [.video(source: signed, title: "clip")])
     #expect(MarkdownVideoSource("file:///work/out/run.mov") == .workspace("/work/out/run.mov"))
     for prose in [
-      "See [the recording](demo.webm) for details.", "[notes](docs/notes.md)",
-      "[image](https://example.com/a.png)", "[mail](mailto:someone@example.com)",
-      "[page](https://example.com/videos/)", "[dot](.mp4)",
+      "[notes](docs/notes.md)", "[image](https://example.com/a.png)",
+      "[mail](mailto:someone@example.com)", "[page](https://example.com/videos/)", "[dot](.mp4)",
     ] {
       if case .paragraph? = MarkdownParser.parse(prose).first {
       } else {
@@ -255,6 +254,21 @@ struct MarkdownImagesAndMathTests {
     #expect(MarkdownVideoSource.isVideoName("recordings/a.ogv"))
     #expect(MarkdownVideoSource.isVideoName("a.m4v?raw"))
     #expect(!MarkdownVideoSource.isVideoName("src/player.ts"))
+  }
+
+  @Test("a recording link inside a sentence draws the player in its place, as the web's chat")
+  func videosInProse() {
+    let blocks = MarkdownParser.parse("See [the recording](demo.webm) for details.")
+    #expect(blocks.count == 3)
+    #expect(blocks.dropFirst().first == .video(source: "demo.webm", title: "the recording"))
+    guard case .paragraph(let before) = blocks.first, case .paragraph(let after) = blocks.last
+    else {
+      Issue.record("the text around the player stays")
+      return
+    }
+    #expect(String(before.characters) == "See ")
+    #expect(String(after.characters) == " for details.")
+    #expect(MarkdownParser.parse("[a](a.mp4) and [b](b.mov)").count == 3)
   }
 
   @Test("display and inline math, as the web delimits them")

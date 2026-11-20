@@ -82,12 +82,12 @@ nonisolated enum MarkdownParser {
   }
 
   private static func blocks(_ children: MarkupChildren) -> [MarkdownBlock] {
-    children.compactMap(block)
+    children.flatMap(expanded)
   }
 
   /// Top-level blocks as ``MarkdownStream`` parses them.
   static func blocks(_ markup: [any Markup], source _: Substring, base _: Int) -> [MarkdownBlock] {
-    markup.compactMap(block)
+    markup.flatMap(expanded)
   }
 
   static func block(_ markup: any Markup) -> MarkdownBlock? {
@@ -198,7 +198,7 @@ nonisolated enum MarkdownParser {
     )
   }
 
-  private static func inline(_ children: MarkupChildren) -> AttributedString {
+  static func inline(_ children: MarkupChildren) -> AttributedString {
     var result = AttributedString()
     for child in children {
       result.append(inline(child))
@@ -206,7 +206,7 @@ nonisolated enum MarkdownParser {
     return result
   }
 
-  private static func inline(_ markup: any Markup) -> AttributedString {
+  static func inline(_ markup: any Markup) -> AttributedString {
     switch markup {
     case let text as Markdown.Text:
       return MarkdownAutolink.linking(text.string)
