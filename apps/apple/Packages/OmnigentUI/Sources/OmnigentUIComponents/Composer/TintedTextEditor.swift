@@ -20,7 +20,10 @@ struct TintedTextEditor: View {
     let style = TintStyle(
       source: source, base: textColor, tint: accent, fill: accent.opacity(0.12))
     TextEditor(text: typed, selection: selected)
-      .onChange(of: editor) { retint(style) }
+      .onChange(of: editor) {
+        syncDraft()
+        retint(style)
+      }
       .onChange(of: text, initial: true) { draftChanged(style) }
       .onChange(of: style) { retint(style) }
   }
@@ -104,16 +107,17 @@ struct TintedTextEditor: View {
     Binding(get: { selection.value }, set: { selection.value = $0 })
   }
 
-  /// The editor's text: typing changes it and the draft in the same update, so a key lays the
-  /// window out once; the tints follow it.
+  /// The editor's text. The draft follows from `onChange`, never from this setter: the text
+  /// view calls it while it holds its storage, and a draft write there can update the view
+  /// again at once, which traps on the storage's exclusive access.
   private var typed: Binding<AttributedString> {
-    Binding(
-      get: { editor },
-      set: { typed in
-        editor = typed
-        let plain = String(typed.characters)
-        if plain != text { text = plain }
-      })
+    Binding(get: { editor }, set: { editor = $0 })
+  }
+
+  /// Copies the editor's text to the draft when they differ.
+  private func syncDraft() {
+    let plain = String(editor.characters)
+    if plain != text { text = plain }
   }
 
   /// A draft set from outside replaces the editor's text, with the caret at its end.
