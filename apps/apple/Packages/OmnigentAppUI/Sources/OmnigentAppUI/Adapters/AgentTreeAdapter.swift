@@ -10,10 +10,14 @@ enum AgentTreeAdapter {
   /// to this chat.
   static let refreshInterval: Duration = .seconds(15)
 
-  /// The panel state.
-  static func state(_ tools: SessionToolsStore) -> AgentTreeState {
+  /// The panel state, each agent tagged with its cost from `costs`.
+  static func state(_ tools: SessionToolsStore, costs: [String: String] = [:]) -> AgentTreeState {
     AgentTreeState(
-      nodes: tools.agentTree?.nodes.map(node) ?? [], currentID: tools.sessionID,
+      nodes: tools.agentTree?.nodes.map { node in
+        var mapped = Self.node(node)
+        mapped.costLabel = costs[node.sessionId]
+        return mapped
+      } ?? [], currentID: tools.sessionID,
       isLoading: tools.agentTree == nil && tools.agentTreeError == nil,
       errorMessage: tools.agentTreeError?.message)
   }
@@ -52,6 +56,17 @@ enum AgentTreeAdapter {
     }
   }
 
+  /// The session overview's sub-agent costs (`agent_costs`).
+  static func costSource(_ conversation: ConversationStore) -> AgentCostSource {
+    AgentCostSource {
+      do throws(CoreError) {
+        return .success(try await conversation.agentCostTags())
+      } catch {
+        return .failure(LogReadFailure(message: error.message))
+      }
+    }
+  }
+
   /// The Agents tab over the conversation's spawn tree.
   static func panel(_ conversation: ConversationStore, open: @escaping @MainActor (String) -> Void)
     -> AnyView
@@ -70,20 +85,23 @@ enum AgentTreeAdapter {
 }
 
 /// The Agents tab: reads the tree when shown, when this chat's sub-agents change and every
-/// ``AgentTreeAdapter/refreshInterval`` while shown.
+/// ``AgentTreeAdapter/refreshInterval`` while shown. With `session_overview` each agent shows
+/// its cost, read with the tree (`agent_costs`).
 struct AgentTreePanelHost: View {
   let conversation: ConversationStore
   let open: @MainActor (String) -> Void
   var refreshInterval = AgentTreeAdapter.refreshInterval
+  @Environment(\.offersSessionOverview) private var showsCosts
+  @State private var costs = AgentCostReading()
 
   var body: some View {
     let tools = conversation.tools
     AgentTreePanel(
-      state: AgentTreeAdapter.state(tools),
+      state: AgentTreeAdapter.state(tools, costs: costs.tags),
       actions: AgentTreeActions(
-        open: open, refresh: { Task { await tools.loadAgentTree() } })
+        open: open, refresh: { Task { await load() } })
     )
-    .task(id: AgentTreeAdapter.childSignature(conversation)) { await tools.loadAgentTree() }
+    .task(id: AgentTreeAdapter.childSignature(conversation)) { await load() }
     .task {
       while !Task.isCancelled {
         do {
@@ -91,8 +109,38 @@ struct AgentTreePanelHost: View {
         } catch {
           return  // Cancelled: the tab is no longer shown.
         }
-        await tools.loadAgentTree()
+        await load()
       }
     }
+  }
+
+  private func load() async {
+    await conversation.tools.loadAgentTree()
+    guard showsCosts, costs.isSupported else { return }
+    costs = await costs.read(conversation)
+  }
+}
+
+/// The agents' cost tags, read again while shown; a server without them is asked no more.
+struct AgentCostReading {
+  private(set) var tags: [String: String] = [:]
+  private(set) var isSupported = true
+  /// Why the latest read failed; the last tags stay.
+  private(set) var failure: String?
+
+  /// These tags read again: the new ones, or the old ones and why the read failed.
+  func read(_ conversation: ConversationStore) async -> Self {
+    var next = self
+    do throws(CoreError) {
+      if let read = try await conversation.agentCostTags() {
+        next.tags = read
+      } else {
+        next.isSupported = false
+      }
+      next.failure = nil
+    } catch {
+      next.failure = error.message
+    }
+    return next
   }
 }

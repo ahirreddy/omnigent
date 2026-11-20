@@ -84,7 +84,7 @@ struct AdapterActionWiringTests {
   func canvasBoard() async throws {
     let connection = try await signedInStore(threeSessionServer())
     let canvas = try #require(connection.canvas)
-    let actions = CanvasAdapter(connection: connection, open: { _ in }, newSession: {})
+    let actions = CanvasAdapter(connection: connection, open: { _ in }, newSession: { _ in })
       .actions(canvas)
     actions.selectBoard?("second")
     #expect(canvas.activeBoard == "second")

@@ -72,6 +72,12 @@ pub struct McpPanel {
     pub status: Option<String>,
     /// Read again after this many milliseconds.
     pub poll_after_ms: Option<u32>,
+    /// The harness whose settings "Go to Settings" opens; `None` opens the harness list.
+    #[uniffi(default)]
+    pub settings_harness: Option<String>,
+    /// The host those settings show.
+    #[uniffi(default)]
+    pub settings_host_id: Option<String>,
 }
 
 impl From<core::McpPanelRow> for McpPanelRow {
@@ -129,6 +135,8 @@ impl ClientCore {
             rows: panel.rows.into_iter().map(Into::into).collect(),
             status: panel.status,
             poll_after_ms: panel.poll_after_ms,
+            settings_harness: panel.settings_harness,
+            settings_host_id: panel.settings_host_id,
         })
     }
 

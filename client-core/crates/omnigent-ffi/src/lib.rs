@@ -32,6 +32,7 @@
 )]
 
 pub mod accounts;
+pub mod agent_costs;
 pub mod agent_tree;
 pub mod approval;
 pub mod attention;
@@ -56,7 +57,9 @@ pub mod harness_inventory;
 pub mod harness_setup;
 pub mod host;
 pub mod host_switch;
+pub mod html_comments;
 pub mod http;
+pub mod import_review;
 pub mod inbox;
 pub mod inbox_items;
 pub mod nested_creation;

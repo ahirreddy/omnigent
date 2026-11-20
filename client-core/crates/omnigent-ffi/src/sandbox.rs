@@ -235,6 +235,38 @@ pub fn sandbox_url_problem(url: String, selected: Vec<SandboxRepo>) -> Option<St
     core::sandbox_url_problem(&url, &selected)
 }
 
+/// The input a sandbox repository problem shows under.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum SandboxRepoField {
+    /// The repository URL.
+    Repository,
+    /// The branch.
+    Branch,
+}
+
+/// Why a sandbox's repository and branch can't be sent, and the input it belongs under.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct SandboxRepoProblem {
+    /// The input.
+    pub field: SandboxRepoField,
+    /// What to show.
+    pub message: String,
+}
+
+/// Why Switch Host's sandbox repository and branch can't be sent (the web's
+/// `sandboxRepoProblem`); `None` when they can. A blank repository is an empty sandbox.
+#[must_use]
+#[uniffi::export]
+pub fn sandbox_move_problem(repository: String, branch: String) -> Option<SandboxRepoProblem> {
+    core::sandbox_move_problem(&repository, &branch).map(|problem| SandboxRepoProblem {
+        field: match problem.field {
+            core::SandboxRepoField::Repository => SandboxRepoField::Repository,
+            core::SandboxRepoField::Branch => SandboxRepoField::Branch,
+        },
+        message: problem.message,
+    })
+}
+
 /// Why `branch` of `url` cannot be used.
 #[must_use]
 #[uniffi::export]

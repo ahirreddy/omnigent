@@ -195,6 +195,64 @@ pub fn sandbox_url_problem(url: &str, selected: &[SandboxRepo]) -> Option<String
     None
 }
 
+/// The input a sandbox repository problem shows under.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SandboxRepoField {
+    /// The repository URL.
+    Repository,
+    /// The branch.
+    Branch,
+}
+
+/// Why a sandbox's repository and branch can't be sent, and the input it belongs under.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SandboxRepoProblem {
+    /// The input.
+    pub field: SandboxRepoField,
+    /// What to show.
+    pub message: String,
+}
+
+/// Why Switch Host's sandbox repository and branch can't be sent (the web's `sandboxRepoProblem`).
+///
+/// A blank repository is an empty sandbox, but a branch without one, a malformed URL or branch,
+/// or a pair too long for the server's label is not. `None` when they can be sent.
+#[must_use]
+pub fn sandbox_move_problem(url: &str, branch: &str) -> Option<SandboxRepoProblem> {
+    let problem = |field, message: &str| {
+        Some(SandboxRepoProblem {
+            field,
+            message: message.to_owned(),
+        })
+    };
+    if url.trim().is_empty() {
+        return if branch.trim().is_empty() {
+            None
+        } else {
+            problem(
+                SandboxRepoField::Repository,
+                "Add the repository this branch belongs to.",
+            )
+        };
+    }
+    if !is_valid_sandbox_repo_url(url) {
+        return problem(
+            SandboxRepoField::Repository,
+            "Enter a repository URL like https://github.com/org/repo.",
+        );
+    }
+    if !fits_sandbox_workspace(url, branch) {
+        return problem(SandboxRepoField::Repository, WORKSPACE_LENGTH_MESSAGE);
+    }
+    if !is_valid_sandbox_branch(branch) {
+        return problem(
+            SandboxRepoField::Branch,
+            "Enter a valid branch name or leave it blank for the default branch.",
+        );
+    }
+    None
+}
+
 /// Why `branch` of `url` cannot be used, or `None` when it can.
 #[must_use]
 pub fn sandbox_branch_problem(url: &str, branch: &str) -> Option<String> {

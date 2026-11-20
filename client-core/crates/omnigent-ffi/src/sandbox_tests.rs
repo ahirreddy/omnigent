@@ -37,6 +37,8 @@ fn catalog() -> CreationCatalog {
         sandbox_providers: vec!["modal".into(), "e2b".into()],
         codex_plan_at_launch: false,
         default_sandbox_provider: Some("modal".into()),
+        move_to_managed_sandbox: true,
+        session_move_providers: vec!["e2b".into()],
         multi_repo_providers: vec!["e2b".into()],
         model_preview_providers: vec!["modal".into()],
         default_model_providers: vec!["modal".into()],
@@ -241,4 +243,31 @@ fn a_sandbox_fork_starts_from_the_pushed_branches_notes_and_profile() {
     assert!(note.contains("wip"), "{note}");
     assert_eq!(defaults.profile, Some(profile()));
     assert_eq!(defaults.branch_check_error, None);
+}
+
+#[test]
+fn switch_host_offers_providers_that_take_a_moved_session() {
+    let core_catalog = omnigent_core::creation::CreationCatalog::from(catalog());
+    assert_eq!(
+        core_catalog.capabilities.sandbox_move_options(),
+        ["e2b".to_owned()]
+    );
+    let back = CreationCatalog::from(core_catalog);
+    assert!(back.move_to_managed_sandbox);
+    assert_eq!(back.session_move_providers, ["e2b".to_owned()]);
+}
+
+#[test]
+fn a_move_problem_names_its_field() {
+    let problem =
+        crate::sandbox::sandbox_move_problem(String::new(), "main".into()).expect("problem");
+    assert_eq!(problem.field, crate::sandbox::SandboxRepoField::Repository);
+    let problem =
+        crate::sandbox::sandbox_move_problem("https://github.com/org/repo".into(), "a b".into())
+            .expect("problem");
+    assert_eq!(problem.field, crate::sandbox::SandboxRepoField::Branch);
+    assert_eq!(
+        crate::sandbox::sandbox_move_problem("https://github.com/org/repo".into(), String::new()),
+        None
+    );
 }

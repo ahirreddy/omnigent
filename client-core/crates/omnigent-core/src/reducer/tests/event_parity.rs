@@ -910,3 +910,53 @@ fn a_header_read_elsewhere_keeps_the_launch_and_a_settled_read_makes_it_ready() 
     harness.reconcile(launching);
     assert_eq!(launch_stage(&harness), Some(LaunchStage::Cloning));
 }
+
+#[test]
+fn the_overview_ranks_models_by_cost_and_sums_tokens_only_when_each_reports_them() {
+    let overview = |event: Value| {
+        let mut harness = Harness::new(SESSION);
+        harness.send(event);
+        let sections = harness.reducer.sections();
+        let usage = sections
+            .iter()
+            .find(|section| section.id == "usage")
+            .cloned();
+        let read = |id: &str| {
+            usage.as_ref().and_then(|usage| {
+                usage
+                    .details
+                    .iter()
+                    .find(|detail| detail.id == id)
+                    .map(|detail| detail.text.clone())
+            })
+        };
+        (
+            read("overview_cost"),
+            read("overview_models"),
+            read("overview_tokens"),
+        )
+    };
+    let (cost, models, tokens) = overview(json!({
+        "type": "session.usage",
+        "total_cost_usd": 0.0461,
+        "usage_by_model": {
+            "cheap": {"total_tokens": 999, "total_cost_usd": 0.001},
+            "free": {"total_tokens": 10},
+            "dear": {"total_tokens": 8423, "total_cost_usd": 0.0451},
+        },
+    }));
+    assert_eq!(cost.as_deref(), Some("$0.05"));
+    assert_eq!(
+        models.as_deref(),
+        Some("dear\t$0.05\ncheap\t<$0.01\nfree\t")
+    );
+    assert_eq!(tokens.as_deref(), Some("9432"));
+    let (_, _, partial) = overview(json!({
+        "type": "session.usage",
+        "usage_by_model": {"a": {"total_tokens": 5}, "b": {"input_tokens": 3}},
+    }));
+    assert_eq!(
+        partial, None,
+        "a model without a total makes the sum partial"
+    );
+}

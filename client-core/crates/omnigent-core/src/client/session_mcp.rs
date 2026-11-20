@@ -63,6 +63,25 @@ pub enum LiveMcpRead {
     Unavailable(Option<String>),
 }
 
+/// Where the panel's "Go to Settings" leads, as the web links it.
+///
+/// A native harness opens its own settings, a claude-sdk session on a host opens Claude Code's
+/// (it lists the host's Claude servers), and both show the host the session routes to.
+#[must_use]
+pub fn mcp_settings_target(
+    harness: Option<&str>,
+    host_id: Option<&str>,
+) -> (Option<String>, Option<String>) {
+    let settings_harness = match harness {
+        Some(harness) if harness.ends_with("-native") || harness.starts_with("native-") => {
+            Some(harness.to_owned())
+        }
+        Some("claude-sdk") if host_id.is_some() => Some("claude-native".to_owned()),
+        _ => None,
+    };
+    (settings_harness, host_id.map(str::to_owned))
+}
+
 /// The session a panel describes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct McpPanelSession<'a> {
@@ -184,7 +203,7 @@ impl<T: HttpTransport> ClientCore<T> {
         } else {
             None
         };
-        Ok(mcp_panel(&McpPanelSources {
+        let mut panel = mcp_panel(&McpPanelSources {
             host_family: host_family.map(str::to_owned),
             has_host: session.host_id.is_some(),
             claude_sdk,
@@ -192,7 +211,10 @@ impl<T: HttpTransport> ClientCore<T> {
             host,
             registry,
             live,
-        }))
+        });
+        (panel.settings_harness, panel.settings_host_id) =
+            mcp_settings_target(session.harness, session.host_id);
+        Ok(panel)
     }
 
     /// Reconnects the session harness's MCP server `name`; `Ok(Some(reason))` when the harness

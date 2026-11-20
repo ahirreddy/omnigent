@@ -114,7 +114,9 @@ public struct FileViewerView: View {
         isMarkdown: previewKind == .markdown, review: review
       ) { commenting = $0 }
     } else if let previewKind, mode == .preview {
-      FilePreviewView(kind: previewKind, text: editedText(text), table: shownTable)
+      FilePreviewView(
+        kind: previewKind, text: editedText(text), table: shownTable,
+        htmlReview: htmlReview(previewKind))
     } else if let editor, editor.isDirty {
       // Unsaved edits show as source; comments wait until they are saved.
       CodeTextView(preview: edited(text, editedText(text)), markedLine: line)
@@ -340,6 +342,16 @@ private struct Checkerboard: View {
 #Preview("Image") {
   FileViewerView(file: WorkspaceSamples.logoFile, source: SampleWorkspaceDataSource())
     .frame(width: 480, height: 360)
+}
+
+extension FileViewerView {
+  /// Comments on the rendered text of an HTML file, as the web's HTML preview takes them.
+  fileprivate func htmlReview(_ kind: FilePreviewKind) -> HTMLPreviewReview? {
+    guard kind == .html, let review else { return nil }
+    return HTMLPreviewReview(
+      path: file.path, review: review, source: source, isDirty: editor?.isDirty == true,
+      selectedCommentID: $selectedCommentID, comment: { commenting = $0 }, show: show)
+  }
 }
 
 extension WorkspaceFile {

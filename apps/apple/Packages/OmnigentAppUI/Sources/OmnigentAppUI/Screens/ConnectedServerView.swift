@@ -118,6 +118,7 @@ public struct ConnectedServerView: View {
     .modifier(groupSortPruning)
     .copyConfirmations()
     .environment(\.transcriptFocus, session.transcriptFocus)
+    .environment(\.offersSessionOverview, connection.pages?.offered?.sessionOverview == true)
     .modifier(TabCommandsPublishing(tabs: tabs, relay: tabCommandRelay))
     .modifier(TabRestoration(session: session, context: tabContext) { restore($0) })
     .modifier(SessionTabsLifecycle(session: session))
@@ -215,9 +216,7 @@ public struct ConnectedServerView: View {
         openURL: { url in Task { _ = await opener.open(url) } },
         openFile: { session.openFile($0, at: $1, in: $2) })
     case .canvas:
-      CanvasAdapter(
-        connection: connection, open: { selection = .session($0) },
-        newSession: { selection = .newSession })
+      canvasPage
     case .automations:
       automationsPage
     case .workflows:

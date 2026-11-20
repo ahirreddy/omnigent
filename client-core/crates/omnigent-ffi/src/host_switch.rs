@@ -7,6 +7,19 @@ use crate::client::ClientCore;
 use crate::creation::CreationGit;
 use crate::errors::CoreError;
 use crate::fork::RunnerLaunch;
+use crate::sandbox::SandboxProviderOption;
+
+/// How a move into a new sandbox went once the old host let go of the session.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SandboxMoveOutcome {
+    /// The server is starting the sandbox.
+    Started,
+    /// The sandbox request failed or its answer was lost: the session may run nowhere.
+    Unconfirmed {
+        /// Why.
+        error: CoreError,
+    },
+}
 
 /// The sign-in prompt the session's terminal shows now.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
@@ -21,6 +34,63 @@ pub struct SessionSignInLink {
 
 #[uniffi::export]
 impl ClientCore {
+    /// The sandbox rows Switch Host offers: the providers that take a moved session.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the `/v1/info` read errors.
+    pub async fn sandbox_move_options(&self) -> Result<Vec<SandboxProviderOption>, CoreError> {
+        let providers = self
+            .sessions()
+            .sandbox_move_options()
+            .await
+            .map_err(CoreError::from)?;
+        Ok(providers
+            .into_iter()
+            .map(|provider| SandboxProviderOption {
+                label: omnigent_core::sandbox::sandbox_option_label(Some(&provider)),
+                max_repos: 1,
+                provider: Some(provider),
+            })
+            .collect())
+    }
+
+    /// Moves `session_id` (owned) into a new sandbox of `provider` (the server's default when
+    /// `None`), cloning `repository` at `branch` (both blank for an empty sandbox): releases
+    /// the runner, then asks the server for the sandbox. A request that fails after the release
+    /// is `Ok(SandboxMoveOutcome::Unconfirmed)`.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`, `ReadOnly`, the `/v1/info` read errors and
+    /// kind `Creation` (a repository, branch or provider the server would refuse) before any
+    /// write; the release's write errors, after which nothing moved.
+    pub async fn move_session_to_sandbox(
+        &self,
+        session_id: String,
+        provider: Option<String>,
+        repository: String,
+        branch: String,
+    ) -> Result<SandboxMoveOutcome, CoreError> {
+        let target = core::SandboxMoveTarget {
+            provider,
+            repository,
+            branch,
+            host_id: Some(self.random_host_id()?),
+        };
+        let moved = self
+            .sessions()
+            .move_session_to_sandbox(&session_id, &target)
+            .await
+            .map_err(CoreError::from)?;
+        Ok(match moved {
+            core::SandboxMove::Started => SandboxMoveOutcome::Started,
+            core::SandboxMove::Unconfirmed(error) => SandboxMoveOutcome::Unconfirmed {
+                error: error.into(),
+            },
+        })
+    }
+
     /// Moves `session_id` (owned) to the online `host_id`, starting its runner in `workspace`:
     /// releases the current runner and its host-bound model override, then launches. A launch
     /// that fails after the release is `Ok(RunnerLaunch::Failed)`: the session runs nowhere

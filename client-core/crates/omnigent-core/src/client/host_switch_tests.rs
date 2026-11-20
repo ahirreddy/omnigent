@@ -10,7 +10,7 @@ use super::super::fork::RunnerLaunch;
 use super::super::test_support::{
     Reply, RouteTransport, body_json, cache_row, connected, lines_after_connect, path_of,
 };
-use super::SignInLink;
+use super::{SandboxMove, SandboxMoveTarget, SignInLink};
 use crate::creation::{CreationError, CreationGit};
 
 const SESSION: &str = "/v1/sessions/conv_a";
@@ -274,4 +274,116 @@ fn a_session_cannot_move_onto_a_managed_sandbox() {
             if reason.contains("managed sandbox")
     ));
     assert_eq!(writes(core.transport()).len(), 0);
+}
+
+const MOVE: &str = "/v1/sessions/conv_a/managed-host";
+const HOST_ID: &str = "0123456789abcdef0123456789abcdef";
+
+fn sandbox_info(mints: bool) -> String {
+    json!({
+        "single_user": true,
+        "accounts_enabled": false,
+        "managed_sandboxes_enabled": true,
+        "move_to_managed_sandbox": true,
+        "request_managed_sandbox_host_id": mints,
+        "sandbox_provider": "modal",
+        "sandbox_providers": ["modal", "docker"],
+        "sandbox_provider_capabilities": {
+            "modal": {"accepts_session_move": true},
+            "docker": {"accepts_session_move": false},
+        },
+    })
+    .to_string()
+}
+
+fn moving(mints: bool, answer: Reply) -> RouteTransport {
+    let transport = RouteTransport::local();
+    transport.ok("/v1/info", sandbox_info(mints));
+    transport.respond(Some("PATCH"), SESSION, None, Reply::json(200, OWNED));
+    transport.respond(Some("POST"), MOVE, None, answer);
+    transport
+}
+
+fn target(provider: &str, repository: &str, branch: &str) -> SandboxMoveTarget {
+    SandboxMoveTarget {
+        provider: Some(provider.into()),
+        repository: repository.into(),
+        branch: branch.into(),
+        host_id: Some(HOST_ID.into()),
+    }
+}
+
+#[test]
+fn a_sandbox_move_releases_the_runner_then_asks_for_the_sandbox() {
+    let core = connected(moving(true, Reply::json(202, OWNED)));
+    let moved = block_on(core.move_session_to_sandbox(
+        "conv_a",
+        &target("modal", " https://github.com/org/repo ", " main "),
+    ))
+    .unwrap();
+    assert!(matches!(moved, SandboxMove::Started));
+    assert_eq!(
+        writes(core.transport()),
+        [
+            "PATCH /v1/sessions/conv_a",
+            "POST /v1/sessions/conv_a/managed-host"
+        ]
+    );
+    assert_eq!(
+        core.transport().write_bodies(),
+        vec![
+            json!({"runner_id": "", "model_override": "default", "silent": true}),
+            json!({
+                "sandbox_provider": "modal",
+                "workspace": "https://github.com/org/repo#main",
+                "host_id": HOST_ID,
+            }),
+        ]
+    );
+}
+
+#[test]
+fn an_empty_sandbox_sends_no_workspace_and_a_server_that_mints_no_ids_gets_none() {
+    let core = connected(moving(false, Reply::json(202, OWNED)));
+    block_on(core.move_session_to_sandbox("conv_a", &target("modal", "", ""))).unwrap();
+    assert_eq!(
+        core.transport().write_bodies().last(),
+        Some(&json!({"sandbox_provider": "modal"}))
+    );
+}
+
+#[test]
+fn a_sandbox_request_failing_after_the_release_is_unconfirmed() {
+    let core = connected(moving(
+        true,
+        Reply::json(409, r#"{"error":{"message":"host is already in use"}}"#),
+    ));
+    let moved = block_on(core.move_session_to_sandbox("conv_a", &target("modal", "", ""))).unwrap();
+    assert!(matches!(moved, SandboxMove::Unconfirmed(_)));
+}
+
+#[test]
+fn bad_repositories_and_providers_that_refuse_moves_write_nothing() {
+    let core = connected(moving(true, Reply::json(202, OWNED)));
+    let cases = [
+        (target("modal", "", "main"), "Add the repository"),
+        (
+            target("modal", "github.com/org/repo", ""),
+            "repository URL like",
+        ),
+        (
+            target("modal", "https://github.com/org/repo", "bad..name"),
+            "valid branch name",
+        ),
+        (target("docker", "", ""), "can't move a session"),
+    ];
+    for (target, wanted) in cases {
+        let refused = block_on(core.move_session_to_sandbox("conv_a", &target));
+        assert!(
+            matches!(&refused, Err(SessionError::Creation(CreationError::Unavailable(reason)))
+                if reason.contains(wanted)),
+            "{wanted}: {refused:?}"
+        );
+    }
+    assert_eq!(writes(core.transport()), Vec::<String>::new());
 }

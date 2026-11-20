@@ -50,7 +50,7 @@ struct PageRefreshTests {
     _ = await connection.pages?.loadOffered()
     let screen = OffscreenWindow(
       CanvasAdapter(
-        connection: connection, open: { _ in }, newSession: {},
+        connection: connection, open: { _ in }, newSession: { _ in },
         readsAgainEvery: .milliseconds(5)),
       width: 1000, height: 700)
     try await expectRefreshing(screen, server, path: "/v1/sessions")

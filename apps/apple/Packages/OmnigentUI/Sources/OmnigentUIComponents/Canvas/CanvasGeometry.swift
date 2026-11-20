@@ -52,6 +52,28 @@ nonisolated struct CanvasGeometry: Equatable {
     return Self.clamp(fit)
   }
 
+  /// Room around the view inside which cards are drawn, so a scroll shows them at once.
+  static let drawMargin: CGFloat = 400
+
+  /// Whether `card` is in or near `visible`, the scroll view's rectangle in the zoomed
+  /// content; before the scroll view reports one, every card is.
+  func isVisible(_ card: CanvasCard, zoom: CGFloat, in visible: CGRect) -> Bool {
+    guard visible.width > 0, visible.height > 0 else { return true }
+    let offset = offset(of: card)
+    let frame = CGRect(
+      x: offset.width * zoom, y: offset.height * zoom, width: Self.cardWidth * zoom,
+      height: Self.cardHeight * zoom)
+    return frame.intersects(visible.insetBy(dx: -Self.drawMargin, dy: -Self.drawMargin))
+  }
+
+  /// Where to scroll so the middle of `visible` stays put as the zoom goes from `old` to `new`.
+  static func scrolled(_ visible: CGRect, from old: CGFloat, to new: CGFloat) -> CGPoint {
+    let scale = old > 0 ? new / old : 1
+    return CGPoint(
+      x: max(0, visible.midX * scale - visible.width / 2),
+      y: max(0, visible.midY * scale - visible.height / 2))
+  }
+
   static func clamp(_ zoom: CGFloat) -> CGFloat {
     min(max(zoom, minZoom), maxZoom)
   }

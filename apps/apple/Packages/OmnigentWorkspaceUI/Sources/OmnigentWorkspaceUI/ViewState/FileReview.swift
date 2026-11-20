@@ -30,6 +30,8 @@ nonisolated public struct FileCommentLine: Hashable, Sendable, Identifiable {
   public var canModify: Bool
   /// Where it is on a PDF's page, for a comment on a PDF's selected text.
   public var pdfMark: PdfMark?
+  /// On an HTML file, which copy of its anchor (0-based, in rendered order) the preview marks.
+  public var htmlOccurrence: Int?
 
   /// A comment.
   /// - Parameters:
@@ -166,6 +168,35 @@ nonisolated public struct FileTextSpan: Hashable, Sendable {
   public var linesTitle: String {
     if let pdfMark { return "page \(pdfMark.page)" }
     return firstLine == lastLine ? "line \(firstLine)" : "lines \(firstLine)-\(lastLine)"
+  }
+
+  /// Text selected in an HTML file's rendered preview, stored as the web stores it: the
+  /// rendered text, with the offsets of the same text in the source.
+  /// - Parameters:
+  ///   - selected: The rendered text.
+  ///   - range: Where it is in `text`, in characters; `nil` when the source doesn't have it.
+  ///   - text: The file's source.
+  ///   - path: The file.
+  /// - Returns: The span; its lines are the source's.
+  public static func html(
+    _ selected: String, range: Range<UInt64>?, in text: String, path: String
+  ) -> Self {
+    let scalars = text.unicodeScalars
+    let bounds = range ?? 0..<0
+    let lower =
+      scalars.index(
+        scalars.startIndex, offsetBy: Int(clamping: bounds.lowerBound), limitedBy: scalars.endIndex)
+      ?? scalars.endIndex
+    let upper =
+      scalars.index(lower, offsetBy: Int(clamping: bounds.count), limitedBy: scalars.endIndex)
+      ?? scalars.endIndex
+    let firstLine = UInt64(scalars[..<lower].count { $0 == "\n" }) + 1
+    let within = scalars[lower..<upper]
+    let breaks = UInt64(within.count { $0 == "\n" })
+    let lastLine = firstLine + breaks - (within.last == "\n" ? 1 : 0)
+    return Self(
+      path: path, start: bounds.lowerBound, end: bounds.upperBound, firstLine: firstLine,
+      lastLine: lastLine, text: selected)
   }
 
   /// Text selected on a PDF's page.

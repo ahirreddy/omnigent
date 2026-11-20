@@ -1,9 +1,10 @@
+import Foundation
 import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
 
 /// Execution logs (the web's `ExecutionLogsPanel`): the session's raw items, and its
-/// sub-agents' from the children it reports.
+/// sub-agents' from the children it reports, or the events its open stream delivered.
 enum ExecutionLogsAdapter {
   /// The sessions the logs offer: "main", then each sub-agent by its title.
   static func sessions(_ store: ConversationStore) -> [ExecutionLogSource.Session] {
@@ -33,6 +34,14 @@ enum ExecutionLogsAdapter {
           return .failure(LogReadFailure(message: error.message))
         }
       },
-      isRunning: { store.isRunning })
+      isRunning: { store.isRunning },
+      stream: { sessionID, after in
+        store.streamLog(of: sessionID, after: after).map {
+          ExecutionStreamEvent(
+            index: $0.index,
+            receivedAt: Date(timeIntervalSince1970: TimeInterval($0.receivedAtMs) / 1_000),
+            compact: $0.compact, pretty: $0.pretty)
+        }
+      })
   }
 }

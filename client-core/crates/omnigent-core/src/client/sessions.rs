@@ -119,7 +119,7 @@ pub struct SessionSummary {
 }
 
 /// The PR a session's list row names, as the server last stored it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowPullRequest {
     /// Its number.
     pub number: u64,
@@ -127,6 +127,14 @@ pub struct RowPullRequest {
     pub status: super::pull_requests::PullRequestStatus,
     /// When its host last fetched it, Unix seconds.
     pub checked_at: Option<i64>,
+    /// Its page.
+    pub url: String,
+    /// Its title, when the server has one.
+    pub title: Option<String>,
+    /// What its provider writes before the number: `#`, or GitLab's `!`.
+    pub number_prefix: String,
+    /// What its provider calls it ("pull request", "merge request"), when it says.
+    pub request_name: Option<String>,
 }
 
 impl RowPullRequest {
@@ -137,7 +145,22 @@ impl RowPullRequest {
         reason = "float-to-int `as` saturates, and whole seconds are all a tooltip shows"
     )]
     fn from_summary(pull_request: &PullRequestSummary) -> Self {
+        let display = |key: &str| {
+            pull_request
+                .provider_display
+                .as_ref()
+                .and_then(|display| display.get(key))
+                .filter(|value| !value.trim().is_empty())
+                .cloned()
+        };
         Self {
+            url: pull_request.url.clone(),
+            title: pull_request
+                .title
+                .clone()
+                .filter(|title| !title.trim().is_empty()),
+            number_prefix: display("number_prefix").unwrap_or_else(|| "#".to_owned()),
+            request_name: display("request_name"),
             number: pull_request.number,
             status: super::pull_requests::PullRequestStatus::of(
                 pull_request.state.as_deref(),
@@ -742,7 +765,7 @@ impl SessionProjection {
                 Field::Present(family) => Some(family.clone()),
             },
             pull_request: match &self.pull_request {
-                Field::Absent => previous.and_then(|previous| previous.pull_request),
+                Field::Absent => previous.and_then(|previous| previous.pull_request.clone()),
                 Field::Null => None,
                 Field::Present(pull_request) => Some(RowPullRequest::from_summary(pull_request)),
             },

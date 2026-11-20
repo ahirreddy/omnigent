@@ -364,6 +364,8 @@ fn server_pages_map_each_flag_to_its_own_field() {
         public_edit: false,
         project_repository_creation: false,
         project_kanban: false,
+        session_overview: false,
+        import_review: false,
         automation_subhour: false,
         automation_trigger_headers: false,
         automation_trigger_poll_minutes: 10,

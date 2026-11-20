@@ -177,16 +177,21 @@ fn a_list_row_carries_its_stored_pull_request_and_whether_an_automation_ran_it()
     row["pull_request"] = json!({
         "url": "https://example.com/acme/app/pull/212", "provider": "github",
         "repository": "acme/app", "number": 212, "state": "MERGED",
-        "state_checked_at": 1_700_000_000.5,
+        "state_checked_at": 1_700_000_000.5, "title": "Ship the upload retry",
+        "provider_display": {"number_prefix": "!", "request_name": "merge request"},
     });
     row["labels"] = json!({
         "omnigent.scheduled_task_origin": "t1", "omnigent.scheduled_task_initial_run": "r1",
     });
     let listed = core.apply_session_rows(vec![row.clone()]).unwrap();
-    let pull_request = listed[0].pull_request.unwrap();
+    let pull_request = listed[0].pull_request.clone().unwrap();
     assert_eq!(pull_request.number, 212);
     assert_eq!(pull_request.status, PullRequestStatus::Merged);
     assert_eq!(pull_request.checked_at, Some(1_700_000_000));
+    assert_eq!(pull_request.url, "https://example.com/acme/app/pull/212");
+    assert_eq!(pull_request.title.as_deref(), Some("Ship the upload retry"));
+    assert_eq!(pull_request.number_prefix, "!");
+    assert_eq!(pull_request.request_name.as_deref(), Some("merge request"));
     assert!(listed[0].is_automation_run);
 
     row["pull_request"] = Value::Null;

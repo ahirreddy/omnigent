@@ -105,6 +105,10 @@ pub struct McpPanel {
     /// Read again after this many milliseconds: a host server awaits sign-in done elsewhere,
     /// or a live connection is still connecting.
     pub poll_after_ms: Option<u32>,
+    /// The harness whose settings "Go to Settings" opens; `None` opens the harness list.
+    pub settings_harness: Option<String>,
+    /// The host those settings show; `None` shows the first online one.
+    pub settings_host_id: Option<String>,
 }
 
 const HOST_SIGN_IN_POLL_MS: u32 = 5_000;
@@ -361,5 +365,7 @@ pub fn mcp_panel(sources: &McpPanelSources) -> McpPanel {
         } else {
             awaits_sign_in.then_some(HOST_SIGN_IN_POLL_MS)
         },
+        settings_harness: None,
+        settings_host_id: None,
     }
 }

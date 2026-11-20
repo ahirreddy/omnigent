@@ -56,7 +56,8 @@ public struct ServerSettingsContainer: View {
         ?? ServerSettingsActions(),
       leadingSections: leadingSections,
       hostedPane: { pane in
-        Self.hostedPane(pane, connection: connection, info: store?.info.value)
+        Self.hostedPane(
+          pane, connection: connection, info: store?.info.value, navigator: navigator)
       }
     )
     .onAppear {
@@ -70,12 +71,15 @@ public struct ServerSettingsContainer: View {
   /// Harnesses and Custom Agents run over the connection's own stores. As on the web, agents
   /// list only with `agent_detail` and open for editing only with `agent_config_edit` too.
   private static func hostedPane(
-    _ pane: ServerSettingsPane, connection: ConnectionStore?, info: ServerSettingsInfo?
+    _ pane: ServerSettingsPane, connection: ConnectionStore?, info: ServerSettingsInfo?,
+    navigator: SettingsNavigator
   ) -> AnyView? {
     guard let connection else { return nil }
     switch pane {
     case .harnesses:
-      return AnyView(HarnessesSettingsView(connection: connection).id(ObjectIdentifier(connection)))
+      return AnyView(
+        HarnessesSettingsView(connection: connection, navigator: navigator)
+          .id(ObjectIdentifier(connection)))
     case .customAgents:
       return AnyView(
         CustomAgentsSettingsView(

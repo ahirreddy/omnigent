@@ -93,6 +93,20 @@ public final class WorkspaceStore: WorkspaceDataSource {
     workspaceDataTable(text: text, path: path).map(WorkspaceMapping.dataTable)
   }
 
+  /// Where text selected in an HTML file's preview is in its source, as the core matches it.
+  /// - Parameters:
+  ///   - selected: The rendered text.
+  ///   - occurrence: Which copy of it was selected.
+  ///   - html: The file's source.
+  /// - Returns: The character range, or `nil` when the source doesn't have it.
+  public func htmlSourceRange(of selected: String, occurrence: Int, in html: String)
+    -> Range<UInt64>?
+  {
+    OmnigentCoreFFI.htmlSourceRange(
+      source: html, selected: selected, occurrence: UInt64(clamping: max(0, occurrence))
+    ).map { $0.startIndex..<max($0.startIndex, $0.endIndex) }
+  }
+
   /// The file `path`'s bytes as the server returned them, binary files included.
   /// - Parameter path: The file.
   /// - Returns: The content.
@@ -289,6 +303,7 @@ public final class WorkspaceStore: WorkspaceDataSource {
         isOpen: line.comment.isOpen,
         canModify: line.comment.author == nil || line.comment.author == viewer)
       comment.pdfMark = Self.pdfMark(line.comment.anchor)
+      comment.htmlOccurrence = line.htmlOccurrence.map { Int(clamping: $0) }
       return comment
     }
   }

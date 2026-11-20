@@ -1,23 +1,75 @@
 import Foundation
 
-/// A host the Switch Host and Resume on a Machine sheets list.
+/// A host the Switch Host and Resume on a Machine sheets list, or a new sandbox Switch Host can
+/// move the session into.
 nonisolated public struct HostMoveTarget: Hashable, Sendable, Identifiable {
-  /// Host id.
+  /// Host id; for a sandbox row, unique among the rows.
   public var id: String
-  /// Display name.
+  /// Display name: the host's, or "Modal Sandbox".
   public var name: String
-  /// The host's tunnel is up; only online hosts take a runner.
+  /// The host's tunnel is up; only online hosts take a runner. A sandbox row is always offered.
   public var isOnline: Bool
+  /// The provider of a new sandbox; `nil` for a host.
+  public var sandboxProvider: String?
 
   /// Creates a target.
   /// - Parameters:
   ///   - id: Host id.
   ///   - name: Display name.
   ///   - isOnline: Whether the host is online.
-  public init(id: String, name: String, isOnline: Bool) {
+  ///   - sandboxProvider: The provider, for a new sandbox.
+  public init(id: String, name: String, isOnline: Bool, sandboxProvider: String? = nil) {
     self.id = id
     self.name = name
     self.isOnline = isOnline
+    self.sandboxProvider = sandboxProvider
+  }
+
+  /// A new sandbox of `provider`, as the web's `__sandbox__:<provider>` row.
+  /// - Parameters:
+  ///   - provider: The provider.
+  ///   - name: "Modal Sandbox".
+  /// - Returns: The row.
+  public static func sandbox(_ provider: String, name: String) -> Self {
+    Self(id: "__sandbox__:\(provider)", name: name, isOnline: true, sandboxProvider: provider)
+  }
+}
+
+/// A new sandbox chosen in Switch Host: its provider and the repository it clones.
+nonisolated public struct HostMoveSandbox: Hashable, Sendable {
+  /// The provider.
+  public var provider: String
+  /// The repository URL; blank starts an empty sandbox.
+  public var repository: String
+  /// Its branch; blank for the default branch.
+  public var branch: String
+
+  /// Creates a choice.
+  /// - Parameters:
+  ///   - provider: The provider.
+  ///   - repository: The repository URL.
+  ///   - branch: The branch.
+  public init(provider: String, repository: String, branch: String) {
+    self.provider = provider
+    self.repository = repository
+    self.branch = branch
+  }
+}
+
+/// Why a sandbox's repository and branch can't be sent, under the field it belongs to.
+nonisolated public struct HostMoveRepoProblem: Hashable, Sendable {
+  /// It belongs under Branch, else under Repository.
+  public var isBranch: Bool
+  /// What to show.
+  public var message: String
+
+  /// Creates a problem.
+  /// - Parameters:
+  ///   - isBranch: It belongs under Branch.
+  ///   - message: What to show.
+  public init(isBranch: Bool, message: String) {
+    self.isBranch = isBranch
+    self.message = message
   }
 }
 
@@ -40,6 +92,8 @@ nonisolated public struct HostMoveChoice: Hashable, Sendable {
   public var branch = ""
   /// The new worktree's base branch; blank takes the current one.
   public var baseBranch = ""
+  /// A new sandbox to move into instead of a host (Switch Host only).
+  public var sandbox: HostMoveSandbox?
 
   /// Creates a choice.
   /// - Parameters:
@@ -59,6 +113,9 @@ nonisolated public enum HostMoveOutcome: Hashable, Sendable {
   case failed(String)
   /// The session left its old host but did not start on the new one, so it runs nowhere.
   case stranded(String)
+  /// The session left its old host and the sandbox request failed, so whether it moved is not
+  /// known.
+  case unconfirmed(String)
 }
 
 /// What the sheets read and do. Each runs on the main actor.
@@ -74,6 +131,9 @@ public struct HostMoveActions {
     >
   /// Moves or starts the session.
   public var submit: @MainActor (HostMoveChoice) async -> HostMoveOutcome
+  /// Why a sandbox's repository and branch can't be sent; `nil` when they can.
+  public var sandboxProblem:
+    @MainActor (_ repository: String, _ branch: String) -> HostMoveRepoProblem?
 
   /// Creates actions.
   /// - Parameters:
@@ -81,46 +141,78 @@ public struct HostMoveActions {
   ///   - home: Read a host's home.
   ///   - browse: Read a folder.
   ///   - submit: Move or start the session.
+  ///   - sandboxProblem: Check a sandbox's repository and branch.
   public init(
     loadHosts: @escaping @MainActor () async -> Result<[HostMoveTarget], FolderBrowseError>,
     home: @escaping @MainActor (String) async -> String?,
     browse:
       @escaping @MainActor (String, String?) async -> Result<FolderListing, FolderBrowseError>,
-    submit: @escaping @MainActor (HostMoveChoice) async -> HostMoveOutcome
+    submit: @escaping @MainActor (HostMoveChoice) async -> HostMoveOutcome,
+    sandboxProblem: @escaping @MainActor (String, String) -> HostMoveRepoProblem? = { _, _ in nil }
   ) {
     self.loadHosts = loadHosts
     self.home = home
     self.browse = browse
     self.submit = submit
+    self.sandboxProblem = sandboxProblem
   }
 }
 
 /// The sheets' rules, as the web's dialogs apply them.
 nonisolated public enum HostMoveRules {
   /// The hosts the sheet offers: online ones, and for Switch Host not the session's own host,
-  /// unless a half-finished switch left the session on none (`stranded`).
+  /// unless a half-finished switch left the session on none (`stranded`). Switch Host's new
+  /// sandboxes come first, as on the web; Resume offers none.
   /// - Parameters:
-  ///   - hosts: The server's hosts.
+  ///   - hosts: The server's hosts and Switch Host's sandbox rows.
   ///   - kind: The sheet.
   ///   - stranded: A switch released the old host and failed to start on the new one.
-  /// - Returns: The targets, in the server's order.
+  /// - Returns: The targets: sandboxes, then hosts in the server's order.
   public static func targets(_ hosts: [HostMoveTarget], kind: HostMoveKind, stranded: Bool)
     -> [HostMoveTarget]
   {
-    hosts.filter { host in
+    let offered = hosts.filter { host in
       guard host.isOnline else { return false }
-      if case .switchHost(let current) = kind, !stranded { return host.id != current }
-      return true
+      guard case .switchHost(let current) = kind else { return host.sandboxProvider == nil }
+      return stranded || host.id != current
     }
+    return offered.filter { $0.sandboxProvider != nil }
+      + offered.filter { $0.sandboxProvider == nil }
   }
 
   /// The host selected on open: for Resume the session's own host when it is online, else the
-  /// first target.
+  /// first host; a sandbox only when no host is online, as the web never defaults to one.
   public static func defaultHost(_ targets: [HostMoveTarget], kind: HostMoveKind) -> String? {
     if case .resume(let preferred?, _) = kind, targets.contains(where: { $0.id == preferred }) {
       return preferred
     }
-    return targets.first?.id
+    return (targets.first { $0.sandboxProvider == nil } ?? targets.first)?.id
+  }
+
+  /// What the sheet says it does.
+  /// - Parameters:
+  ///   - kind: The sheet.
+  ///   - offersSandbox: Switch Host lists a new sandbox.
+  /// - Returns: The description.
+  public static func description(_ kind: HostMoveKind, offersSandbox: Bool) -> String {
+    guard case .switchHost = kind else {
+      return "This session isn\u{2019}t running on any machine. Pick one of your machines and a "
+        + "directory to continue the conversation against your files."
+    }
+    return offersSandbox
+      ? "Move this session to another connected machine or a new sandbox."
+      : "Move this session to another connected machine."
+  }
+
+  /// What the sheet says when nothing can take the session.
+  /// - Parameter kind: The sheet.
+  /// - Returns: The note.
+  public static func noTargets(_ kind: HostMoveKind) -> String {
+    guard case .switchHost = kind else {
+      return "None of your machines are online. Start one with `omnigent host` from your "
+        + "terminal, then reopen this sheet."
+    }
+    return "No other hosts are online. Connect one with `omnigent host` and try again."
   }
 
   /// A typed directory as an absolute path: `/…` without trailing slashes, `~` and `~/…`

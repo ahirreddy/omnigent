@@ -49,6 +49,7 @@ public struct ServerRootView: View {
           }
         )
         .modifier(ServerBrandingEnvironment(connection: session.connection))
+        .importReview(session.connection)
       } else {
         AuthFlowView(
           state: session.signIn.state, actions: session.signIn.actions, validator: .app

@@ -40,6 +40,12 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case extensionFailed = "sweep-extension-failed"
   case extensionNotFound = "sweep-extension-not-found"
   case extensionSidebar = "sweep-extension-sidebar"
+  case switchHostSandbox = "sweep-c-switch-host-sandbox"
+  case executionStream = "sweep-c-execution-stream"
+  case sessionOverview = "sweep-c-session-overview"
+  case agentCosts = "sweep-c-agent-costs"
+  case canvasQuickView = "sweep-c-canvas-quick-view"
+  case importReview = "sweep-c-import-review"
 
   var testDescription: String { rawValue }
 
@@ -49,7 +55,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     return list.split(separator: ",").contains { rawValue.hasPrefix($0) }
   }
 
-  var macWidth: CGFloat { 480 }
+  var macWidth: CGFloat { self == .canvasQuickView ? 960 : 480 }
 
   var macHeight: CGFloat? {
     switch self {
@@ -67,6 +73,11 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .mcpSwitches: 300
     case .extensionFailed, .extensionNotFound: 360
     case .extensionSidebar: 620
+    case .switchHostSandbox, .executionStream: 460
+    case .sessionOverview: 360
+    case .agentCosts: 300
+    case .canvasQuickView: 420
+    case .importReview: 480
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
       .quickAnswer, .staleProfile:
       nil
@@ -104,6 +115,12 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .extensionFailed: return AnyView(Fixture.extensionPage(found: true))
     case .extensionNotFound: return AnyView(Fixture.extensionPage(found: false))
     case .extensionSidebar: return AnyView(Fixture.extensionSidebar)
+    case .switchHostSandbox: return AnyView(Fixture.switchHostSandbox)
+    case .executionStream: return AnyView(Fixture.executionStream)
+    case .sessionOverview: return AnyView(Fixture.sessionOverview)
+    case .agentCosts: return AnyView(Fixture.agentCosts)
+    case .canvasQuickView: return AnyView(Fixture.canvasQuickView)
+    case .importReview: return AnyView(Fixture.importReview)
     }
   }
 }

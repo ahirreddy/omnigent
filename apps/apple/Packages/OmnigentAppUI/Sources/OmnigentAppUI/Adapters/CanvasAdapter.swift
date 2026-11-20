@@ -5,11 +5,20 @@ import OmnigentUIComponents
 import SwiftUI
 
 /// The Canvas page over ``CanvasStore``, offered when the server enables the `canvas` feature.
-/// Cards take live status and titles from the session list between reloads.
+/// Cards take live status and titles from the session list between reloads. Where there is room
+/// a card's session opens beside the board (the window's quick view, as project boards use).
 struct CanvasAdapter: View {
   let connection: ConnectionStore
   let open: (String) -> Void
-  let newSession: () -> Void
+  /// Starts a session, in the board's project when it is one.
+  let newSession: (SessionProject?) -> Void
+  /// The window's tabs, whose quick view shows a session beside the board; `nil` opens it.
+  var tabs: SessionTabGroups?
+  /// A session's chat for the quick view.
+  var chat: (String) -> AnyView = { _ in AnyView(EmptyView()) }
+  /// New project, from the "+" after the boards.
+  var projectActions: SidebarActions?
+  @Environment(\.horizontalSizeClass) private var sizeClass
 
   /// How often the sessions are read again while the page is open, as the web.
   static let refreshInterval: Duration = .seconds(30)
@@ -32,10 +41,11 @@ struct CanvasAdapter: View {
         description: Text("Ask the server's administrator to turn on the Canvas feature."))
     } else if let canvas = connection.canvas {
       CanvasView(
-        state: CanvasMapping.state(canvas, list: connection.sessionList),
-        actions: actions(canvas)
+        state: state(canvas), actions: actions(canvas), quickView: chat,
+        projectActions: projectActions
       )
       .onAppear { canvas.bind(key: layoutKey) }
+      .onDisappear { tabs?.quickViewSessionID = nil }
       .onChange(of: projectSignature, initial: true) {
         canvas.relayout(
           projects: connection.sessionList.projects, viewerID: connection.sessionList.viewerID)
@@ -54,12 +64,28 @@ struct CanvasAdapter: View {
     }
   }
 
+  private func state(_ canvas: CanvasStore) -> CanvasViewState {
+    var state = CanvasMapping.state(canvas, list: connection.sessionList)
+    state.quickViewID = tabs?.quickViewSessionID
+    return state
+  }
+
   func actions(_ canvas: CanvasStore) -> CanvasActions {
-    var actions = CanvasActions { open($0) }
+    let tabs = tabs
+    var actions = CanvasActions { id in
+      tabs?.quickViewSessionID = nil
+      open(id)
+    }
+    if let tabs, sizeClass != .compact {
+      actions.quickView = { tabs.quickViewSessionID = $0 }
+    }
     actions.selectBoard = { canvas.select(board: $0) }
     actions.move = { id, left, top in canvas.move(id, left: Int64(left), top: Int64(top)) }
     actions.resetLayout = { canvas.resetLayout() }
-    actions.newSession = { newSession() }
+    actions.newSession = {
+      newSession(
+        CanvasMapping.project(of: canvas.activeBoard, canvas: canvas, list: connection.sessionList))
+    }
     actions.retry = {
       Task { await canvas.load(viewerID: connection.sessionList.viewerID) }
     }
@@ -99,16 +125,42 @@ enum CanvasMapping {
   /// Main's id, read once: the core's constant.
   static let mainBoardID = mainCanvasId()
 
+  /// The project a board shows; `nil` for Main.
+  static func project(of board: String, canvas: CanvasStore, list: SessionListStore)
+    -> SessionProject?
+  {
+    let pair = zip(list.projects, canvas.projectBoards).first { _, id in id == board }
+    return pair.map { project, _ in ProjectBoardAdapter.folder(project) }
+  }
+
   static func card(
     _ session: OmnigentCoreFFI.SessionSummary, position: CanvasPosition, list: SessionListStore
   )
     -> CanvasCard
   {
     let workspace = session.workspace.trimmingCharacters(in: .whitespacesAndNewlines)
-    return CanvasCard(
+    var card = CanvasCard(
       id: session.id, title: session.title, state: cardState(session, list: list),
       workspace: workspace.isEmpty ? "No working directory" : workspace,
       branch: session.configuration?.gitBranch, left: Int(position.x), top: Int(position.y))
+    card.requests = max(1, Int(session.pendingRequests))
+    card.pullRequest = session.pullRequest.flatMap { pullRequest($0) }
+    return card
+  }
+
+  /// The card's PR link, as the web's: "#212 Ship it", the title and stored state with its age
+  /// as the tooltip; none without an https page.
+  static func pullRequest(_ pullRequest: RowPullRequest, now: Date = .now) -> CanvasPullRequest? {
+    guard let url = URL(string: pullRequest.url), url.scheme?.lowercased() == "https" else {
+      return nil
+    }
+    let number = "\(pullRequest.numberPrefix)\(pullRequest.number)"
+    let title = pullRequest.title ?? ""
+    return CanvasPullRequest(
+      text: title.isEmpty ? number : "\(number) \(title)", url: url,
+      tooltip: CanvasPullRequest.tooltip(
+        title: title.isEmpty ? number : title, SidebarAdapter.pullRequest(pullRequest), now: now),
+      accessibilityLabel: "Open \(pullRequest.requestName ?? "pull request") \(number)")
   }
 
   static func cardState(_ session: OmnigentCoreFFI.SessionSummary, list: SessionListStore)

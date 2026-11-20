@@ -1,4 +1,4 @@
-import Foundation
+public import Foundation
 
 /// One board of the Canvas: Main or a project.
 nonisolated public struct CanvasBoard: Hashable, Sendable, Identifiable {
@@ -14,6 +14,51 @@ nonisolated public struct CanvasBoard: Hashable, Sendable, Identifiable {
     self.id = id
     self.name = name
     self.icon = icon
+  }
+}
+
+/// The PR a card links to, as the web's card shows it.
+nonisolated public struct CanvasPullRequest: Hashable, Sendable {
+  /// "#212 Ship the upload retry".
+  public var text: String
+  /// Its page.
+  public var url: URL
+  /// "Ship the upload retry (merged, as of 2h ago)".
+  public var tooltip: String
+  /// "Open pull request #212".
+  public var accessibilityLabel: String
+
+  /// Creates a link.
+  /// - Parameters:
+  ///   - text: What the card shows.
+  ///   - url: The page.
+  ///   - tooltip: Its title and state.
+  ///   - accessibilityLabel: What VoiceOver says.
+  public init(text: String, url: URL, tooltip: String, accessibilityLabel: String) {
+    self.text = text
+    self.url = url
+    self.tooltip = tooltip
+    self.accessibilityLabel = accessibilityLabel
+  }
+
+  /// The web's card tooltip: the title, then the stored state and, once past fresh, its age
+  /// ("Ship it (merged, as of 2h ago)").
+  /// - Parameters:
+  ///   - title: The PR's title, or its number when it has none.
+  ///   - pullRequest: Its stored state and when it was fetched.
+  ///   - now: The time to measure the age from.
+  /// - Returns: The tooltip.
+  public static func tooltip(title: String, _ pullRequest: SessionRowPullRequest, now: Date)
+    -> String
+  {
+    guard let status = pullRequest.status else { return title }
+    var state = status.lowercased()
+    if let checked = pullRequest.checkedAt,
+      now.timeIntervalSince(checked) >= SessionRowTooltip.pullRequestFreshness
+    {
+      state += ", as of \(RelativeTime.short(checked, now: now)) ago"
+    }
+    return "\(title) (\(state))"
   }
 }
 
@@ -35,7 +80,7 @@ nonisolated public struct CanvasCard: Hashable, Sendable, Identifiable {
     /// The label under the title.
     public var label: String {
       switch self {
-      case .needsYou: "Needs you"
+      case .needsYou: "Needs response"
       case .running: "Running"
       case .unread: "New messages"
       case .failed: "Failed"
@@ -54,6 +99,10 @@ nonisolated public struct CanvasCard: Hashable, Sendable, Identifiable {
   public var workspace: String
   /// The worktree branch, when it has one.
   public var branch: String?
+  /// How many requests wait on the user.
+  public var requests = 1
+  /// The session's PR, when the server stores one.
+  public var pullRequest: CanvasPullRequest?
   /// The card's left edge on the board, in points.
   public var left: Int
   /// The card's top edge on the board, in points.
@@ -92,6 +141,8 @@ nonisolated public struct CanvasViewState: Hashable, Sendable {
   public var refreshError: String?
   /// What the empty board says.
   public var emptyTitle = "No sessions"
+  /// The session open beside the board.
+  public var quickViewID: String?
 
   /// Creates the state.
   public init(boards: [CanvasBoard], activeBoard: String, cards: [CanvasCard]) {
@@ -115,6 +166,9 @@ public struct CanvasActions {
   public var newSession: (@MainActor () -> Void)?
   /// Load again after a failure.
   public var retry: (@MainActor () -> Void)?
+  /// Show a session beside the board, or close it (`nil`); without it a card opens its
+  /// session in place of the board.
+  public var quickView: (@MainActor (String?) -> Void)?
 
   /// Creates actions.
   public init(open: (@MainActor (String) -> Void)? = nil) {

@@ -104,6 +104,8 @@ nonisolated public struct AgentTreeNode: Hashable, Sendable, Identifiable {
   public var routedModel: String?
   /// Sub-agents listed under it.
   public var childCount: Int
+  /// What the agent cost (`$0.42`, `~$0.10` estimated), when the server reports it.
+  public var costLabel: String?
 
   /// Creates a node.
   public init(

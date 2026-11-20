@@ -111,6 +111,15 @@ public protocol WorkspaceDataSource: AnyObject {
   func comments(on path: String, text: String) async throws(WorkspaceFailure)
     -> [FileCommentLine]
 
+  /// Where text selected in an HTML file's rendered preview is in its source, as the core
+  /// matches it: the `occurrence` (0-based, counting only rendered text), whitespace-tolerant.
+  /// - Parameters:
+  ///   - selected: The rendered text.
+  ///   - occurrence: Which copy of it was selected.
+  ///   - html: The file's source.
+  /// - Returns: The character range, or `nil` when the source doesn't have it.
+  func htmlSourceRange(of selected: String, occurrence: Int, in html: String) -> Range<UInt64>?
+
   /// Leaves a review comment on a span of a file.
   /// - Parameters:
   ///   - body: The comment.
@@ -192,6 +201,17 @@ extension WorkspaceDataSource {
     throw WorkspaceFailure(
       .unavailable, message: "\(WorkspacePaths.name(of: path)) cannot be played from here.")
   }
+
+  /// Not found; a source that matches HTML (the core's) overrides this. The comment then keeps
+  /// its text without offsets, as the web's does when its match fails.
+  /// - Parameters:
+  ///   - selected: The rendered text.
+  ///   - occurrence: Which copy.
+  ///   - html: The source.
+  /// - Returns: `nil`.
+  public func htmlSourceRange(of selected: String, occurrence: Int, in html: String)
+    -> Range<UInt64>?
+  { nil }
 
   /// No chapters; a source that reads the chapters file (the core's) overrides this.
   /// - Parameter path: The recording.

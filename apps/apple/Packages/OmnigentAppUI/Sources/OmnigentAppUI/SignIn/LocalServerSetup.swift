@@ -73,6 +73,8 @@
         return
       }
       pendingHost = nil
+      // Onboarding connected this Mac as a host: its window reviews what the host carries over.
+      ImportReviewRequests.shared.request(baseUrl)
       Task { await manager.startHost(serverURL: url) }
     }
 

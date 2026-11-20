@@ -68,6 +68,11 @@ pub struct ServerPages {
     pub project_repository_creation: bool,
     /// The `project_kanban` feature: a project opens its sessions board.
     pub project_kanban: bool,
+    /// The `session_overview` feature: a cost chip opens the session's overview, and agents
+    /// show their costs.
+    pub session_overview: bool,
+    /// The `import_review` feature: desktop onboarding reviews what a new host carries over.
+    pub import_review: bool,
     /// `scheduled_task_subhour`: hosts and continued sessions run schedules under an hour.
     pub automation_subhour: bool,
     /// `scheduled_task_trigger_headers`: runs drop a trigger prompt's header before dispatch.
@@ -175,6 +180,8 @@ impl ServerPages {
             public_edit: opt_str(object, "public_sharing_max_level")?.as_deref() == Some("edit"),
             project_repository_creation: feature("project_repository_creation")?,
             project_kanban: feature("project_kanban")?,
+            session_overview: feature("session_overview")?,
+            import_review: feature("import_review")?,
         })
     }
 }
