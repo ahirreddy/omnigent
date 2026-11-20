@@ -33,6 +33,7 @@ public struct ComposerView: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.commandReturnOwner) private var commandReturnOwner
   @Environment(\.composerLayoutStyle) private var layout
+  @Environment(\.composerFillsWindow) private var fillsWindow
 
   /// Creates the composer.
   /// - Parameters:
@@ -156,7 +157,9 @@ public struct ComposerView: View {
       }
       .padding(cardPadding)
       .modifier(
-        ComposerCardSurface(layout: layout, isTargeted: isDropTargeted, isFocused: isFocused)
+        ComposerCardSurface(
+          layout: layout, isTargeted: isDropTargeted, isFocused: isFocused,
+          fillsWindow: fillsWindow)
       )
       .overlay {
         // A shell command rings the card in the accent, as the web's composer does.
@@ -175,6 +178,8 @@ public struct ComposerView: View {
         ComposerShellHintRow(hint: hint)
       }
       if layout == .card {
+        // In a window of its own the footer sits apart, as the web panel's.
+        if fillsWindow { Divider() }
         ComposerFooter(
           state: state, actions: actions, isEditable: isEditable,
           showsContextDetails: showsContextDetails)
@@ -219,7 +224,7 @@ public struct ComposerView: View {
   private var editor: some View {
     GrowingTextEditor(
       text: $draft, placeholder: rules.placeholder,
-      minLines: isExpanded ? 10 : 1,
+      minLines: isExpanded ? 10 : (fillsWindow ? 3 : 1),
       maxLines: isExpanded ? 28 : (layout == .touch ? ComposerBarMetrics.maxLines : 8),
       identifier: "composer-input", tokens: tokens
     )
@@ -310,7 +315,7 @@ extension ComposerView {
       canAttach: canAttach, layoutWidth: layoutWidth, layout: layout,
       isImporting: $isImporting, isPickingPhotos: $isPickingPhotos, isExpanded: $isExpanded,
       loadProviders: { providers in Task { await loadProviders(providers) } }, perform: perform,
-      pillDictate: startSystemDictation)
+      pillDictate: startSystemDictation, showsSendChord: fillsWindow)
   }
 
   /// Focuses the editor, then starts the Mac's dictation in it; touch dictates through speech

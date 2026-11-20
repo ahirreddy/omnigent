@@ -25,6 +25,7 @@ public struct NewSessionPage: View {
   @Environment(\.composerLayoutStyle) private var composerLayout
   @Environment(\.isActiveTabPane) private var isActivePane
   @Environment(\.appBranding) private var branding
+  @Environment(\.composerFillsWindow) private var fillsWindow
 
   /// A phone: the composer stays on the keyboard.
   private var pinsComposer: Bool { layoutWidth == .compact && composerLayout == .touch }
@@ -119,7 +120,8 @@ public struct NewSessionPage: View {
   private var composerView: some View {
     VStack(spacing: Theme.Spacing.small) {
       ComposerView(
-        draft: $draft, state: composer, actions: actions, showsContextDetails: showsContextDetails
+        draft: $draft, state: composerState, actions: actions,
+        showsContextDetails: showsContextDetails
       )
       // A reading column in the middle of a wide window, as a conversation's composer is.
       .frame(maxWidth: pinsComposer ? nil : Self.composerWidth)
@@ -129,6 +131,15 @@ public struct NewSessionPage: View {
           .padding(.horizontal, Theme.Spacing.extraLarge)
       }
     }
+  }
+
+  /// The composer's state; the New Agent panel sends with Command-Return, and Return adds a
+  /// line there, as the web's panel.
+  private var composerState: ComposerViewState {
+    guard fillsWindow else { return composer }
+    var state = composer
+    state.submitWithCommandReturn = true
+    return state
   }
 
   @ViewBuilder private var importButton: some View {

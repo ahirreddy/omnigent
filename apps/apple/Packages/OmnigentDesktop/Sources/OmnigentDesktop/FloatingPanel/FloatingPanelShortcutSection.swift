@@ -11,8 +11,13 @@ struct FloatingPanelShortcutSection: View {
     if shortcut.isAvailable {
       Section {
         Toggle(isOn: isOn) {
-          Text("Open New Agent from anywhere")
-          Text("A system-wide shortcut opens a New Agent panel over the app you're in.")
+          HStack(spacing: 6) {
+            Text("Open New Agent from anywhere")
+            SystemWideBadge()
+          }
+          Text(
+            "A system-wide shortcut: it opens the New Agent panel from any app, even when Omnigent is in the background."
+          )
         }
         .accessibilityIdentifier("settings.floating-panel")
         .id("settings.floating-panel")
@@ -42,6 +47,20 @@ struct FloatingPanelShortcutSection: View {
       set: { isOn in
         shortcut.setting = isOn ? .chord(.newAgentPanelDefault) : .off
       })
+  }
+}
+
+/// "System-wide" after a setting's name, as the web's outline badge: the setting works from any
+/// app.
+struct SystemWideBadge: View {
+  var body: some View {
+    Text("System-wide")
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, 5)
+      .padding(.vertical, 1)
+      .overlay(Capsule().strokeBorder(.tertiary))
+      .accessibilityIdentifier("settings.floating-panel.system-wide")
   }
 }
 
