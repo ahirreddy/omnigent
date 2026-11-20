@@ -37,41 +37,12 @@ enum AppEdition: Sendable {
   /// The browser engines this edition ships.
   /// - Returns: A provider offering Chromium and WebKit, or WebKit only.
   static func makeBrowserProvider() -> DefaultBrowserEngineProvider {
-    makeBrowserEngines(agentDevTools: false).provider
-  }
-
-  /// The browser engines this edition ships, with Chromium's DevTools port open on loopback
-  /// for agents when `agentDevTools` is on (the Developer ID edition only).
-  /// - Parameter agentDevTools: The user's *Let agents use this browser* setting.
-  /// - Returns: The provider, the port when it is open, and why it is closed when opening failed.
-  static func makeBrowserEngines(agentDevTools: Bool) -> BrowserEngines {
     #if OMNIGENT_CHROMIUM
-      var configuration = ChromiumConfiguration.standard()
-      var failure: BrowserError?
-      if agentDevTools {
-        do {
-          configuration = try configuration.withAgentDevTools()
-        } catch {
-          failure = error
-        }
-      }
-      return BrowserEngines(
-        provider: DefaultBrowserEngineProvider.withChromium(configuration: configuration),
-        agentDevToolsPort: configuration.agentDevToolsPort, failure: failure)
+      DefaultBrowserEngineProvider.withChromium()
     #else
-      return BrowserEngines(provider: DefaultBrowserEngineProvider(), agentDevToolsPort: nil)
+      DefaultBrowserEngineProvider()
     #endif
   }
-}
-
-/// An edition's browser engines and Chromium's DevTools port for agents.
-struct BrowserEngines {
-  /// The engines.
-  let provider: DefaultBrowserEngineProvider
-  /// Chromium's loopback DevTools port; `nil` when closed.
-  let agentDevToolsPort: Int?
-  /// Why the port is closed although agent browsing is on.
-  var failure: BrowserError?
 }
 
 extension AppEdition {

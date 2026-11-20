@@ -179,8 +179,8 @@ public struct BrowserSettingsView: View {
         Text("Let agents use this browser")
         Text(
           "Agents in your own sessions can open and drive tabs here, signed in as you. "
-            + "Other apps on this Mac can reach the browser while this is on. "
-            + "Takes effect after restarting the app."
+            + "Sessions shared with others never can, and no other app on this Mac can "
+            + "connect to the browser."
         )
       }
       LabeledContent("Profiles") {

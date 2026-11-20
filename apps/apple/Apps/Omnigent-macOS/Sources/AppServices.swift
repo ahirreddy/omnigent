@@ -34,9 +34,6 @@ final class AppServices {
   let recentServers: RecentServers
   /// Browser engines this edition ships.
   let browserProvider: DefaultBrowserEngineProvider
-  /// Chromium's loopback DevTools port for agents of the user's own sessions; `nil` when the
-  /// user turned agent browsing off, or in the App Store edition.
-  let agentDevToolsPort: Int?
   /// The persisted engine choice, limited to `browserProvider.offeredEngines`.
   let browserPreferences: BrowserPreferences
   /// Light, dark or system, and the color theme, under the web's keys.
@@ -105,14 +102,7 @@ final class AppServices {
     self.notificationPermission = notificationPermission ?? desktop.notifications
     logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ai.omnigent.mac", category: "app")
     recentServers = RecentServers(defaults: defaults)
-    let engines = AppEdition.makeBrowserEngines(
-      agentDevTools: BrowserSettings.agentDevToolsEnabled(defaults))
-    if let failure = engines.failure {
-      logger.error(
-        "Agents cannot use this Mac's browser: \(String(describing: failure), privacy: .public)")
-    }
-    browserProvider = engines.provider
-    agentDevToolsPort = engines.agentDevToolsPort
+    browserProvider = AppEdition.makeBrowserProvider()
     browserPreferences = BrowserPreferences(defaults: defaults, provider: browserProvider)
     theme = ThemePreferences(defaults: defaults)
     floatingNewAgent = FloatingNewAgentHost(desktop: desktop, theme: theme)
@@ -254,10 +244,10 @@ final class AppServices {
     }
     let session = ServerSession.live(keychain: keychain)
     session.connection.browserActions?.performer = agentBrowser
-    if let agentDevToolsPort {
+    if agentBrowser != nil {
+      // The Chromium edition answers the agent proxy, without a DevTools endpoint yet.
       session.connection.browserActions?.devToolsPerformer = BrowserDevToolsPerformer(
-        tabs: browserTabs, port: agentDevToolsPort, settings: browser.settings,
-        connection: session.connection)
+        tabs: browserTabs, settings: browser.settings, connection: session.connection)
     }
     return session
   }

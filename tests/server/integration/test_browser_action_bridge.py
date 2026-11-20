@@ -31,9 +31,11 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
 
 from omnigent.runtime import session_stream
 from omnigent.server.auth import LEVEL_EDIT, LEVEL_READ
+from omnigent.server.feature_flags import FEATURES_ENV_VAR, resolve_feature_flags
 from omnigent.server.routes import sessions as sessions_routes
 from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
 from tests.server.helpers import create_test_agent
@@ -629,8 +631,11 @@ async def _park_devtools_request(
 
 
 async def test_devtools_requests_reach_only_the_owners_client(
-    auth_client: httpx.AsyncClient, db_uri: str
+    auth_app: FastAPI, auth_client: httpx.AsyncClient, db_uri: str
 ) -> None:
+    auth_app.state.feature_flags = resolve_feature_flags(
+        {FEATURES_ENV_VAR: "agent_browser_devtools"}
+    )
     alice = {"X-Forwarded-Email": "alice@example.com"}
     bob = {"X-Forwarded-Email": "bob@example.com"}
     agent = await create_test_agent(auth_client, user="alice@example.com")
@@ -666,8 +671,11 @@ async def test_devtools_requests_reach_only_the_owners_client(
 
 
 async def test_a_session_shared_with_an_editor_never_reaches_the_owners_browser(
-    auth_client: httpx.AsyncClient, db_uri: str
+    auth_app: FastAPI, auth_client: httpx.AsyncClient, db_uri: str
 ) -> None:
+    auth_app.state.feature_flags = resolve_feature_flags(
+        {FEATURES_ENV_VAR: "agent_browser_devtools"}
+    )
     alice = {"X-Forwarded-Email": "alice@example.com"}
     agent = await create_test_agent(auth_client, user="alice@example.com")
     session_id = await _create_session(auth_client, agent["id"], user="alice@example.com")
@@ -692,4 +700,30 @@ async def test_a_session_shared_with_an_editor_never_reaches_the_owners_browser(
 
     assert response.status_code == 200, response.text
     assert response.json()["error"] == "shared_session"
+    assert not [event for event in published if event.get("type") == "browser.devtools_request"]
+
+
+async def test_with_the_feature_off_nothing_asks_the_owners_browser(
+    auth_client: httpx.AsyncClient,
+) -> None:
+    alice = {"X-Forwarded-Email": "alice@example.com"}
+    agent = await create_test_agent(auth_client, user="alice@example.com")
+    session_id = await _create_session(auth_client, agent["id"], user="alice@example.com")
+    published: list[dict[str, Any]] = []
+
+    async def watch() -> None:
+        async for event in session_stream.subscribe(session_id):
+            published.append(event)
+
+    watcher = asyncio.create_task(watch())
+    try:
+        response = await auth_client.post(
+            f"/v1/sessions/{session_id}/browser/devtools_request",
+            json={"op": "attach", "args": {}},
+            headers=alice,
+        )
+    finally:
+        watcher.cancel()
+
+    assert response.json()["error"] == "feature_off"
     assert not [event for event in published if event.get("type") == "browser.devtools_request"]

@@ -272,13 +272,10 @@
       #expect(try !screen.shows("Use an http(s) URL with one %s"))
 
       let before = settings.showsBookmarksBar
-      let agentsBefore = settings.agentDevTools
       let frames = screen.controlFrames
       // Engine picker, template field, bar toggle, agent browsing toggle, Manage….
       try screen.clickControl(at: frames.count - 3)
       #expect(settings.showsBookmarksBar != before)
-      try screen.clickControl(at: frames.count - 2)
-      #expect(settings.agentDevTools != agentsBefore)
 
       try screen.clickDrawnButton(at: 0)
       await screen.letSheetSettle()

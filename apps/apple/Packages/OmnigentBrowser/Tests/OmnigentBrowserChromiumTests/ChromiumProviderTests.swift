@@ -35,6 +35,8 @@ import Testing
       let standard = ChromiumConfiguration.standard()
       #expect(standard.session.hostAppURL.path.hasSuffix("Contents/Helpers/Omnigent Web Host.app"))
       #expect(standard.session.renderMode == .remoteLayer)
+      // An open DevTools port would let any local process read the profile's cookies.
+      #expect(standard.session.remoteDebuggingPort == 0)
     }
 
     @Test func hostFailuresMapToRecoverableEngineErrors() {

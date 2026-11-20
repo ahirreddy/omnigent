@@ -29,6 +29,7 @@ from omnigent.server.auth import (
     LEVEL_OWNER,
     AuthProvider,
 )
+from omnigent.server.feature_flags import Feature, FeatureFlags
 from omnigent.server.routes._auth_helpers import (
     get_user_id as _get_user_id,
 )
@@ -55,6 +56,11 @@ from omnigent.stores.permission_store import PermissionStore
 
 # Directory requests for the agent's DevTools proxy: only the owner's app may claim them.
 DEVTOOLS_ACTION_PREFIX = "bdevtools_"
+DEVTOOLS_FEATURE_OFF_RESULT: dict[str, Any] = {
+    "ok": False,
+    "error": "feature_off",
+    "message": "This server does not offer agents the owner's own browser.",
+}
 DEVTOOLS_SHARED_SESSION_RESULT: dict[str, Any] = {
     "ok": False,
     "error": "shared_session",
@@ -228,6 +234,9 @@ def register_browser_routes(
                 "browser devtools_request requires a non-empty 'op'",
                 code=ErrorCode.INVALID_INPUT,
             )
+        flags = getattr(request.app.state, "feature_flags", FeatureFlags())
+        if not flags.enabled(Feature.AGENT_BROWSER_DEVTOOLS):
+            return DEVTOOLS_FEATURE_OFF_RESULT
         if permission_store is not None and await asyncio.to_thread(
             _shared_session, session_id, conversation_store, permission_store
         ):

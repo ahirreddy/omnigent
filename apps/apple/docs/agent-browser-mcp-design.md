@@ -200,11 +200,18 @@ owner)]`, `create_tab(url)`, `close_tab(target_id)`, `report_activity(target_id,
 
 ### 3.4 Local app pieces
 
-- **Web Host:** no C++ change. `ChromiumConfiguration.withAgentDevTools()` picks a free
-  loopback port for the existing `remoteDebuggingPort` when the setting *Let agents use this
-  browser* is on (on by default; CEF reads it only at start, so a change applies after a
-  relaunch). Each page's target id comes from `Target.getTargetInfo` over the page's own
-  DevTools session (`BrowserAgentInput.devToolsTargetID()`).
+- **Web Host endpoint:** the app never opens CEF's `remoteDebuggingPort`. That port is
+  unauthenticated, and any local process could read every signed-in site's cookies through
+  it (the reason Chrome refuses remote debugging on the default profile). Until the gated
+  endpoint below exists, the app answers `attach` with `endpoint_unavailable` and the runner
+  uses its own browser. The gated endpoint, next: start the Web Host with
+  `--remote-debugging-pipe` on file descriptors only the app holds (needs `posix_spawn` in
+  `HostProcess`, and a check that CEF 156 honours the switch), and serve the runner a
+  loopback WebSocket that the app opens only on a relay request with the server's
+  `agent_browser_devtools` on. Each session gets its own secret through the relay; the app
+  multiplexes the clients onto the one pipe connection and closes the socket once no
+  session holds an agent tab. Each page's target id comes from `Target.getTargetInfo` over
+  the page's own DevTools session (`BrowserAgentInput.devToolsTargetID()`).
 - **Swift:** `BrowserActionStore` routes `devtools.<op>` actions to `BrowserDevToolsPerformer`
   (app target), which answers from `BrowserTabHost+DevTools`: the session group's browser tabs
   in every window (pages the session never showed are built), background agent tabs in the
@@ -298,12 +305,10 @@ window, or the app may be inactive. Requirements and mechanism:
 
 - Local browser: owner-only relay claims, owner-only `local` label, never `auto`-selected for a
   shared session, refused for viewers. The app double-checks the owner before answering.
-- Loopback CDP: Chromium rejects non-local `Host` headers and Origin-bearing WebSocket
-  handshakes (no DNS rebinding, no web page attach). The port is still unauthenticated for
-  local processes, the same as the remote host (remote design §10). On a multi-user Mac that
-  is a real exposure; phase 6 moves the local endpoint to `--remote-debugging-pipe` with an
-  app-side token gate. Until then the setting text says that local processes can reach the
-  browser while it is on.
+- Local CDP: no raw DevTools port in the app (see 3.4). The server refuses
+  `browser.devtools_request` while `agent_browser_devtools` is off, so no request ever
+  reaches the app then. The remote host's loopback port stays unauthenticated to local
+  processes on the agent's machine, as remote design §10 records.
 - Proxy tokens: per-runner-process secret, HMAC per session, loopback only, compared in
   constant time.
 - Profile-wide CDP methods are refused (section 3.2) for both browsers.
@@ -322,6 +327,8 @@ window, or the app may be inactive. Requirements and mechanism:
 
 ### Status (2026-11-20)
 
+- **Local endpoint:** not yet. The app opens no DevTools port, and the local backend refuses
+  `attach` until the gated endpoint in 3.4 lands.
 - **Done:** phase 1; phase 2, without pinning the conversation; from phase 3, the host's
   `tabs.agent_state` op and `agent_state` in tab records and resources; from phase 4,
   `omnigent.browser_target` with `auto` preferring the remote browser for scheduled runs, and

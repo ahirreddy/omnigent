@@ -9,23 +9,22 @@ import OmnigentStores
 /// session's browser tabs with their targets, new background tabs for the agent, closing them,
 /// and the agent's state for each tab's badge and strip. The server lets only the session
 /// owner's clients claim these requests, and never for sessions shared with other editors.
+///
+/// Chromium's raw DevTools port is never opened: any local process could attach to it and read
+/// every signed-in site's cookies. `attach` refuses until the app serves an access-gated
+/// endpoint, so the runner falls back to its own browser.
 final class BrowserDevToolsPerformer: BrowserActionPerforming {
   private let tabs: BrowserTabHost
-  private let port: Int
   private let settings: BrowserSettings
   private weak var connection: ConnectionStore?
-  /// How long a just-started web host may take to open its DevTools port.
-  private static let portWait = Duration.seconds(10)
 
   /// Creates a performer.
   /// - Parameters:
   ///   - tabs: The app's browser tabs.
-  ///   - port: Chromium's loopback DevTools port.
   ///   - settings: The browser settings, for the user's agent browsing switch.
   ///   - connection: The server connection whose sessions' turns Stop interrupts.
-  init(tabs: BrowserTabHost, port: Int, settings: BrowserSettings, connection: ConnectionStore?) {
+  init(tabs: BrowserTabHost, settings: BrowserSettings, connection: ConnectionStore?) {
     self.tabs = tabs
-    self.port = port
     self.settings = settings
     self.connection = connection
   }
@@ -46,7 +45,9 @@ final class BrowserDevToolsPerformer: BrowserActionPerforming {
     do throws(BrowserError) {
       switch operation {
       case "attach":
-        reply = DevToolsReply(data: try await endpoint())
+        reply = DevToolsRefusal(
+          error: "endpoint_unavailable",
+          message: "This Mac's browser has no access-gated DevTools endpoint yet.")
       case "tabs.list":
         reply = DevToolsReply(
           data: DevToolsListing(tabs: await tabs.devToolsTabs(sessionID: sessionID)))
@@ -81,42 +82,6 @@ final class BrowserDevToolsPerformer: BrowserActionPerforming {
     }
   }
 
-  /// Starts Chromium when no tab has yet, then reads which browser owns the DevTools port, so
-  /// the runner can tell whether it shares this Mac.
-  private func endpoint() async throws(BrowserError) -> DevToolsEndpoint {
-    _ = try tabs.environment.provider.engine(for: .chromium)
-    let deadline = ContinuousClock.now + Self.portWait
-    var lastError = "no answer"
-    while ContinuousClock.now < deadline {
-      do {
-        return DevToolsEndpoint(port: port, browserPath: try await Self.browserPath(port: port))
-      } catch {
-        lastError = String(describing: error)
-      }
-      do {
-        try await Task.sleep(for: .milliseconds(200))
-      } catch {
-        throw .agentActionFailed("Cancelled while Chromium started.")
-      }
-    }
-    throw .agentActionFailed("Chromium's DevTools port \(port) did not answer: \(lastError)")
-  }
-
-  private static func browserPath(port: Int) async throws -> String {
-    guard let url = URL(string: "http://127.0.0.1:\(port)/json/version") else {
-      throw BrowserError.invalidURL("127.0.0.1:\(port)")
-    }
-    let session = URLSession(configuration: .ephemeral)
-    defer { session.invalidateAndCancel() }
-    let (data, _) = try await session.data(from: url)
-    struct Version: Decodable { let webSocketDebuggerUrl: String }
-    let reported = try JSONDecoder().decode(Version.self, from: data).webSocketDebuggerUrl
-    guard let path = URLComponents(string: reported)?.path, path.hasPrefix("/devtools/") else {
-      throw BrowserError.agentActionFailed("Chromium reported no browser endpoint.")
-    }
-    return path
-  }
-
   private static func arguments(_ json: String) throws -> [String: Any] {
     guard let object = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]
     else { throw BrowserError.agentActionFailed("The request's arguments are not an object.") }
@@ -144,16 +109,6 @@ private struct DevToolsRefusal: Encodable {
   var ok = false
   let error: String
   let message: String
-}
-
-private struct DevToolsEndpoint: Encodable {
-  let port: Int
-  let browserPath: String
-
-  enum CodingKeys: String, CodingKey {
-    case port
-    case browserPath = "browser_path"
-  }
 }
 
 private struct DevToolsListing: Encodable {

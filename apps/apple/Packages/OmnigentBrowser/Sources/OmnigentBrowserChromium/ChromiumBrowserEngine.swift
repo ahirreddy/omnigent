@@ -58,48 +58,6 @@
       Self(session: .standard(bundle: bundle))
     }
 
-    /// The loopback DevTools port agents' scoped CDP proxy reaches this browser on; `nil` when
-    /// agent browsing is off.
-    public var agentDevToolsPort: Int? {
-      session.remoteDebuggingPort > 0 ? session.remoteDebuggingPort : nil
-    }
-
-    /// Opens Chromium's DevTools endpoint on a free 127.0.0.1 port, for agents' scoped CDP
-    /// proxy. Chromium rejects DevTools WebSockets that carry a web page's origin.
-    /// - Returns: The configuration with the port.
-    /// - Throws: When no loopback port can be reserved.
-    public func withAgentDevTools() throws(BrowserError) -> Self {
-      var copy = self
-      copy.session.remoteDebuggingPort = try Self.freeLoopbackPort()
-      return copy
-    }
-
-    /// A loopback TCP port nothing listens on now; Chromium binds it when it starts.
-    static func freeLoopbackPort() throws(BrowserError) -> Int {
-      let descriptor = socket(AF_INET, SOCK_STREAM, 0)
-      guard descriptor >= 0 else { throw portError("socket") }
-      defer { close(descriptor) }
-      var address = sockaddr_in()
-      address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-      address.sin_family = sa_family_t(AF_INET)
-      address.sin_port = 0
-      address.sin_addr.s_addr = inet_addr("127.0.0.1")
-      var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-      let bound = withUnsafeMutablePointer(to: &address) { pointer in
-        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { generic in
-          bind(descriptor, generic, length) == 0 && getsockname(descriptor, generic, &length) == 0
-        }
-      }
-      guard bound else { throw portError("bind") }
-      return Int(UInt16(bigEndian: address.sin_port))
-    }
-
-    private static func portError(_ call: String) -> BrowserError {
-      .engineFailedToStart(
-        .chromium,
-        reason: "No loopback port for agent DevTools (\(call): \(String(cString: strerror(errno))))"
-      )
-    }
   }
 
   /// Chromium in the out-of-process web host. One engine owns one host `Session`; the host boots
