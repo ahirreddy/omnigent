@@ -234,6 +234,8 @@ pub(crate) struct AuthState {
     pub(crate) renewal: Option<AbortHandle>,
     /// The manifest the last discovery read, which the connect after it reuses once.
     recent_manifest: Option<RecentManifest>,
+    /// The next connect turns the admin view off (see `ClientCore::set_admin_view`).
+    pub(crate) admin_view_off: bool,
 }
 
 pub(crate) struct Inner {
@@ -515,6 +517,11 @@ impl Inner {
                 self.check_generation(generation)?;
                 return Err(self.fail(server_url, error));
             }
+        };
+        let admin_view = !lock(&self.auth).admin_view_off;
+        let resolved = Resolved {
+            endpoint: resolved.endpoint.with_admin_view(admin_view),
+            ..resolved
         };
         self.check_generation(generation)?;
         if saved_base_url.as_deref() != Some(resolved.endpoint.base_url()) {
@@ -954,6 +961,7 @@ impl ClientCore {
                 oidc_redirect: connection::OidcRedirect::None,
                 databricks: None,
                 cache_directory: None,
+                timezone: None,
             },
             CoreTransport::Demo(Arc::clone(&demo)),
             Transports {
@@ -1749,6 +1757,7 @@ impl ClientCore {
                 allows_insecure_http: config.url_policy == connection::UrlPolicy::Development,
             },
         ));
+        sessions.set_timezone(config.timezone.as_deref());
         let listeners = Arc::new(Listeners::default());
         let demo = transports.demo.clone();
         let sockets = transports.sockets.clone();

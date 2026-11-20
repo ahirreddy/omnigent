@@ -9,7 +9,7 @@ use super::requests::validate_identifier;
 use super::{ClientCore, SessionError};
 use crate::automation_triggers::is_trigger_prompt;
 use crate::http::HttpTransport;
-use crate::schedule::{describe_schedule, parse_iso8601};
+use crate::schedule::{describe_schedule_in, parse_iso8601};
 use crate::session_families::{SiblingDestinations, sibling_sessions_enabled};
 
 /// The top-level pages `GET /v1/info` advertises. Missing fields mean unsupported.
@@ -53,6 +53,8 @@ pub struct ServerPages {
     pub inbox_items: bool,
     /// `scheduled_task_inbox`: the Inbox lists automation failures that made no session.
     pub automation_inbox: bool,
+    /// `proactive_agent_available`: Omni Advisor can post suggestions to the caller's Inbox.
+    pub advisor: bool,
     /// `public_sharing_enabled`: a session can be opened to anyone with the link. Only an
     /// explicit `false` turns it off, as on the web.
     pub public_sharing: bool,
@@ -166,6 +168,7 @@ impl ServerPages {
             sibling_destinations: SiblingDestinations::from_info(object),
             inbox_items: opt_bool(object, "inbox_items_available")?.unwrap_or(false),
             automation_inbox: opt_bool(object, "scheduled_task_inbox")?.unwrap_or(false),
+            advisor: opt_bool(object, "proactive_agent_available")?.unwrap_or(false),
             public_sharing: opt_bool(object, "public_sharing_enabled")? != Some(false),
             sharing_read_only: sharing_restricted || sharing_mode.as_deref() == Some("read_only"),
             sharing_restricted,
@@ -665,15 +668,16 @@ fn automation_from(value: &Value) -> Result<Automation, String> {
         .filter(|name| !name.is_empty())
         .or(opt_str(object, "owner_user_id")?.filter(|id| !id.is_empty()))
         .unwrap_or_else(|| "another user".to_owned());
+    let timezone = opt_str(object, "timezone")?.unwrap_or_else(|| "UTC".to_owned());
     Ok(Automation {
         id: req_str(object, "id")?,
         name: req_str(object, "name")?,
         is_trigger: continues_session && is_trigger_prompt(&prompt),
         prompt,
-        schedule_text: describe_schedule(&rrule),
+        schedule_text: describe_schedule_in(&rrule, Some(&timezone)),
         rrule,
         agent_id: opt_str(object, "agent_id")?.unwrap_or_default(),
-        timezone: opt_str(object, "timezone")?.unwrap_or_else(|| "UTC".to_owned()),
+        timezone,
         continues_session,
         mcp_services,
         max_cost_usd: opt_number(object, "max_cost_usd")?.map(|cost| cost.to_string()),
@@ -1107,10 +1111,29 @@ impl<T: HttpTransport> ClientCore<T> {
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     pub async fn server_pages(&self) -> Result<ServerPages, SessionError> {
+        self.server_pages_and_branding()
+            .await
+            .map(|(pages, _)| pages)
+    }
+
+    /// [`Self::server_pages`] with the operator's branding from the same `/v1/info` read.
+    ///
+    /// # Errors
+    ///
+    /// The read errors; [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn server_pages_and_branding(
+        &self,
+    ) -> Result<(ServerPages, Option<crate::branding::Branding>), SessionError> {
         let path = "/v1/info";
         let result = self.get_json(path, &[]).await;
         self.dispatch();
-        ServerPages::from_value(&result?).map_err(malformed(path))
+        let info = result?;
+        let pages = ServerPages::from_value(&info).map_err(malformed(path))?;
+        Ok((pages, crate::branding::Branding::from_info(&info)))
     }
 
     /// The caller's automations (`GET /v1/scheduled-tasks`), in the server's order.

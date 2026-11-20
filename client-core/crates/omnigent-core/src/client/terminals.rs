@@ -17,8 +17,8 @@ use crate::terminal::{
     TerminalResource, delete_response, list_response, resource_response,
 };
 
-/// Credential headers a terminal request carries.
-const CREDENTIAL_HEADERS: [&str; 2] = ["Authorization", DATABRICKS_ORG_HEADER];
+/// Credential headers a terminal request carries; `Cookie` is the admin view's.
+const CREDENTIAL_HEADERS: [&str; 3] = ["Authorization", DATABRICKS_ORG_HEADER, "Cookie"];
 
 /// A request built with the connection's credentials, the epoch it belongs to, and how it was
 /// addressed on a host-sharded server.

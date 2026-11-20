@@ -109,6 +109,9 @@ pub struct SandboxProfilePage {
     pub managed_providers: Vec<String>,
     /// More match than were returned.
     pub has_more: bool,
+    /// The profile the server starts the provider on when the user picked none.
+    #[uniffi(default)]
+    pub default_profile_id: Option<String>,
 }
 
 impl From<SandboxProfilePage> for core::SandboxProfilePage {
@@ -117,6 +120,7 @@ impl From<SandboxProfilePage> for core::SandboxProfilePage {
             profiles: page.profiles.into_iter().map(Into::into).collect(),
             managed_providers: page.managed_providers,
             has_more: page.has_more,
+            default_profile_id: page.default_profile_id,
         }
     }
 }
@@ -302,6 +306,7 @@ impl ClientCore {
             profiles: page.profiles.into_iter().map(Into::into).collect(),
             managed_providers: page.managed_providers,
             has_more: page.has_more,
+            default_profile_id: page.default_profile_id,
         })
     }
 

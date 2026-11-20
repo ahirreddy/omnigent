@@ -61,6 +61,7 @@ pub mod inbox_items;
 pub mod nested_creation;
 pub mod pdf_comments;
 pub mod policy_registry;
+pub mod proactive_agent;
 pub mod project_board;
 pub mod project_driver;
 pub mod project_repository;

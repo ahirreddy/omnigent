@@ -146,12 +146,26 @@ fn profile_pages_keep_the_providers_profiles_and_require_one_when_managed() {
                 {"id": "p2", "name": "Other", "provider": "e2b", "revision": "r9"}
             ],
             "managed_providers": ["modal"],
-            "next_cursor": "c2"
+            "next_cursor": "c2",
+            "default_profile_ids": {"modal": "p1", "e2b": "p2"}
         }),
         "modal",
     )
     .unwrap();
     assert_eq!(page.profiles.len(), 1);
+    // The asked provider's default only; another's, or an empty id, is none.
+    assert_eq!(page.default_profile_id.as_deref(), Some("p1"));
+    let other = json!({"profiles": [], "default_profile_ids": {"e2b": "p2", "modal": ""}});
+    assert_eq!(
+        SandboxProfilePage::from_value(&other, "modal")
+            .unwrap()
+            .default_profile_id,
+        None
+    );
+    assert!(
+        SandboxProfilePage::from_value(&json!({"default_profile_ids": {"modal": 1}}), "modal")
+            .is_err()
+    );
     assert_eq!(page.profiles[0].description, "A100");
     assert!(page.has_more);
     assert!(page.requires_profile("modal"));

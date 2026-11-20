@@ -31,7 +31,7 @@ use crate::creation::{
     HostWorktree, MAX_TITLE_CHARS, SandboxTarget, creation_body, creation_rejection,
     merge_user_agents, parent_directory, sandbox_creation_body,
 };
-use crate::http::HttpTransport;
+use crate::http::{HttpHeader, HttpTransport};
 use crate::reconcile::UNTITLED_SESSION;
 use crate::sandbox::{SandboxModelPreview, SandboxModelStatus};
 
@@ -349,11 +349,15 @@ impl<T: HttpTransport> ClientCore<T> {
             } else {
                 Vec::new()
             };
+            let configuration_revision = opt_str(object, "configuration_revision")
+                .map_err(|detail| malformed(&path, &detail))?
+                .filter(|revision| !revision.is_empty());
             Ok(SandboxModelPreview {
                 models,
                 configured,
                 status,
                 error,
+                configuration_revision,
             })
         }
         .await;
@@ -941,12 +945,79 @@ impl<T: HttpTransport> ClientCore<T> {
             if !catalog.capabilities.mints_sandbox_host_id {
                 target.host_id = None;
             }
-            let body = sandbox_creation_body(selection, &target, name, &agent);
-            self.submit_creation(&body).await
+            let provider = target
+                .provider
+                .clone()
+                .or_else(|| catalog.capabilities.default_sandbox_provider.clone());
+            let mut body = sandbox_creation_body(selection, &target, name, &agent);
+            let previewed = provider.filter(|provider| {
+                agent.supports_model_preview()
+                    && catalog
+                        .capabilities
+                        .model_preview_providers
+                        .contains(provider)
+            });
+            if let Some(provider) = previewed {
+                let revision = self
+                    .sandbox_launch_revision(selection, &agent, &provider)
+                    .await?;
+                if let (Some(revision), Value::Object(fields)) = (revision, &mut body) {
+                    fields.insert(
+                        "inference_configuration_revision".into(),
+                        Value::String(revision),
+                    );
+                }
+            }
+            self.submit_creation_refused_as(
+                self.prepare("POST", "/v1/sessions", &[], Some(&body))?,
+                Refusals::Sandbox,
+            )
+            .await
         }
         .await;
         self.dispatch();
         result
+    }
+
+    /// The provider's harness configuration revision a sandbox launch pins, read again just before
+    /// it, as the web sends the one its model choices came from. A chosen model the provider no
+    /// longer offers stops the launch here; the server refuses a pinned revision that changed
+    /// since (`409 inference_configuration_changed`). A preview that can't be read pins nothing,
+    /// as on the web, and the server checks the model itself.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn sandbox_launch_revision(
+        &self,
+        selection: &CreationSelection,
+        agent: &CreationAgent,
+        provider: &str,
+    ) -> Result<Option<String>, SessionError> {
+        let preview = match self
+            .sandbox_model_preview(provider, &agent.harness_id(), &selection.agent_id)
+            .await
+        {
+            Ok(preview) => preview,
+            Err(SessionError::MalformedResponse { .. } | SessionError::HttpStatus { .. }) => {
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        let chosen = selection
+            .model
+            .as_deref()
+            .filter(|_| !selection.smart_routing);
+        if let Some(model) = chosen
+            && preview.status == SandboxModelStatus::Ready
+            && !preview.models.iter().any(|choice| choice.value() == model)
+        {
+            return Err(CreationError::Unavailable(
+                "This model is no longer offered for the sandbox. Choose a model again.".into(),
+            )
+            .into());
+        }
+        Ok(preview.configuration_revision)
     }
 
     /// Sends a `POST /v1/sessions` body and reads the receipt. Never retried: an unclear outcome
@@ -984,7 +1055,13 @@ impl<T: HttpTransport> ClientCore<T> {
         prepared: super::requests::Prepared,
         refusals: Refusals,
     ) -> Result<CreationReceipt, SessionError> {
-        let result = self.transport.send(prepared.request).await;
+        let mut request = prepared.request;
+        if let Some(timezone) = self.timezone() {
+            request
+                .headers
+                .push(HttpHeader::new(super::TIMEZONE_HEADER, timezone));
+        }
+        let result = self.transport.send(request).await;
         let mut state = lock(&self.state);
         let response = result.map_err(|_| CreationError::Uncertain)?;
         if state.epoch != prepared.epoch || !state.is_connected() {
@@ -1004,7 +1081,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 }
                 .into());
             }
-            status @ (403 | 409) if refusals == Refusals::Nested => {
+            status @ (403 | 409) if refusals != Refusals::Ordinary => {
                 return Err(CreationError::Rejected {
                     status,
                     message: refusals.message(&response.body, status),
@@ -1051,12 +1128,15 @@ pub(crate) enum Refusals {
     Ordinary,
     /// Also `403` and `409`, which the server sends before it keeps a sibling.
     Nested,
+    /// Also `403` and `409`, which the server sends before it provisions a sandbox: a profile
+    /// it doesn't know or whose revision changed, a harness configuration that changed.
+    Sandbox,
 }
 
 impl Refusals {
     fn message(self, body: &[u8], status: u16) -> String {
         match self {
-            Self::Ordinary => creation_rejection(body, status),
+            Self::Ordinary | Self::Sandbox => creation_rejection(body, status),
             Self::Nested => crate::nested_creation::nested_rejection(body, status),
         }
     }

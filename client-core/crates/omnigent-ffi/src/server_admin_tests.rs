@@ -52,6 +52,9 @@ fn settings_info_maps_each_capability_to_its_own_field() {
             agent_config_edit: true,
             session_title_instructions: true,
             nested_agents: false,
+            advisor: false,
+            admin_view: false,
+            admin_view_on: true,
         }
     );
     harness.http.route(

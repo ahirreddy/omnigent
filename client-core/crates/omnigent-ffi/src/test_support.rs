@@ -571,6 +571,7 @@ impl Harness {
             },
             databricks,
             cache_directory: None,
+            timezone: None,
         })
     }
 
@@ -580,6 +581,7 @@ impl Harness {
             oidc_redirect,
             databricks: None,
             cache_directory: None,
+            timezone: None,
         })
     }
 
@@ -594,6 +596,7 @@ impl Harness {
             oidc_redirect: OidcRedirect::None,
             databricks: None,
             cache_directory: Some(directory.to_string_lossy().into_owned()),
+            timezone: None,
         })
     }
 
@@ -605,6 +608,7 @@ impl Harness {
                 oidc_redirect: OidcRedirect::None,
                 databricks: None,
                 cache_directory: None,
+                timezone: None,
             },
             Some(streams),
         )

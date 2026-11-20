@@ -356,6 +356,8 @@ fn server_pages_map_each_flag_to_its_own_field() {
         sibling_session_destinations: Some(SiblingSessionDestinations::AnyHost),
         inbox_items: false,
         automation_inbox: false,
+        advisor: false,
+        branding: None,
         public_sharing: true,
         sharing_read_only: false,
         sharing_restricted: false,
@@ -384,49 +386,49 @@ fn server_pages_map_each_flag_to_its_own_field() {
             r#"{"single_user":true,"automations_enabled":true}"#,
             ServerPages {
                 automations: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             r#"{"single_user":true,"scheduled_task_session_modes":true}"#,
             ServerPages {
                 automation_session_modes: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             r#"{"single_user":true,"features":{"usage_page":true}}"#,
             ServerPages {
                 usage: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             r#"{"single_user":true,"archive_worktree_cleanup":true}"#,
             ServerPages {
                 archive_worktree_cleanup: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             r#"{"sharing_mode":"on"}"#,
             ServerPages {
                 sharing: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             r#"{"sharing_mode":"off"}"#,
             ServerPages {
                 sharing_disabled: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             r#"{"single_user":true,"features":{"canvas":true}}"#,
             ServerPages {
                 canvas: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
@@ -436,21 +438,21 @@ fn server_pages_map_each_flag_to_its_own_field() {
                 workflow_sharing: true,
                 session_create_workflow_id: true,
                 sharing: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             r#"{"single_user":true,"features":{"project_kanban":true}}"#,
             ServerPages {
                 project_kanban: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             r#"{"single_user":true,"features":{"automations_v2":true}}"#,
             ServerPages {
                 automations_v2: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
@@ -459,7 +461,7 @@ fn server_pages_map_each_flag_to_its_own_field() {
                 public_sharing: false,
                 sharing_read_only: true,
                 sharing_restricted: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
@@ -467,21 +469,21 @@ fn server_pages_map_each_flag_to_its_own_field() {
             ServerPages {
                 inbox_items: true,
                 automation_inbox: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             r#"{"single_user":true,"scheduled_task_projects":true}"#,
             ServerPages {
                 automation_projects: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
             r#"{"single_user":true,"managed_sandboxes_enabled":true}"#,
             ServerPages {
                 managed_sandboxes: true,
-                ..none
+                ..none.clone()
             },
         ),
         (
@@ -489,7 +491,7 @@ fn server_pages_map_each_flag_to_its_own_field() {
             ServerPages {
                 automation_session_modes: true,
                 automation_triggers: true,
-                ..none
+                ..none.clone()
             },
         ),
         (

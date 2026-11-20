@@ -617,7 +617,67 @@ const MONTH_NAMES: [&str; 12] = [
 /// 1st and 15th at 6:00 AM". A rule this cannot read is returned as it is.
 #[must_use]
 pub fn describe_schedule(rrule: &str) -> String {
-    describe(rrule).unwrap_or_else(|| rrule.to_owned())
+    describe_schedule_in(rrule, None)
+}
+
+/// [`describe_schedule`] for a rule kept in `timezone`, which a one-time rule names.
+///
+/// As the web's: "Once on November 12 at 11:00 PM (Asia/Tokyo)", "Once on November 12 at
+/// 11:00 PM UTC"; a one-time rule of another shape reads "Once: Every day at 9:00 AM".
+#[must_use]
+pub fn describe_schedule_in(rrule: &str, timezone: Option<&str>) -> String {
+    describe_once(rrule, timezone)
+        .or_else(|| describe(rrule))
+        .unwrap_or_else(|| rrule.to_owned())
+}
+
+/// A one-time rule (`COUNT=1`): a literal date for the reminder shape (yearly, one month, one
+/// positive day, at most one time), else the rule without its count after "Once: ".
+fn describe_once(rrule: &str, timezone: Option<&str>) -> Option<String> {
+    let parts = rule_parts(rrule)?;
+    if parts.get("COUNT").map(String::as_str) != Some("1") {
+        return None;
+    }
+    let single = |key: &str| parts.get(key).is_none_or(|value| !value.contains(','));
+    let month = parts
+        .get("BYMONTH")
+        .filter(|value| !value.contains(','))
+        .and_then(|value| number(value, &(1_usize..=12)))
+        .and_then(|month| MONTH_NAMES.get(month - 1));
+    let day = parts
+        .get("BYMONTHDAY")
+        .filter(|value| !value.contains(','))
+        .and_then(|value| number(value, &(1_u8..=31)));
+    if let (Some("YEARLY"), Some(month), Some(day), true, true) = (
+        parts.get("FREQ").map(String::as_str),
+        month,
+        day,
+        single("BYHOUR"),
+        single("BYMINUTE"),
+    ) {
+        let hour = first_number(parts.get("BYHOUR"), 23_u8)?;
+        let minute = first_number(parts.get("BYMINUTE"), 59_u8)?;
+        let zone = match timezone.filter(|zone| !zone.is_empty()) {
+            None => String::new(),
+            Some("UTC") => " UTC".to_owned(),
+            Some(zone) => format!(" ({zone})"),
+        };
+        return Some(format!(
+            "Once on {month} {day} at {}{zone}",
+            clock_time(hour, minute)
+        ));
+    }
+    let body = rrule.trim();
+    let body = body.strip_prefix("RRULE:").unwrap_or(body);
+    let recurring: Vec<&str> = body
+        .split(';')
+        .filter(|part| {
+            !part
+                .split_once('=')
+                .is_some_and(|(key, _)| key.trim().eq_ignore_ascii_case("COUNT"))
+        })
+        .collect();
+    Some(format!("Once: {}", describe_schedule(&recurring.join(";"))))
 }
 
 /// The first of a comma-separated list of numbers up to `high`, or 0 when the part is absent.

@@ -1206,9 +1206,11 @@ pub(crate) fn creation_rejection(body: &[u8], status: u16) -> String {
         .and_then(Value::as_str)
         .map(str::to_owned)
         .or_else(|| {
-            object
-                .get("detail")
-                .and_then(Value::as_str)
+            let detail = object.get("detail")?;
+            // A coded refusal: `{"detail": {"code": …, "message": …}}`.
+            detail
+                .as_str()
+                .or_else(|| detail.get("message").and_then(Value::as_str))
                 .map(str::to_owned)
         })
         .or_else(|| {

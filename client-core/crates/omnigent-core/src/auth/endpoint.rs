@@ -26,6 +26,10 @@ const DATABRICKS_SUFFIXES: [&str; 2] = [".databricks.com", ".azuredatabricks.net
 /// The org header Databricks routes workspace requests by.
 pub const DATABRICKS_ORG_HEADER: &str = "X-Databricks-Org-Id";
 
+/// The cookie an admin sends to use their normal session access (`AdminViewMiddleware`); the
+/// server reads it on every request, the session stream and update socket included.
+pub const ADMIN_VIEW_OFF_COOKIE: &str = "omnigent_admin_view=off";
+
 /// A validated, canonical API root.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ServerEndpoint {
@@ -34,6 +38,7 @@ pub struct ServerEndpoint {
     mount: String,
     loopback_http: bool,
     databricks_org_id: Option<String>,
+    admin_view_off: bool,
 }
 
 impl ServerEndpoint {
@@ -91,7 +96,29 @@ impl ServerEndpoint {
             mount,
             loopback_http: local,
             databricks_org_id,
+            admin_view_off: false,
         })
+    }
+
+    /// This root with the admin view on (the server's default) or off. Off, every request
+    /// carries [`ADMIN_VIEW_OFF_COOKIE`], so an admin gets only their own session access.
+    #[must_use]
+    pub const fn with_admin_view(mut self, enabled: bool) -> Self {
+        self.admin_view_off = !enabled;
+        self
+    }
+
+    /// Whether requests carry the admin view's off cookie.
+    #[must_use]
+    pub const fn admin_view_off(&self) -> bool {
+        self.admin_view_off
+    }
+
+    /// The `Cookie` header requests to this root carry, if any.
+    #[must_use]
+    pub fn cookie_header(&self) -> Option<HttpHeader> {
+        self.admin_view_off
+            .then(|| HttpHeader::new("Cookie", ADMIN_VIEW_OFF_COOKIE))
     }
 
     /// The canonical API root, `?o=` selector included.
@@ -214,6 +241,7 @@ impl ServerEndpoint {
         if let Some(org) = &self.databricks_org_id {
             headers.push(HttpHeader::new(DATABRICKS_ORG_HEADER, org.clone()));
         }
+        headers.extend(self.cookie_header());
         if let Some(bearer) = bearer {
             validate_bearer(bearer.expose())?;
             headers.push(HttpHeader::new(
@@ -568,6 +596,32 @@ mod tests {
             Err(HostedAuthError::InvalidBaseUrl),
             "a query must not override the saved workspace"
         );
+    }
+
+    #[test]
+    fn with_the_admin_view_off_every_request_carries_its_cookie() {
+        let endpoint = ServerEndpoint::new("http://127.0.0.1:6767").unwrap();
+        assert!(!endpoint.admin_view_off() && endpoint.cookie_header().is_none());
+        let request = endpoint.request("/v1/sessions", &[], None).unwrap();
+        assert_eq!(
+            header(&request, "Cookie"),
+            None,
+            "the server's default is on"
+        );
+
+        let off = endpoint.with_admin_view(false);
+        assert!(off.admin_view_off());
+        for path in ["/v1/info", "/v1/sessions/a/stream", "/v1/sessions/updates"] {
+            let request = off
+                .request_with("GET", path, &[], "text/event-stream", None)
+                .unwrap();
+            assert_eq!(
+                header(&request, "Cookie"),
+                Some(ADMIN_VIEW_OFF_COOKIE),
+                "{path}"
+            );
+        }
+        assert!(off.with_admin_view(true).cookie_header().is_none());
     }
 
     #[test]

@@ -85,6 +85,23 @@ fn an_upload_on_a_connection_carries_its_bearer() {
 }
 
 #[test]
+fn an_upload_carries_the_admin_view_cookie_when_it_is_off() {
+    let endpoint = ServerEndpoint::new("https://h/")
+        .unwrap()
+        .with_admin_view(false);
+    let connection =
+        HostedConnection::new(endpoint, Some(SecretString::new("token")), None).unwrap();
+    let mut request = upload_request();
+    add_connection_headers(Some(&connection), &mut request);
+    assert!(
+        request
+            .headers
+            .iter()
+            .any(|header| header.name == "Cookie" && header.value == "omnigent_admin_view=off")
+    );
+}
+
+#[test]
 fn a_request_that_cannot_be_credentialed_is_an_invalid_request() {
     assert_eq!(
         super::terminals::invalid_request("no".to_owned()),

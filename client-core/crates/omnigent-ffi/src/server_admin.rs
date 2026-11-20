@@ -48,13 +48,25 @@ pub struct ServerSettingsInfo {
     /// Sessions can have nested agents, so Admin › General says where they may start.
     #[uniffi(default)]
     pub nested_agents: bool,
+    /// Omni Advisor is offered: the caller's switch, and the admin's controls.
+    #[uniffi(default)]
+    pub advisor: bool,
+    /// Settings offers the Admin view switch.
+    #[uniffi(default)]
+    pub admin_view: bool,
+    /// The admin view is on: an admin's requests have admin access.
+    #[uniffi(default = true)]
+    pub admin_view_on: bool,
 }
 
 impl From<core::ServerSettingsInfo> for ServerSettingsInfo {
     fn from(info: core::ServerSettingsInfo) -> Self {
         Self {
+            admin_view: info.offers_admin_view(),
+            admin_view_on: !info.admin_view_off,
             user_id: info.user_id,
-            is_admin: info.is_admin,
+            // With the admin view off, an admin has their own access, so no Admin panes show.
+            is_admin: info.is_admin && !info.admin_view_off,
             single_user: info.single_user,
             accounts_enabled: info.accounts_enabled,
             mcp_registry: info.mcp_registry,
@@ -66,6 +78,7 @@ impl From<core::ServerSettingsInfo> for ServerSettingsInfo {
             agent_config_edit: info.agent_config_edit,
             session_title_instructions: info.session_title_instructions,
             nested_agents: info.nested_agents,
+            advisor: info.advisor,
         }
     }
 }
@@ -348,6 +361,12 @@ impl From<SessionTitleInstructions> for SessionTitleInstructionsRecord {
 
 #[uniffi::export]
 impl ClientCore {
+    /// Turns the admin view on (the server's default) or off for the next connect, as the web's
+    /// Settings switch sets its cookie; reconnect for it to apply.
+    pub fn set_admin_view(&self, enabled: bool) {
+        crate::engine::lock(&self.inner.auth).admin_view_off = !enabled;
+    }
+
     /// What the server offers and the caller may manage.
     ///
     /// # Errors

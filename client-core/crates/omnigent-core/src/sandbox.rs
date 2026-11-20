@@ -9,7 +9,7 @@
 
 use serde_json::Value;
 
-use crate::client::json::{as_object, opt_array, opt_bool, opt_str, req_str};
+use crate::client::json::{as_object, opt_array, opt_bool, opt_object, opt_str, req_str};
 
 /// The most repositories one sandbox clones (the server's `_MAX_MANAGED_WORKSPACES`).
 pub const MAX_SANDBOX_REPOS: usize = 10;
@@ -294,6 +294,9 @@ pub struct SandboxModelPreview {
     pub status: SandboxModelStatus,
     /// The server's explanation for an unavailable or unsupported catalog.
     pub error: Option<String>,
+    /// The harness configuration the models come from; a launch pins it so the server refuses
+    /// one whose configuration changed since. `None` for catalogs with nothing to pin.
+    pub configuration_revision: Option<String>,
 }
 
 /// A server-defined sandbox profile (`GET /v1/sandbox-profiles`).
@@ -320,6 +323,9 @@ pub struct SandboxProfilePage {
     pub managed_providers: Vec<String>,
     /// More profiles match than were returned.
     pub has_more: bool,
+    /// The profile the server starts the asked provider on when the user picked none
+    /// (`default_profile_ids[provider]`).
+    pub default_profile_id: Option<String>,
 }
 
 impl SandboxProfilePage {
@@ -351,6 +357,11 @@ impl SandboxProfilePage {
                 "managed_providers",
             )?,
             has_more: opt_str(object, "next_cursor")?.is_some(),
+            default_profile_id: opt_object(object, "default_profile_ids")?
+                .map(|defaults| opt_str(defaults, provider))
+                .transpose()?
+                .flatten()
+                .filter(|id| !id.is_empty()),
         })
     }
 
