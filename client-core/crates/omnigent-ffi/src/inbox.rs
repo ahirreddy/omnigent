@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 
 use omnigent_core::comments as comments_core;
+use omnigent_core::html_comments;
 use omnigent_core::usage as usage_core;
 
 use crate::client::{ClientCore, MessageSent};
@@ -92,6 +93,10 @@ pub struct FileCommentLine {
     pub line: Option<u64>,
     /// The comment.
     pub comment: FileComment,
+    /// On an HTML file, which copy of its anchor text (0-based, in rendered order) the preview
+    /// highlights; `None` for other files.
+    #[uniffi(default)]
+    pub html_occurrence: Option<u64>,
 }
 
 /// The comments on `path`, open and sent, each with the line of `text` it starts on (an open
@@ -108,6 +113,7 @@ pub fn file_comment_lines(
         .into_iter()
         .map(|(line, comment)| FileCommentLine {
             line,
+            html_occurrence: html_comments::comment_html_occurrence(&comment, &text),
             comment: comment.into(),
         })
         .collect()

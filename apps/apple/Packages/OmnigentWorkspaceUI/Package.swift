@@ -32,6 +32,8 @@ let package = Package(
     .target(
       name: "OmnigentWorkspaceUI",
       dependencies: [.product(name: "OmnigentPlatform", package: "OmnigentPlatform")],
+      // The HTML preview's comment script.
+      resources: [.copy("Resources/HTMLCommentBridge.js")],
       swiftSettings: mainActorSwiftSettings
     ),
     .testTarget(

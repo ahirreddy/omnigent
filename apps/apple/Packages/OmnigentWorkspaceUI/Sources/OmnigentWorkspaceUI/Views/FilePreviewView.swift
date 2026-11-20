@@ -1,11 +1,4 @@
 public import SwiftUI
-import WebKit
-
-#if os(macOS)
-  import AppKit
-#else
-  import UIKit
-#endif
 
 /// The files the viewer can render as well as show as source, as the web's file viewer: Markdown,
 /// HTML and SVG (in WebKit), Jupyter notebooks, and CSV and TSV files as a table.
@@ -78,6 +71,8 @@ struct FilePreviewView: View {
   let text: String
   /// A data file's table, which the core parsed.
   var table: DataTablePreview?
+  /// Comments on an HTML file's rendered text.
+  var htmlReview: HTMLPreviewReview?
   @Environment(\.workspaceMarkdownRenderer) private var renderMarkdown
 
   var body: some View {
@@ -94,7 +89,7 @@ struct FilePreviewView: View {
     case .markdown:
       MarkdownPreviewPane(text: text, markdown: markdown)
     case .html:
-      HTMLPreviewPane(html: text)
+      HTMLPreviewPane(html: text, comments: htmlReview)
     case .notebook:
       switch NotebookCells.parse(text) {
       case .success(let cells):
@@ -225,85 +220,3 @@ nonisolated enum NotebookCells {
     return value as? String ?? ""
   }
 }
-
-/// HTML and SVG rendered by WebKit: stateless (a non-persistent store), scripts off, and links
-/// opening in the default browser rather than in the preview.
-struct HTMLPreview {
-  let html: String
-  /// The page zoom: 1 is 100%.
-  var zoom = 1.0
-  /// The latest find; a new id runs it.
-  var find = HTMLFindRequest()
-  /// Told whether the find matched.
-  var found: (Bool) -> Void = { _ in }
-
-  @MainActor final class Coordinator: NSObject, WKNavigationDelegate {
-    private var loaded: String?
-    private var lastFind = 0
-
-    /// Applies the zoom and runs a find not yet run.
-    func update(_ preview: HTMLPreview, in webView: WKWebView) {
-      load(preview.html, into: webView)
-      if webView.pageZoom != preview.zoom { webView.pageZoom = preview.zoom }
-      guard preview.find.id != lastFind else { return }
-      lastFind = preview.find.id
-      let configuration = WKFindConfiguration()
-      configuration.backwards = preview.find.backwards
-      configuration.caseSensitive = false
-      configuration.wraps = true
-      let found = preview.found
-      webView.find(preview.find.query, configuration: configuration) { result in
-        found(result.matchFound)
-      }
-    }
-
-    /// Loads `html` unless it is already showing.
-    func load(_ html: String, into webView: WKWebView) {
-      guard loaded != html else { return }
-      loaded = html
-      webView.loadHTMLString(html, baseURL: nil)
-    }
-
-    func webView(
-      _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction
-    ) async -> WKNavigationActionPolicy {
-      guard navigationAction.navigationType == .linkActivated,
-        let url = navigationAction.request.url
-      else { return .allow }
-      #if os(macOS)
-        NSWorkspace.shared.open(url)
-      #else
-        await UIApplication.shared.open(url)
-      #endif
-      return .cancel
-    }
-  }
-
-  func makeCoordinator() -> Coordinator { Coordinator() }
-
-  private func makeWebView(_ coordinator: Coordinator) -> WKWebView {
-    let configuration = WKWebViewConfiguration()
-    configuration.websiteDataStore = .nonPersistent()
-    configuration.defaultWebpagePreferences.allowsContentJavaScript = false
-    let webView = WKWebView(frame: .zero, configuration: configuration)
-    webView.navigationDelegate = coordinator
-    coordinator.update(self, in: webView)
-    return webView
-  }
-}
-
-#if os(macOS)
-  extension HTMLPreview: NSViewRepresentable {
-    func makeNSView(context: Context) -> WKWebView { makeWebView(context.coordinator) }
-    func updateNSView(_ webView: WKWebView, context: Context) {
-      context.coordinator.update(self, in: webView)
-    }
-  }
-#else
-  extension HTMLPreview: UIViewRepresentable {
-    func makeUIView(context: Context) -> WKWebView { makeWebView(context.coordinator) }
-    func updateUIView(_ webView: WKWebView, context: Context) {
-      context.coordinator.update(self, in: webView)
-    }
-  }
-#endif
