@@ -213,6 +213,9 @@ public struct SessionListActions {
   public var setMuted: (@MainActor (SessionSummary, Bool) -> Void)?
   /// Whether a session is unread now, read when a command runs rather than when it is drawn.
   public var isUnread: (@MainActor (String) -> Bool)?
+  /// Whether a muted session has activity the user has not seen, which it shows no unread for;
+  /// read when its menu opens.
+  public var hasUnseenWhileMuted: (@MainActor (String) -> Bool)?
   /// Open the Share sheet.
   public var share: (@MainActor (SessionSummary) -> Void)?
   /// Why Share is unavailable on this server (sharing turned off); it then shows disabled.

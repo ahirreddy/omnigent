@@ -406,6 +406,12 @@ pub enum CoreEvent {
         /// Their ids.
         session_ids: Vec<String>,
     },
+    /// The muted sessions with activity the user has not seen: they show no unread, but their
+    /// menus offer Mark as read.
+    MutedUnseenChanged {
+        /// Their ids.
+        session_ids: Vec<String>,
+    },
     /// A session's changed files were re-read after the server invalidated them
     /// (`session.changed_files.invalidated`). Workspace views showing changes should reload.
     ChangedFiles {

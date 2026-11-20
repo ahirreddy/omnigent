@@ -253,6 +253,7 @@ extension ConnectedServerView {
     }
     actions.deletesSourceAutomations = connection.pages?.offered?.automations == true
     actions.isUnread = { list.isUnread($0) }
+    actions.hasUnseenWhileMuted = { [connection] in connection.mutedUnseenIDs.contains($0) }
     // An older server would show the mute to every collaborator, so it is offered only where
     // the server keeps it per viewer.
     if connection.pages?.offered?.sessionMute == true {

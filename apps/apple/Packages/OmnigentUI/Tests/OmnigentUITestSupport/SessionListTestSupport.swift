@@ -187,6 +187,8 @@
     var deletesSourceAutomations = false
     /// The server keeps a mute per viewer, so rows offer Mute.
     var offersMute = false
+    /// Muted sessions with activity not seen, which their menus offer to mark read.
+    var mutedUnseen: Set<String> = []
 
     init(_ state: SidebarViewState) {
       self.state = state
@@ -205,6 +207,7 @@
       actions.setUnread = { [self] in calls.append("unread \($0.id) \($1)") }
       if offersMute {
         actions.setMuted = { [self] in calls.append("mute \($0.id) \($1)") }
+        actions.hasUnseenWhileMuted = { [self] in mutedUnseen.contains($0) }
       }
       actions.share = { [self] in calls.append("share \($0.id)") }
       actions.fork = { [self] in calls.append("fork \($0.id)") }

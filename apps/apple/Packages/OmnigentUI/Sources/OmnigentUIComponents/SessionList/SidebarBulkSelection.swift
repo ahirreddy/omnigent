@@ -104,8 +104,13 @@ struct BulkActionBar: View {
   private var owned: [SessionSummary] {
     rows.filter { !$0.info.isShared }.map(\.session)
   }
+  /// The selected rows Mark as read applies to: unread, or muted with unseen activity.
   private var unread: [SessionSummary] {
-    rows.filter(\.isUnread).map(\.session)
+    let mutedUnseen = actions.sessions.hasUnseenWhileMuted
+    return rows.filter { row in
+      row.isUnread || (row.session.isMuted && mutedUnseen?(row.session.id) == true)
+    }
+    .map(\.session)
   }
   private var archived: [SessionSummary] { owned.filter(\.isArchived) }
   private var active: [SessionSummary] { owned.filter { !$0.isArchived } }
@@ -167,10 +172,13 @@ struct BulkActionBar: View {
         .help("Mark as read")
         .accessibilityIdentifier("bulk-mark-read")
       } else {
+        // A muted session can't be flagged unread, as on the web.
+        let flaggable = selected.filter { !$0.isMuted }
         Button("Mark as unread", systemImage: "envelope.badge") {
-          for session in selected { setUnread(session, true) }
+          for session in flaggable { setUnread(session, true) }
           exit()
         }
+        .disabled(flaggable.isEmpty)
         .help("Mark as unread")
         .accessibilityIdentifier("bulk-mark-unread")
       }

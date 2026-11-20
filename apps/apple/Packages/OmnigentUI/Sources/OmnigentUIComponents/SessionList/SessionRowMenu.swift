@@ -58,8 +58,8 @@ struct SessionRowMenu {
     if offersPin, session.isPinned || !pinLimitReached {
       Button(session.isPinned ? "Unpin" : "Pin") { togglePin() }
     }
-    if let setUnread = actions.setUnread, isUnread || !session.isMuted {
-      Button(isUnread ? "Mark as read" : "Mark as unread") { setUnread(session, !isUnread) }
+    if let setUnread = actions.setUnread, showsUnread || !session.isMuted {
+      Button(showsUnread ? "Mark as read" : "Mark as unread") { setUnread(session, !showsUnread) }
     }
     if let setMuted = actions.setMuted {
       Button(session.isMuted ? "Unmute" : "Mute") { setMuted(session, !session.isMuted) }
@@ -72,6 +72,11 @@ struct SessionRowMenu {
     if actions.rename != nil, session.canRename {
       Button("Rename", action: rename)
     }
+  }
+
+  /// Mark as read applies: the row is unread, or muted with activity the user has not seen.
+  private var showsUnread: Bool {
+    isUnread || (session.isMuted && actions.hasUnseenWhileMuted?(session.id) == true)
   }
 
   /// Add nested agent: the owner's, on a session that is not archived (the web's gate).
@@ -185,13 +190,14 @@ struct SessionRowMenu {
         setMuted(session, !session.isMuted)
       }
     }
-    // A muted session shows no unread, so it is never flagged unread.
-    if let setUnread = actions.setUnread, isUnread || !session.isMuted {
+    // A muted session shows no unread, so it is never flagged unread; unseen activity can
+    // still be marked read, as on the web.
+    if let setUnread = actions.setUnread, showsUnread || !session.isMuted {
       Button(
-        isUnread ? "Mark as read" : "Mark as unread",
-        systemImage: isUnread ? "envelope.open" : "envelope.badge"
+        showsUnread ? "Mark as read" : "Mark as unread",
+        systemImage: showsUnread ? "envelope.open" : "envelope.badge"
       ) {
-        setUnread(session, !isUnread)
+        setUnread(session, !showsUnread)
       }
     }
     // Moving is owner-only, as on the web; a nested member files with its representative.

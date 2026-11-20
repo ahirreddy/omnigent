@@ -187,6 +187,17 @@ impl ReadState {
             .collect()
     }
 
+    /// Every muted session with activity the caller has not seen: it shows no unread, but can
+    /// still be marked read.
+    #[must_use]
+    pub fn muted_unseen_ids(&self) -> BTreeSet<String> {
+        self.sessions
+            .iter()
+            .filter(|(_, entry)| entry.muted && entry.is_unread())
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
     /// The server accepted `mark`: the next row it reports for the session is authoritative.
     pub fn mark_written(&mut self, mark: &ReadMark) {
         if let Some(pending) = self
