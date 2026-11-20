@@ -141,6 +141,8 @@ public final class PagesStore {
       guard read == offeredReads else { return .superseded }
       offered = pages
       offeredError = nil
+      // Every read that lands records the zone, whichever caller started it, without waiting.
+      Task { await reportAutomationTimezone(TimeZone.current.identifier) }
       return .read
     } catch {
       guard read == offeredReads else { return .superseded }

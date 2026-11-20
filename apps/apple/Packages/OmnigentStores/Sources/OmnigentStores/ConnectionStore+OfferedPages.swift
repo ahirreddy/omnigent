@@ -1,4 +1,3 @@
-import Foundation
 import OmnigentCoreFFI
 
 /// Which top-level pages the server offers (Automations, Usage, Canvas, sharing). They are read
@@ -42,7 +41,6 @@ extension ConnectionStore {
     switch read {
     case .read:
       clearOfferedPagesIssue()
-      await pages.reportAutomationTimezone(TimeZone.current.identifier)
       return nil
     case .superseded:
       return nil
