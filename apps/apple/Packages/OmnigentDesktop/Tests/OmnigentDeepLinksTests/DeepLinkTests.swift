@@ -127,6 +127,21 @@ struct DeepLinkTests {
         == .settings(section: "harnesses"))
   }
 
+  @Test("opens one approval request from the web's approve page path")
+  func approvalRoute() throws {
+    let route = try parse("omnigent://127.0.0.1:6767/approve/conv_a/elic%3A1").route
+    #expect(route == .approval(sessionID: "conv_a", elicitationID: "elic:1"))
+    #expect(route.path == "/approve/conv_a/elic:1")
+    #expect(route.sessionID == "conv_a")
+    #expect(!route.appliesBeforeSignIn)
+    for raw in [
+      "omnigent://127.0.0.1:6767/approve/conv_a", "omnigent://127.0.0.1:6767/approve/conv_a/",
+      "omnigent://127.0.0.1:6767/approve/conv_a/%2F",
+    ] {
+      #expect(throws: DeepLinkError.self) { try parse(raw) }
+    }
+  }
+
   @Test("rejects unparseable input")
   func rejectsGarbage() {
     #expect(throws: DeepLinkError.invalidCharacters) { try parse("not a url") }

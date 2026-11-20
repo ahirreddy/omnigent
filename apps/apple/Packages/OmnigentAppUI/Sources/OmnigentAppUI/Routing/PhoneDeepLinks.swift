@@ -192,6 +192,8 @@
         guard let server, let link = SceneLinkPlan.inviteLink(server: server, invite: invite)
         else { return }
         session?.signIn.openInvite(link)
+      case .approval:
+        session?.approvalLink = ApprovalLinkRequest(route)
       }
     }
 

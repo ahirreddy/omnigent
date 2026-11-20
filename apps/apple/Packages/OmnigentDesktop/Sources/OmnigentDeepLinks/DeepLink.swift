@@ -9,8 +9,8 @@ nonisolated public enum DeepLinkError: Error, Equatable, Sendable {
   case missingHost
   /// The host or port is invalid.
   case invalidOrigin(ServerOriginError)
-  /// The path is not `/`, `/c/<session>`, a page, `/tasks/<automation>`, `/settings[/<section>]`
-  /// or an invite.
+  /// The path is not `/`, `/c/<session>`, a page, `/tasks/<automation>`, `/settings[/<section>]`,
+  /// `/approve/<session>/<elicitation>` or an invite.
   case unsupportedPath(String)
   /// The link contains whitespace or control characters.
   case invalidCharacters
@@ -38,6 +38,9 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
   /// Settings, `omnigent://host/settings` or `/settings/<section>` with the web's section ids
   /// (`appearance`, `mcp`, `archived`...).
   case settings(section: String?)
+  /// One approval request on its own, `omnigent://host/approve/<sessionID>/<elicitationID>`: the
+  /// web's page for a policy's URL-mode approval.
+  case approval(sessionID: String, elicitationID: String)
 
   /// The basename-less SPA path for this route, `/`, `/c/<id>`, `/register`, a page's path or
   /// `/settings[/<section>]`.
@@ -50,13 +53,15 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
     case .automation(let id): "/tasks/\(id)"
     case .workflow(let id): "/workflows/\(id)"
     case .settings(let section): section.map { "/settings/\($0)" } ?? "/settings"
+    case .approval(let sessionID, let elicitationID): "/approve/\(sessionID)/\(elicitationID)"
     }
   }
 
   /// The session the route shows, if any.
   public var sessionID: String? {
     switch self {
-    case .conversation(let sessionID), .message(let sessionID, _): sessionID
+    case .conversation(let sessionID), .message(let sessionID, _), .approval(let sessionID, _):
+      sessionID
     case .home, .register, .page, .automation, .workflow, .settings: nil
     }
   }
@@ -159,7 +164,8 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
   /// with a non-empty `message`; `/register` with a non-empty `invite` is an invite; `/new`,
   /// `/inbox`, `/tasks`, `/workflows`, `/usage` and `/canvas` are pages, `/tasks/<id>` one
   /// automation and `/workflows/<id>` one workflow;
-  /// `/settings` with an optional section (and a harness, dropped) is Settings.
+  /// `/settings` with an optional section (and a harness, dropped) is Settings;
+  /// `/approve/<session>/<elicitation>` one approval request.
   private static func route(_ path: Substring, query: Substring) throws(DeepLinkError)
     -> DeepLinkRoute
   {
@@ -188,9 +194,20 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
       }
       return .settings(section: nil)
     }
-    guard segments.count == 3, segments[0].isEmpty, let route = item(segments, query: query)
+    guard
+      let route = segments.count == 4
+        ? approval(segments) : segments.count == 3 ? item(segments, query: query) : nil,
+      segments[0].isEmpty
     else { throw .unsupportedPath(String(path)) }
     return route
+  }
+
+  /// `/approve/<session>/<elicitation>`.
+  private static func approval(_ segments: [Substring]) -> DeepLinkRoute? {
+    guard segments[1] == "approve", let sessionID = identifier(segments[2]),
+      let elicitationID = identifier(segments[3])
+    else { return nil }
+    return .approval(sessionID: sessionID, elicitationID: elicitationID)
   }
 
   /// `/tasks/<id>`, `/workflows/<id>` and `/c/<id>`, the latter with an optional `message`.

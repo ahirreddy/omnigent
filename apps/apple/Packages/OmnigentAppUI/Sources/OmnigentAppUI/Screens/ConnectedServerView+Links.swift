@@ -50,6 +50,8 @@ extension ConnectedServerView {
       case .settings(let section):
         guard let openSettings else { return await fallback.open(url) }
         openSettings(DeepLinkDestinations.settings(section: section, server: settingsServer))
+      case .approval:
+        session.approvalLink = ApprovalLinkRequest(route)
       }
       return true
     }

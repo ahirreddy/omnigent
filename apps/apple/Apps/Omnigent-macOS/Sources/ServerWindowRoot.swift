@@ -265,11 +265,8 @@ struct ServerWindowRoot: View {
       openSettingsAt(
         DeepLinkDestinations.settings(
           section: section, server: session.connection.supervisedServerURL))
-    case .register(let invite):
-      guard let serverURL = id.serverURL,
-        let link = SceneLinkPlan.inviteLink(server: serverURL, invite: invite)
-      else { return }
-      session.signIn.openInvite(link)
+    case .register(let invite): Self.openInvite(invite, server: id.serverURL, in: session)
+    case .approval: session.approvalLink = ApprovalLinkRequest(route)
     }
   }
 

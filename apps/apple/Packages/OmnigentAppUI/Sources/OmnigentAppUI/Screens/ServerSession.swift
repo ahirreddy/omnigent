@@ -33,6 +33,8 @@ public final class ServerSession {
   let forkedSideChats = ForkedSideChats()
   /// Messages that `?message=` links ask the transcript to scroll to.
   public let transcriptFocus = TranscriptFocus()
+  /// The approval request an `/approve/…` link opened, shown as a sheet until closed.
+  public var approvalLink: ApprovalLinkRequest?
   /// Sessions whose conversation, terminals and workspace are open.
   public private(set) var openSessionIDs: Set<String> = []
   /// The terminal names each session's agent declares, once read.
