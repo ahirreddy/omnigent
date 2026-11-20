@@ -76,7 +76,10 @@ struct CLIUserBand: View, Equatable {
         }
       }
       if !row.text.isEmpty, !isCollapsedOrigin {
-        CLIUserText(text: UserPrompt.source(row))
+        CLIUserText(
+          text: UserPrompt.source(row),
+          tintsCommand: row.originSessionId == nil && row.attachments.isEmpty
+            && QuestionReplyMarkdown.text(row.questionReplies) == nil)
       }
       AttachmentStrip(attachments: row.attachments)
       if let activity = row.activity {

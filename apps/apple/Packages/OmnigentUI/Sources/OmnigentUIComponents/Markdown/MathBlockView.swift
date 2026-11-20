@@ -63,12 +63,19 @@ struct MathBlockView: View {
 /// A paragraph's text. Its inline math (`\(…\)`) is typeset: each span becomes a KaTeX image
 /// set on the text's baseline once it is ready, and Unicode until then or if KaTeX rejects it.
 struct MarkdownParagraphText: View {
-  let text: AttributedString
+  let marked: AttributedString
   @Environment(\.typeRamp) private var ramp
   @Environment(\.markdownBlockIsOpen) private var isOpen
+  /// A sent prompt's leading command takes the composer's tint (``PromptCommand``).
+  @Environment(\.controlAccent) private var accent
   @State private var drawn: [RichBlockRequest: RenderedRichBlock] = [:]
 
+  init(text: AttributedString) {
+    marked = text
+  }
+
   var body: some View {
+    let text = PromptCommand.tinted(marked, color: accent)
     let requests = Self.requests(in: text, size: ramp.body)
     if requests.isEmpty {
       Text(text).linkPointer(LinkGeometry.spans(in: text))

@@ -98,6 +98,8 @@ public final class WebView {
   @ObservationIgnored public var onStateChange: (() -> Void)?
   /// Frame counters.
   @ObservationIgnored public internal(set) var statistics = FrameStatistics()
+  /// Each isolated world's execution context in the current document, by the world's name.
+  @ObservationIgnored var isolatedContexts: [String: Int] = [:]
 
   @ObservationIgnored var requestedURL: URL?
   @ObservationIgnored var navigationPendingCreation = false

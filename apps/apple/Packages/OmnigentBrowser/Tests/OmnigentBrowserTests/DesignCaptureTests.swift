@@ -73,14 +73,14 @@ struct DesignCaptureTests {
     #expect(throws: BrowserError.self) { try BrowserDesignCapture.image(fromPNG: Data("x".utf8)) }
   }
 
-  @Test("marks go on the snapshot where they were drawn over the page")
+  @Test("marks go on the snapshot where the page shows their CSS pixels")
   func drawing() throws {
     let mark = BrowserDesignMark(
-      kind: .rectangle, points: [CGPoint(x: 10, y: 10), CGPoint(x: 40, y: 30)], color: .red)
-    // A view of 100 by 50 points, captured at twice its size.
+      kind: .rectangle, points: [CGPoint(x: 10, y: 30), CGPoint(x: 40, y: 50)], color: .red)
+    // 100 CSS pixels across, scrolled down 20, captured at twice its size.
     let png = try BrowserDesignCapture.drawingPNG(
       snapshot: try solidImage(width: 200, height: 100), marks: [mark],
-      viewSize: CGSize(width: 100, height: 50))
+      viewport: BrowserDesignViewport(origin: CGPoint(x: 0, y: 20), width: 100))
     let image = try BrowserDesignCapture.image(fromPNG: png)
     #expect(image.width == 200 && image.height == 100)
     let marked = try pixel(image, x: 20, y: 40)
@@ -101,7 +101,7 @@ struct DesignCaptureTests {
     ]
     let png = try BrowserDesignCapture.drawingPNG(
       snapshot: try solidImage(width: 100, height: 100, gray: 0.5), marks: marks,
-      viewSize: CGSize(width: 100, height: 100))
+      viewport: .unscrolled(viewWidth: 100))
     let image = try BrowserDesignCapture.image(fromPNG: png)
     #expect(try pixel(image, x: 12, y: 5) == [0, 0, 0])
     let arrowBlue = try pixel(image, x: 50, y: 40)[2]
@@ -120,7 +120,8 @@ struct DesignCaptureTests {
       try BrowserDesignCapture.pngData(image, limit: 1)
     }
     #expect(throws: BrowserError.self) {
-      try BrowserDesignCapture.drawingPNG(snapshot: image, marks: [], viewSize: .zero)
+      try BrowserDesignCapture.drawingPNG(
+        snapshot: image, marks: [], viewport: BrowserDesignViewport(origin: .zero, width: 0))
     }
   }
 }

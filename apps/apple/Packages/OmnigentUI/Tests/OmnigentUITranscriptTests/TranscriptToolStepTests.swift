@@ -13,7 +13,7 @@
     private typealias Fixture = TranscriptFixture
 
     @Test("A tool step opens to its input and output, and closes again")
-    func stepOpensAndCloses() throws {
+    func stepOpensAndCloses() async throws {
       let entry = ToolEntry(
         call: Fixture.toolCall(
           "call",
@@ -31,7 +31,8 @@
       #expect(screen.controlFrames.count > closedControls)
 
       try screen.clickControl(at: 0)
-      #expect(try !screen.shows("file.txt"))
+      // The output's scroller leaves with the closing step's transition, after the click's pass.
+      #expect(try await screen.waitUntil { try !screen.shows("file.txt") })
       #expect(screen.controlFrames.count == closedControls)
     }
 

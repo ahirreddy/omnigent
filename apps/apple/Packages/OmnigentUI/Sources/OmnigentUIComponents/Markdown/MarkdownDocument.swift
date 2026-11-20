@@ -242,6 +242,10 @@ nonisolated enum MarkdownParser {
     switch markup {
     case let link as Markdown.Link:
       var span = inline(link.children)
+      if link.destination == PromptCommand.destination {
+        span[PromptCommandAttribute.self] = true
+        return span
+      }
       if span.characters.isEmpty { span = AttributedString(link.destination ?? "") }
       if let url = safeURL(link.destination) {
         span = MarkdownAutolink.link(span, to: url)

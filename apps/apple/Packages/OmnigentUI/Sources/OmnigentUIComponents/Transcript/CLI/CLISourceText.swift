@@ -237,13 +237,17 @@ struct CLISourceText: View {
   /// Tint markdown syntax; off for raw tool output.
   var tintsMarkdown = true
   var color: KeyPath<CLIPalette, SRGB> = \.body
+  /// A sent prompt's leading command, in characters, drawn in the composer's tint.
+  var command: Range<Int>?
   @Environment(\.cliPalette) private var palette
+  @Environment(\.controlAccent) private var accent
   @State private var memo = SourceTintMemo()
 
   var body: some View {
     Text(
-      memo.attributed(
-        text, palette: palette, isStreaming: isStreaming, tintsMarkdown: tintsMarkdown)
+      commanded(
+        memo.attributed(
+          text, palette: palette, isStreaming: isStreaming, tintsMarkdown: tintsMarkdown))
     )
     .linkPointer(memo.linkSpans)
     .foregroundStyle(palette[keyPath: color].color)
@@ -251,6 +255,18 @@ struct CLISourceText: View {
     .textSelection(.enabled)
     .fixedSize(horizontal: false, vertical: true)
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  /// `attributed` with ``command`` in the composer's tint.
+  private func commanded(_ attributed: AttributedString) -> AttributedString {
+    guard let command, command.upperBound <= attributed.characters.count else {
+      return attributed
+    }
+    var marked = attributed
+    let start = marked.characters.index(marked.startIndex, offsetBy: command.lowerBound)
+    let end = marked.characters.index(start, offsetBy: command.count)
+    marked[start..<end].foregroundColor = accent
+    return marked
   }
 }
 

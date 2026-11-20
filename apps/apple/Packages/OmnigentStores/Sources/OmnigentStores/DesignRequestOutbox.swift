@@ -5,7 +5,7 @@ import OmnigentCoreFFI
 /// One Browser design tool request (Annotate, Draw) the outbox holds until it is sent.
 nonisolated public struct DesignOutboxRequest: Identifiable, Hashable, Sendable {
   /// The tool that made it.
-  public enum Tool: String, Hashable, Sendable {
+  public enum Tool: String, Hashable, Sendable, Codable {
     /// A picked element and what should change.
     case annotate
     /// A marked-up screenshot.
@@ -71,8 +71,14 @@ nonisolated public struct DesignOutboxRequest: Identifiable, Hashable, Sendable 
   public let text: String
   /// The files it carries (its screenshot).
   public let files: [File]
+  /// When it was made.
+  public let madeAt: Date
   /// Where it stands.
   public internal(set) var status: Status
+  /// Sending, and the server hasn't answered for a while.
+  public internal(set) var isSlow = false
+  /// The account signed in when it was made; `nil` until one is known.
+  public internal(set) var owner: DesignOutboxOwner?
 }
 
 /// How a request ended, for the page that made it.
@@ -85,7 +91,8 @@ nonisolated public enum DesignOutboxOutcome: Hashable, Sendable {
 
 /// The Browser design tools' outbox (web `designOutbox.ts`): requests go to their session one
 /// at a time, each once the session's turn has ended, outside the composer. One that isn't
-/// sent stays, saying why, until it is retried or removed. Requests live as long as the window.
+/// sent stays, saying why, until it is retried or removed. Unsent requests are kept on disk per
+/// account (``DesignOutboxStorage``) and come back after a relaunch, each needing a Retry.
 @Observable
 public final class DesignRequestOutbox {
   /// Wording the web's outbox uses.
@@ -99,6 +106,15 @@ public final class DesignRequestOutbox {
       "The session's host is offline, so this wasn't sent. Retry once it's back."
     /// What to do about a request that may have arrived.
     public static let look = "Look in the chat: if it isn't there, Retry sends it."
+    /// A request kept from before the app last closed.
+    public static let restored =
+      "The app closed before this was confirmed sent, so it may have reached the agent. \(look)"
+    /// A request another account would send.
+    public static let accountChanged =
+      "Another account is signed in now, so this wasn't sent. Sign back in as the account that made it to Retry, or Remove it."
+    /// A send the server never answered.
+    public static let stalled =
+      "The server didn't answer, so this may have reached the agent. \(look)"
   }
 
   /// How long the outbox waits for the session.
@@ -107,6 +123,10 @@ public final class DesignRequestOutbox {
     public var poll: Duration
     /// The longest a sent request waits for its turn to start before the next one goes.
     public var turnStart: Duration
+    /// How long a send runs before the outbox says the server is slow.
+    public var slow: Duration = .seconds(60)
+    /// How long a send runs before the outbox stops waiting on it: it may still have arrived.
+    public var stalled: Duration = .seconds(180)
 
     /// The web's timings.
     public static let standard = Self(poll: .milliseconds(250), turnStart: .seconds(15))
@@ -115,18 +135,30 @@ public final class DesignRequestOutbox {
   /// Every request not yet sent, oldest first.
   public private(set) var requests: [DesignOutboxRequest] = []
 
-  @ObservationIgnored private let deliver: (DesignOutboxRequest) async throws -> Void
+  @ObservationIgnored let deliver: (DesignOutboxRequest) async throws -> Void
   @ObservationIgnored private let isRunning: (String) -> Bool
-  @ObservationIgnored private let timing: Timing
+  @ObservationIgnored let timing: Timing
+  /// The account signed in now; `nil` while none is known.
+  @ObservationIgnored let owner: () -> DesignOutboxOwner?
+  @ObservationIgnored let storage: DesignOutboxStorage?
+  @ObservationIgnored private let now: () -> Date
   @ObservationIgnored private var outcomes: [UUID: (DesignOutboxOutcome) -> Void] = [:]
   @ObservationIgnored private var draining: Set<String> = []
 
   /// An outbox over a connection's core, reading each session's turn from its open conversation.
-  /// - Parameter connection: The connection.
-  public convenience init(connection: ConnectionStore) {
+  /// - Parameters:
+  ///   - connection: The connection.
+  ///   - storage: Where unsent requests are kept across launches; `nil` keeps none.
+  public convenience init(connection: ConnectionStore, storage: DesignOutboxStorage? = nil) {
     self.init(
       timing: .standard,
       isRunning: { [weak connection] in connection?.openConversation($0)?.isRunning ?? false },
+      owner: { [weak connection] in
+        connection?.connectedServer.map {
+          DesignOutboxOwner(server: $0.baseUrl, account: $0.accountId)
+        }
+      },
+      storage: storage,
       deliver: { [weak connection] request in
         guard let core = connection?.core else {
           throw CoreError.InvalidState(message: "The server connection isn't ready.")
@@ -139,13 +171,18 @@ public final class DesignRequestOutbox {
       })
   }
 
-  /// An outbox with its own sending and turn reading, for tests.
+  /// An outbox with its own sending, turn and account reading, for tests.
   init(
     timing: Timing, isRunning: @escaping (String) -> Bool,
+    owner: @escaping () -> DesignOutboxOwner?, storage: DesignOutboxStorage? = nil,
+    now: @escaping () -> Date = Date.init,
     deliver: @escaping (DesignOutboxRequest) async throws -> Void
   ) {
     self.timing = timing
     self.isRunning = isRunning
+    self.owner = owner
+    self.storage = storage
+    self.now = now
     self.deliver = deliver
   }
 
@@ -167,9 +204,11 @@ public final class DesignRequestOutbox {
   ) -> UUID {
     let request = DesignOutboxRequest(
       id: UUID(), sessionID: sessionID, tool: message.tool, label: message.label,
-      text: message.text, files: message.files, status: .waiting)
+      text: message.text, files: message.files, madeAt: now(), status: .waiting,
+      owner: owner())
     requests.append(request)
     outcomes[request.id] = outcome
+    persisted(request.id)
     drain(sessionID)
     return request.id
   }
@@ -180,6 +219,7 @@ public final class DesignRequestOutbox {
       case .failed(_, true) = requests[index].status
     else { return }
     requests[index].status = .waiting
+    persisted(id)
     drain(requests[index].sessionID)
   }
 
@@ -189,6 +229,7 @@ public final class DesignRequestOutbox {
     else { return }
     requests.removeAll { $0.id == id }
     outcomes[id] = nil
+    persisted(id)
   }
 
   private func drain(_ sessionID: String) {
@@ -200,31 +241,65 @@ public final class DesignRequestOutbox {
     }
   }
 
-  /// Sends the session's waiting requests in turn, each once the session is free.
+  /// Sends the session's waiting requests in turn, each once the session is free and its
+  /// account still the one signed in.
   private func sendWaiting(in sessionID: String) async {
     while let next = requests.first(where: { $0.sessionID == sessionID && $0.status == .waiting }) {
-      guard await wait(until: { !self.isRunning(sessionID) }) else { return }
-      guard let index = requests.firstIndex(where: { $0.id == next.id && $0.status == .waiting })
+      guard await wait(until: { !self.isRunning(sessionID) && self.owner() != nil }) else {
+        return
+      }
+      guard let index = requests.firstIndex(where: { $0.id == next.id && $0.status == .waiting }),
+        let signedIn = owner()
       else { continue }
-      requests[index].status = .sending
-      do {
-        try await deliver(next)
-      } catch {
-        let failure = Self.failure(error)
-        set(next.id, .failed(failure.message, canRetry: failure.canRetry))
-        outcomes[next.id]?(.failed(failure.message))
+      if let made = requests[index].owner, made != signedIn {
+        fail(next.id, Copy.accountChanged, canRetry: true)
         continue
       }
-      requests.removeAll { $0.id == next.id }
-      outcomes.removeValue(forKey: next.id)?(.sent)
+      requests[index].owner = signedIn
+      requests[index].status = .sending
+      persisted(next.id)
+      switch await attempt(requests[index]) {
+      case .sent:
+        requests.removeAll { $0.id == next.id }
+        persisted(next.id)
+        outcomes.removeValue(forKey: next.id)?(.sent)
+      case .failed(let error):
+        let failure = Self.failure(error)
+        fail(next.id, failure.message, canRetry: failure.canRetry)
+        continue
+      case .stalled:
+        // Its post may still land: the next one waits as if this one was sent.
+        fail(next.id, Copy.stalled, canRetry: true)
+      }
       // Its turn starts and ends before the next one goes, so that one doesn't steer it.
       _ = await wait(until: { self.isRunning(sessionID) }, atMost: timing.turnStart)
     }
   }
 
-  private func set(_ id: UUID, _ status: DesignOutboxRequest.Status) {
+  /// Marks a request not sent, with why, and tells its page.
+  private func fail(_ id: UUID, _ message: String, canRetry: Bool) {
+    set(id, .failed(message, canRetry: canRetry))
+    outcomes[id]?(.failed(message))
+  }
+
+  func set(_ id: UUID, _ status: DesignOutboxRequest.Status) {
     guard let index = requests.firstIndex(where: { $0.id == id }) else { return }
     requests[index].status = status
+    requests[index].isSlow = false
+    persisted(id)
+  }
+
+  /// A send that runs long says so, while it keeps waiting.
+  func markSlow(_ id: UUID) {
+    guard let index = requests.firstIndex(where: { $0.id == id }),
+      requests[index].status == .sending
+    else { return }
+    requests[index].isSlow = true
+  }
+
+  /// Puts restored requests ahead of the ones made since.
+  func insertRestored(_ restored: [DesignOutboxRequest]) {
+    requests.insert(contentsOf: restored, at: 0)
   }
 
   /// Waits until `condition` holds, or `atMost` has passed; `false` when the wait was

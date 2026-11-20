@@ -3,16 +3,23 @@ import SwiftUI
 /// A `.csv` or `.tsv` file as a read-only table, as the web's `DataTablePreview` shows it: how
 /// many rows and columns it has, what it leaves out, filters on its columns, and its rows, which
 /// sort by a column and copy a cell or a row. A system table on a Mac and an iPad; on an iPhone a
-/// list of rows, each opening the whole record.
+/// list of rows, each opening the whole record. Find (the Find menu on a Mac, a search field on
+/// iPhone and iPad) marks the cells holding a query and steps through them.
 struct DataTableView: View {
   let table: DataTablePreview
   @State private var query: DataTableQuery
+  @State private var find = DataTableFind()
   @FocusState private var focusedFilter: Int?
+  @FocusState private var findFocused: Bool
   @Environment(\.horizontalSizeClass) private var sizeClass
 
-  init(table: DataTablePreview, query: DataTableQuery = DataTableQuery()) {
+  init(
+    table: DataTablePreview, query: DataTableQuery = DataTableQuery(),
+    find: DataTableFind = DataTableFind()
+  ) {
     self.table = table
     _query = State(initialValue: query)
+    _find = State(initialValue: find)
   }
 
   var body: some View {
@@ -22,6 +29,9 @@ struct DataTableView: View {
       DataTableBar(
         table: table, shownCount: shown.count, compact: compact, query: $query
       ) { focusedFilter = $0 }
+      if showsFindBar {
+        DataTableFindBar(find: $find, focus: $findFocused, close: closeFind)
+      }
       if let note = table.omissionNote {
         Label(note, systemImage: "info.circle")
           .font(.caption)
@@ -39,13 +49,58 @@ struct DataTableView: View {
       }
       Divider()
       if compact {
-        DataTableList(table: table, shown: shown)
+        DataTableList(table: table, shown: shown, find: find)
       } else {
-        DataTableGrid(table: table, shown: shown, query: $query)
+        DataTableGrid(table: table, shown: shown, query: $query, find: find)
       }
     }
+    .onChange(of: find.text) { find.search(table, rows: query.rows(of: table)) }
+    .onChange(of: query) { find.search(table, rows: query.rows(of: table)) }
+    #if os(macOS)
+      .focusedValue(
+        \.dataTableFind,
+        DataTableFindActions(
+          show: { showFind() }, next: { stepFind(forward: true) },
+          previous: { stepFind(forward: false) }))
+    #endif
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace.table")
+  }
+
+  /// A Mac shows the bar on Find; iPhone and iPad keep it as the table's search field.
+  private var showsFindBar: Bool {
+    #if os(macOS)
+      find.isShown
+    #else
+      true
+    #endif
+  }
+
+  private var closeFind: (() -> Void)? {
+    #if os(macOS)
+      return {
+        find.close()
+        findFocused = false
+      }
+    #else
+      return nil
+    #endif
+  }
+
+  /// Opens the bar with the keyboard in it, finding the query it kept.
+  private func showFind() {
+    find.isShown = true
+    find.search(table, rows: query.rows(of: table))
+    findFocused = true
+  }
+
+  /// Find Next and Previous open the bar first when it is closed, as a text view's do.
+  private func stepFind(forward: Bool) {
+    guard find.isShown else {
+      showFind()
+      return
+    }
+    find.step(forward: forward)
   }
 }
 
@@ -221,24 +276,39 @@ private struct DataTableGrid: View {
   let table: DataTablePreview
   let shown: [Int]
   @Binding var query: DataTableQuery
+  let find: DataTableFind
   @State private var selection: Set<Int> = []
 
   var body: some View {
-    Table(shown.map(DataTableRow.init), selection: $selection, sortOrder: sortOrder) {
-      TableColumnForEach(table.columns) { column in
-        TableColumn(
-          Text("\(column.name)  \(Text(column.type.rawValue).foregroundStyle(.secondary))"),
-          sortUsing: DataTableSort(column: column.id, order: .forward)
-        ) { row in
-          DataTableCell(table: table, row: row.id, column: column)
+    ScrollViewReader { proxy in
+      Table(shown.map(DataTableRow.init), selection: $selection, sortOrder: sortOrder) {
+        TableColumnForEach(table.columns) { column in
+          TableColumn(
+            Text("\(column.name)  \(Text(column.type.rawValue).foregroundStyle(.secondary))"),
+            sortUsing: DataTableSort(column: column.id, order: .forward)
+          ) { row in
+            DataTableCell(
+              table: table, row: row.id, column: column, highlight: highlight(row.id, column))
+          }
+          .alignment(column.type == .number ? .trailing : .leading)
         }
-        .alignment(column.type == .number ? .trailing : .leading)
+      }
+      #if os(macOS)
+        // Copy takes the selected rows, tab-separated, one per line.
+        .copyable(selection.isEmpty ? [] : [selectedText])
+      #endif
+      // The row found now is selected and scrolled into view, as a text view's find does.
+      .onChange(of: find.currentMatch) { _, match in
+        guard let match else { return }
+        selection = [match.row]
+        proxy.scrollTo(match.row, anchor: .center)
       }
     }
-    #if os(macOS)
-      // Copy takes the selected rows, tab-separated, one per line.
-      .copyable(selection.isEmpty ? [] : [selectedText])
-    #endif
+  }
+
+  private func highlight(_ row: Int, _ column: DataTableColumn) -> DataTableFindHighlight {
+    if find.currentMatch == DataTableFind.Match(row: row, column: column.id) { return .current }
+    return find.isMatch(row: row, column: column.id) ? .match : .none
   }
 
   private var selectedText: String {
@@ -263,6 +333,7 @@ private struct DataTableCell: View {
   let table: DataTablePreview
   let row: Int
   let column: DataTableColumn
+  var highlight = DataTableFindHighlight.none
 
   var body: some View {
     let text = table.cell(row, column.id)
@@ -273,6 +344,7 @@ private struct DataTableCell: View {
       .frame(
         maxWidth: .infinity, alignment: column.type == .number ? .trailing : .leading
       )
+      .findHighlight(highlight)
       .contentShape(Rectangle())
       .help(text)
       .contextMenu { DataTableCopyItems(table: table, row: row, cell: text) }

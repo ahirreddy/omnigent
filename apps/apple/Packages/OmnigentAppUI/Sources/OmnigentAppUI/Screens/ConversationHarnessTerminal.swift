@@ -6,7 +6,8 @@ import OmnigentUIComponents
 import SwiftUI
 
 /// The harness TUI when the core reports it ready, else the package's placeholder. Where the
-/// owner split the Terminal view, the shells they split off show beside it.
+/// owner split the Terminal view, the shells they split off show beside it, and keep showing
+/// while the agent's terminal is down, as the web's.
 struct ConversationHarnessTerminal: View {
   let surface: TerminalSurfaceController?
   let harness: String?
@@ -26,7 +27,7 @@ struct ConversationHarnessTerminal: View {
   @State private var focusTask: Task<Void, Never>?
 
   var body: some View {
-    if let surface, let split {
+    if let split, surface != nil || split.state != nil {
       TerminalSplitView(
         state: split.state, resize: { split.resize(at: $0, to: $1) },
         pane: { key in pane(key, agent: surface) }
@@ -52,11 +53,16 @@ struct ConversationHarnessTerminal: View {
   }
 
   @ViewBuilder
-  private func pane(_ key: TerminalPaneKey, agent: TerminalSurfaceController) -> some View {
+  private func pane(_ key: TerminalPaneKey, agent: TerminalSurfaceController?) -> some View {
     switch key {
     case .agent:
-      SessionTerminalView(controller: agent)
-        .onChange(of: agent.hasKeyboardFocus) { _, has in if has { split?.focus(.agent) } }
+      if let agent {
+        SessionTerminalView(controller: agent)
+          .onChange(of: agent.hasKeyboardFocus) { _, has in if has { split?.focus(.agent) } }
+      } else {
+        ContentUnavailableView("Terminal Unavailable", systemImage: "apple.terminal")
+          .accessibilityIdentifier("terminal-split-agent-unavailable")
+      }
     case .shell(let id):
       if let shell = shells[id] {
         SessionTerminalView(controller: shell)
@@ -77,8 +83,11 @@ struct ConversationHarnessTerminal: View {
     Set(terminals?.terminals.rows.map(\.terminal.id) ?? [])
   }
 
-  private func focusedSurface(agent: TerminalSurfaceController) -> TerminalSurfaceController {
-    guard let id = split?.state?.focused.shellID else { return agent }
+  /// The focused pane's surface; with the agent's terminal down, the first shell's.
+  private func focusedSurface(agent: TerminalSurfaceController?) -> TerminalSurfaceController? {
+    guard let id = split?.state?.focused.shellID else {
+      return agent ?? shellIDs.lazy.compactMap { shells[$0] }.first
+    }
     return shells[id] ?? agent
   }
 
@@ -89,9 +98,9 @@ struct ConversationHarnessTerminal: View {
   }
 
   /// A pane focused by a command or a new split takes the keyboard once it is in the window.
-  private func focusPane(agent: TerminalSurfaceController) {
+  private func focusPane(agent: TerminalSurfaceController?) {
     focusTask?.cancel()
-    guard !focusedSurface(agent: agent).hasKeyboardFocus else { return }
+    guard focusedSurface(agent: agent)?.hasKeyboardFocus == false else { return }
     focusTask = Task {
       do {
         try await Task.sleep(for: .milliseconds(100))
@@ -99,7 +108,7 @@ struct ConversationHarnessTerminal: View {
         return
       }
       // A new split's shell attaches in the same update, so it is looked up after the wait.
-      focusedSurface(agent: agent).focus()
+      focusedSurface(agent: agent)?.focus()
     }
   }
 

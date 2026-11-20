@@ -56,12 +56,14 @@ public final class ServerSession {
   ///   - opener: Opens pages in the system browser.
   ///   - remoteBrowser: The remote browser connector; by default the one
   ///     ``RemoteBrowserAvailability`` turns on for this connection, if any.
+  ///   - designOutboxStorage: Where unsent design requests are kept across launches.
   public init(
     connection: ConnectionStore, opener: ExternalURLOpener = .system,
-    remoteBrowser: (any RemoteBrowserConnecting)? = nil
+    remoteBrowser: (any RemoteBrowserConnecting)? = nil,
+    designOutboxStorage: DesignOutboxStorage? = nil
   ) {
     self.connection = connection
-    designOutbox = DesignRequestOutbox(connection: connection)
+    designOutbox = DesignRequestOutbox(connection: connection, storage: designOutboxStorage)
     // Before the first connect, so the open folders load beside the list's first page.
     connection.sessionList.paging.setOpenFolders(SidebarNavigationOrder.expandedProjects())
     signIn = SignInController(store: connection, opener: opener)
@@ -79,7 +81,7 @@ public final class ServerSession {
         keychainMode: keychain.mode, credentialDirectory: keychain.credentialDirectory),
       config: .app(databricks: DatabricksOAuthSettings.bundled()))
     connection.draftArchive = ComposerDraftArchive.shared
-    return ServerSession(connection: connection)
+    return ServerSession(connection: connection, designOutboxStorage: .shared)
   }
 
   /// A session over the core's offline demo server: sample sessions, approvals and replies that

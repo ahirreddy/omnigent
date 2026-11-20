@@ -95,6 +95,8 @@ public struct ConversationScreen<Terminal: View>: View {
         scrollToLatestRequest: scrollRequest
       )
       .modifier(InlineApproveShortcut(target: approveCandidate))
+      // A sent prompt's leading command is tinted as the composer tints it.
+      .environment(\.promptCommands, composerState.slashCommands)
       .chatDropTarget(
         isEnabled: composerState.acceptsAttachments && composerState.availability == .available,
         add: composerActions.addAttachments
@@ -102,7 +104,11 @@ public struct ConversationScreen<Terminal: View>: View {
       .modifier(HiddenUnderTerminal(showsTerminal: showsTerminal))
       // A hidden tab lets go of the terminal surface, as a terminal tab does.
       if showsTerminal {
-        ShownTabOnly { TerminalPane(status: state.terminal, resume: actions.resume) { terminal } }
+        ShownTabOnly {
+          TerminalPane(
+            status: state.terminal, keepsPanes: state.terminalKeepsPanes, resume: actions.resume
+          ) { terminal }
+        }
       }
     }
     .countsRenders("screen")

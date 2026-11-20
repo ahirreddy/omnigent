@@ -17,6 +17,8 @@ struct BrowserDesignPageAccess {
   var hitTest: (CGPoint) async throws(BrowserError) -> BrowserDesignHit?
   /// A snapshot of the page alone.
   var snapshot: () async throws(BrowserError) -> CGImage
+  /// Where the visible page sits in its document now.
+  var viewport: () async throws(BrowserError) -> BrowserDesignViewport
 }
 
 /// One browser tab's design tools: which tool is open, its drafts, and its notices. Every open
@@ -41,19 +43,25 @@ public final class BrowserDesignTools {
   public private(set) var picked: BrowserDesignPick?
   /// What should change about the picked element.
   public var request = ""
-  /// Draw's marks, oldest first.
+  /// Draw's marks, oldest first, in the page's CSS pixels.
   public private(set) var marks: [BrowserDesignMark] = []
   /// The mark being drawn.
   public private(set) var drawing: BrowserDesignMark?
   /// Draw's note for the agent.
   public var note = ""
   /// The shape the next mark takes.
-  public var shape = BrowserDesignMarkKind.pen
+  public var shape = BrowserDesignMarkKind.pen {
+    didSet { if shape != oldValue { previousShape = oldValue } }
+  }
+  /// The shape chosen before this one, which Apple Pencil's double tap goes back to.
+  @ObservationIgnored public private(set) var previousShape: BrowserDesignMarkKind?
   /// Each shape's color.
   public var colors = Dictionary(
     uniqueKeysWithValues: BrowserDesignMarkKind.allCases.map { ($0, BrowserDesignMarkColor.red) })
   /// The latest notice, until it is dismissed.
   public private(set) var notice: BrowserDesignNotice?
+  /// Where the visible page sat when Draw last read it; `nil` before the first read.
+  public private(set) var viewport: BrowserDesignViewport?
 
   @ObservationIgnored private(set) var opening = 0
   @ObservationIgnored var page: BrowserDesignPageAccess?
@@ -63,6 +71,10 @@ public final class BrowserDesignTools {
   @ObservationIgnored private(set) var openedURL: URL?
   @ObservationIgnored private var hoverPoint: CGPoint?
   @ObservationIgnored private var isHovering = false
+  @ObservationIgnored private var isReadingViewport = false
+  @ObservationIgnored private var viewportFailed = false
+  /// The stand-in marks were placed under before the page's viewport was read.
+  @ObservationIgnored private var provisionalViewport: BrowserDesignViewport?
 
   /// Creates closed tools.
   public init() {}
@@ -122,6 +134,9 @@ public final class BrowserDesignTools {
     drawing = nil
     note = ""
     hoverPoint = nil
+    viewport = nil
+    provisionalViewport = nil
+    viewportFailed = false
   }
 
   // MARK: Notices
@@ -201,7 +216,54 @@ public final class BrowserDesignTools {
 
   // MARK: Draw
 
-  /// Starts a mark of the chosen shape at `point` (overlay points).
+  /// The viewport marks show under in a view `viewWidth` points wide: the page's, or until it
+  /// is read, the unscrolled page that marks placed meanwhile move from once it is.
+  public func shownViewport(viewWidth: CGFloat) -> BrowserDesignViewport {
+    if let viewport { return viewport }
+    if let provisionalViewport { return provisionalViewport }
+    let stand = BrowserDesignViewport.unscrolled(viewWidth: viewWidth)
+    provisionalViewport = stand
+    return stand
+  }
+
+  /// The page point under `point` in an overlay `viewWidth` points wide.
+  public func pagePoint(_ point: CGPoint, viewWidth: CGFloat) -> CGPoint {
+    shownViewport(viewWidth: viewWidth).pagePoint(point, viewWidth: viewWidth)
+  }
+
+  /// Reads where the visible page sits, so Draw's marks follow its scroll and zoom. A read
+  /// already in flight answers for this one.
+  public func refreshViewport() async {
+    guard tool == .draw, !isReadingViewport, let page else { return }
+    isReadingViewport = true
+    defer { isReadingViewport = false }
+    let opening = self.opening
+    do throws(BrowserError) {
+      let read = try await page.viewport()
+      guard opening == self.opening else { return }
+      if viewport == nil, let provisionalViewport {
+        marks = marks(under: read)
+        drawing = drawing?.mapped { read.rebased($0, from: provisionalViewport) }
+        self.provisionalViewport = nil
+      }
+      if viewport != read { viewport = read }
+      viewportFailed = false
+    } catch {
+      // The marks stay; the next read tries again, and a run of failures says so once.
+      guard opening == self.opening, !viewportFailed else { return }
+      viewportFailed = true
+      show("Draw can't follow the page: \(error.localizedDescription)", isError: true)
+    }
+  }
+
+  /// The marks under the page's viewport `read`: those placed before the page's viewport was
+  /// first read move to where they were drawn on screen.
+  func marks(under read: BrowserDesignViewport) -> [BrowserDesignMark] {
+    guard viewport == nil, let provisionalViewport else { return marks }
+    return marks.map { $0.mapped { read.rebased($0, from: provisionalViewport) } }
+  }
+
+  /// Starts a mark of the chosen shape at `point` (the page's CSS pixels).
   public func beginMark(at point: CGPoint) {
     guard tool == .draw, !isPreparing, shape != .text else { return }
     drawing = BrowserDesignMark(kind: shape, points: [point], color: color)
@@ -222,7 +284,7 @@ public final class BrowserDesignTools {
     marks.append(mark)
   }
 
-  /// Adds a text mark; blank words add nothing.
+  /// Adds a text mark at `point` (the page's CSS pixels); blank words add nothing.
   /// - Returns: Whether a mark was added.
   @discardableResult
   public func addText(_ text: String, at point: CGPoint) -> Bool {
@@ -231,6 +293,12 @@ public final class BrowserDesignTools {
     marks.append(
       BrowserDesignMark(kind: .text, points: [point], color: colors[.text] ?? .red, text: words))
     return true
+  }
+
+  /// Goes back to the shape chosen before this one, as Apple Pencil's "switch to previous tool".
+  public func switchToPreviousShape() {
+    guard tool == .draw, let previousShape else { return }
+    shape = previousShape
   }
 
   /// Removes the newest mark.

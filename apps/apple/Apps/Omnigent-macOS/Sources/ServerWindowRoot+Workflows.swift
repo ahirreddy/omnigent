@@ -4,6 +4,7 @@ import OmnigentBrowser
 import OmnigentDesktop
 import OmnigentStores
 import OmnigentUIComponents
+import OmnigentWorkspaceUI
 
 extension ServerWindowRoot {
   /// The Workflows page, asked to show the workflow `id`.
@@ -26,6 +27,12 @@ extension ServerWindowRoot {
       next: { Task { await page.findNext(forward: true) } },
       previous: { Task { await page.findNext(forward: false) } },
       useSelection: { Task { await page.useSelectionForFind() } })
+  }
+
+  /// Edit > Find for a data table with the keyboard.
+  static func find(_ table: DataTableFindActions) -> ServerWindowActions.Find {
+    ServerWindowActions.Find(
+      show: { table.show() }, next: { table.next() }, previous: { table.previous() })
   }
 
   /// View > Zoom for a browser tab's page.

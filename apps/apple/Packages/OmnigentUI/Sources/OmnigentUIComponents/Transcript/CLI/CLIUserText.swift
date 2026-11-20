@@ -75,12 +75,18 @@ nonisolated extension UserPrompt {
 /// blocks) set off by a bar in the quote color, and an answered question's quoted line dim.
 struct CLIUserText: View {
   let text: String
+  /// Tints a leading command the session knows (``PromptCommand``); not for a message from
+  /// another session, with attachments, or a reply to questions.
+  var tintsCommand = false
   @Environment(\.cliPalette) private var palette
+  @Environment(\.promptCommands) private var commands
 
   var body: some View {
     let runs = UserPrompt.runs(text)
     if runs.count == 1, let only = runs.first, !only.isQuote, !only.isNote {
-      CLISourceText(text: only.text, tintsMarkdown: false, color: \.userText)
+      CLISourceText(
+        text: only.text, tintsMarkdown: false, color: \.userText,
+        command: tintsCommand ? PromptCommand.range(in: only.text, commands: commands) : nil)
     } else {
       VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         ForEach(Array(runs.enumerated()), id: \.offset) { _, run in

@@ -56,9 +56,7 @@ public struct BrowserTabContentView: View {
       }
       BrowserPageView(controller: model.controller)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        #if os(macOS)
-          .overlay { BrowserDesignOverlay(model: model) }
-        #endif
+        .overlay { BrowserDesignOverlay(model: model) }
         .overlay(alignment: .bottom) {
           if let error = model.lastError {
             BrowserTabErrorBanner(error: error) { model.dismissError() }

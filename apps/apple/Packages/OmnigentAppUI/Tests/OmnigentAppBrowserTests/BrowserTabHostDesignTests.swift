@@ -21,6 +21,7 @@ struct BrowserTabHostDesignTests {
     let outbox = DesignRequestOutbox(
       timing: .init(poll: .milliseconds(5), turnStart: .milliseconds(10)),
       isRunning: { _ in false },
+      owner: { DesignOutboxOwner(server: "https://agents.example.com", account: "ada") },
       deliver: { delivered.append($0) })
     fixture.host.attachDesignRequests(window: window, outbox: outbox)
     let page = fixture.host.makePage(url: URL(string: "https://app.example.test/a?secret=1"))

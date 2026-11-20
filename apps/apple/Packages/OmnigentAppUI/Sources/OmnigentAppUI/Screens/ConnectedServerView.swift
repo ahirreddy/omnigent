@@ -129,6 +129,7 @@ public struct ConnectedServerView: View {
     .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
     .modifier(NestedDraftRetirement(connection: connection))
+    .modifier(DesignOutboxRestoring(session: session))
     .modifier(InboxFeedsPolling(connection: connection))
     .modifier(
       WindowTabOverview(

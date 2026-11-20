@@ -1,17 +1,39 @@
 public import SwiftUI
 
-/// The terminal with the web's states: starting, sandbox offline, harness not running.
+/// The terminal with the web's states: starting, sandbox offline, harness not running. A split
+/// whose shells still run keeps its panes under a band with the state, as the web's.
 struct TerminalPane<Content: View>: View {
   let status: TerminalStatus
+  /// The split's shell panes stay while the agent's terminal is down.
+  var keepsPanes = false
   let resume: (@MainActor () -> Void)?
   @ViewBuilder var content: Content
 
+  /// The panes show: the terminal is live, or a split keeps them while it is down.
+  private var showsPanes: Bool {
+    status == .ready || status == .none || keepsPanes
+  }
+
   var body: some View {
+    if showsPanes {
+      // One place for the panes, so a terminal going down keeps the shells' views.
+      VStack(spacing: 0) {
+        if status != .ready, status != .none {
+          TerminalStateBand(status: status, resume: resume)
+          Divider()
+        }
+        content.frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+      .accessibilityIdentifier("session-terminal")
+    } else {
+      stateView
+    }
+  }
+
+  @ViewBuilder private var stateView: some View {
     switch status {
     case .ready, .none:
-      content
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("session-terminal")
+      EmptyView()
     case .startingUp(let stage):
       VStack(spacing: Theme.Spacing.medium) {
         ProgressView()
@@ -42,6 +64,49 @@ struct TerminalPane<Content: View>: View {
         }
       }
       .accessibilityIdentifier("terminal-offline")
+    }
+  }
+}
+
+/// The agent terminal's state over a split's kept panes: what is wrong and Resume.
+private struct TerminalStateBand: View {
+  let status: TerminalStatus
+  let resume: (@MainActor () -> Void)?
+
+  var body: some View {
+    HStack(spacing: Theme.Spacing.small) {
+      if isWaiting {
+        ProgressView().controlSize(.small)
+      } else {
+        Image(systemName: "powersleep").foregroundStyle(.secondary).accessibilityHidden(true)
+      }
+      Text(message).foregroundStyle(.secondary)
+      if let resume, status == .sandboxOffline || status == .harnessNotRunning {
+        Button(status == .sandboxOffline ? "Resume sandbox" : "Resume session", action: resume)
+          .controlSize(.small)
+      }
+    }
+    .font(.callout)
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, Theme.Spacing.small)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("terminal-state-band")
+  }
+
+  private var isWaiting: Bool {
+    switch status {
+    case .startingUp, .resuming: true
+    case .ready, .none, .sandboxOffline, .harnessNotRunning: false
+    }
+  }
+
+  private var message: String {
+    switch status {
+    case .startingUp: "Starting up\u{2026}"
+    case .resuming: "Resuming\u{2026}"
+    case .sandboxOffline: "The sandbox is offline."
+    case .harnessNotRunning: "The harness is not running."
+    case .ready, .none: ""
     }
   }
 }

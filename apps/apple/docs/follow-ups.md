@@ -412,19 +412,17 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   server's 1,000-row page cap the rows beyond it fall out until Load more reads them again; a
   folder's pages are dropped on a reload (the folder reads its first page again); search and the
   quick filters still match loaded sessions only (the web's tabs query the server).
-- [ ] **Canvas:** a resize doesn't keep the view's middle, cards snap only on drop, the first
-  load waits for every page (the web paints the sidebar's rows first and stays silent on
-  reloads), and archived or nested rows leave only at the next reload. A board's remembered view
-  counts a pan by dragging the board, not one by the scroll wheel. Return and Space open a card
-  only with keyboard navigation on (System Settings), as a Mac's buttons take the focus.
+- [ ] **Canvas:** archived or nested rows leave only at the next reload. After the sidebar's
+  rows paint, the rest of the list arrives in one read (the core reads every page before it
+  answers), not page by page as the web's. Return and Space open a card only with keyboard
+  navigation on (System Settings), as a Mac's buttons take the focus.
 - [ ] **Toasts:** fork's "Session created [Open]" should use `TransientBanner` (fork flow).
 - [ ] **Host import review (Mac):** only "This Mac" onboarding asks for the review. The web
   also reviews a remote runner, which native onboarding doesn't offer (see Onboarding above).
 - [ ] **Session overview:** no docked overview beside the chat (it is a popover). Files changed
   counts the Changes list as the host reports it, untracked lines not separately counted.
-- [ ] **Terminal split, left:** the web keeps showing saved shell panes while the agent's
-  terminal is down; native shows the Terminal view's stopped state over every pane. A divider
-  takes VoiceOver's adjust actions but not the arrow keys (a Mac divider isn't a key view).
+- [ ] **Terminal split, left:** a divider takes VoiceOver's adjust actions but not the arrow
+  keys (a Mac divider isn't a key view).
 - [ ] **Settings › Archived (Mac):** retention uses a session's last change, not the server's
   `omnigent.archived_at` label (the core's session summary does not carry it), and the project
   filter covers loaded pages only (the web pages through every archived session).
@@ -555,33 +553,27 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     project's board: list rows carry no labels, so the core can't tell a shared run.
   - Left and Right on a selected project row don't collapse and expand its folder; its button
     does.
-- [ ] **Composer tints, left:** a sent prompt's leading command is not tinted in the transcript
-  (the web tints it in the bubble); the SwiftUI, TextKit and CLI prompt renderers would each
-  need the session's commands. The composer's own tints are native (`TintedTextEditor`).
-- [ ] **Excel and Parquet previews, left:** a zstd, LZ4, Brotli or LZO Parquet file shows the
-  web's "compressed with …" message (the app reads uncompressed, Snappy and gzip, one codec
-  more than the web); `BIT_PACKED` levels and the `GROUP_VAR_INT` encoding are named as
-  unsupported. Find (Command-F) doesn't search the table, for CSV either.
-- [ ] **Browser Annotate and Draw, left** (web `63915cd179`; the Mac tools are done, below):
-  - iPhone and iPad have neither tool: the touch top bar has no buttons for them and the
-    overlay (`BrowserDesignOverlay`, `BrowserDesignInput`) is AppKit only. A UIKit input layer
-    (pointer and pencil) and toolbar items would reuse `BrowserDesignTools` as is.
-  - On Chromium the element picker runs in the page's own world: `BrowserTab`'s
-    `evaluateIsolatedJavaScript` falls back to `evaluateJavaScript` there. The picker is built
-    from checked numbers only and its answer is validated and clamped, and the message
-    sanitizes every field, so a hostile page can only misdescribe its own element. CDP's
-    `Page.createIsolatedWorld` (a context id per document, through `callDevToolsMethod`) would
-    give Chromium WebKit's isolation.
-  - The outbox (`DesignRequestOutbox`) lives as long as its window: a request not yet sent is
-    lost when the window closes or the app quits. The web keeps them in IndexedDB per account,
-    restores them after a reload as "may have reached the agent", expires them after a day and
-    checks the signed-in account before each send; none of that is ported.
-  - Not ported from the outbox either: the 60 s "the server hasn't answered yet" note, the
-    180 s give-up on a POST that never answers (the core's transport timeout applies), and
-    matching a native terminal session's delivery receipts (pending ids) to a failed request.
-  - Draw's marks stay where they were drawn on screen when the page zooms or scrolls under
-    them (the web's are in page CSS pixels and follow its zoom); Annotate asks again on each
-    move, so its outline follows.
+- [ ] **Excel and Parquet previews, left:** a ZSTD or LZO Parquet file shows the web's
+  "compressed with …" message (Apple's Compression framework has neither; the app reads
+  uncompressed, Snappy, gzip, Brotli, LZ4 and LZ4_RAW, four codecs more than the web);
+  `BIT_PACKED` levels and the `GROUP_VAR_INT` encoding are named as unsupported. No fixture file
+  is in Brotli or LZ4, so those codecs are checked on hand-made blocks only.
+- [ ] **Browser Annotate and Draw, left** (web `63915cd179`; the Mac, iPhone and iPad tools
+  are done, below):
+  - Not ported from the outbox: matching a native terminal session's delivery receipts
+    (pending ids) to a failed request, and a request that stalled and then arrived late is
+    not marked sent (the outbox stops its send at the give-up). A window that closes leaves its
+    unsent requests on disk for the next launch or sign-in; the web's other tabs adopt them at
+    once.
+  - Draw follows the page's own scrolling by reading where it sits four times a second, so a
+    mark lags a page that scrolls itself by up to that long (zoom and the layer's own
+    scrolling are read at once). On iPhone and iPad two fingers scroll the page but don't pinch
+    it; pinching and the page's momentum after a fling aren't passed on.
+  - The touch layer's tests (`DesignToolsTouchTests`) and the iPhone and iPad renders
+    (`DesignToolsTouchRenderTests`) don't run yet: the `OmnigentBrowser` test target doesn't
+    build for iOS (Mac-only files such as `FaviconTests`, `SystemTabFailureTests` and the
+    Chromium tests' `OWLProtocol` imports, and `SystemSideEffects`, which is Mac-only). The
+    library builds for the iOS Simulator; no iOS flow drives the tools.
   - The wheel over Annotate's layer is forwarded to the page so it scrolls; whether WebKit's
     and Chromium's own tracking areas still report the pointer's hover to the page under the
     layer was not checked (clicks and keys stop at the layer).
@@ -612,6 +604,49 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Done
 
+- [x] **Canvas, sweep G** (2026-11-20): a resize keeps the middle of a view the user moved (a
+  fitted one refits), a dragged card is drawn on the grid point it lands on as it moves, a
+  first visit paints the sidebar's canvas sessions at once with the header's spinner while the
+  full list loads (their grid spots saved only once it lands, reloads silent after), and a pan
+  by the wheel, trackpad or touch counts in the board's remembered view, as a drag pan does.
+- [x] **Parquet Brotli and LZ4, and Find in tables** (2026-11-20): Brotli, LZ4_RAW and the older
+  LZ4 (Hadoop's frames, else one raw block) decode through the Compression framework. The CSV,
+  Excel and Parquet tables have a find: on a Mac the Find menu (Command-F, Command-G,
+  Shift-Command-G) opens a find bar over the table that marks the matching cells, selects and
+  scrolls to the one found now, and closes on Done or Escape; iPhone and iPad keep it as the
+  table's search field (Command-F from a keyboard).
+- [x] **Design outbox kept across launches** (web `63915cd179`): unsent requests are saved per
+  account (server and signed-in user) as a JSON index beside their screenshots in Application
+  Support (`DesignOutboxStorage`); after a relaunch a window takes back its account's as
+  needing a Retry ("may have reached the agent"), deleting ones over a day old and other
+  accounts' on the same server; a request isn't sent as another account; a send unanswered for
+  60 s says so, and at 180 s the outbox stops waiting so the session's next request can go.
+  2026-11-20.
+- [x] **A sent prompt's leading command tinted in the transcript** (web `195df4a52d`): a known
+  command or skill leading a prompt (not another session's, nor one with attachments) takes the
+  composer's tint in the SwiftUI and TextKit chat renderers (the prompt's Markdown marks it, so
+  cached text stays apart) and the CLI palette's command color in both CLI renderers.
+  2026-11-20.
+- [x] **Terminal split while the agent is down** (web `MainTerminalView`): a split whose shells
+  the session still lists keeps its panes, the agent's saying it's unavailable, under a band
+  with the state and Resume. 2026-11-20.
+- [x] **Annotate and Draw on iPhone and iPad** (web `63915cd179`): the iPad's address row and
+  the tab menu (iPhone and iPad) have Annotate and Draw. A UIKit layer over the page takes the
+  touches: a tap picks or places, one finger or Apple Pencil aims or draws, two fingers or a
+  trackpad scroll the page, the pointer and Pencil's hover outline, and a keyboard's Escape or
+  Done leaves. Where the system prefers Apple Pencil for drawing, fingers scroll and only Pencil
+  draws; Pencil's double tap undoes or switches to the previous shape, as the system's setting
+  asks. Annotate's card is a popover (a sheet on iPhone); Draw's dock sits along the bottom in
+  two rows on iPhone. 2026-11-20.
+- [x] **Draw's marks in page coordinates** (web `63915cd179`): marks are kept in the page's CSS
+  pixels and drawn through where the page sits (`visualViewport`, read in the tools' own world),
+  so they scroll with the page and scale with its zoom, in the live layer and the screenshot.
+  Marks placed before the page first answers move to where they were drawn. 2026-11-20.
+- [x] **Chromium's element picker in a world of its own:** `ChromiumBrowserTab` evaluates the
+  picker and the viewport read in an isolated world DevTools makes for the page's document
+  (`Page.getFrameTree`, `Page.createIsolatedWorld`, `Runtime.evaluate` with its context), made
+  again after a navigation retires it, as WebKit's content world. 2026-11-20.
+
 - [x] **Automation schedules as RRULE text** (web `2d0b6abbb1`): the schedule picker has a
   Visual | RRULE switch (RRULE needs `automations_v2`). RRULE starts from the visual schedule's
   rule, takes one line checked for its shape only (the server judges the rest on save), and says
@@ -633,7 +668,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   draft write inside the text view's storage commit (a trap while typing) is covered by
   `ComposerTokenTests/typingAfterTints`, `ComposerTypingWindowTests` and the Mac flow
   `testTypingOnAfterATintedCommandKeepsTheDraft`, none of which trapped on the old editor (see
-  the flow's comment). 2026-11-20.
+  the flow's comment). The trap's first fix wrote the draft from `onChange`, so each key laid
+  the window out twice (the split keystroke's render budget); the editor's text now lives
+  outside SwiftUI's state and the draft follows in a run loop block, one layout a key, with no
+  update inside the text view's commit. 2026-11-20.
 
 - [x] **Browser Annotate and Draw on the Mac** (web `63915cd179`): Annotate and Draw toggles in
   the browser toolbar and the Browser menu. Annotate outlines the element under the pointer

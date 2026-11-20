@@ -22,7 +22,8 @@
         return known.message
       }
       let message = TranscriptTableTextMessage.make(
-        row, ramp: textStyle.ramp, expandsPrompt: expands, expandsOrigin: expandsOrigin)
+        row, ramp: textStyle.ramp, expandsPrompt: expands, expandsOrigin: expandsOrigin,
+        commands: textStyle.promptCommands)
       textMessages[row.id] = (version, message)
       return message
     }

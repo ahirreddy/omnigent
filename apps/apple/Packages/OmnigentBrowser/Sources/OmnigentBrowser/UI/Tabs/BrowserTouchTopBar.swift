@@ -54,6 +54,9 @@ struct BrowserTouchTopBar: View {
       tabsButton?.buttonStyle(BrowserCircleButtonStyle())
     } else {
       HStack(spacing: 14) {
+        if model.offersDesignTools {
+          BrowserDesignToolButtons(tools: model.designTools)
+        }
         BrowserShareButton(model: model)
         BrowserProfileMenu(model: model, environment: environment, sheet: $sheet)
         BrowserTabMenu(model: model, environment: environment, sheet: $sheet)

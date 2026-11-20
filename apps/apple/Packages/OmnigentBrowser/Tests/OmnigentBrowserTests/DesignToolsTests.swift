@@ -14,6 +14,9 @@ final class FakeDesignPage {
   var sent: [BrowserDesignRequest] = []
   var sendFailure: BrowserError?
   var url = URL(string: "https://app.example.test/settings?token=x")
+  /// Where the visible page sits: unscrolled at 100%, over a view 100 points wide.
+  var viewport = BrowserDesignViewport(origin: .zero, width: 100)
+  var viewportFailure: BrowserError?
 
   func install(in tools: BrowserDesignTools) {
     tools.page = BrowserDesignPageAccess(
@@ -29,6 +32,10 @@ final class FakeDesignPage {
         } catch {
           throw .snapshotFailed("test image")
         }
+      },
+      viewport: { [self] () throws(BrowserError) -> BrowserDesignViewport in
+        if let viewportFailure { throw viewportFailure }
+        return viewport
       })
     tools.send = { [self] request throws(BrowserError) in
       if let sendFailure { throw sendFailure }
@@ -179,7 +186,7 @@ struct DesignToolsTests {
     tools.beginMark(at: CGPoint(x: 1, y: 1))
     tools.endMark(at: CGPoint(x: 50, y: 50))
     tools.note = "Align these"
-    await tools.sendDrawing(viewSize: CGSize(width: 100, height: 100))
+    await tools.sendDrawing()
     let sent = try #require(page.sent.first)
     #expect(sent.content == .drawing(note: "Align these", marks: 1))
     #expect(try BrowserDesignCapture.image(fromPNG: try #require(sent.screenshotPNG)).width == 200)
@@ -194,11 +201,80 @@ struct DesignToolsTests {
     tools.open(.draw)
     tools.beginMark(at: .zero)
     tools.endMark(at: CGPoint(x: 9, y: 9))
-    await tools.sendDrawing(viewSize: CGSize(width: 100, height: 100))
+    await tools.sendDrawing()
     #expect(page.sent.isEmpty && tools.marks.count == 1 && !tools.isPreparing)
     #expect(
       try #require(tools.notice).message == BrowserError.snapshotFailed("busy").localizedDescription
     )
+  }
+
+  @Test("Draw's marks keep their place on the page as it scrolls and zooms")
+  func marksFollowThePage() async throws {
+    let page = FakeDesignPage()
+    let tools = tools(page)
+    tools.open(.draw)
+    await tools.refreshViewport()
+    tools.beginMark(at: tools.pagePoint(CGPoint(x: 10, y: 10), viewWidth: 100))
+    tools.endMark(at: tools.pagePoint(CGPoint(x: 30, y: 20), viewWidth: 100))
+    let mark = try #require(tools.marks.first)
+    #expect(mark.points == [CGPoint(x: 10, y: 10), CGPoint(x: 30, y: 20)])
+    // Scrolled down 50 CSS pixels and zoomed to 200%: the view shows 50 CSS pixels across.
+    page.viewport = BrowserDesignViewport(origin: CGPoint(x: 0, y: 50), width: 50)
+    await tools.refreshViewport()
+    let viewport = tools.shownViewport(viewWidth: 100)
+    #expect(viewport.viewPoint(mark.points[1], viewWidth: 100) == CGPoint(x: 60, y: -60))
+    #expect(tools.marks == [mark])
+  }
+
+  @Test("marks placed before the page's first answer stay where they were drawn on screen")
+  func marksBeforeTheFirstRead() async throws {
+    let page = FakeDesignPage()
+    page.viewport = BrowserDesignViewport(origin: CGPoint(x: 0, y: 200), width: 50)
+    let tools = tools(page)
+    tools.open(.draw)
+    tools.beginMark(at: tools.pagePoint(CGPoint(x: 10, y: 10), viewWidth: 100))
+    tools.endMark(at: tools.pagePoint(CGPoint(x: 40, y: 10), viewWidth: 100))
+    await tools.refreshViewport()
+    let points = try #require(tools.marks.first?.points)
+    #expect(points == [CGPoint(x: 5, y: 205), CGPoint(x: 20, y: 205)])
+    let viewport = tools.shownViewport(viewWidth: 100)
+    #expect(
+      points.map { viewport.viewPoint($0, viewWidth: 100) } == [
+        CGPoint(x: 10, y: 10), CGPoint(x: 40, y: 10),
+      ])
+  }
+
+  @Test("a page that can't say where it sits keeps Draw and its marks, saying so once")
+  func viewportFailure() async throws {
+    let page = FakeDesignPage()
+    page.viewportFailure = .scriptFailed(message: "busy")
+    let tools = tools(page)
+    tools.open(.draw)
+    tools.beginMark(at: .zero)
+    tools.endMark(at: CGPoint(x: 5, y: 5))
+    await tools.refreshViewport()
+    let notice = try #require(tools.notice)
+    #expect(tools.tool == .draw && tools.marks.count == 1 && notice.isError)
+    #expect(notice.message.hasPrefix("Draw can't follow the page: "))
+    tools.dismiss(notice)
+    await tools.refreshViewport()
+    #expect(tools.notice == nil)
+    page.viewportFailure = nil
+    await tools.refreshViewport()
+    #expect(tools.viewport == page.viewport)
+  }
+
+  @Test("Apple Pencil's previous tool goes back to the shape chosen before")
+  func previousShape() {
+    let tools = tools(FakeDesignPage())
+    tools.open(.draw)
+    tools.switchToPreviousShape()
+    #expect(tools.shape == .pen)
+    tools.shape = .arrow
+    tools.switchToPreviousShape()
+    #expect(tools.shape == .pen)
+    tools.switchToPreviousShape()
+    #expect(tools.shape == .arrow)
   }
 
   @Test("navigating or reloading the page closes an open tool, saying so")

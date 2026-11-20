@@ -16,6 +16,7 @@
     private(set) var palette: MessageTextPalette?
     private(set) var layoutWidth = LayoutWidth.compact
     private(set) var maxWidth = Theme.transcriptWidth
+    private(set) var promptCommands: [SlashCommand] = []
     private(set) var bubble = UIColor.clear
     /// The bubble's color as resolved, which compares by value where `UIColor`s may not.
     private var bubbleColor: Color.Resolved?
@@ -76,7 +77,7 @@
       guard
         style != self.style || ramp != self.ramp || isEnabled != self.isEnabled
           || values.layoutWidth != layoutWidth || maxWidth != self.maxWidth
-          || bubbleColor != self.bubbleColor
+          || bubbleColor != self.bubbleColor || values.promptCommands != promptCommands
           || captionFont.pointSize != self.captionFont.pointSize
       else { return false }
       if style != self.style {
@@ -92,7 +93,7 @@
       self.ramp = ramp
       self.isEnabled = isEnabled
       layoutWidth = values.layoutWidth
-      self.maxWidth = maxWidth
+      (self.maxWidth, promptCommands) = (maxWidth, values.promptCommands)
       self.bubbleColor = bubbleColor
       bubble = UIColor(Color(bubbleColor))
       self.captionFont = captionFont
@@ -115,11 +116,10 @@
     func message(for row: TranscriptTableRow, version: Int) -> TranscriptTableTextMessage? {
       guard isEnabled else { return nil }
       if let known = messages[row.id], known.version == version { return known.message }
-      let made = TranscriptTableTextMessage.make(row, ramp: ramp).flatMap {
-        Self.draws($0) ? $0 : nil
-      }
-      messages[row.id] = (version, made)
-      return made
+      let made = TranscriptTableTextMessage.make(row, ramp: ramp, commands: promptCommands)
+      let drawn = made.flatMap { Self.draws($0) ? $0 : nil }
+      messages[row.id] = (version, drawn)
+      return drawn
     }
 
     /// Keeps row `id` SwiftUI's until the style changes: its text can't be drawn at the width
