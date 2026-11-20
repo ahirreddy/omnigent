@@ -41,6 +41,7 @@ mod error;
 pub mod events;
 pub mod execution_logs;
 mod export;
+pub mod extension_reads;
 mod families;
 pub mod fork;
 pub mod harness_inventory;
