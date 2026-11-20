@@ -101,6 +101,30 @@
       #expect(page.clicks == 2)
     }
 
+    @Test("Draw's text marks: typed where clicked; a click elsewhere keeps them and starts anew")
+    func textMarks() throws {
+      let fixture = try fixture { _ in }
+      let tools = fixture.model.designTools
+      let screen = OffscreenWindow(
+        BrowserDesignOverlay(model: fixture.model), width: 600, height: 400)
+      defer { screen.close() }
+      tools.open(.draw)
+      tools.shape = .text
+      screen.settle()
+      try screen.click(CGPoint(x: 100, y: 200))
+      screen.settle()
+      #expect(screen.fields.contains { $0.placeholderString == "Type, then Return" })
+      try screen.type("One")
+      try screen.click(CGPoint(x: 300, y: 300))
+      screen.settle()
+      #expect(tools.marks.map(\.text) == ["One"])
+      #expect(tools.marks.first?.points == [CGPoint(x: 100, y: 200)])
+      try screen.type("Two")
+      try screen.press(keyCode: 36, characters: "\r")
+      #expect(tools.marks.map(\.text) == ["One", "Two"])
+      #expect(!screen.fields.contains { $0.placeholderString == "Type, then Return" })
+    }
+
     @Test("the input layer reports the pointer from the top left and takes Escape")
     func inputLayer() throws {
       var events: [String] = []

@@ -11,7 +11,9 @@
     @State private var textDraft: TextDraft?
 
     /// Words being typed for a text mark, at their point.
-    struct TextDraft: Equatable {
+    struct TextDraft: Equatable, Identifiable {
+      /// Each draft its own field, so one ending can't put away the next.
+      let id = UUID()
       var point: CGPoint
       var text = ""
     }
@@ -30,8 +32,11 @@
         if let textDraft, !tools.isPreparing {
           BrowserDrawTextField(
             draft: Binding(get: { textDraft }, set: { self.textDraft = $0 }),
-            color: tools.colors[.text] ?? .red, commit: commitText, cancel: { self.textDraft = nil }
+            color: tools.colors[.text] ?? .red,
+            commit: { commitText(textDraft.id, andSend: $0) },
+            cancel: { if self.textDraft?.id == textDraft.id { self.textDraft = nil } }
           )
+          .id(textDraft.id)
         }
         BrowserDrawDock(tools: tools, send: send)
           .frame(maxWidth: .infinity)
@@ -47,7 +52,7 @@
             tools.beginMark(at: point)
             return
           }
-          commitText(andSend: false)
+          commitText(textDraft?.id, andSend: false)
           if !tools.isPreparing { textDraft = TextDraft(point: point) }
         },
         drag: { tools.continueMark(to: $0) },
@@ -57,9 +62,10 @@
         })
     }
 
-    /// Puts the words being typed on the page; with `andSend`, then sends.
-    private func commitText(andSend: Bool) {
-      if let textDraft {
+    /// Puts draft `id`'s words on the page if it is still the one being typed; with `andSend`,
+    /// then sends.
+    private func commitText(_ id: UUID?, andSend: Bool) {
+      if let textDraft, textDraft.id == id {
         tools.addText(textDraft.text, at: textDraft.point)
         self.textDraft = nil
       }
@@ -68,9 +74,7 @@
 
     private func send() {
       // Words still being typed go on the page first.
-      if textDraft != nil {
-        commitText(andSend: false)
-      }
+      commitText(textDraft?.id, andSend: false)
       let size = size
       Task { await tools.sendDrawing(viewSize: size) }
     }
