@@ -120,9 +120,11 @@
   /// Opens the composer offscreen with the editor focused.
   @MainActor
   func openComposer(
-    _ model: ComposerScreenModel, _ actions: ComposerActions, owner: CommandReturnOwner? = nil
+    _ model: ComposerScreenModel, _ actions: ComposerActions, owner: CommandReturnOwner? = nil,
+    appearance: NSAppearance.Name = .darkAqua
   ) -> OffscreenWindow<ComposerScreen> {
-    let screen = OffscreenWindow(ComposerScreen(model: model, actions: actions, owner: owner))
+    let screen = OffscreenWindow(
+      ComposerScreen(model: model, actions: actions, owner: owner), appearance: appearance)
     screen.focusEditor()
     // Lets the first layout reach the focus proxies, or the first click can miss.
     screen.settle()
