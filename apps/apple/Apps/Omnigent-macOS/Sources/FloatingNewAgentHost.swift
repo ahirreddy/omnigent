@@ -1,5 +1,6 @@
 import AppKit
 import OmnigentAppUI
+import OmnigentCoreFFI
 import OmnigentDesktop
 import OmnigentStores
 import OmnigentUIComponents
