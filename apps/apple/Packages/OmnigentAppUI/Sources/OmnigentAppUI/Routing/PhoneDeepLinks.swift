@@ -187,6 +187,10 @@
       case .workflow(let id):
         session?.connection.workflows?.requestedWorkflowID = id
         selection = .workflows
+      case .canvas(let board, let sessionID):
+        session?.connection.canvas?.requestedLink = CanvasLinkRequest(
+          board: board, sessionID: sessionID)
+        selection = .canvas
       case .extensionPage(let extensionID, let route):
         selection = .extensionPage(extensionID: extensionID, route: route)
       case .settings(let section):

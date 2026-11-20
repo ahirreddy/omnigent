@@ -182,6 +182,34 @@
       #expect(try screen.shows("Title a"))
     }
 
+    @Test("A board zoomed by hand comes back as it was left; one left fitted fits again")
+    func boardViewports() throws {
+      struct Host: View {
+        let boards: [CanvasBoard]
+        let cards: [CanvasCard]
+        @State private var active = "main"
+
+        var body: some View {
+          var actions = CanvasActions()
+          actions.selectBoard = { active = $0 }
+          return CanvasView(
+            state: CanvasViewState(boards: boards, activeBoard: active, cards: cards),
+            actions: actions)
+        }
+      }
+      let cards = [card("a"), card("b", left: 6_400, top: 3_200)]
+      let screen = transcriptScreen(Host(boards: boards, cards: cards), width: 900, height: 700)
+      defer { screen.close() }
+      let fitted = try boardWidth(screen)
+      try screen.clickControl(at: controlIndex(0))
+      let zoomed = try boardWidth(screen)
+      #expect(zoomed > fitted)
+      try screen.clickControl(at: 1)
+      try screen.clickControl(at: 0)
+      screen.settle()
+      #expect(abs(try boardWidth(screen) - zoomed) < 1, "Main keeps its zoom")
+    }
+
     @Test("Card positions from a corrupted store neither trap nor hang the board")
     func hostilePositions() throws {
       let hostile: [[CanvasCard]] = [

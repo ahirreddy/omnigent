@@ -127,6 +127,24 @@ struct DeepLinkTests {
         == .settings(section: "harnesses"))
   }
 
+  @Test("opens the Canvas on a board, and with a session beside it, as the web's links")
+  func canvas() throws {
+    #expect(try parse("omnigent://127.0.0.1:6767/canvas").route == .page(.canvas))
+    #expect(
+      try parse("omnigent://127.0.0.1:6767/canvas?canvas=project%3Aalpha").route
+        == .canvas(board: "project:alpha", sessionID: nil))
+    let session = try parse("omnigent://127.0.0.1:6767/canvas/c/conv_1?canvas=p").route
+    #expect(session == .canvas(board: "p", sessionID: "conv_1"))
+    #expect(session.path == "/canvas/c/conv_1")
+    #expect(session.sessionID == nil, "the Canvas shows, not the chat")
+    #expect(
+      try parse("omnigent://127.0.0.1:6767/canvas/c/conv_1").route
+        == .canvas(board: nil, sessionID: "conv_1"))
+    #expect(throws: DeepLinkError.self) {
+      try parse("omnigent://127.0.0.1:6767/canvas/x/conv_1")
+    }
+  }
+
   @Test("opens one approval request from the web's approve page path")
   func approvalRoute() throws {
     let route = try parse("omnigent://127.0.0.1:6767/approve/conv_a/elic%3A1").route

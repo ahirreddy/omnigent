@@ -49,6 +49,10 @@ extension ConnectedServerView {
       case .workflow(let id):
         session.connection.workflows?.requestedWorkflowID = id
         selection.wrappedValue = .workflows
+      case .canvas(let board, let sessionID):
+        session.connection.canvas?.requestedLink = CanvasLinkRequest(
+          board: board, sessionID: sessionID)
+        selection.wrappedValue = .canvas
       case .extensionPage(let extensionID, let route):
         selection.wrappedValue = .extensionPage(extensionID: extensionID, route: route)
       case .settings(let section):

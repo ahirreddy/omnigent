@@ -250,8 +250,7 @@ struct ServerWindowRoot: View {
       session.transcriptFocus.focus(messageID, in: sessionID)
       Task { selection = await session.showLinkedSession(sessionID) }
     case .page(let page): selection = DeepLinkDestinations.selection(for: page)
-    case .automation(let id): selection = Self.automation(id, in: session)
-    case .workflow(let id): selection = Self.workflow(id, in: session)
+    case .automation, .workflow, .canvas: selection = Self.itemPage(route, in: session)
     case .extensionPage(let extensionID, let route):
       selection = .extensionPage(extensionID: extensionID, route: route)
     case .settings(let section):
