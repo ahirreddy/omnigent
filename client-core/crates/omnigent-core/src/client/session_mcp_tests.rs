@@ -4,7 +4,7 @@ use futures::executor::block_on;
 
 use super::{
     AgentMcp, AgentMcpServer, LiveMcpRead, LiveMcpServer, McpAccount, McpLive, McpPanelSession,
-    McpPanelSources, McpSignIn, SourceRead, mcp_panel,
+    McpPanelSources, McpSignIn, SourceRead, mcp_panel, mcp_settings_target,
 };
 use crate::client::SessionError;
 use crate::client::harness_inventory::HostMcpServer;
@@ -298,6 +298,8 @@ fn the_panel_reads_each_source_and_reconnect_reports_a_refusal() {
         host_id: Some("h1"),
     };
     let panel = block_on(core.session_mcp_panel(session)).expect("panel");
+    assert_eq!(panel.settings_harness.as_deref(), Some("claude-native"));
+    assert_eq!(panel.settings_host_id.as_deref(), Some("h1"));
     let names: Vec<&str> = panel.rows.iter().map(|row| row.name.as_str()).collect();
     assert_eq!(names, ["docs", "search"]);
     assert_eq!(
@@ -346,4 +348,31 @@ fn a_server_without_the_live_route_reads_as_unsupported() {
     let panel = block_on(core.session_mcp_panel(session)).expect("panel");
     assert_eq!(panel.rows, Vec::new());
     assert_eq!(panel.status, None, "no host and no live status to explain");
+}
+
+#[test]
+fn go_to_settings_opens_the_session_harness_on_its_host() {
+    let owned = |harness: Option<&str>, host: Option<&str>| {
+        (harness.map(str::to_owned), host.map(str::to_owned))
+    };
+    assert_eq!(
+        mcp_settings_target(Some("codex-native"), Some("h1")),
+        owned(Some("codex-native"), Some("h1"))
+    );
+    assert_eq!(
+        mcp_settings_target(Some("native-pi"), None),
+        owned(Some("native-pi"), None)
+    );
+    assert_eq!(
+        mcp_settings_target(Some("claude-sdk"), Some("h1")),
+        owned(Some("claude-native"), Some("h1"))
+    );
+    assert_eq!(
+        mcp_settings_target(Some("claude-sdk"), None),
+        owned(None, None)
+    );
+    assert_eq!(
+        mcp_settings_target(Some("openai-agents"), Some("h2")),
+        owned(None, Some("h2"))
+    );
 }

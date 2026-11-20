@@ -76,13 +76,24 @@ extension ComposerAdapter {
   ///   - mcp: The panel's store.
   ///   - signIn: Opens a sign-in page in the browser.
   ///   - openSettings: Opens a server settings pane; `nil` hides the Settings links.
+  ///   - openHarness: Opens the Harnesses pane on a host and harness.
   /// - Returns: The actions.
   static func mcpActions(
     _ mcp: McpPanelStore, signIn: @escaping @MainActor (URL) -> Void,
-    openSettings: (@MainActor (ServerSettingsPane) -> Void)?
+    openSettings: (@MainActor (ServerSettingsPane) -> Void)?,
+    openHarness: (@MainActor (HarnessSettingsFocus) -> Void)? = nil
   ) -> McpServersPanelActions {
     var openHarnesses: (@MainActor () -> Void)?
-    if let openSettings { openHarnesses = { openSettings(.harnesses) } }
+    if let openHarness {
+      // Go to Settings opens the session's harness on its host, as the web's link does.
+      openHarnesses = {
+        openHarness(
+          HarnessSettingsFocus(
+            harness: mcp.panel?.settingsHarness, hostID: mcp.panel?.settingsHostId))
+      }
+    } else if let openSettings {
+      openHarnesses = { openSettings(.harnesses) }
+    }
     return McpServersPanelActions(
       watch: { await mcp.watch() },
       perform: { action in

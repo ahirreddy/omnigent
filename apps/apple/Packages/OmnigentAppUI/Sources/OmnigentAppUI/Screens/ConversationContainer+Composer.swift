@@ -30,13 +30,15 @@ extension ConversationContainer {
     let signInOpener = signInOpener
     let serverURL = server?.baseUrl
     var openSettings: (@MainActor (ServerSettingsPane) -> Void)?
+    var openHarness: (@MainActor (HarnessSettingsFocus) -> Void)?
     if let openSettingsAt {
       openSettings = { pane in openSettingsAt(.server(url: serverURL, pane: pane)) }
+      openHarness = { focus in openSettingsAt(.harness(url: serverURL, focus: focus)) }
     }
     extras.dismissQuickAnswer = ComposerAdapter.dismissQuickAnswer(conversation)
     extras.mcp = ComposerAdapter.mcpActions(
       conversation.composer.mcp, signIn: { url in Task { _ = await signInOpener.open(url) } },
-      openSettings: openSettings)
+      openSettings: openSettings, openHarness: openHarness)
     return extras
   }
 

@@ -10,6 +10,29 @@ public enum SettingsDestination: Hashable, Sendable {
   /// The Servers tab on `url`'s settings (the first signed-in server when `nil`), at `pane`
   /// (the server's first pane when `nil` or not offered).
   case server(url: String?, pane: ServerSettingsPane?)
+  /// The Harnesses pane of `url`'s settings, on a host and harness, as the web's
+  /// `/settings/harnesses/<harness>?host=<host>`.
+  case harness(url: String?, focus: HarnessSettingsFocus)
+}
+
+/// The host and harness the Harnesses pane opens to. Each request is distinct, so asking again
+/// shows them again.
+public struct HarnessSettingsFocus: Hashable, Sendable {
+  /// The harness whose details open; `nil` shows the harness list.
+  public let harness: String?
+  /// The host shown; `nil` keeps the pane's.
+  public let hostID: String?
+  let id: UUID
+
+  /// Creates a focus.
+  /// - Parameters:
+  ///   - harness: The harness to open.
+  ///   - hostID: The host to show.
+  public init(harness: String?, hostID: String?) {
+    self.harness = harness
+    self.hostID = hostID
+    id = UUID()
+  }
 }
 
 /// A server and pane the Servers tab shows next. Each request is distinct, so asking for the
@@ -49,6 +72,8 @@ public final class SettingsNavigator {
   public var tab = SettingsNavigator.generalTab
   /// The server pane the Servers tab shows next; it clears it once shown.
   public private(set) var serverRequest: ServerSettingsRequest?
+  /// The host and harness the Harnesses pane shows next; it clears it once shown.
+  public private(set) var harnessFocus: HarnessSettingsFocus?
   /// Whether a Mac window shows its Settings page over its content. iPhone and iPad present
   /// their Settings screen themselves.
   public private(set) var isPresented = false
@@ -65,7 +90,25 @@ public final class SettingsNavigator {
     case .server(let url, let pane):
       select(Self.serversTab)
       serverRequest = ServerSettingsRequest(url: url, pane: pane)
+    case .harness(let url, let focus):
+      select(Self.serversTab)
+      serverRequest = ServerSettingsRequest(url: url, pane: .harnesses)
+      harnessFocus = focus
     }
+  }
+
+  /// Asks the Harnesses pane for a host and harness, without moving Settings.
+  /// - Parameter focus: The host and harness.
+  func focusHarness(_ focus: HarnessSettingsFocus) {
+    harnessFocus = focus
+  }
+
+  /// Takes the pending host and harness, clearing them.
+  /// - Returns: The focus, if one is pending.
+  public func takeHarnessFocus() -> HarnessSettingsFocus? {
+    guard let focus = harnessFocus else { return nil }
+    harnessFocus = nil
+    return focus
   }
 
   /// Takes the pending server request, clearing it.

@@ -79,6 +79,9 @@ struct PhoneSettingsRoute: Equatable {
     case .server(let url, let pane):
       serverURL = url ?? sceneServer
       page = pane.map(Page.server)
+    case .harness(let url, _):
+      serverURL = url ?? sceneServer
+      page = .server(.harnesses)
     }
   }
 }
@@ -117,6 +120,7 @@ final class PhoneSettingsRouter {
   func open(_ destination: SettingsDestination) {
     let route = PhoneSettingsRoute(destination, sceneServer: sceneServer())
     show(route.page, server: route.serverURL)
+    if case .harness(_, let focus) = destination { navigator.focusHarness(focus) }
   }
 
   /// Shows the screen on `server`'s panes at `page` (the root list when `nil`).

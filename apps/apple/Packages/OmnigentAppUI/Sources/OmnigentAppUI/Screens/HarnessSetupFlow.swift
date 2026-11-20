@@ -62,16 +62,22 @@ struct HarnessSetupContainer: View {
 /// Self-contained: give it the server's connection.
 public struct HarnessesSettingsView: View {
   private let connection: ConnectionStore
+  private let navigator: SettingsNavigator?
   @State private var store: HarnessSetupStore?
   @State private var fix: HarnessFixStore?
   @State private var hostID: String?
   @State private var target: HarnessSetupTarget?
   @State private var detail: HarnessesSettingsRow?
+  /// A harness a link asked for, opened once the catalog has it.
+  @State private var requestedHarness: String?
 
   /// Creates the section.
-  /// - Parameter connection: The server whose hosts show.
-  public init(connection: ConnectionStore) {
+  /// - Parameters:
+  ///   - connection: The server whose hosts show.
+  ///   - navigator: Where links ask for a host and harness (the `/mcp` panel's Go to Settings).
+  public init(connection: ConnectionStore, navigator: SettingsNavigator? = nil) {
     self.connection = connection
+    self.navigator = navigator
   }
 
   /// The section, as a grouped form.
@@ -93,7 +99,9 @@ public struct HarnessesSettingsView: View {
       self.store = store
       fix = connection.harnessFix(setup: store)
       await store.load()
+      openRequestedHarness()
     }
+    .onChange(of: navigator?.harnessFocus, initial: true) { takeFocus() }
     // The shown host probes its accounts once each time Settings shows it, never polled.
     .task(id: store.flatMap(selectedHost)) {
       guard let store, let host = selectedHost(store) else { return }
@@ -104,6 +112,25 @@ public struct HarnessesSettingsView: View {
         HarnessSetupContainer(store: store, target: target) { self.target = nil }
       }
     }
+  }
+
+  /// Shows the host and harness a link asked for, as the web's `?host=` and harness path.
+  private func takeFocus() {
+    guard let focus = navigator?.takeHarnessFocus() else { return }
+    if let host = focus.hostID { hostID = host }
+    detail = nil
+    requestedHarness = focus.harness
+    openRequestedHarness()
+  }
+
+  /// Opens the requested harness's details once the catalog lists it on the shown host; an
+  /// unknown harness leaves the list, as the web's unknown slug does.
+  private func openRequestedHarness() {
+    guard let harness = requestedHarness, let store, store.catalog.value != nil,
+      let host = selectedHost(store)
+    else { return }
+    requestedHarness = nil
+    detail = HarnessSetupAdapter.rows(store.inventory(hostID: host)).first { $0.id == harness }
   }
 
   private func selectedHost(_ store: HarnessSetupStore) -> String? {
