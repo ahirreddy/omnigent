@@ -17,6 +17,7 @@ use crate::client::ClientCore;
 use crate::configuration::SessionConfiguration;
 use crate::engine::Msg;
 use crate::errors::CoreError;
+use crate::pull_requests::PullRequestStatus;
 
 /// The status a session list shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -116,6 +117,43 @@ pub struct SessionSummary {
     /// What its agent is parked on in its terminal, e.g. `permission prompt`.
     #[uniffi(default)]
     pub blocked_on: Option<String>,
+    /// The first PR the server stores for it, for its row's tooltip.
+    #[uniffi(default)]
+    pub pull_request: Option<RowPullRequest>,
+    /// An automation's run made it, or a run's session tree launched it.
+    #[uniffi(default)]
+    pub is_automation_run: bool,
+}
+
+/// The PR a session's list row names, as the server last stored it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct RowPullRequest {
+    /// Its number.
+    pub number: u64,
+    /// Where it stood when its host last fetched it.
+    pub status: PullRequestStatus,
+    /// When its host last fetched it, Unix seconds.
+    pub checked_at: Option<i64>,
+}
+
+impl From<omnigent_core::sessions::RowPullRequest> for RowPullRequest {
+    fn from(pull_request: omnigent_core::sessions::RowPullRequest) -> Self {
+        Self {
+            number: pull_request.number,
+            status: pull_request.status.into(),
+            checked_at: pull_request.checked_at,
+        }
+    }
+}
+
+impl From<RowPullRequest> for omnigent_core::sessions::RowPullRequest {
+    fn from(pull_request: RowPullRequest) -> Self {
+        Self {
+            number: pull_request.number,
+            status: pull_request.status.into(),
+            checked_at: pull_request.checked_at,
+        }
+    }
 }
 
 /// The session family ("nested agents") a session belongs to: independent root sessions grouped
@@ -333,6 +371,8 @@ impl From<CoreSummary> for SessionSummary {
             client_create_token: summary.client_create_token,
             automation_source_id: summary.automation_source_id,
             family: summary.family.map(Into::into),
+            pull_request: summary.pull_request.map(Into::into),
+            is_automation_run: summary.is_automation_run,
         }
     }
 }
@@ -364,6 +404,8 @@ impl From<&SessionSummary> for CoreSummary {
             client_create_token: summary.client_create_token.clone(),
             automation_source_id: summary.automation_source_id.clone(),
             family: summary.family.clone().map(Into::into),
+            pull_request: summary.pull_request.map(Into::into),
+            is_automation_run: summary.is_automation_run,
             ..Self::new(
                 summary.id.clone(),
                 summary.title.clone(),

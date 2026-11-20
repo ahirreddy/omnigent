@@ -103,10 +103,10 @@ struct SidebarActionsTests {
     let session = try await signedInSession(server)
     let selection = WindowSelection()
     let view = connectedView(session, selection)
-    view.openPinnedSession(99)
+    view.openNumberedSession(99)
     #expect(selection.page == nil)
     if session.connection.sessionList.session("conv_a")?.isPinned == true {
-      view.openPinnedSession(0)
+      view.openNumberedSession(0)
       #expect(selection.page == .session("conv_a"))
     } else {
       Issue.record("the fixture's session must read as pinned")

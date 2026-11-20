@@ -189,10 +189,10 @@ private struct ShortcutAliases: View {
       focus(.leading, KeyboardShortcut("{", modifiers: [.command, .option]))
       focus(.trailing, KeyboardShortcut("}", modifiers: [.command, .option]))
       Button("Show Next Tab") { tabs?.selectNextTab?() }
-        .keyboardShortcut(AppShortcuts.nextTabAlias)
+        .keyboardShortcut(AppShortcuts.nextTab)
         .disabled(tabs?.selectNextTab == nil)
       Button("Show Previous Tab") { tabs?.selectPreviousTab?() }
-        .keyboardShortcut(AppShortcuts.previousTabAlias)
+        .keyboardShortcut(AppShortcuts.previousTab)
         .disabled(tabs?.selectPreviousTab == nil)
     }
     .opacity(0)

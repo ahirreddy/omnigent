@@ -31,24 +31,30 @@ extension ConnectedWindowFlowTests {
       mounted.screen, keyCode: keyCode, characters: digit, modifiers: [.command, .control])
   }
 
-  @Test("Control-Command-digit opens the pinned session in that place, and no other")
-  func pinnedSessionKeys() async throws {
+  @Test("Control-Command-digit opens the sidebar's session in that place, pins first")
+  func numberedSessionKeys() async throws {
     let mounted = try await mounted(pinnedServer(), page: nil)
     defer { mounted.screen.close() }
-    let pinned = SidebarNavigationOrder.pinnedIDs(mounted.view.sidebarState)
-    try #require(Set(pinned) == ["conv_a", "conv_b"], "the fixture's pins: \(pinned)")
+    let numbered = SidebarNavigationOrder.numberedIDs(mounted.view.sidebarState)
+    try #require(
+      Set(numbered.prefix(2)) == ["conv_a", "conv_b"], "the pins come first: \(numbered)")
 
     #expect(try pressPinned("2", keyCode: 19, in: mounted))
-    try await settle(mounted.screen, until: "the second pin") {
-      mounted.selection.page == .session(pinned[1])
+    try await settle(mounted.screen, until: "the second place") {
+      mounted.selection.page == .session(numbered[1])
     }
     #expect(try pressPinned("1", keyCode: 18, in: mounted))
-    try await settle(mounted.screen, until: "the first pin") {
-      mounted.selection.page == .session(pinned[0])
+    try await settle(mounted.screen, until: "the first place") {
+      mounted.selection.page == .session(numbered[0])
     }
-    // The third place has no pin: the key is taken, and the window stays where it is.
+    guard numbered.count == 3 else { return }
     #expect(try pressPinned("3", keyCode: 20, in: mounted))
+    try await settle(mounted.screen, until: "the unpinned session") {
+      mounted.selection.page == .session("conv_c")
+    }
+    // The fourth place has no session: the key is taken, and the window stays where it is.
+    #expect(try pressPinned("4", keyCode: 21, in: mounted))
     try await Task.sleep(for: .milliseconds(100))
-    #expect(mounted.selection.page == .session(pinned[0]))
+    #expect(mounted.selection.page == .session("conv_c"))
   }
 }

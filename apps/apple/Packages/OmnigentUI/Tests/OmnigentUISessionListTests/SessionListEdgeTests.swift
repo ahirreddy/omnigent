@@ -53,6 +53,13 @@
         list: SessionListViewState(sessions: [SidebarFixture.beta]))
       #expect(SidebarNavigationOrder.pinnedIDs(state, defaults: defaults).isEmpty)
     }
+
+    @Test("The numbered sessions are the first ten rows, once each, without unsent drafts")
+    func numbered() {
+      let ids = ["draft"] + (1...12).map { "s\($0)" } + ["s1"]
+      let numbered = SidebarNavigationOrder.numbered(["s1"] + ids, drafts: ["draft"])
+      #expect(numbered == (1...10).map { "s\($0)" })
+    }
   }
 
   @Suite("Session list: rows, bars and menus", .serialized)

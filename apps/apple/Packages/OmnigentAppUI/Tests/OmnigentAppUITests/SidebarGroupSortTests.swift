@@ -133,7 +133,7 @@ struct SidebarGroupSortWiringTests {
 
     view.sidebarActions.setGroupSort?(.pinned, .recent)
     #expect(order(.pinned, view) == ["conv_b", "conv_a"])
-    view.openPinnedSession(0)
+    view.openNumberedSession(0)
     #expect(selection.page == .session("conv_b"))
 
     let account = try #require(view.groupSortAccount)

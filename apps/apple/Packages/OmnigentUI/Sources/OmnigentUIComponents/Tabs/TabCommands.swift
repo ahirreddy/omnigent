@@ -41,6 +41,10 @@ public struct TabCommandActions {
   public var moveTabToOtherPane: (@MainActor () -> Void)?
   /// Start a shell in the selected session and show it (Option-Command-T).
   public var newShell: (@MainActor () -> Void)?
+  /// The page shown before this one, or a browser tab's previous page (Command-[).
+  public var goBack: (@MainActor () -> Void)?
+  /// The page Back left, or a browser tab's next page (Command-]).
+  public var goForward: (@MainActor () -> Void)?
 
   /// Creates the actions.
   /// - Parameters:
@@ -87,6 +91,21 @@ public struct TabCommandActions {
 extension FocusedValues {
   /// The key window's tab commands.
   @Entry public var tabCommands: TabCommandActions?
+  /// A page's own Back, such as an automation's page returning to the list; Back takes it
+  /// before the window's history.
+  @Entry public var pageBack: PageBackAction?
+}
+
+/// What a page's own Back does (see ``FocusedValues/pageBack``).
+public struct PageBackAction {
+  /// Goes back within the page.
+  public let perform: @MainActor () -> Void
+
+  /// Creates the action.
+  /// - Parameter perform: Goes back within the page.
+  public init(_ perform: @escaping @MainActor () -> Void) {
+    self.perform = perform
+  }
 }
 
 /// File > New Tab and Close Tab, a Tab menu (reopen, next and previous, Command-1 through 9,

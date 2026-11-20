@@ -109,8 +109,10 @@ struct WindowTabs {
   var commands: TabCommandActions {
     let groups = groups
     guard let store, let sessionID = groups.currentSessionID else {
-      return TabCommandActions(
+      var commands = TabCommandActions(
         newTab: { groups.show(.newSession) }, selectTab: { _ in }, showAllTabs: nil, count: 0)
+      addHistory(to: &commands, selected: nil)
+      return commands
     }
     let selected = store.selected
     var commands = TabCommandActions(
@@ -118,6 +120,7 @@ struct WindowTabs {
       selectTab: { store.select(position: $0) },
       showAllTabs: showAll,
       count: store.tabs.count)
+    addHistory(to: &commands, selected: selected)
     if let selected {
       // A primary chat leaves only with its session, so Close Tab is disabled on it.
       if store.canClose(selected.id) {
@@ -154,6 +157,19 @@ struct WindowTabs {
     }
     commands.newShell = { Task { await newTerminal(in: sessionID, named: nil, replacing: nil) } }
     return commands
+  }
+
+  /// Back and Forward: a selected browser tab steps its own pages, as a browser does; otherwise
+  /// the window steps through the pages it showed.
+  private func addHistory(to commands: inout TabCommandActions, selected: AppTab?) {
+    if let page = selected?.content.browserID, let browser {
+      if browser.canStep(page, by: -1) { commands.goBack = { browser.step(page, by: -1) } }
+      if browser.canStep(page, by: 1) { commands.goForward = { browser.step(page, by: 1) } }
+      return
+    }
+    let groups = groups
+    if groups.history.canGoBack { commands.goBack = { groups.goBack() } }
+    if groups.history.canGoForward { commands.goForward = { groups.goForward() } }
   }
 
   /// The new-tab page's and the + menu's state: what the shown session offers.

@@ -140,20 +140,28 @@
       try screen.expect("Send Message", nil, runs: "send", log: log)
     }
 
-    @Test("Navigate opens the palette, find and the shortcut guide")
+    @Test("Navigate goes back and forward, and opens the palette, find and the shortcut guide")
     func navigate() throws {
       let log = MenuLog()
       let palette = PaletteCommandActions(
         openPalette: log.log("palette"), openShortcuts: log.log("shortcuts"),
         findSession: log.log("find"))
-      let screen = window(NavigateMenuItems(palette: palette))
+      var tabs = TabCommandActions()
+      (tabs.goBack, tabs.goForward) = (log.log("back"), log.log("forward"))
+      let screen = window(NavigateMenuItems(palette: palette, tabs: tabs))
       defer { screen.close() }
+      try screen.expect("Back", AppShortcuts.goBack, runs: "back", log: log)
+      try screen.expect("Forward", AppShortcuts.goForward, runs: "forward", log: log)
       try screen.expect(
         "Command Palette\u{2026}", AppShortcuts.commandPalette, runs: "palette", log: log)
       try screen.expect(
         "Find Session by Name\u{2026}", AppShortcuts.findSession, runs: "find", log: log)
       try screen.expect(
         "Keyboard Shortcuts\u{2026}", AppShortcuts.keyboardShortcuts, runs: "shortcuts", log: log)
+      // A page's own Back, such as an automation's page, goes before the window's history.
+      let page = window(NavigateMenuItems(palette: nil, pageBack: PageBackAction(log.log("page"))))
+      defer { page.close() }
+      try page.expect("Back", AppShortcuts.goBack, runs: "page", log: log)
     }
 
     @Test("Navigate is disabled without a window")

@@ -28,7 +28,8 @@ public struct AutomationDetailView: View {
             Label("Automations", systemImage: "chevron.backward")
           }
           .buttonStyle(.borderless)
-          .keyboardShortcut("[", modifiers: .command)
+          // Navigate › Back (Command-[) returns here first.
+          .focusedSceneValue(\.pageBack, PageBackAction(back))
           .help("Back to Automations")
           .accessibilityIdentifier("automation-detail-back")
           .padding(.bottom, Theme.Spacing.large)

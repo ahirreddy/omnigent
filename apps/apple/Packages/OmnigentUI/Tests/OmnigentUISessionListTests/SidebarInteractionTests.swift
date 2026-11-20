@@ -102,6 +102,22 @@ struct SidebarInteractionTests {
         == "Fix the build\nUpdated 2m ago\n\nCreated by: You\nRepo: omnigent\nBranch: main")
   }
 
+  @Test("The tooltip names the row's family and its PR, with how old a stored state is")
+  func rowTooltipFamilyAndPullRequest() {
+    let session = SessionSummary(id: "s", title: "Fix the build")
+    let now = session.updatedDate.addingTimeInterval(120)
+    var info = SessionRowInfo(repo: "omnigent")
+    info.pullRequest = SessionRowPullRequest(
+      number: 212, status: "Merged", checkedAt: now.addingTimeInterval(-7_200))
+    #expect(
+      SessionRowTooltip.text(session, info: info, now: now, family: "Nested in: Lead")
+        == "Fix the build\nUpdated 2m ago\n\nNested in: Lead\nRepo: omnigent\n"
+        + "PR: #212 \u{00B7} Merged (as of 2h ago)")
+    let fresh = SessionRowPullRequest(number: 7, status: "Open", checkedAt: now)
+    #expect(SessionRowTooltip.pullRequest(fresh, now: now) == "#7 \u{00B7} Open")
+    #expect(SessionRowTooltip.pullRequest(SessionRowPullRequest(number: 7), now: now) == "#7")
+  }
+
   @Test("Stop session explains that a host session's runner stops too")
   func stopMessage() {
     let session = SessionSummary(id: "s", title: "Deploy")

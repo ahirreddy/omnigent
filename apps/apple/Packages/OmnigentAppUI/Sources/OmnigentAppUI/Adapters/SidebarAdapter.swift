@@ -204,6 +204,7 @@ enum SidebarAdapter {
         ?? false)
     info.createdBy = isOwned ? (session.owner == nil ? nil : "You") : session.owner
     info.runsOnHost = configuration?.hostId != nil
+    info.pullRequest = session.pullRequest.map(pullRequest)
     info.hasLiveSandbox = SandboxAdapter.isAlive(
       session, isOwned: isOwned, environments: environments)
     if let launch = SandboxAdapter.launchNote(configuration?.sandboxLaunch) {
@@ -216,6 +217,21 @@ enum SidebarAdapter {
       }
     }
     return info
+  }
+
+  /// The tooltip's PR: its number, and its stored state when its host fetched one.
+  static func pullRequest(_ pullRequest: RowPullRequest) -> SessionRowPullRequest {
+    let status: String? =
+      switch pullRequest.status {
+      case .open: "Open"
+      case .draft: "Draft"
+      case .merged: "Merged"
+      case .closed: "Closed"
+      case .unknown: nil
+      }
+    return SessionRowPullRequest(
+      number: pullRequest.number, status: status,
+      checkedAt: pullRequest.checkedAt.map { Date(timeIntervalSince1970: TimeInterval($0)) })
   }
 
   /// The Environment detail: a session without a host runs on the server's own machine.

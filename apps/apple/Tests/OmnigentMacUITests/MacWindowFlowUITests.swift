@@ -161,7 +161,8 @@ final class MacWindowFlowUITests: XCTestCase {
       "the palette did not open the session")
   }
 
-  /// Command-] and Command-[ move through the sessions, leaving and returning to the first.
+  /// Control-Command-Down and Up move through the sidebar's sessions; Command-[ goes back to the
+  /// session shown before and Command-] forward again, as the web's desktop app.
   @MainActor
   func testPreviousAndNextSessionKeys() {
     let live = MacLiveUITestSupport(self)
@@ -170,16 +171,31 @@ final class MacWindowFlowUITests: XCTestCase {
     live.openDemo("demo-question", in: app)
     let start = live.element("transcript-demo-question", in: app)
 
-    app.typeKey("]", modifierFlags: .command)
+    app.typeKey(.downArrow, modifierFlags: [.command, .control])
     if !start.disappears(within: 5) {
       // The first session was last in the list, so go the other way.
-      app.typeKey("[", modifierFlags: .command)
+      app.typeKey(.upArrow, modifierFlags: [.command, .control])
       XCTAssertTrue(start.disappears(within: 10), "the keys did not change session")
-      app.typeKey("]", modifierFlags: .command)
-    } else {
-      app.typeKey("[", modifierFlags: .command)
     }
-    XCTAssertTrue(start.appears(within: 10), "the keys did not come back")
+    app.typeKey("[", modifierFlags: .command)
+    XCTAssertTrue(start.appears(within: 10), "Back did not return to the session")
+    app.typeKey("]", modifierFlags: .command)
+    XCTAssertTrue(start.disappears(within: 10), "Forward did not leave it again")
+  }
+
+  /// A quick Control-Tab, Control released at once, opens the next recently active session.
+  @MainActor
+  func testControlTabSwitchesToARecentSession() {
+    let live = MacLiveUITestSupport(self)
+    let app = live.launchDemo()
+    defer { app.terminate() }
+    live.openDemo("demo-question", in: app)
+    let start = live.element("transcript-demo-question", in: app)
+    XCTAssertTrue(start.appears(within: 10), "the session did not open")
+    app.typeKey(.tab, modifierFlags: .control)
+    XCTAssertTrue(start.disappears(within: 10), "Control-Tab did not switch session")
+    XCTAssertFalse(
+      live.element("recent-sessions-switcher", in: app).exists, "the switcher stayed open")
   }
 
   /// Approving in the transcript resolves the request and frees the composer to send.

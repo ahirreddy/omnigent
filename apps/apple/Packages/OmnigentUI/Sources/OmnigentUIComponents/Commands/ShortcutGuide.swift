@@ -51,13 +51,21 @@ enum ShortcutGuide {
       ShortcutGroup(
         title: "Navigation",
         rows: [
+          row("Go back", AppShortcuts.goBack),
+          row("Go forward", AppShortcuts.goForward),
           row("Previous session", AppShortcuts.previousSession),
           row("Next session", AppShortcuts.nextSession),
           ShortcutRow(
-            "Open pinned session 1–9 / 10",
-            "\(AppShortcuts.text(AppShortcuts.pinnedSession(0)))–9 / "
-              + AppShortcuts.text(AppShortcuts.pinnedSession(9))),
-        ]),
+            "Jump to a sidebar session (1–10)",
+            "\(AppShortcuts.text(AppShortcuts.sidebarSession(0)))–9 / "
+              + AppShortcuts.text(AppShortcuts.sidebarSession(9))),
+        ]
+          + (isMac
+            ? [
+              ShortcutRow(
+                "Switch recent sessions",
+                keys(AppShortcuts.recentSessions, AppShortcuts.recentSessionsBack))
+            ] : [])),
       view(isMac: isMac),
       tabs,
       panes(isMac: isMac),
@@ -155,10 +163,7 @@ enum ShortcutGuide {
           "Select tab 1–8 / last tab",
           "\(AppShortcuts.text(AppShortcuts.selectTab(0)))–8 / "
             + AppShortcuts.text(AppShortcuts.selectTab(8))),
-        ShortcutRow(
-          "Next / previous tab",
-          keys(AppShortcuts.nextTabAlias, AppShortcuts.previousTabAlias) + " or "
-            + keys(AppShortcuts.nextTab, AppShortcuts.previousTab)),
+        ShortcutRow("Next / previous tab", keys(AppShortcuts.nextTab, AppShortcuts.previousTab)),
         row("Show all tabs", AppShortcuts.showAllTabs),
         row("Session terminal / chat", AppShortcuts.showTerminal),
       ])

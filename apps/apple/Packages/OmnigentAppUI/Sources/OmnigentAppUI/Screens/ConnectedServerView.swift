@@ -113,7 +113,8 @@ public struct ConnectedServerView: View {
     .environment(\.tabOverviewPresenter, overviewPresenter)
     .onAppear { overviewPresenter.open = { showsTabOverview = true } }
     .modifier(PaletteAdapter(session: session, selection: $selection))
-    .background { PinnedSessionShortcuts(open: openPinnedSession) }
+    .background { SidebarSessionShortcuts(open: openNumberedSession) }
+    .modifier(recentSessionsSwitching)
     .modifier(groupSortPruning)
     .copyConfirmations()
     .environment(\.transcriptFocus, session.transcriptFocus)

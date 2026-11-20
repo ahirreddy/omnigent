@@ -72,8 +72,8 @@ final class MacDemoWorkflowUITests: XCTestCase {
     live.assertRunning(app, "after reopening a tab")
 
     app.typeKey("t", modifierFlags: .command)
-    for _ in 0..<4 { app.typeKey(.tab, modifierFlags: .control) }
-    for _ in 0..<4 { app.typeKey(.tab, modifierFlags: [.control, .shift]) }
+    for _ in 0..<4 { app.typeKey("]", modifierFlags: [.command, .shift]) }
+    for _ in 0..<4 { app.typeKey("[", modifierFlags: [.command, .shift]) }
     app.typeKey("1", modifierFlags: .command)
     XCTAssertTrue(
       live.element("transcript-demo-notes", in: app).appears(within: 10),

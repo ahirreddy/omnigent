@@ -1,8 +1,8 @@
 public import Foundation
 import SwiftUI
 
-/// The sidebar's rows in the order the user sees them, for Command-[ / Command-] and the pinned
-/// session keys (the web's `useSessionSwitchHotkey` and `usePinnedSessionHotkeys`).
+/// The sidebar's rows in the order the user sees them, for Previous and Next Session and the
+/// numbered session keys (the web's `useSessionNumberHotkeys`).
 public enum SidebarNavigationOrder {
   /// Collapsed section titles, newline-separated (the sidebar's `@AppStorage`).
   static let collapsedSectionsKey = "omnigent:sidebar-collapsed-sections"
@@ -27,6 +27,23 @@ public enum SidebarNavigationOrder {
     sessionIDs(
       state, collapsed: lines(defaults.string(forKey: collapsedSectionsKey)),
       expandedProjects: lines(defaults.string(forKey: expandedProjectsKey)))
+  }
+
+  /// The sessions Control-Command-1 to 9 and 0 open: the first ten rows on screen, top to
+  /// bottom, once each and without unsent nested-agent drafts (the web's numbered rows).
+  /// - Parameters:
+  ///   - state: The sidebar.
+  ///   - defaults: Where the sidebar keeps its collapsed sections and expanded projects.
+  /// - Returns: Up to ten ids.
+  @MainActor public static func numberedIDs(
+    _ state: SidebarViewState, defaults: UserDefaults = .standard
+  ) -> [String] {
+    numbered(sessionIDs(state, defaults: defaults), drafts: Set(state.nestedDrafts.keys))
+  }
+
+  static func numbered(_ ids: [String], drafts: Set<String>) -> [String] {
+    var seen = Set<String>()
+    return Array(ids.filter { !drafts.contains($0) && seen.insert($0).inserted }.prefix(10))
   }
 
   /// The Pinned section's ids in order, without the members of collapsed families; none while

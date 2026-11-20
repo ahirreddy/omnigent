@@ -36,6 +36,10 @@ struct SidebarFamilyLayout {
   /// Nested rows with another member of their family right below them.
   private let continuing: Set<String>
   private let familySizes: [String: Int]
+  /// Each family's loaded members here, without unsent nested-agent drafts.
+  private let memberCounts: [String: Int]
+  /// Each family's head row title here.
+  private let headTitles: [String: String]
   private let isCollapsed: (String) -> Bool
   private let setCollapsed: (@MainActor (String, Bool) -> Void)?
 
@@ -51,12 +55,17 @@ struct SidebarFamilyLayout {
     setCollapsed: (@MainActor (String, Bool) -> Void)?
   ) {
     var heads = Set<String>()
-    var seen = Set<String>()
     var familySizes: [String: Int] = [:]
+    var memberCounts: [String: Int] = [:]
+    var headTitles: [String: String] = [:]
     for row in rows {
       guard let family = row.family else { continue }
       familySizes[family.id, default: 0] += 1
-      if seen.insert(family.id).inserted { heads.insert(row.id) }
+      if state.nestedDrafts[row.id] == nil { memberCounts[family.id, default: 0] += 1 }
+      if headTitles[family.id] == nil {
+        heads.insert(row.id)
+        headTitles[family.id] = row.title
+      }
     }
     let isCollapsed = { (family: String) in state.isFamilyCollapsed(family, in: scope) }
     let visible = SidebarFamilies.visible(rows.prefix(listedCount), isCollapsed: isCollapsed)
@@ -71,6 +80,8 @@ struct SidebarFamilyLayout {
     self.heads = heads
     self.continuing = continuing
     self.familySizes = familySizes
+    self.memberCounts = memberCounts
+    self.headTitles = headTitles
     self.isCollapsed = isCollapsed
     self.setCollapsed = setCollapsed
   }
@@ -88,6 +99,17 @@ struct SidebarFamilyLayout {
     let key = scope.key(family: family.id)
     let isExpanded = !isCollapsed(family.id)
     return .head(isExpanded: isExpanded, toggle: { setCollapsed(key, isExpanded) })
+  }
+
+  /// The tooltip's family line (the web's `SessionFamilyDetail`): a head's "Nested sessions: 2"
+  /// over its members loaded here, or a member's "Nested in: <head>".
+  func detail(of session: SessionSummary) -> String? {
+    guard let family = session.family, familySizes[family.id, default: 0] > 1 else { return nil }
+    if heads.contains(session.id) {
+      let nested = memberCounts[family.id, default: 1] - 1
+      return nested > 0 ? "Nested sessions: \(nested)" : nil
+    }
+    return headTitles[family.id].map { "Nested in: \($0)" }
   }
 }
 

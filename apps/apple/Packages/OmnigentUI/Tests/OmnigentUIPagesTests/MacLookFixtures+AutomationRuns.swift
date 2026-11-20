@@ -3,8 +3,27 @@ import SwiftUI
 
 @testable import OmnigentUIComponents
 
-/// An automation's runs following a plan, and a trigger's Instructions tab with a workflow.
+/// An automation's runs following a plan, a trigger's Instructions tab with a workflow, and
+/// Control-Tab's switcher.
 extension LookFixtures {
+  /// The recent-sessions switcher with its second session selected.
+  static var recentSwitcher: some View {
+    let rows = [
+      RecentSessionRow(id: "a", title: "Fix the flaky login test", agent: "Claude Code"),
+      RecentSessionRow(id: "b", title: "Draft the release notes", agent: "Codex"),
+      RecentSessionRow(id: "c", title: "Profile the sync service", agent: "Claude Code"),
+      RecentSessionRow(id: "d", title: "Answer product questions", agent: "Pi"),
+    ]
+    let state = RecentSessionsSwitcherState(rows: rows, active: "a", offset: 1)
+    return Group {
+      if let state {
+        RecentSessionsSwitcherView(state: state, select: { _ in }, commit: {})
+      }
+    }
+    .padding(Theme.Spacing.large)
+    .omnigentAppearance(.omni)
+  }
+
   /// The run history: a working run with its tasks and Stop, a finished one that says what its
   /// agent last wrote, and one whose task failed.
   static var automationRunTasks: some View {

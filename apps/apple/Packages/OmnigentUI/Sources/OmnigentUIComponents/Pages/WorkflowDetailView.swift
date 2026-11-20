@@ -64,7 +64,8 @@ public struct WorkflowDetailView<Planner: View>: View {
             Label("Workflows", systemImage: "chevron.backward")
           }
           .buttonStyle(.borderless)
-          .keyboardShortcut("[", modifiers: .command)
+          // Navigate › Back (Command-[) returns here first.
+          .focusedSceneValue(\.pageBack, PageBackAction(back))
           .help("Back to Workflows")
           .accessibilityIdentifier("workflow-detail-back")
           .padding(.bottom, Theme.Spacing.large)
