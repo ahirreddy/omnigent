@@ -37,6 +37,13 @@ struct SandboxChoices: Equatable {
     guard let provider = profileProvider(catalog) else { return nil }
     switch sandboxes?.profiles[provider] {
     case .loaded(let page):
+      switch profileCheck(page, provider: provider, sandboxes: sandboxes) {
+      case .pending: return "Loading sandbox profiles\u{2026}"
+      case .failed: return "Could not load sandbox profiles. Try again."
+      case .changed:
+        return "This profile changed or is unavailable. Choose a profile again before launching."
+      case .current: break
+      }
       return sandboxProfileProblem(
         page: page, provider: provider,
         selected: profile.map { Self.profile($0, provider: provider) })
@@ -45,13 +52,44 @@ struct SandboxChoices: Equatable {
     }
   }
 
+  /// Where the chosen profile's revision stands against the server's.
+  enum ProfileCheck: Equatable {
+    /// Nothing chosen, or the server lists it at the chosen revision.
+    case current
+    /// Being looked up.
+    case pending
+    /// The lookup failed.
+    case failed
+    /// The server lists another revision, or no longer offers it.
+    case changed
+  }
+
+  /// The chosen profile against the server: current when the first page lists it at the chosen
+  /// revision, else as its lookup by id says.
+  func profileCheck(
+    _ page: SandboxProfilePage, provider: String, sandboxes: SandboxStore?
+  ) -> ProfileCheck {
+    guard let profile else { return .current }
+    if page.profiles.contains(where: { $0.id == profile.id && $0.revision == profile.revision }) {
+      return .current
+    }
+    switch sandboxes?.profileChecks[SandboxStore.profileKey(provider: provider, id: profile.id)] {
+    case .loaded(let current): return current?.revision == profile.revision ? .current : .changed
+    case .failed: return .failed
+    case .idle, .loading, nil: return .pending
+    }
+  }
+
   /// The profile a new sandbox starts with when the user has not chosen: the one used last
   /// when it is still offered, else the first x86 one (most repositories build there), else
   /// the first.
   static func defaultProfile(
-    _ offered: [SandboxProfileOption], last: String?
+    _ offered: [SandboxProfileOption], last: String?, serverDefault: String? = nil,
+    lookedUp: [String: SandboxProfileOption] = [:]
   ) -> SandboxProfileOption? {
-    if let last, let same = offered.first(where: { $0.id == last }) { return same }
+    let find = { (id: String) in offered.first { $0.id == id } ?? lookedUp[id] }
+    if let last, let same = find(last) { return same }
+    if let serverDefault, let chosen = find(serverDefault) { return chosen }
     let isX86: (SandboxProfileOption) -> Bool = { profile in
       ["x86", "amd64"].contains { architecture in
         profile.name.localizedCaseInsensitiveContains(architecture)
@@ -101,16 +139,31 @@ struct SandboxChoices: Equatable {
     if let page = load?.value, !page.managedProviders.contains(provider) { return nil }
     var error: String?
     if case .failed(let failure) = load { error = failure.message }
+    let isStale = load?.value.map {
+      profileCheck($0, provider: provider, sandboxes: sandboxes) == .changed
+    }
     return SandboxProfilesState(
       profiles: load?.value?.profiles.map(Self.profileOption) ?? [], selected: profile,
       isLoading: load?.value == nil && error == nil, error: error,
-      hasMore: load?.value?.hasMore ?? false)
+      hasMore: load?.value?.hasMore ?? false, isStale: isStale ?? false)
   }
 
   /// Reads what the chosen sandbox offers: its profiles and the caller's GitHub repositories.
   func load(_ catalog: OmnigentCoreFFI.CreationCatalog?, sandboxes: SandboxStore) async {
     if catalog?.githubConnection == true { await sandboxes.loadGithubRepos() }
     if let provider = profileProvider(catalog) { await sandboxes.loadProfiles(provider) }
+  }
+
+  /// Looks the chosen profile up by id when the first page doesn't list it at the chosen
+  /// revision, so a changed or removed one shows as such.
+  func checkChosenProfile(_ catalog: OmnigentCoreFFI.CreationCatalog?, sandboxes: SandboxStore)
+    async
+  {
+    guard let provider = profileProvider(catalog), let profile,
+      let page = sandboxes.profiles[provider]?.value,
+      profileCheck(page, provider: provider, sandboxes: sandboxes) == .pending
+    else { return }
+    await sandboxes.checkProfile(provider, id: profile.id)
   }
 
   /// The repository picker's actions; `set` stores the new list.

@@ -152,22 +152,25 @@ nonisolated public struct SandboxProfilesState: Hashable, Sendable {
   public var error: String?
   /// More match than are listed.
   public var hasMore: Bool
+  /// The chosen profile changed on the server since it was chosen, or is gone.
+  public var isStale: Bool
 
   /// Creates state.
   public init(
     profiles: [SandboxProfileOption] = [], selected: SandboxProfileOption? = nil,
-    isLoading: Bool = false, error: String? = nil, hasMore: Bool = false
+    isLoading: Bool = false, error: String? = nil, hasMore: Bool = false, isStale: Bool = false
   ) {
     self.profiles = profiles
     self.selected = selected
     self.isLoading = isLoading
     self.error = error
     self.hasMore = hasMore
+    self.isStale = isStale
   }
 
-  /// The chip's label.
+  /// The chip's label: the chosen profile, marked "(changed)" when it is stale, as on the web.
   public var label: String {
-    if let selected { return selected.name }
+    if let selected { return isStale ? "\(selected.name) (changed)" : selected.name }
     if isLoading { return "Loading profiles\u{2026}" }
     if error != nil { return "Profiles unavailable" }
     return profiles.isEmpty ? "No profiles available" : "Choose profile"

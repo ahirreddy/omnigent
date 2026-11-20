@@ -49,8 +49,19 @@ struct NewSessionLifecycle: ViewModifier {
       .task(id: form.isSandbox ? form.sandbox.provider ?? "" : nil) {
         if form.isSandbox, let sandboxes = form.sandboxes {
           await form.sandbox.load(creation.catalog.value, sandboxes: sandboxes)
-          form.defaultSandboxProfile(creation.catalog.value)
+          await form.defaultSandboxProfile(creation.catalog.value)
         }
+      }
+      .task(id: form.sandboxProfileCheck(creation)) {
+        if form.isSandbox, let sandboxes = form.sandboxes {
+          await form.sandbox.checkChosenProfile(creation.catalog.value, sandboxes: sandboxes)
+        }
+      }
+      .onChange(of: creation.phase) { _, phase in
+        // A refused launch may mean a profile or the harness configuration changed: read both
+        // again, as the web does.
+        guard case .failed = phase, form.isSandbox else { return }
+        Task { await form.reloadSandboxChoices(creation) }
       }
   }
 }

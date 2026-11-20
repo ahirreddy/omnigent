@@ -37,6 +37,29 @@ struct SandboxStoreTests {
     #expect(server.requests(to: profilesPath).count == 2)
   }
 
+  @Test("A profile is looked up by id once, and again when forced after a refused launch")
+  func profileLookup() async throws {
+    let server = RouteServer()
+    server.route(profilesPath, .json(profilesJSON))
+    let sandboxes = try await sandboxes(server)
+    await sandboxes.checkProfile("modal", id: "p1")
+    let key = SandboxStore.profileKey(provider: "modal", id: "p1")
+    #expect(sandboxes.profileChecks[key]?.value??.revision == "r1")
+    await sandboxes.checkProfile("modal", id: "p1")
+    #expect(server.requests(to: profilesPath).count == 1)
+    #expect(server.requests(to: profilesPath).last?.url.contains("profile_id=p1") == true)
+
+    // Gone from the provider: looked up, and nothing found.
+    server.route(
+      profilesPath, .json(#"{"profiles":[],"managed_providers":["modal"],"next_cursor":null}"#))
+    await sandboxes.reloadProfiles("modal")
+    #expect(sandboxes.profiles["modal"]?.value?.profiles.isEmpty == true)
+    guard case .loaded(nil) = sandboxes.profileChecks[key] else {
+      Issue.record("check: \(String(describing: sandboxes.profileChecks[key]))")
+      return
+    }
+  }
+
   @Test("A load in flight isn't started twice")
   func profilesInFlight() async throws {
     let server = RouteServer()

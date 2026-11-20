@@ -1,5 +1,7 @@
 import Foundation
 import OmnigentCoreFFI
+import OmnigentStores
+import OmnigentTestSupport
 import OmnigentUIComponents
 import Testing
 
@@ -47,6 +49,32 @@ struct SandboxChoicesTests {
     #expect(choices.profileProvider(catalog(profiles: true)) == "modal")
     #expect(choices.problem(catalog(profiles: true), sandboxes: nil) != nil)
     #expect(choices.profilesState(catalog(profiles: true), sandboxes: nil)?.isLoading == true)
+  }
+
+  @Test func aChosenProfileOffTheFirstPageIsCheckedAndShowsWhenItChanged() async throws {
+    let page =
+      #"{"profiles":[{"id":"p1","name":"GPU","description":"","provider":"modal","revision":"r2"}],"#
+      + #""managed_providers":["modal"],"next_cursor":null}"#
+    let connection = try await ConversationFixtures.connection(routes: [
+      "/v1/sandbox-profiles": .json(page)
+    ])
+    let sandboxes = try #require(connection.sandboxes())
+    await sandboxes.loadProfiles("modal")
+    var choices = SandboxChoices(
+      provider: "modal",
+      profile: SandboxProfileOption(id: "p1", name: "GPU", revision: "r2"))
+    let profiled = catalog(profiles: true)
+    #expect(choices.problem(profiled, sandboxes: sandboxes) == nil, "listed at this revision")
+
+    // Chosen at an older revision: the lookup says it changed.
+    choices.profile = SandboxProfileOption(id: "p1", name: "GPU", revision: "r1")
+    #expect(choices.problem(profiled, sandboxes: sandboxes) == "Loading sandbox profiles\u{2026}")
+    await choices.checkChosenProfile(profiled, sandboxes: sandboxes)
+    #expect(
+      choices.problem(profiled, sandboxes: sandboxes)
+        == "This profile changed or is unavailable. Choose a profile again before launching.")
+    let state = try #require(choices.profilesState(profiled, sandboxes: sandboxes))
+    #expect(state.isStale && state.label == "GPU (changed)")
   }
 
   @Test func archiveUndoWarnsOnlyAfterTheWorktreeGrace() {
