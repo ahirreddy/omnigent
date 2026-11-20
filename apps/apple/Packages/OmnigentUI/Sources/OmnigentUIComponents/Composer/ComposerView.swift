@@ -65,6 +65,12 @@ public struct ComposerView: View {
     actions.extras.shellHint.map { $0(draft) } ?? state.shellHint
   }
 
+  /// What the draft's tints follow.
+  private var tokens: ComposerTokenSource {
+    ComposerTokenSource(
+      commands: state.slashCommands, isShell: shellHint != nil, mentions: state.mentions)
+  }
+
   /// The touch bar at rest: one row until the user focuses it or there is something to send. A
   /// new session stays open: the agent and model are chosen before the first send.
   private var isCollapsed: Bool {
@@ -211,7 +217,7 @@ public struct ComposerView: View {
       text: $draft, placeholder: rules.placeholder,
       minLines: isExpanded ? 10 : 1,
       maxLines: isExpanded ? 28 : (layout == .touch ? ComposerBarMetrics.maxLines : 8),
-      identifier: "composer-input"
+      identifier: "composer-input", tokens: tokens
     )
     .focused($isFocused)
     .locksEditor(unless: isEditable, focus: $isFocused)
