@@ -26,6 +26,9 @@ fn server(name: &str, harness: &str, plugin: Option<&str>) -> HostMcpServer {
         source_id: None,
         url_host: Some("mcp.example.com".into()),
         enabled: None,
+        managed: false,
+        auth_status: None,
+        sign_in_url: None,
     }
 }
 

@@ -6,7 +6,11 @@ import SwiftUI
 extension ComposerCompletions {
   /// The completions offered for `draft`; none once Esc dismissed them for this exact draft.
   static func offered(draft: String, dismissed: String?, state: ComposerViewState) -> Self {
-    guard draft != dismissed else { return Self(draft: draft, commands: [], mentions: []) }
+    // The `/mcp` panel takes the completions' place, so Return can't apply a hidden row.
+    let showsMcpPanel = state.mcpPanel != nil && McpServersPanelState.isRequested(by: draft)
+    guard draft != dismissed, !showsMcpPanel else {
+      return Self(draft: draft, commands: [], mentions: [])
+    }
     return Self(draft: draft, commands: state.slashCommands, mentions: state.mentionCandidates)
   }
 
@@ -40,7 +44,7 @@ extension ComposerActions {
 }
 
 /// Over the editor in both styles: a local command's output (`/help`, `/context`), then the
-/// `/` and `@` completions, or why a mention search found nothing.
+/// `/mcp` panel, the `/` and `@` completions, or why a mention search found nothing.
 struct ComposerSuggestions: View {
   let state: ComposerViewState
   let actions: ComposerActions
@@ -54,10 +58,15 @@ struct ComposerSuggestions: View {
   var body: some View {
     let completions = ComposerCompletions.offered(
       draft: draft, dismissed: dismissedDraft, state: state)
+    if let answer = state.quickAnswer {
+      QuickAnswerView(answer: answer, dismiss: actions.extras.dismissQuickAnswer)
+    }
     if let notice = state.commandNotice {
       CommandNoticeView(text: notice, dismiss: actions.extras.dismissCommandNotice)
     }
-    if !completions.items.isEmpty {
+    if let panel = state.mcpPanel, McpServersPanelState.isRequested(by: draft) {
+      McpServersPanel(state: panel, actions: actions.extras.mcp)
+    } else if !completions.items.isEmpty {
       CompletionList(
         items: completions.items, note: ComposerCompletions.note(draft: draft, state: state),
         highlighted: highlighted, mentionFolder: completions.mentionFolder,

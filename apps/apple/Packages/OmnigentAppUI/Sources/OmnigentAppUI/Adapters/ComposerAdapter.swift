@@ -44,6 +44,8 @@ enum ComposerAdapter {
     }
     state.offersUnsentMessage = !composer.unsentOffers.isEmpty
     state.commandNotice = composer.commandNotice
+    state.mcpPanel = mcpPanel(store, server: server)
+    state.quickAnswer = quickAnswer(store)
     state.slashCommandsNote = composer.skillsProblem
     state.mentionsNote = composer.mentionProblem
     state.mentions = composer.mentions

@@ -71,6 +71,12 @@ pub struct HostMcpServer {
     pub url_host: Option<String>,
     /// Turned off for Omnigent sessions; `None` where the harness can't say.
     pub enabled: Option<bool>,
+    /// Pinned for every user on the host by an organization.
+    pub managed: bool,
+    /// The host's sign-in manager's account state: `connected` or `sign_in_required`.
+    pub auth_status: Option<String>,
+    /// Where to finish signing in, with `sign_in_required`.
+    pub sign_in_url: Option<String>,
 }
 
 /// One plugin installed for Claude (`PluginSummary`).
@@ -469,6 +475,9 @@ fn mcp_server_from(value: &Value) -> Result<HostMcpServer, String> {
         source_id: opt_str(object, "source_id")?,
         url_host: opt_str(object, "url_host")?,
         enabled,
+        managed: opt_bool(object, "managed")?.unwrap_or(false),
+        auth_status: opt_str(object, "auth_status")?,
+        sign_in_url: opt_str(object, "sign_in_url")?,
     })
 }
 

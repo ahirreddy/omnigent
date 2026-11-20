@@ -670,6 +670,32 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 }
 
+impl<T: HttpTransport> ClientCore<T> {
+    /// Tells `session_id`'s terminal that its `/btw` answer was closed here, so the terminal's
+    /// own overlay closes too (`external_btw_dismiss`).
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request; the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn dismiss_quick_answer(&self, session_id: &str) -> Result<(), SessionError> {
+        let result = async {
+            validate_identifier(session_id)?;
+            let path = format!("/v1/sessions/{session_id}/events");
+            let body = json!({ "type": "external_btw_dismiss", "data": {} });
+            self.write(self.prepare("POST", &path, &[], Some(&body))?)
+                .await
+                .map(|_| ())
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+}
+
 const fn status_word(active: bool) -> &'static str {
     if active { "active" } else { "paused" }
 }

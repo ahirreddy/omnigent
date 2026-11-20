@@ -24,8 +24,8 @@ use super::presentation::{
 };
 use super::reasoning_preview::reasoning_preview;
 use super::state::{
-    Activity, ActivityKind, Attachment, AttachmentKind, ChangedFiles, DetailSection, Row, RowRole,
-    update_record,
+    Activity, ActivityKind, Attachment, AttachmentKind, ChangedFiles, DetailSection, QuickAnswer,
+    Row, RowRole, update_record,
 };
 
 /// Unknown-event rows kept at most; the oldest is dropped first.
@@ -665,25 +665,13 @@ impl LiveReducer {
         }
     }
 
+    /// A `/btw` answer goes over the composer, as on the web, not into the transcript.
     fn sidechat(&mut self, sidechat: &SessionBtwSidechatEvent) -> Effects {
-        let question = display::safe_display_str(&sidechat.question);
-        let mut answer = display::safe_display_str(&sidechat.answer);
-        if sidechat.truncated {
-            answer.push_str("\n[Answer truncated]");
-        }
-        let id = format!(
-            "event:sidechat:{}:{}",
-            self.scope_id(),
-            fingerprint(&question)
-        );
-        self.upsert_activity(
-            ActivityUpdate::new(id, ActivityKind::Sidechat, "Side question", &question)
-                .status("completed")
-                .details(vec![
-                    DetailSection::new("question", "Question", question.clone(), false),
-                    DetailSection::new("answer", "Answer", answer, false),
-                ]),
-        );
+        self.state().quick_answer = Some(QuickAnswer {
+            question: display::safe_display_str(&sidechat.question),
+            answer: display::safe_display_str(&sidechat.answer),
+            truncated: sidechat.truncated,
+        });
         changed()
     }
 

@@ -67,6 +67,7 @@ struct ConversationContainer: View {
   #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
   #endif
+  @Environment(\.openSettingsAt) var openSettingsAt
   @State private var inspectorTab: InspectorTab = DefaultWorkspaceTab.stored().inspectorTab
   @State private var showsGoal = false
   // swiftlint:disable:next private_swiftui_state

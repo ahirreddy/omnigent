@@ -63,7 +63,8 @@ pub use client::{
     configure, create, databricks_session, events, fork, harness_inventory, host_switch, inbox,
     inbox_items, items, mcp_tools, pin_order, policy_registry, project_repository,
     project_settings, projects, pull_request_detail, pull_request_edits, pull_requests, rewind,
-    server_admin, session_search, session_tools, sessions, share, usage, user_settings,
+    server_admin, session_mcp, session_search, session_tools, sessions, share, usage,
+    user_settings,
 };
 pub use discovery::{ServerDiscovery, discovery_from_response, manifest_request};
 pub use error::CoreError;

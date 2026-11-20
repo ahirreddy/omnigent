@@ -765,3 +765,19 @@ fn a_side_chat_without_a_runner_binds_nothing_and_a_resumable_offline_host_relau
         vec![json!({"type": "retry_session", "data": {}})]
     );
 }
+
+#[test]
+fn closing_a_quick_answer_tells_the_terminal() {
+    let transport = RouteTransport::local();
+    transport.ok("/v1/sessions/conv_a/events", r#"{"queued":true}"#);
+    let core = connected(transport);
+    assert_eq!(block_on(core.dismiss_quick_answer("conv_a")), Ok(()));
+    assert_eq!(
+        body_json(&core.transport().writes()[0]),
+        json!({"type": "external_btw_dismiss", "data": {}})
+    );
+    assert!(matches!(
+        block_on(core.dismiss_quick_answer("a/b")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}

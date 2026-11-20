@@ -51,7 +51,8 @@ pub use presentation::{
 pub use state::{
     Activity, ActivityKind, Attachment, AttachmentKind, ChangedFile, ChangedFiles,
     ConversationSnapshot, Decision, DetailSection, EVENT_PREFIX, LIVE_PREFIX, MAX_RECORDS,
-    ReportedValue, Row, RowRole, SessionEventState, SessionHeader, SessionSettings, TurnStatus,
+    QuickAnswer, ReportedValue, Row, RowRole, SessionEventState, SessionHeader, SessionSettings,
+    TurnStatus,
 };
 
 /// Why an event could not be applied. The reducer state is unchanged.

@@ -13,7 +13,7 @@ struct ComposerHeldMessageTests {
 
   private func facts(hostOnline: Bool) -> ConversationFacts {
     ConversationFacts(
-      tokensUsed: nil, contextWindow: nil, items: 0, mcpServers: [], agentLoaded: false,
+      tokensUsed: nil, contextWindow: nil, items: 0,
       isRunning: false, hostOnline: hostOnline)
   }
 

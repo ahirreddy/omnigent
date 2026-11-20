@@ -139,14 +139,14 @@ public final class ConversationStore {
   /// rendering.
   private var composerFacts: ConversationFacts {
     let usage = sections.first { $0.id == "usage" }
+    let settings = header?.settings
     func number(_ id: String) -> UInt64? {
       usage?.details.first { $0.id == id }.flatMap { UInt64($0.text) }
     }
     return ConversationFacts(
       tokensUsed: number("context_tokens"), contextWindow: number("context_window"),
-      items: transcriptRows.count, mcpServers: agentInfo?.tools ?? [],
-      agentLoaded: agentInfo != nil, isRunning: isRunning,
-      hostOnline: header?.settings?.hostOnline ?? false)
+      items: transcriptRows.count, isRunning: isRunning, hostOnline: settings?.hostOnline ?? false,
+      mcpSession: .init(settings))
   }
 
   /// Observes the row `rowID` on its own, for a view that shows only that row (see

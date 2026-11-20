@@ -69,6 +69,8 @@ mod sandbox;
 mod sandbox_operations;
 pub mod server_admin;
 mod session_actions;
+pub mod session_mcp;
+mod session_mcp_rows;
 pub mod session_search;
 pub mod session_tools;
 pub mod sessions;

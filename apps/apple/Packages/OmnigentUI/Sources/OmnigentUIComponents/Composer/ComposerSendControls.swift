@@ -24,6 +24,8 @@ struct ComposerSendRules {
   /// Why nothing can be sent now, or `nil`.
   var sendBlockedReason: String? {
     if let reason = state.availability.reason { return reason }
+    // A `/btw` answer holds the composer until it is closed, as on the web.
+    if state.quickAnswer != nil { return "Close the quick answer to send." }
     switch state.delivery {
     case .sending:
       // A message sent while another is on its way waits in the queue behind it.

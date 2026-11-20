@@ -186,6 +186,23 @@ pub fn sections(state: &SessionEventState) -> Vec<EventSection> {
     resource_sections(state, &mut result);
     child_sections(state, &mut result);
     changed_file_sections(state, &mut result);
+    if let Some(quick) = &state.quick_answer {
+        let mut details = vec![
+            detail("question", "Question", &quick.question),
+            detail("answer", "Answer", &quick.answer),
+        ];
+        if quick.truncated {
+            details.push(detail("truncated", "Truncated", "true"));
+        }
+        result.push(
+            EventSection::new(
+                "quick-answer",
+                "Claude Quick Answer",
+                quick.question.clone(),
+            )
+            .with_details(details),
+        );
+    }
     if let Some(target) = &state.superseded_by {
         let mut section = EventSection::new(
             "superseded",
