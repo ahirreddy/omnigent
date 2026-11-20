@@ -88,6 +88,8 @@ impl Engine {
             });
             let instance = DriverInstance(self.next_driver);
             self.next_driver += 1;
+            // A new opening starts the execution logs' live view afresh; reconnects keep it.
+            self.sessions.clear_stream_log(session_id);
             self.drivers.insert(
                 session_id.to_owned(),
                 SessionDriver {
@@ -181,6 +183,7 @@ impl Engine {
         }
         driver.sync.stop_raw();
         self.sessions.set_live_session(session_id, false);
+        self.sessions.clear_stream_log(session_id);
     }
 
     /// Whether `session_id` is still open under the opening that `instance` names.
@@ -463,6 +466,8 @@ impl Engine {
             return;
         };
         let value = event.into_value();
+        self.sessions
+            .record_stream_log(session_id, &value, self.host.now_ms());
         let decoded = reducer::decode_event(value.clone(), session_id);
         let sync = Arc::clone(&driver.sync);
         if let Ok(Some(decoded)) = &decoded {

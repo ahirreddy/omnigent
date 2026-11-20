@@ -17,4 +17,14 @@ extension ConversationStore {
       throw coreError(error)
     }
   }
+
+  /// The events kept from `sessionID`'s open stream (the last 500 since it was opened), those
+  /// after the `after` index only.
+  /// - Parameters:
+  ///   - sessionID: This session or one of its sub-agents.
+  ///   - after: The last index already shown; `nil` for all.
+  /// - Returns: The events, oldest first.
+  public func streamLog(of sessionID: String, after: UInt64?) -> [StreamLogEvent] {
+    core.sessionStreamLog(sessionId: sessionID, after: after)
+  }
 }

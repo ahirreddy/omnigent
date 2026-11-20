@@ -67,20 +67,26 @@ public struct ExecutionLogSource {
   public var read: @MainActor (String, String?) async -> Result<ExecutionLogPage, LogReadFailure>
   /// The session's agent is working, so the items are read again every few seconds.
   public var isRunning: @MainActor () -> Bool
+  /// Reads the events a session's live stream delivered after an index; `nil` offers only the
+  /// stored items.
+  public var stream: (@MainActor (String, UInt64?) -> [ExecutionStreamEvent])?
 
   /// Creates a source.
   /// - Parameters:
   ///   - sessions: The session and its sub-agents.
   ///   - read: Reads a page.
   ///   - isRunning: The agent is working.
+  ///   - stream: Reads the live stream's events.
   public init(
     sessions: [Session],
     read: @escaping @MainActor (String, String?) async -> Result<ExecutionLogPage, LogReadFailure>,
-    isRunning: @escaping @MainActor () -> Bool
+    isRunning: @escaping @MainActor () -> Bool,
+    stream: (@MainActor (String, UInt64?) -> [ExecutionStreamEvent])? = nil
   ) {
     self.sessions = sessions
     self.read = read
     self.isRunning = isRunning
+    self.stream = stream
   }
 }
 
@@ -96,7 +102,8 @@ nonisolated public struct LogReadFailure: Error, Hashable, Sendable {
 
 /// A session's execution logs (the web's `ExecutionLogsPanel`): every stored item as raw JSON,
 /// numbered from the oldest, one line each until opened, for the session or one of its
-/// sub-agents. While the agent works the items are read again every three seconds.
+/// sub-agents. While the agent works the items are read again every three seconds. The SSE view
+/// shows the live stream's events instead.
 public struct ExecutionLogsView: View {
   private let source: ExecutionLogSource
   private let close: @MainActor () -> Void
@@ -107,6 +114,7 @@ public struct ExecutionLogsView: View {
   @State private var failure: String?
   @State private var isLoading = true
   @State private var opened: Set<Int> = []
+  @State private var mode = ExecutionLogMode.items
 
   /// Creates the view.
   /// - Parameters:
@@ -121,12 +129,15 @@ public struct ExecutionLogsView: View {
   /// The view.
   public var body: some View {
     NavigationStack {
-      content
+      shown
         .navigationTitle("Execution Logs")
         .toolbar {
           ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) }
           if source.sessions.count > 1 {
             ToolbarItem(placement: .principal) { sessionPicker }
+          }
+          if source.stream != nil {
+            ToolbarItem(placement: .primaryAction) { modePicker }
           }
         }
     }
@@ -134,6 +145,24 @@ public struct ExecutionLogsView: View {
       .frame(minWidth: 520, minHeight: 420)
     #endif
     .task(id: sessionID) { await follow() }
+  }
+
+  @ViewBuilder private var shown: some View {
+    if mode == .stream, let stream = source.stream {
+      ExecutionStreamLogView(sessionID: sessionID, read: stream)
+    } else {
+      content
+    }
+  }
+
+  /// Stored items or the live stream, as the web's Items / SSE switch.
+  private var modePicker: some View {
+    Picker("View", selection: $mode) {
+      ForEach(ExecutionLogMode.allCases, id: \.self) { Text($0.title).tag($0) }
+    }
+    .pickerStyle(.segmented)
+    .fixedSize()
+    .accessibilityIdentifier("execution-logs-mode")
   }
 
   private var sessionPicker: some View {

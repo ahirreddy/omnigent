@@ -79,6 +79,7 @@ pub mod session_tools;
 pub mod sessions;
 pub mod share;
 mod skills;
+pub mod stream_log;
 mod terminals;
 pub mod usage;
 pub mod user_settings;
@@ -239,6 +240,8 @@ struct State {
     routing: routing::ReplicaRouting,
     /// Side chats seen so far: they belong to their session's tab, never the session list.
     side_chats: BTreeSet<String>,
+    /// Each open session's stream events, for the execution logs' live view.
+    stream_logs: BTreeMap<String, stream_log::StreamLog>,
     /// The user turned off automatic session titles (a device preference, kept across connects).
     background_titles_off: bool,
 }

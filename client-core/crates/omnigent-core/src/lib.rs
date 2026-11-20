@@ -64,7 +64,7 @@ pub use client::{
     host_switch, html_comments, inbox, inbox_items, items, mcp_tools, pdf_comments, pin_order,
     policy_registry, project_repository, project_settings, projects, pull_request_detail,
     pull_request_edits, pull_requests, rewind, server_admin, session_mcp, session_search,
-    session_tools, sessions, share, usage, user_settings,
+    session_tools, sessions, share, stream_log, usage, user_settings,
 };
 pub use discovery::{ServerDiscovery, discovery_from_response, manifest_request};
 pub use error::CoreError;

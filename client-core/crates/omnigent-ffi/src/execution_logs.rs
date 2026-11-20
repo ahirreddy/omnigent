@@ -14,6 +14,19 @@ pub struct RawSessionItem {
     pub pretty: String,
 }
 
+/// One event from a session's stream, as it arrived.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct StreamLogEvent {
+    /// Its place in the session's log, from 0.
+    pub index: u64,
+    /// When it arrived, Unix milliseconds.
+    pub received_at_ms: u64,
+    /// The event on one line.
+    pub compact: String,
+    /// The event indented two spaces per level.
+    pub pretty: String,
+}
+
 /// A page of items.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct RawSessionItemsPage {
@@ -52,5 +65,25 @@ impl ClientCore {
                 .collect(),
             next: page.next,
         })
+    }
+
+    /// The events kept from `session_id`'s open stream, oldest first: the last 500 since it was
+    /// opened, those after the `after` index only. Empty for a session whose stream isn't open.
+    #[must_use]
+    pub fn session_stream_log(
+        &self,
+        session_id: String,
+        after: Option<u64>,
+    ) -> Vec<StreamLogEvent> {
+        self.sessions()
+            .stream_log(&session_id, after)
+            .into_iter()
+            .map(|entry| StreamLogEvent {
+                index: entry.index,
+                received_at_ms: entry.received_at_ms,
+                compact: entry.compact,
+                pretty: entry.pretty,
+            })
+            .collect()
     }
 }
