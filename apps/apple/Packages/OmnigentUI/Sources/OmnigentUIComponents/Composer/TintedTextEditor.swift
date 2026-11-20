@@ -17,8 +17,8 @@ struct TintedTextEditor: View {
     let style = TintStyle(
       source: source, tint: ThemeColor.controlTint.resolve(in: environment),
       fill: ThemeColor.controlTint.resolve(in: environment).opacity(0.12))
-    TextEditor(text: $editor, selection: $selection)
-      .onChange(of: editor) { editorChanged(style) }
+    TextEditor(text: typed, selection: $selection)
+      .onChange(of: editor) { retint(style) }
       .onChange(of: text, initial: true) { draftChanged(style) }
       .onChange(of: style) { retint(style) }
   }
@@ -48,11 +48,16 @@ struct TintedTextEditor: View {
     }
   }
 
-  /// Typing: the draft takes the text, and the tints follow it.
-  private func editorChanged(_ style: TintStyle) {
-    let plain = String(editor.characters)
-    if plain != text { text = plain }
-    retint(style)
+  /// The editor's text: typing changes it and the draft in the same update, so a key lays the
+  /// window out once; the tints follow it.
+  private var typed: Binding<AttributedString> {
+    Binding(
+      get: { editor },
+      set: { typed in
+        editor = typed
+        let plain = String(typed.characters)
+        if plain != text { text = plain }
+      })
   }
 
   /// A draft set from outside replaces the editor's text, with the caret at its end.
