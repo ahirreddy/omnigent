@@ -103,9 +103,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
       let controller = UIHostingController(rootView: root)
       controller.traitOverrides.horizontalSizeClass = pad ? .regular : .compact
       let bounds = CGRect(origin: .zero, size: size)
-      let scene = UIApplication.shared.connectedScenes.first { $0 is UIWindowScene }
-      let window = (scene as? UIWindowScene).map { UIWindow(windowScene: $0) } ?? UIWindow()
-      window.frame = bounds
+      let window = Self.window(bounds)
       window.rootViewController = controller
       window.isHidden = false
       for _ in 0..<8 {
@@ -128,6 +126,20 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
       try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
       let device = pad ? "ipad" : "iphone"
       try data.write(to: folder.appending(path: "\(screen.rawValue)-\(device).png"))
+    }
+
+    private static func window(_ bounds: CGRect) -> UIWindow {
+      let scene = UIApplication.shared.connectedScenes.first { $0 is UIWindowScene }
+      if let scene = scene as? UIWindowScene {
+        let window = UIWindow(windowScene: scene)
+        window.frame = bounds
+        return window
+      }
+      let type: UIView.Type = UIWindow.self
+      guard let window = type.init(frame: bounds) as? UIWindow else {
+        preconditionFailure("a window type makes a window")
+      }
+      return window
     }
   }
 #endif
