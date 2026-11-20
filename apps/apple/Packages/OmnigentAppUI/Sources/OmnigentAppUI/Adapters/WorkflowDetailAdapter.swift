@@ -145,8 +145,11 @@ struct WorkflowDetailAdapter: View {
     case .idle, .loading, nil: return .loading
     case .failed(let error): return .failed(error.message)
     case .loaded(let runs):
+      // A Stop from a run's Tasks tab shows on its row too.
+      let shown = runs + runs.flatMap { store.descendants(of: $0) }
       let context = WorkflowsMapping.RunContext(
-        workflowID: workflow.id, stopping: store.stoppingRuns, acting: store.runActions,
+        workflowID: workflow.id, stopping: connection.stoppingRuns(shown),
+        acting: store.runActions,
         descendants: { store.descendants(of: $0) },
         hasMoreDescendants: { store.hasMoreDescendants(of: $0) },
         loadingDescendants: store.loadingDescendants)
@@ -253,7 +256,7 @@ extension WorkflowDetailAdapter {
     let name = run.workflowName ?? workflow.name
     Task {
       switch control {
-      case .stop: await store.stop(run, planName: name, workflowID: workflow.id)
+      case .stop: await connection.stopWorkflowRun(run, planName: name, workflowID: workflow.id)
       case .play: await store.continuePlan(run, planName: name, workflowID: workflow.id)
       case .stopping: break
       }
