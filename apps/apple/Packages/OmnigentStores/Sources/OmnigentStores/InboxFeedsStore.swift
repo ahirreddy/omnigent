@@ -34,6 +34,8 @@ public final class InboxFeedsStore {
   public private(set) var failuresError: CoreError?
   /// Failed runs marked read on this device.
   public private(set) var readRunIDs: Set<String> = []
+  /// Omni Advisor: whether it runs for the caller, its switches and admin controls.
+  public let advisor: AdvisorStore
 
   /// The runs a device remembers as read, the oldest dropped first.
   static let readRunLimit = 1000
@@ -51,6 +53,8 @@ public final class InboxFeedsStore {
   init(core: ClientCore, defaults: UserDefaults = .standard) {
     self.core = core
     self.defaults = defaults
+    advisor = AdvisorStore(core: core)
+    advisor.refreshItems = { [weak self] in await self?.refreshItems() }
   }
 
   /// The failures to show: each automation once, without runs marked read.
@@ -75,6 +79,7 @@ public final class InboxFeedsStore {
     failuresCursor = nil
     failuresError = nil
     isLoadingFailures = false
+    advisor.reset()
   }
 
   // MARK: Agent-posted items

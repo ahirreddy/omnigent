@@ -64,10 +64,71 @@
       #expect(spy.log == ["connect https://team.example.com"])
     }
 
+    @Test(
+      "without the CLI, where the app can install it, joining is Just join or Install CLI first")
+    func joinChoiceWithoutCLI() async throws {
+      let spy = AuthSpy()
+      let screen = OnboardingFixture.hosted(local: OnboardingFixture.cliMissing, spy: spy)
+      defer { screen.close() }
+      try screen.click(screen.landingButtons[1])
+      await flush(screen)
+      try screen.fill(0, "https://team.example.com")
+      try screen.pressReturn()
+      await flush(screen)
+      let text = try screen.allText()
+      #expect(text.contains("How do you want to join?"))
+      #expect(text.contains("Just join") && text.contains("Install CLI first"))
+      #expect(text.contains("Open Omnigent"), "Just join is the default")
+      try screen.clickFromEnd()
+      #expect(spy.log == ["connect https://team.example.com"], "Just join installs nothing")
+    }
+
+    @Test("installing first can be cancelled back to the choice, and joins once installed")
+    func installFirst() async throws {
+      let spy = AuthSpy()
+      let server = "https://team.example.com"
+      var state = OnboardingFixture.cliMissing
+      state.install = .installing
+      let installing = OffscreenWindow(
+        OnboardingFlowView(
+          step: .runnerInstall(serverUrl: server), directory: ServerDirectory(),
+          localSetup: state, actions: spy.actions(localSetup: spy.setup())),
+        width: 620, height: 820)
+      defer { installing.close() }
+      #expect(try installing.allText().contains("Installing the Omnigent CLI"))
+      try installing.clickFromEnd()
+      await flush(installing)
+      #expect(try installing.allText().contains("How do you want to join?"), "Cancel goes back")
+      #expect(spy.log.isEmpty, "Cancel neither joins nor hosts")
+
+      state.install = .failed("uv could not be downloaded.")
+      let failed = OffscreenWindow(
+        OnboardingFlowView(
+          step: .runnerInstall(serverUrl: server), directory: ServerDirectory(),
+          localSetup: state, actions: spy.actions(localSetup: spy.setup())),
+        width: 620, height: 820)
+      defer { failed.close() }
+      let text = try failed.allText()
+      #expect(text.contains("Couldn\u{2019}t set up Omnigent") && text.contains("Continue Anyway"))
+      try failed.clickFromEnd()
+      try failed.clickFromEnd(1)
+      #expect(spy.log == ["setup install", "connect \(server)"])
+
+      let installed = OffscreenWindow(
+        OnboardingFlowView(
+          step: .runnerInstall(serverUrl: server), directory: ServerDirectory(),
+          localSetup: OnboardingFixture.ready, actions: spy.actions(localSetup: spy.setup())),
+        width: 620, height: 820)
+      defer { installed.close() }
+      await flush(installed)
+      #expect(spy.log.suffix(2) == ["setup host \(server)", "connect \(server)"])
+    }
+
     @Test("without the CLI the runner question can't host and explains how to later")
     func runnerWithoutCLI() async throws {
       let spy = AuthSpy()
-      let screen = OnboardingFixture.hosted(local: OnboardingFixture.cliMissing, spy: spy)
+      let screen = OnboardingFixture.hosted(
+        local: OnboardingFixture.cliMissing, spy: spy, canInstall: false)
       defer { screen.close() }
       try screen.click(screen.landingButtons[1])
       await flush(screen)

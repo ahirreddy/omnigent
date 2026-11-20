@@ -15,6 +15,8 @@ extension ForkFlow {
     async let offers: Void = sandbox.load(store.catalog.value, sandboxes: store.sandboxes)
     async let repos: Void = seedRepos(store, sourceID: context.source.id)
     _ = await (offers, repos)
+    // The original's profile may be past the first page, or changed since it launched.
+    await sandbox.checkChosenProfile(store.catalog.value, sandboxes: store.sandboxes)
   }
 
   private func seedRepos(_ store: ForkStore, sourceID: String) async {

@@ -93,7 +93,7 @@ struct SandboxFlowTests {
     form.sandbox = choices
     #expect(form.sandbox.profile == nil)
 
-    form.defaultSandboxProfile(catalog)
+    await form.defaultSandboxProfile(catalog)
     #expect(form.sandbox.profile?.id == "p1")
     form.rememberChoices()
     #expect(form.preferences.string(forKey: NewSessionForm.DefaultsKey.sandboxProfile) == "p1")

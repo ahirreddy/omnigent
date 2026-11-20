@@ -5,7 +5,9 @@ import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
 
-// Clicked links to this server's web app open where the app shows them.
+// Clicked links to this server's web app open where the app shows them. The opener has one
+// case per route, so a new route fails to compile here instead of opening the browser.
+// swiftlint:disable cyclomatic_complexity
 extension ConnectedServerView {
   /// Opens links to the connected server's web app (`…/c/<id>`, `?message=`, `/settings/<x>`,
   /// `/usage`) in this window, and everything else with `fallback`.
@@ -47,11 +49,16 @@ extension ConnectedServerView {
       case .workflow(let id):
         session.connection.workflows?.requestedWorkflowID = id
         selection.wrappedValue = .workflows
+      case .extensionPage(let extensionID, let route):
+        selection.wrappedValue = .extensionPage(extensionID: extensionID, route: route)
       case .settings(let section):
         guard let openSettings else { return await fallback.open(url) }
         openSettings(DeepLinkDestinations.settings(section: section, server: settingsServer))
+      case .approval:
+        session.approvalLink = ApprovalLinkRequest(route)
       }
       return true
     }
   }
 }
+// swiftlint:enable cyclomatic_complexity

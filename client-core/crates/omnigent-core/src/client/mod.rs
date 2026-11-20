@@ -29,6 +29,7 @@ pub mod agent_info;
 pub mod agent_tree;
 mod attachment_previews;
 pub mod automations;
+pub mod branding;
 pub mod browser;
 pub mod comments;
 pub mod configure;
@@ -40,6 +41,7 @@ mod error;
 pub mod events;
 pub mod execution_logs;
 mod export;
+pub mod extension_reads;
 mod families;
 pub mod fork;
 pub mod harness_inventory;
@@ -56,6 +58,7 @@ pub mod mcp_tools;
 pub mod pdf_comments;
 pub mod pin_order;
 pub mod policy_registry;
+pub mod proactive_agent;
 pub mod project_repository;
 pub mod project_settings;
 pub mod projects;
@@ -379,7 +382,13 @@ pub struct ClientCore<T> {
     config: CoreConfig,
     state: Mutex<State>,
     listeners: Mutex<Listeners>,
+    /// The device's IANA time zone, sent with session creates (see [`TIMEZONE_HEADER`]).
+    timezone: Mutex<Option<String>>,
 }
+
+/// The header a session create carries so schedules the server makes for the caller (Omni
+/// Advisor's) follow the caller's time zone, as the web sends it.
+const TIMEZONE_HEADER: &str = "X-Omnigent-Timezone";
 
 #[derive(Default)]
 struct Listeners {
@@ -410,12 +419,31 @@ impl<T: HttpTransport> ClientCore<T> {
             config,
             state: Mutex::new(State::default()),
             listeners: Mutex::new(Listeners::default()),
+            timezone: Mutex::new(None),
         }
     }
 
     /// The policy this core was created with.
     pub const fn config(&self) -> CoreConfig {
         self.config
+    }
+
+    /// Sets the device's IANA time zone (`Europe/Paris`) that session creates carry; `None`, or a
+    /// name with characters no zone has, sends none and the server uses UTC.
+    pub fn set_timezone(&self, timezone: Option<&str>) {
+        let valid = timezone.filter(|zone| {
+            !zone.is_empty()
+                && zone.len() <= 64
+                && zone
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"/_+-".contains(&byte))
+        });
+        *lock(&self.timezone) = valid.map(str::to_owned);
+    }
+
+    /// The time zone session creates carry, if any.
+    pub fn timezone(&self) -> Option<String> {
+        lock(&self.timezone).clone()
     }
 
     /// The host transport.

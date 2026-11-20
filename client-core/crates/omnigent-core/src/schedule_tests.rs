@@ -518,3 +518,39 @@ fn minute_intervals_follow_where_runs_go() {
     );
     assert!(needs_anchored_scheduling(&minutes(10)));
 }
+
+#[test]
+fn one_time_rules_read_as_once_as_the_web_names_them() {
+    // `scheduleText.test.ts`: a reminder's literal date, its zone, and other one-time shapes.
+    let reminder = "FREQ=YEARLY;BYMONTH=11;BYMONTHDAY=12;BYHOUR=23;BYMINUTE=0;COUNT=1";
+    assert_eq!(
+        describe_schedule(reminder),
+        "Once on November 12 at 11:00 PM"
+    );
+    assert_eq!(
+        describe_schedule_in(reminder, Some("UTC")),
+        "Once on November 12 at 11:00 PM UTC"
+    );
+    assert_eq!(
+        describe_schedule_in(&format!("RRULE:{reminder}"), Some("Asia/Tokyo")),
+        "Once on November 12 at 11:00 PM (Asia/Tokyo)"
+    );
+    assert_eq!(
+        describe_schedule_in("FREQ=DAILY;BYHOUR=9;BYMINUTE=0;COUNT=1", Some("UTC")),
+        "Once: Every day at 9:00 AM"
+    );
+    // Several times, or a negative day, name no single moment.
+    assert_eq!(
+        describe_schedule("FREQ=YEARLY;BYMONTH=3;BYMONTHDAY=-1;BYHOUR=9;BYMINUTE=0;COUNT=1"),
+        "Once: FREQ=YEARLY;BYMONTH=3;BYMONTHDAY=-1;BYHOUR=9;BYMINUTE=0"
+    );
+    assert_eq!(
+        describe_schedule("FREQ=YEARLY;BYMONTH=3;BYMONTHDAY=4;BYHOUR=9,17;BYMINUTE=0;COUNT=1"),
+        "Once: Yearly in March on the 4th at 9:00 AM"
+    );
+    // More than one run is not one-time.
+    assert_eq!(
+        describe_schedule_in("FREQ=DAILY;BYHOUR=9;BYMINUTE=0;COUNT=2", Some("UTC")),
+        "Every day at 9:00 AM"
+    );
+}

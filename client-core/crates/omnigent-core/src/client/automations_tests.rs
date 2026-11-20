@@ -498,6 +498,10 @@ fn the_inbox_feeds_follow_main_s_info() {
     let older = ServerPages::from_value(&json!({"single_user": true})).unwrap();
     assert!(!older.inbox_items && !older.automation_inbox);
     assert!(ServerPages::from_value(&json!({"inbox_items_available": "yes"})).is_err());
+    // Omni Advisor's tab follows `proactive_agent_available`, off on main's default server.
+    assert!(!pages.advisor && !older.advisor);
+    let advisor = json!({"inbox_items_available": true, "proactive_agent_available": true});
+    assert!(ServerPages::from_value(&advisor).unwrap().advisor);
 }
 
 #[test]

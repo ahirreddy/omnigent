@@ -2,7 +2,7 @@
 //! `omnigent_core::harness_inventory`.
 
 use omnigent_core::harness_inventory::{
-    self as core, InventoryRead, McpRow, PluginRow, SkillContent, SkillRow,
+    self as core, InventoryRead, McpRow, McpSwitch, PluginRow, SkillContent, SkillRow,
 };
 
 use omnigent_core::mcp_tools as mcp;
@@ -51,11 +51,19 @@ pub struct InventoryMcpServer {
     /// The plugin server's id.
     #[uniffi(default)]
     pub source_id: Option<String>,
+    /// The harness its Omnigent on/off switch belongs to; `nil` without a switch.
+    #[uniffi(default)]
+    pub switch_harness: Option<String>,
+    /// An organization pins the switch, so it can't change here.
+    #[uniffi(default)]
+    pub switch_locked: bool,
 }
 
 impl From<McpRow> for InventoryMcpServer {
     fn from(row: McpRow) -> Self {
         Self {
+            switch_harness: row.switch.as_ref().map(|switch| switch.harness.clone()),
+            switch_locked: row.switch.as_ref().is_some_and(|switch| switch.locked),
             id: row.id,
             title: row.title,
             detail: row.detail,
@@ -63,6 +71,25 @@ impl From<McpRow> for InventoryMcpServer {
             name: row.name,
             plugin: row.plugin,
             source_id: row.source_id,
+        }
+    }
+}
+
+impl From<InventoryMcpServer> for McpRow {
+    fn from(server: InventoryMcpServer) -> Self {
+        Self {
+            switch: server.switch_harness.map(|harness| McpSwitch {
+                harness,
+                enabled: !server.is_off,
+                locked: server.switch_locked,
+            }),
+            id: server.id,
+            title: server.title,
+            detail: server.detail,
+            plugin: server.plugin,
+            is_off: server.is_off,
+            name: server.name,
+            source_id: server.source_id,
         }
     }
 }
@@ -310,6 +337,25 @@ impl ClientCore {
             )
             .await
             .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Turns `server` on or off for Omnigent sessions on `host_id`; whether it is on now.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` for a server without a free switch,
+    /// `Rejected` for one the host refuses, and the write errors.
+    pub async fn set_mcp_server_enabled(
+        &self,
+        host_id: String,
+        server: InventoryMcpServer,
+        enabled: bool,
+    ) -> Result<bool, CoreError> {
+        self.sessions()
+            .set_host_mcp_server_enabled(&host_id, &server.into(), enabled)
+            .await
+            .map(|server| server.enabled != Some(false))
             .map_err(CoreError::from)
     }
 

@@ -168,6 +168,8 @@
       apply(pending.route, server: server)
     }
 
+    // One case per route: a new route fails to compile here instead of going nowhere.
+    // swiftlint:disable:next cyclomatic_complexity
     private func apply(_ route: OmnigentDeepLinks.DeepLinkRoute, server: URL?) {
       switch route {
       case .home:
@@ -185,6 +187,8 @@
       case .workflow(let id):
         session?.connection.workflows?.requestedWorkflowID = id
         selection = .workflows
+      case .extensionPage(let extensionID, let route):
+        selection = .extensionPage(extensionID: extensionID, route: route)
       case .settings(let section):
         // The screen shows the scene's own server.
         openSettingsAt?(DeepLinkDestinations.settings(section: section, server: nil))
@@ -192,6 +196,8 @@
         guard let server, let link = SceneLinkPlan.inviteLink(server: server, invite: invite)
         else { return }
         session?.signIn.openInvite(link)
+      case .approval:
+        session?.approvalLink = ApprovalLinkRequest(route)
       }
     }
 

@@ -200,7 +200,8 @@ enum AttachmentSource {
     Held(HoldId),
 }
 
-/// An upload's org and authorization headers, from the connection still current as it leaves.
+/// An upload's org, cookie and authorization headers, from the connection still current as it
+/// leaves.
 pub(super) fn add_connection_headers(
     connection: Option<&HostedConnection>,
     request: &mut HttpRequest,
@@ -211,6 +212,9 @@ pub(super) fn add_connection_headers(
                 .headers
                 .push(HttpHeader::new(DATABRICKS_ORG_HEADER, org));
         }
+        request
+            .headers
+            .extend(connection.endpoint().cookie_header());
         if let Some(authorization) = connection.authorization() {
             request
                 .headers

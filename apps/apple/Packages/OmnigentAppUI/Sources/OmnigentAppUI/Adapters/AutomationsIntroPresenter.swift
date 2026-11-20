@@ -39,6 +39,7 @@ struct AutomationsIntroPresenter: ViewModifier {
             sessionModes: connection.pages?.offered?.automationSessionModes == true,
             sandboxes: connection.creationStore?.catalog.value?.managedSandboxes == true,
             triggers: connection.pages?.offered?.automationTriggers == true),
+          appName: connection.pages?.offered?.branding?.appName ?? AppBranding.defaultAppName,
           dismiss: { isPresented = false })
       }
   }

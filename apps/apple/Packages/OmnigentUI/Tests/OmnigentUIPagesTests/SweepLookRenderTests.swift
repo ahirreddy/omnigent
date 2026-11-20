@@ -27,6 +27,19 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case quickAnswer = "sweep-quick-answer"
   case markdownContents = "sweep-markdown-toc"
   case sideChatSettings = "sweep-side-chat-model"
+  case advisorInbox = "sweep-advisor-inbox"
+  case advisorInboxEmpty = "sweep-advisor-inbox-empty"
+  case advisorSettings = "sweep-advisor-settings"
+  case advisorAdmin = "sweep-advisor-admin"
+  case approvalLink = "sweep-approval-link"
+  case approvalLinkResolved = "sweep-approval-link-resolved"
+  case staleProfile = "sweep-sandbox-profile-changed"
+  case brandedNewSession = "sweep-branded-new-session"
+  case adminView = "sweep-admin-view"
+  case mcpSwitches = "sweep-mcp-switches"
+  case extensionFailed = "sweep-extension-failed"
+  case extensionNotFound = "sweep-extension-not-found"
+  case extensionSidebar = "sweep-extension-sidebar"
 
   var testDescription: String { rawValue }
 
@@ -44,8 +57,18 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .prComments: 560
     case .prUnresolved, .prRemote, .markdownContents: 420
     case .sideChatSettings: 520
+    case .advisorInbox, .advisorInboxEmpty: 520
+    case .advisorSettings: 300
+    case .advisorAdmin: 760
+    case .approvalLink: 460
+    case .approvalLinkResolved: 300
+    case .brandedNewSession: 620
+    case .adminView: 260
+    case .mcpSwitches: 300
+    case .extensionFailed, .extensionNotFound: 360
+    case .extensionSidebar: 620
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
-      .quickAnswer:
+      .quickAnswer, .staleProfile:
       nil
     }
   }
@@ -68,6 +91,19 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .quickAnswer: return AnyView(Fixture.quickAnswer)
     case .markdownContents: return AnyView(Fixture.markdownContents)
     case .sideChatSettings: return AnyView(Fixture.sideChatSettings)
+    case .advisorInbox: return AnyView(Fixture.advisorInbox(empty: false))
+    case .advisorInboxEmpty: return AnyView(Fixture.advisorInbox(empty: true))
+    case .advisorSettings: return AnyView(Fixture.advisorSettings)
+    case .advisorAdmin: return AnyView(Fixture.advisorAdmin)
+    case .approvalLink: return AnyView(Fixture.approvalLink(pending: true))
+    case .approvalLinkResolved: return AnyView(Fixture.approvalLink(pending: false))
+    case .staleProfile: return AnyView(Fixture.staleProfile)
+    case .brandedNewSession: return AnyView(Fixture.brandedNewSession)
+    case .adminView: return AnyView(Fixture.adminView)
+    case .mcpSwitches: return AnyView(Fixture.mcpSwitches)
+    case .extensionFailed: return AnyView(Fixture.extensionPage(found: true))
+    case .extensionNotFound: return AnyView(Fixture.extensionPage(found: false))
+    case .extensionSidebar: return AnyView(Fixture.extensionSidebar)
     }
   }
 }

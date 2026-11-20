@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The sidebar's top rows: New session, Automations, Workflows, Inbox, Canvas, Usage, and the
-/// native quick filters (Running, Needs you). While the server's pages can't be read, a quiet row
-/// says so.
+/// The sidebar's top rows: New session, Automations, Workflows, Inbox, Canvas, the extensions'
+/// entries, Usage, and the native quick filters (Running, Needs you). While the server's pages
+/// can't be read, a quiet row says so.
 struct SidebarNavigationRows: View {
   let state: SidebarViewState
   let selection: SidebarDestination?
@@ -48,6 +48,13 @@ struct SidebarNavigationRows: View {
         .tag(SidebarDestination.canvas)
         .sidebarSelection(selection == .canvas)
         .accessibilityIdentifier("sidebar-canvas")
+    }
+    ForEach(state.extensionEntries) { entry in
+      Label(entry.label, systemImage: entry.systemImage)
+        .neutralSidebarIcon()
+        .tag(entry.destination)
+        .sidebarSelection(selection == entry.destination)
+        .accessibilityIdentifier("sidebar-extension-\(entry.id)")
     }
     if state.showsUsage {
       Label("Usage", systemImage: "creditcard")

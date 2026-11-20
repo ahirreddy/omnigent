@@ -67,6 +67,10 @@ pub struct HostConfig {
     /// seen before open without network. Without it nothing is saved.
     #[uniffi(default)]
     pub cache_directory: Option<String>,
+    /// The device's IANA time zone (`Europe/Paris`), which session creates send so schedules
+    /// the server makes for the user follow it. Without it the server uses UTC.
+    #[uniffi(default)]
+    pub timezone: Option<String>,
 }
 
 const LOOPBACK_HOSTS: [&str; 4] = ["localhost", "127.0.0.1", "[::1]", "::1"];

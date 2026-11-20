@@ -19,6 +19,7 @@ pub mod deeplink;
 pub mod demo;
 mod discovery;
 mod error;
+pub mod extensions;
 pub mod failure_copy;
 pub mod harness_accounts;
 pub mod harness_setup;
@@ -59,12 +60,12 @@ pub mod workspace_store;
 
 pub use client::{
     ClientCore, ClientEvent, ClientListener, CoreConfig, SLICE_KEY_HEADER, SLICE_KEY_QUERY,
-    SessionError, SubscriptionId, agent_info, agent_tree, automations, browser, comments,
-    configure, create, databricks_session, events, execution_logs, fork, harness_inventory,
-    host_switch, inbox, inbox_items, items, mcp_tools, pdf_comments, pin_order, policy_registry,
-    project_repository, project_settings, projects, pull_request_detail, pull_request_edits,
-    pull_requests, rewind, server_admin, session_mcp, session_search, session_tools, sessions,
-    share, usage, user_settings,
+    SessionError, SubscriptionId, agent_info, agent_tree, automations, branding, browser, comments,
+    configure, create, databricks_session, events, execution_logs, extension_reads, fork,
+    harness_inventory, host_switch, inbox, inbox_items, items, mcp_tools, pdf_comments, pin_order,
+    policy_registry, proactive_agent, project_repository, project_settings, projects,
+    pull_request_detail, pull_request_edits, pull_requests, rewind, server_admin, session_mcp,
+    session_search, session_tools, sessions, share, usage, user_settings,
 };
 pub use discovery::{ServerDiscovery, discovery_from_response, manifest_request};
 pub use error::CoreError;

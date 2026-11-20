@@ -38,6 +38,18 @@ struct AccountSettingsPane: View {
         Text("Signed in as")
       }
     }
+    if let account, account.offersAdminView {
+      Section("Administration") {
+        Toggle(
+          isOn: Binding(get: { account.adminViewOn }, set: { actions.setAdminView?($0) })
+        ) {
+          Text("Admin view")
+          Text("Turn off to use your normal session access.")
+        }
+        .disabled(actions.setAdminView == nil)
+        .accessibilityIdentifier("settings.account.admin-view")
+      }
+    }
     if account?.canChangePassword ?? true {
       ChangePasswordPane(actions: actions)
     }

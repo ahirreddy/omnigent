@@ -44,6 +44,15 @@ struct ServerSettingsWiring {
     actions.delete = { ids in Task { await store.delete(ids) } }
     actions.loadMoreArchived = { Task { await store.loadMoreArchived() } }
     actions.saveTitleInstructions = { await store.saveTitleInstructions($0) }
+    actions.advisor = AdvisorMapping.actions(advisor)
+    if let connection, store.info.value?.adminView == true {
+      actions.setAdminView = { enabled in
+        Task {
+          await connection.setAdminView(enabled)
+          await store.loadInfo()
+        }
+      }
+    }
     if let connection, store.info.value?.hasLoginSession ?? false {
       actions.signOut = { signOut(connection) }
     }
@@ -71,6 +80,17 @@ struct ServerSettingsWiring {
     actions.deletePolicy = { row in Task { await store.deletePolicy(row.id) } }
   }
 
+  /// The connection's Omni Advisor.
+  private var advisor: AdvisorStore? { connection?.pages?.feeds.advisor }
+
+  /// Sharing, Admin › General (sharing and the advisor's admin controls) and Omni Advisor.
+  private func loadShared(_ pane: ServerSettingsPane) async {
+    if pane != .advisor { await store.loadSharing() }
+    if pane != .sharing {
+      await AdvisorMapping.load(advisor, info: store.info.value, admin: pane == .adminGeneral)
+    }
+  }
+
   /// Reads what `pane` shows.
   func load(_ pane: ServerSettingsPane) async {
     if store.info.value == nil { await store.loadInfo() }
@@ -82,7 +102,7 @@ struct ServerSettingsWiring {
     case .policies:
       await store.loadPolicies()
       await store.loadPolicyRegistry()
-    case .sharing, .adminGeneral: await store.loadSharing()
+    case .sharing, .adminGeneral, .advisor: await loadShared(pane)
     case .archived: await store.loadArchived()
     case .sessions: await store.loadTitleInstructions()
     case .account, .harnesses, .customAgents, .git: break

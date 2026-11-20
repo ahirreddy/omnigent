@@ -165,6 +165,8 @@ nonisolated public enum InboxFilter: String, Hashable, Sendable, CaseIterable, I
   case unread
   /// Awaiting response.
   case awaiting
+  /// Omni Advisor's suggestions, while it runs for the caller.
+  case advisor
 
   /// The filter itself.
   public var id: Self { self }
@@ -175,8 +177,40 @@ nonisolated public enum InboxFilter: String, Hashable, Sendable, CaseIterable, I
     case .all: "All"
     case .unread: "Unread"
     case .awaiting: "Needs you"
+    case .advisor: "Omni Advisor"
     }
   }
+
+  /// The tabs to offer: Omni Advisor's only while it runs for the caller, or, while its settings
+  /// load, where it was already chosen, so a viewer who turned it off never sees it flash.
+  /// - Parameters:
+  ///   - advisorTab: Whether the advisor runs for the caller.
+  ///   - chosen: The stored choice.
+  /// - Returns: The tabs, in order.
+  public static func offered(advisorTab: InboxAdvisorTab, chosen: Self) -> [Self] {
+    let showsAdvisor =
+      switch advisorTab {
+      case .shown: true
+      case .hidden: false
+      case .loading: chosen == .advisor
+      }
+    return showsAdvisor ? allCases : allCases.filter { $0 != .advisor }
+  }
+
+  /// The tab that applies: the chosen one, or All when it isn't offered.
+  public static func effective(_ chosen: Self, advisorTab: InboxAdvisorTab) -> Self {
+    offered(advisorTab: advisorTab, chosen: chosen).contains(chosen) ? chosen : .all
+  }
+}
+
+/// Whether the Inbox offers Omni Advisor's tab.
+nonisolated public enum InboxAdvisorTab: Hashable, Sendable {
+  /// The server doesn't offer the advisor, or it is off for the caller.
+  case hidden
+  /// Its settings are being read.
+  case loading
+  /// It runs for the caller.
+  case shown
 }
 
 /// The Inbox.
@@ -209,6 +243,10 @@ nonisolated public struct InboxViewState: Hashable, Sendable {
   public var unreadSuggestionCount = 0
   /// The server stopped counting them at its cap.
   public var unreadSuggestionsCapped = false
+  /// Omni Advisor's tab.
+  public var advisorTab = InboxAdvisorTab.hidden
+  /// Omni Advisor's settings could not be read, so its suggestions can't be told apart.
+  public var advisorSettingsFailed = false
   /// Automation failures could not be read.
   public var automationsFailed = false
   /// More automations remain to check.
@@ -262,6 +300,8 @@ public struct InboxActions {
   public var loadMoreSuggestions: (@MainActor () -> Void)?
   /// Read automation failures again.
   public var retryAutomations: (@MainActor () -> Void)?
+  /// Read Omni Advisor's settings again.
+  public var retryAdvisorSettings: (@MainActor () -> Void)?
   /// Check more automations for failures.
   public var loadMoreAutomations: (@MainActor () -> Void)?
 

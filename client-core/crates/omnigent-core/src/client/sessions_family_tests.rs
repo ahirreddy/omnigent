@@ -200,3 +200,22 @@ fn a_list_row_carries_its_stored_pull_request_and_whether_an_automation_ran_it()
     row["labels"] = json!({"omnigent.scheduled_task_launch": "t1"});
     assert!(core.apply_session_rows(vec![row]).unwrap()[0].is_automation_run);
 }
+
+#[test]
+fn an_archived_row_carries_its_archive_time_label() {
+    let core = connected(RouteTransport::local());
+    let mut row = update_row(0);
+    let archived_at =
+        |row: &Value| core.apply_session_rows(vec![row.clone()]).unwrap()[0].archived_at;
+    row["labels"] = json!({"omnigent.archived_at": "1700000000"});
+    assert_eq!(archived_at(&row), Some(1_700_000_000));
+    // A row without labels keeps what was known.
+    row.as_object_mut().unwrap().remove("labels");
+    assert_eq!(archived_at(&row), Some(1_700_000_000));
+    for unusable in ["", "soon", "0", "-5", "1.5"] {
+        row["labels"] = json!({"omnigent.archived_at": unusable});
+        assert_eq!(archived_at(&row), None, "{unusable:?}");
+    }
+    row["labels"] = json!({});
+    assert_eq!(archived_at(&row), None);
+}

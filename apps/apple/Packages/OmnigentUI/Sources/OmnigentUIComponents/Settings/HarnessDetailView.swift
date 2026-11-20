@@ -145,6 +145,8 @@ public struct HarnessDetailActions {
   public var closeSkill: (@MainActor () -> Void)?
   /// Probes an opened MCP server row's tools, by its id.
   public var probeServer: (@MainActor (String) -> Void)?
+  /// Turn an MCP server (by row id) on or off for Omnigent sessions.
+  public var setServerEnabled: (@MainActor (String, Bool) -> Void)?
 
   /// Creates the actions.
   public init(
@@ -190,7 +192,8 @@ public struct HarnessDetailView: View {
         } else {
           HarnessCatalogList(
             catalog: catalog, tab: shown, openSkill: actions.openSkill,
-            openPlugin: { openPluginID = $0.id }, probeServer: actions.probeServer)
+            openPlugin: { openPluginID = $0.id }, probeServer: actions.probeServer,
+            setServerEnabled: actions.setServerEnabled)
         }
       }
     } else {

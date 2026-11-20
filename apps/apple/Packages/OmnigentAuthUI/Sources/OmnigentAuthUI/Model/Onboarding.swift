@@ -72,6 +72,16 @@ public nonisolated struct LocalSetupState: Hashable, Sendable {
   }
 }
 
+/// How the user joins a server from the runner step.
+public nonisolated enum RunnerChoice: Hashable, Sendable {
+  /// Open the server; this Mac runs no agents.
+  case join
+  /// Open the server, and host for it once signed in.
+  case host
+  /// Install the CLI, then open the server and host for it.
+  case installFirst
+}
+
 /// What the local setup screens ask the app to do.
 public struct LocalSetupActions {
   /// Start the local server (or reuse a running one), then connect this window to it.
@@ -126,6 +136,8 @@ public nonisolated enum OnboardingStep: Hashable, Sendable {
   case servers
   /// "Where do you work today?" before joining `serverUrl`.
   case runner(serverUrl: String)
+  /// Installing the CLI before joining `serverUrl` and hosting for it ("Install CLI first").
+  case runnerInstall(serverUrl: String)
 
   /// Where the flow opens. A failed connect, a returning user and a platform with nothing to
   /// set up locally open the server list; a new user sees the landing.

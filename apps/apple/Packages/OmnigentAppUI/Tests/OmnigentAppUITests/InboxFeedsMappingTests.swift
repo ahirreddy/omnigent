@@ -77,6 +77,35 @@ struct InboxFeedsMappingTests {
     #expect(state.unreadSuggestionCount == 4 && state.unreadSuggestionsCapped)
   }
 
+  @Test("Omni Advisor's items are marked and named for it, and its tab follows its settings")
+  func advisor() async throws {
+    let settings =
+      #"{"workspace_enabled":true,"user_enabled":true,"enabled":true,"#
+      + #""can_manage_workspace":false,"agent_id":"a"}"#
+    let connection = try await Fixtures.connection(routes: [
+      "/v1/info": .json(
+        #"{"single_user":true,"accounts_enabled":false,"inbox_items_available":true,"#
+          + #""proactive_agent_available":true}"#),
+      "/v1/inbox/items": .json(
+        #"{"data":[\#(Self.item)],"next_cursor":null,"unread_count":1,"unread_count_capped":false}"#
+      ),
+      "/v1/proactive-agent/settings": .json(settings),
+    ])
+    let pages = try #require(connection.pages)
+    #expect(
+      InboxTriageMapping.state(connection: connection, readRevisions: [:]).advisorTab == .loading,
+      "the tab waits for the advisor's settings")
+    await pages.refreshInboxFeeds()
+    let state = InboxTriageMapping.state(connection: connection, readRevisions: [:])
+    #expect(state.advisorTab == .shown && !state.advisorSettingsFailed)
+    let details = try #require(state.items.first { $0.kind == .suggestion }?.suggestion)
+    #expect(details.isAdvisor)
+    #expect(details.kindLabel == "Omni Advisor \u{00B7} Reminder")
+
+    #expect(InboxFeedsMapping.advisorTab(.failed(.InvalidState(message: "x"))) == .hidden)
+    #expect(InboxFeedsMapping.advisorTab(.loading) == .loading)
+  }
+
   @Test("a server that offers neither feed lists neither, and they are never read")
   func notOffered() async throws {
     let connection = try await connection(offered: false)

@@ -15,7 +15,8 @@ struct InboxSuggestionDetail: View {
         .frame(maxWidth: .infinity, alignment: .leading)
       ForEach(suggestion.charts) { InboxChartView(chart: $0) }
       if !suggestion.links.isEmpty { links }
-      postedFrom
+      // Omni Advisor runs in hidden sessions, so its items name none.
+      if !suggestion.isAdvisor { postedFrom }
       buttons
     }
     .accessibilityIdentifier("inbox-suggestion-\(item.id)")

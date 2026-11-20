@@ -102,11 +102,30 @@ public struct OnboardingFlowView: View {
       case .runner(let serverUrl):
         RunnerChoiceView(
           serverUrl: serverUrl, directory: directory, localSetup: localSetup,
+          canInstall: setup?.installCLI != nil,
           back: { step = offersLanding ? .landing : .servers },
-          proceed: { hostHere in
-            if hostHere { setup?.hostAfterSignIn(serverUrl) }
-            actions.connect(serverUrl)
+          proceed: { choice in
+            switch choice {
+            case .join: actions.connect(serverUrl)
+            case .host:
+              setup?.hostAfterSignIn(serverUrl)
+              actions.connect(serverUrl)
+            case .installFirst:
+              step = .runnerInstall(serverUrl: serverUrl)
+              setup?.installCLI?()
+            }
           })
+      case .runnerInstall(let serverUrl):
+        if let setup, let state = localSetup {
+          RunnerInstallView(
+            state: state, back: { step = .runner(serverUrl: serverUrl) },
+            retry: { setup.installCLI?() },
+            join: { actions.connect(serverUrl) },
+            installed: {
+              setup.hostAfterSignIn(serverUrl)
+              actions.connect(serverUrl)
+            })
+        }
       }
     }
     .accessibilityElement(children: .contain)

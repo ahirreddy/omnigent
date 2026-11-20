@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// A harness's MCP servers, skills and plugins on a host, as its Settings page's tabs list them
 /// (the web's `HarnessCatalog`).
@@ -44,6 +45,8 @@ public struct HarnessCatalogState: Equatable, Sendable {
     public var probe: HarnessMcpProbe?
     /// The connection badge, once probed.
     public var status: HarnessMcpStatus?
+    /// Its Omnigent on/off switch, where the host reports one.
+    public var omnigentSwitch: HarnessMcpSwitch?
 
     /// Creates a server.
     public init(id: String, title: String, detail: String? = nil, isOff: Bool = false) {
@@ -179,5 +182,43 @@ public struct HarnessSkillPageState: Equatable, Sendable {
     self.content = content
     self.truncated = truncated
     self.notice = notice
+  }
+}
+
+/// An MCP server's switch for Omnigent sessions, as the web's `McpSwitch`.
+public struct HarnessMcpSwitch: Equatable, Sendable {
+  /// On for Omnigent sessions (the change in flight, while one is).
+  public var isOn: Bool
+  /// An organization fixed it.
+  public var isLocked: Bool
+  /// A change is in flight.
+  public var isSaving: Bool
+
+  /// Creates a switch.
+  public init(isOn: Bool, isLocked: Bool = false, isSaving: Bool = false) {
+    self.isOn = isOn
+    self.isLocked = isLocked
+    self.isSaving = isSaving
+  }
+}
+
+/// The trailing switch of an MCP server's row.
+struct HarnessMcpSwitchView: View {
+  let server: HarnessCatalogState.Server
+  let toggle: (@MainActor (String, Bool) -> Void)?
+
+  var body: some View {
+    if let omnigentSwitch = server.omnigentSwitch {
+      Toggle(
+        "Enable \(server.title)",
+        isOn: Binding(get: { omnigentSwitch.isOn }, set: { toggle?(server.id, $0) })
+      )
+      .labelsHidden()
+      .toggleStyle(.switch)
+      .controlSize(.small)
+      .disabled(omnigentSwitch.isLocked || omnigentSwitch.isSaving || toggle == nil)
+      .help(omnigentSwitch.isLocked ? "Managed by your organization" : "Omnigent sessions only")
+      .accessibilityIdentifier("harness-mcp-switch-\(server.id)")
+    }
   }
 }

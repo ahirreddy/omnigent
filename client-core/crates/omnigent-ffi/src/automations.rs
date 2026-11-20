@@ -8,7 +8,7 @@ use crate::client::ClientCore;
 use crate::errors::CoreError;
 
 /// The top-level pages the server offers. Missing fields mean unsupported.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct ServerPages {
     /// The Automations page.
     pub automations: bool,
@@ -56,6 +56,12 @@ pub struct ServerPages {
     /// The Inbox lists automation failures that made no session (`scheduled_task_inbox`).
     #[uniffi(default)]
     pub automation_inbox: bool,
+    /// Omni Advisor can post suggestions to the caller's Inbox (`proactive_agent_available`).
+    #[uniffi(default)]
+    pub advisor: bool,
+    /// The operator's branding, when it sets any.
+    #[uniffi(default)]
+    pub branding: Option<ServerBranding>,
     /// A session can be opened to anyone with the link (`public_sharing_enabled`).
     #[uniffi(default = true)]
     pub public_sharing: bool,
@@ -869,20 +875,58 @@ pub fn format_next_run(next_run_at: i64, now: i64) -> String {
     rules::format_next_run(next_run_at, now)
 }
 
+/// The server operator's branding.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct ServerBranding {
+    /// Replaces "Omnigent" where the app names itself.
+    pub app_name: Option<String>,
+    /// Replaces the new-session heading; empty hides it.
+    pub heading: Option<String>,
+    /// The main logo's path, for [`ClientCore::branding_logo`]; shown in place of the mascot.
+    pub logo_main: Option<String>,
+    /// "Powered by Omnigent" shows.
+    pub powered_by: bool,
+}
+
+impl From<omnigent_core::branding::Branding> for ServerBranding {
+    fn from(branding: omnigent_core::branding::Branding) -> Self {
+        Self {
+            app_name: branding.app_name,
+            heading: branding.heading,
+            logo_main: branding.logo_main,
+            powered_by: branding.powered_by,
+        }
+    }
+}
+
 #[uniffi::export]
 impl ClientCore {
+    /// A branding logo's bytes, by the path the server's branding gave.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` for another path, `MalformedResponse` for an
+    /// empty or oversized image, and the read errors.
+    pub async fn branding_logo(&self, path: String) -> Result<Vec<u8>, CoreError> {
+        self.sessions()
+            .branding_logo(&path)
+            .await
+            .map_err(CoreError::from)
+    }
+
     /// Which top-level pages the server offers.
     ///
     /// # Errors
     ///
     /// [`CoreError::Session`]: the read errors and `MalformedResponse`.
     pub async fn server_pages(&self) -> Result<ServerPages, CoreError> {
-        let pages = self
+        let (pages, branding) = self
             .sessions()
-            .server_pages()
+            .server_pages_and_branding()
             .await
             .map_err(CoreError::from)?;
         Ok(ServerPages {
+            branding: branding.map(Into::into),
             automations: pages.automations,
             automation_session_modes: pages.automation_session_modes,
             usage: pages.usage,
@@ -899,6 +943,7 @@ impl ClientCore {
             sibling_session_destinations: Some(pages.sibling_destinations.into()),
             inbox_items: pages.inbox_items,
             automation_inbox: pages.automation_inbox,
+            advisor: pages.advisor,
             public_sharing: pages.public_sharing,
             sharing_read_only: pages.sharing_read_only,
             sharing_restricted: pages.sharing_restricted,

@@ -225,6 +225,7 @@ public struct ServerSettingsView: View {
     switch pane {
     case .sessions:
       SessionTitleInstructionsPane(state: state.titleInstructions, actions: actions)
+    case .advisor: AdvisorSettingsPane(state: state.advisor, actions: actions.advisor)
     case .importSessions:
       ImportSessionsPane(hosts: state.importHosts, sources: state.importSources, actions: actions)
     case .archived:
@@ -238,7 +239,8 @@ public struct ServerSettingsView: View {
   /// General, Members, Policies and Sharing.
   @ViewBuilder private func adminPane(_ pane: ServerSettingsPane) -> some View {
     switch pane {
-    case .adminGeneral: AdminGeneralPane(sharing: state.sharing, actions: actions)
+    case .adminGeneral:
+      AdminGeneralPane(sharing: state.sharing, advisor: state.advisor, actions: actions)
     case .members:
       MembersPane(members: state.members, actions: actions, errorMessage: state.errorMessage)
     case .policies:

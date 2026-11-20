@@ -114,7 +114,8 @@ struct NewSessionContainer: View {
         submitWithCommandReturn: composerPreferences.submitWithCommandReturn),
       actions: actions(creation),
       // The web's hero: a nested agent's, the project's name, else "What should we build?".
-      heading: form.heading, subtitle: form.nested?.subtitle ?? form.workflowSubtitle,
+      heading: form.heading(branded: connection.pages?.offered?.branding?.heading),
+      subtitle: form.nested?.subtitle ?? form.workflowSubtitle,
       importSessions: importSessions(openURL, openSettingsAt),
       options: form.options(creation, projects: connection.sessionList.projects),
       optionActions: optionActions(creation), isFloating: isFloating,

@@ -20,6 +20,24 @@ struct WebLinkRouteTests {
     #expect(route("http://127.0.0.1:6767/settings/mcp") == .settings(section: "mcp"))
     #expect(route("http://127.0.0.1:6767/") == .home)
     #expect(route("HTTP://127.0.0.1:6767/c/conv_a") == .conversation(sessionID: "conv_a"))
+    #expect(
+      route("http://127.0.0.1:6767/approve/conv_a/elic_1")
+        == .approval(sessionID: "conv_a", elicitationID: "elic_1"))
+  }
+
+  @Test("routes an extension's page by its extension and route, as the web's routes take them")
+  func extensionPages() throws {
+    let page = route("http://127.0.0.1:6767/extensions/example.hello-page/hello")
+    #expect(page == .extensionPage(extensionID: "example.hello-page", route: "hello"))
+    #expect(page?.path == "/extensions/example.hello-page/hello")
+    #expect(page?.sessionID == nil)
+    #expect(
+      route("http://127.0.0.1:6767/extensions/example.hello-page/hello/")
+        == .extensionPage(extensionID: "example.hello-page", route: "hello"))
+    // The web's routes take an extension id with a dot and exactly one page segment.
+    #expect(route("http://127.0.0.1:6767/extensions/nodot/hello") == nil)
+    #expect(route("http://127.0.0.1:6767/extensions/example.hello-page") == nil)
+    #expect(route("http://127.0.0.1:6767/extensions/example.hello-page/a/b") == nil)
   }
 
   @Test("leaves other origins, API paths and invites to the browser")

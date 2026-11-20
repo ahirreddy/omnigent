@@ -41,7 +41,14 @@ public struct ServerRootView: View {
         ConnectedServerView(
           session: session, selection: $selection, isWindowFocused: isWindowFocused,
           openInNewWindow: openInNewWindow, tabContext: tabContext,
-          serverSwitching: serverSwitching)
+          serverSwitching: serverSwitching
+        )
+        .modifier(
+          ApprovalLinkPresentation(session: session) { sessionID in
+            Task { selection = await session.showLinkedSession(sessionID) }
+          }
+        )
+        .modifier(ServerBrandingEnvironment(connection: session.connection))
       } else {
         AuthFlowView(
           state: session.signIn.state, actions: session.signIn.actions, validator: .app

@@ -17,8 +17,11 @@ enum InboxFeedsMapping {
       InboxDismissChoice(id: reasonID($0.reason), title: $0.label)
     }
     var items: [InboxItem] = []
+    let advisorID = offered.advisor ? feeds.advisor.settings.value?.agentId : nil
     if offered.inboxItems {
-      items += feeds.items.map { suggestion($0, list: connection.sessionList, choices: choices) }
+      items += feeds.items.map {
+        suggestion($0, list: connection.sessionList, choices: choices, advisorID: advisorID)
+      }
     }
     if offered.automationInbox {
       items += feeds.unreadFailures.map(failure)
@@ -38,6 +41,10 @@ enum InboxFeedsMapping {
       state.unreadSuggestionCount = Int(clamping: feeds.unreadCount)
       state.unreadSuggestionsCapped = feeds.unreadCountCapped
     }
+    if offered.advisor {
+      state.advisorTab = advisorTab(feeds.advisor.settings)
+      if case .failed = feeds.advisor.settings { state.advisorSettingsFailed = true }
+    }
     if offered.automationInbox {
       state.automationsFailed = feeds.failuresError != nil
       state.hasMoreAutomations = feeds.hasMoreFailures
@@ -45,10 +52,22 @@ enum InboxFeedsMapping {
     }
   }
 
+  /// Omni Advisor's tab: shown while it runs for the caller, loading until that is read, hidden
+  /// when it is off or the read failed.
+  static func advisorTab(_ settings: CreationLoad<AdvisorSettingsRecord>) -> InboxAdvisorTab {
+    switch settings {
+    case .loaded(let settings): settings.enabled ? .shown : .hidden
+    case .idle, .loading: .loading
+    case .failed: .hidden
+    }
+  }
+
   static func suggestion(
-    _ record: AgentInboxItemRecord, list: SessionListStore, choices: [InboxDismissChoice]
+    _ record: AgentInboxItemRecord, list: SessionListStore, choices: [InboxDismissChoice],
+    advisorID: String? = nil
   ) -> InboxItem {
-    let source = list.session(record.sourceSessionId)
+    let isAdvisor = advisorID != nil && record.agentId == advisorID
+    let source = isAdvisor ? nil : list.session(record.sourceSessionId)
     var item = InboxItem(
       id: suggestionPrefix + record.id, kind: .suggestion, sessionId: record.sourceSessionId,
       sessionTitle: record.title, preview: record.preview,
@@ -56,14 +75,15 @@ enum InboxFeedsMapping {
       isUnread: record.isUnread)
     item.agentName = source?.agentName ?? ""
     item.suggestion = InboxSuggestion(
-      kindLabel: record.kindLabel, title: record.title, body: record.bodyMd,
+      kindLabel: isAdvisor ? "\(advisorName()) \u{00B7} \(record.kindLabel)" : record.kindLabel,
+      title: record.title, body: record.bodyMd,
       charts: record.charts.map(chart),
       links: record.links.map {
         InboxLink(title: $0.title, sessionID: $0.sessionId, url: $0.webUrl.flatMap(URL.init))
       },
       actions: record.actions.map(\.label),
       sourceTitle: source.map(\.title).flatMap { $0.isEmpty ? nil : $0 } ?? "its session",
-      dismissChoices: choices)
+      dismissChoices: choices, isAdvisor: isAdvisor)
     return item
   }
 

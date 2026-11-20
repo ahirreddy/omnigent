@@ -30,6 +30,8 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
   case workflows
   /// Usage.
   case usage
+  /// An extension's page.
+  case extensionPage
   /// A project's board.
   case project
 
@@ -50,6 +52,7 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
     case .automations: "clock"
     case .workflows: "flowchart"
     case .usage: "creditcard"
+    case .extensionPage: "puzzlepiece.extension"
     case .project: "rectangle.split.3x1"
     }
   }
@@ -71,6 +74,7 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
     case .automations: "Automations"
     case .workflows: "Workflows"
     case .usage: "Usage"
+    case .extensionPage: "Extension"
     case .project: "Project"
     }
   }

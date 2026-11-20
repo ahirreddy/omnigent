@@ -21,7 +21,8 @@ fn info_reads_admin_mode_and_known_connections() {
         r#"{"single_user":false,"accounts_enabled":true,"archive_worktree_cleanup":true,
             "login_url":"/login","enabled_connections":["mcp","github","slack","databricks"],
             "agent_install":true,"agent_detail":true,"agent_config_edit":true,
-            "session_title_instructions":true,"sibling_sessions":true}"#,
+            "session_title_instructions":true,"sibling_sessions":true,
+            "proactive_agent_available":true}"#,
     );
     assert_eq!(
         block_on(core.server_settings_info()).unwrap(),
@@ -39,6 +40,10 @@ fn info_reads_admin_mode_and_known_connections() {
             agent_config_edit: true,
             session_title_instructions: true,
             nested_agents: true,
+            advisor: true,
+            admin_view_supported: false,
+            admin_view_off: false,
+            workspace_hosted: false,
         }
     );
 
@@ -48,7 +53,8 @@ fn info_reads_admin_mode_and_known_connections() {
     assert!(info.single_user && !info.mcp_registry && info.connections.is_empty());
     assert!(!info.archive_worktree_cleanup && !info.has_login_session);
     assert!(!info.custom_agents && !info.agent_detail && !info.agent_config_edit);
-    assert!(!info.session_title_instructions && !info.nested_agents);
+    assert!(!info.session_title_instructions && !info.nested_agents && !info.advisor);
+    assert!(!info.admin_view_supported && !info.offers_admin_view());
 
     // The retired `custom_agents_settings_ui` flag no longer matters: `agent_install` alone
     // shows the page, as on the web.
@@ -657,4 +663,48 @@ fn a_member_with_a_text_timestamp_is_malformed_and_an_odd_import_tally_is_uncert
         block_on(core.import_local_sessions("h1", "claude", 3, None)),
         Err(SessionError::DeliveryUncertain { detail }) if detail.contains("tally")
     ));
+}
+
+#[test]
+fn the_admin_view_switch_shows_as_the_web_offers_it() {
+    let info = |admin: bool, single: bool, off: bool, workspace: bool| ServerSettingsInfo {
+        is_admin: admin,
+        single_user: single,
+        admin_view_supported: true,
+        admin_view_off: off,
+        workspace_hosted: workspace,
+        ..ServerSettingsInfo::default()
+    };
+    assert!(info(true, false, false, false).offers_admin_view());
+    assert!(
+        !info(false, false, false, false).offers_admin_view(),
+        "admins only"
+    );
+    assert!(
+        !info(true, true, false, false).offers_admin_view(),
+        "not single-user"
+    );
+    assert!(
+        !info(true, false, false, true).offers_admin_view(),
+        "not in a workspace"
+    );
+    // Off, it always shows, so it can be turned back on.
+    assert!(info(true, true, true, true).offers_admin_view());
+    let unsupported = ServerSettingsInfo {
+        admin_view_supported: false,
+        ..info(true, false, true, false)
+    };
+    assert!(!unsupported.offers_admin_view());
+}
+
+#[test]
+fn settings_info_reports_this_connections_admin_view() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/info",
+        r#"{"single_user":false,"accounts_enabled":true,"admin_view":true}"#,
+    );
+    let info = block_on(core.server_settings_info()).unwrap();
+    assert!(info.admin_view_supported && !info.admin_view_off && !info.workspace_hosted);
+    assert!(info.offers_admin_view());
 }

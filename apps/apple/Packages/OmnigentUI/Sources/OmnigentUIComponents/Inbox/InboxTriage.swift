@@ -18,6 +18,7 @@ nonisolated enum InboxTriage {
       case .all: matchesFilter = true
       case .unread: matchesFilter = item.isUnread && !item.isUnresolved
       case .awaiting: matchesFilter = item.isUnresolved
+      case .advisor: matchesFilter = item.suggestion?.isAdvisor == true
       }
       let text = [
         item.preview, item.sessionTitle, item.agentName, item.executionContext,

@@ -44,6 +44,7 @@ extension ConnectionStore {
   public func connect(serverURL: String, expectedUserID: String? = nil) async {
     await discover(serverURL: serverURL)
     guard let core, discovery != nil else { return }
+    core.setAdminView(enabled: AdminViewPreference.isOn(for: serverURL))
     do {
       let connected = try await core.connect(serverUrl: serverURL, expectedUserId: expectedUserID)
       // The phases the core passed through are still on their way here: applied after its

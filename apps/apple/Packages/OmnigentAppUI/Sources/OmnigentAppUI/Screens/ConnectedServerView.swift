@@ -168,7 +168,7 @@ public struct ConnectedServerView: View {
     state.collapsedFamilies = sidebar.collapsedFamilies
     state = SidebarNestedDraftRows.applied(
       to: state, creation: connection.creationStore, list: connection.sessionList)
-    SidebarAdapter.applyOfferedPages(connection.pages?.offered, to: &state)
+    SidebarAdapter.applyOfferedPages(connection, to: &state)
     state.projectRunChoices = newProjectRunChoices
     state.pagesFailure = SidebarAdapter.pagesFailure(connection)
     state.projectSort = connection.sessionList.projectSortMode.map {
@@ -222,8 +222,8 @@ public struct ConnectedServerView: View {
       automationsPage
     case .workflows:
       workflowsPage
-    case .usage:
-      UsageAdapter(connection: connection) { selection = .session($0) }
+    case .usage, .extensionPage:
+      pageOfItsOwn(destination)
     case .project(let id):
       projectBoard(id)
     case nil:
@@ -335,7 +335,7 @@ extension ConnectedServerView {
     return Group {
       switch tab.content {
       case .chat, .newSession, .nestedSession, .inbox, .canvas, .automations, .workflows, .usage,
-        .project:
+        .extensionPage, .project:
         detail(tab.content.destination)
       case .newTab:
         newTabPage(tab, routes: routes)
@@ -383,13 +383,6 @@ extension ConnectedServerView {
     } else {
       PendingSideChatTab(session: session, tabID: tab.id, parentID: parentID, fail: routes.fail)
     }
-  }
-
-  /// The window's saved page applies unless the host already chose one (a deep link, a new
-  /// window for a session).
-  private func restore(_ saved: SidebarDestination?) {
-    if selection == nil, let saved { selection = saved }
-    session.tabs.show(selection)
   }
 
   /// The page changed from the model (a removed session, a tab opened in another session).

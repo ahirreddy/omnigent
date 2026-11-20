@@ -62,6 +62,15 @@ struct NewSessionDefaultsTests {
     #expect(SandboxChoices.defaultProfile([arm, intel], last: "gone") == intel)
     #expect(SandboxChoices.defaultProfile([arm, plain], last: nil) == arm)
     #expect(SandboxChoices.defaultProfile([], last: "p-arm") == nil)
+    // The one used last past the first page, looked up by id; else the server's default.
+    let far = profile("p-far", "Far")
+    #expect(
+      SandboxChoices.defaultProfile([arm, intel], last: "p-far", lookedUp: ["p-far": far]) == far)
+    #expect(
+      SandboxChoices.defaultProfile([arm, intel], last: "gone", serverDefault: "p-arm") == arm)
+    #expect(
+      SandboxChoices.defaultProfile(
+        [arm], last: nil, serverDefault: "p-far", lookedUp: ["p-far": far]) == far)
   }
 
   /// A server that starts sandboxes of two providers.

@@ -147,6 +147,27 @@ fn posts_201_exact_external_host_contract_without_initial_prompt() {
 }
 
 #[test]
+fn creates_carry_the_devices_time_zone_once_one_is_set() {
+    let core = connected(stub());
+    block_on(core.create_session(&selection(), "")).unwrap();
+    core.set_timezone(Some("America/Argentina/Buenos_Aires"));
+    block_on(core.create_session(&selection(), "")).unwrap();
+    // A name no zone has (a header break, say) sends nothing, and the server keeps UTC.
+    core.set_timezone(Some("Europe/Paris\r\nX-Other: 1"));
+    block_on(core.create_session(&selection(), "")).unwrap();
+    core.set_timezone(Some("Etc/GMT+5"));
+    assert_eq!(core.timezone().as_deref(), Some("Etc/GMT+5"));
+    core.set_timezone(None);
+    assert_eq!(core.timezone(), None);
+    let writes = core.transport().writes();
+    let zones: Vec<Option<&str>> = writes
+        .iter()
+        .map(|request| header(request, super::TIMEZONE_HEADER))
+        .collect();
+    assert_eq!(zones, [None, Some("America/Argentina/Buenos_Aires"), None]);
+}
+
+#[test]
 fn defaults_omit_model_and_blank_title() {
     let transport = stub();
     transport.load(&format!("{CREATION}DefaultsOmitModelAndBlankTitle.json"));
@@ -502,6 +523,108 @@ fn a_sandbox_session_sends_its_provider_profile_host_id_and_run_configuration() 
         );
     }
     assert_eq!(posts(core.transport()), 1);
+}
+
+const PREVIEW: &str = "/v1/sandbox-providers/modal/harnesses/codex-native/model-options";
+
+/// A core on a server whose `modal` sandboxes preview their models at configuration `cfg_7`.
+fn previewing_sandboxes() -> super::ClientCore<RouteTransport> {
+    let transport = stub();
+    transport.ok(
+        "/v1/info",
+        r#"{"single_user":true,"accounts_enabled":false,"managed_sandboxes_enabled":true,
+            "sandbox_provider":"modal","sandbox_providers":["modal"],
+            "sandbox_provider_capabilities":{"modal":{"inference_models":true}}}"#,
+    );
+    transport.ok(
+        PREVIEW,
+        r#"{"models":[{"id":"m","model":"provider-model"}],"configured":true,
+            "configuration_revision":"cfg_7","status":"ready"}"#,
+    );
+    connected(transport)
+}
+
+fn with_model(model: &str) -> CreationSelection {
+    CreationSelection {
+        model: Some(model.into()),
+        ..selection()
+    }
+}
+
+#[test]
+fn a_sandbox_launch_pins_the_configuration_its_models_come_from() {
+    let core = previewing_sandboxes();
+    block_on(core.create_sandbox_session(&with_model("provider-model"), &sandbox(&[]), ""))
+        .unwrap();
+    let body = body_json(&core.transport().writes()[0]);
+    assert_eq!(body["inference_configuration_revision"], "cfg_7");
+    assert!(
+        core.transport()
+            .lines()
+            .iter()
+            .any(|line| line.contains(PREVIEW)),
+        "the preview is read again just before the launch"
+    );
+
+    // A model the provider no longer offers stops the launch before anything is posted.
+    assert!(matches!(
+        block_on(core.create_sandbox_session(&with_model("retired-model"), &sandbox(&[]), "")),
+        Err(SessionError::Creation(CreationError::Unavailable(text)))
+            if text.contains("Choose a model again")
+    ));
+    assert_eq!(posts(core.transport()), 1);
+
+    // A server without the preview route pins nothing and leaves the model to the server.
+    core.transport().respond(
+        None,
+        PREVIEW,
+        None,
+        Reply::json(404, r#"{"detail":"Not Found"}"#),
+    );
+    block_on(core.create_sandbox_session(&with_model("retired-model"), &sandbox(&[]), "")).unwrap();
+    let last = core.transport().write_bodies().pop().unwrap();
+    assert!(
+        last.get("inference_configuration_revision").is_none(),
+        "{last}"
+    );
+}
+
+#[test]
+fn a_sandbox_launch_reads_the_servers_refusals_in_its_words() {
+    let core = previewing_sandboxes();
+    for (status, body, words) in [
+        (
+            409,
+            r#"{"detail":{"code":"inference_configuration_changed","message":"Harness configuration changed. Refresh the model choices."}}"#,
+            "Refresh the model choices.",
+        ),
+        (
+            409,
+            r#"{"detail":"Sandbox profile changed. Choose a profile again."}"#,
+            "Choose a profile again.",
+        ),
+        (
+            403,
+            r#"{"detail":"Sandbox profile access denied"}"#,
+            "access denied",
+        ),
+    ] {
+        core.transport().respond(
+            Some("POST"),
+            "/v1/sessions",
+            None,
+            Reply::json(status, body),
+        );
+        let refused = block_on(core.create_sandbox_session(&selection(), &sandbox(&[]), ""));
+        assert!(
+            matches!(
+                &refused,
+                Err(SessionError::Creation(CreationError::Rejected { status: got, message }))
+                    if *got == status && message.contains(words)
+            ),
+            "{status}: {refused:?}"
+        );
+    }
 }
 
 /// `/v1/info` advertising the caller's own agents.

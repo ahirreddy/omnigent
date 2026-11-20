@@ -71,10 +71,12 @@ fn records_round_trip_each_field() {
         profiles: vec![profile()],
         managed_providers: vec!["modal".into()],
         has_more: true,
+        default_profile_id: Some("p1".into()),
     });
     assert_eq!(page.profiles[0].revision, "r1");
     assert_eq!(page.managed_providers, ["modal"]);
     assert!(page.has_more);
+    assert_eq!(page.default_profile_id.as_deref(), Some("p1"));
 }
 
 #[test]
@@ -129,6 +131,7 @@ fn the_url_branch_repository_and_profile_rules_are_the_cores() {
         profiles: vec![profile()],
         managed_providers: vec!["modal".into()],
         has_more: false,
+        default_profile_id: None,
     };
     assert!(sandbox_profile_problem(page.clone(), "modal".into(), None).is_some());
     assert_eq!(

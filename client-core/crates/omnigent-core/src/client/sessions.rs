@@ -113,6 +113,9 @@ pub struct SessionSummary {
     /// An automation's run made it, or a run's session tree launched it (the
     /// `omnigent.scheduled_task_origin` with `_initial_run` labels, or `_launch`).
     pub is_automation_run: bool,
+    /// When it was archived, Unix seconds, from the server's `omnigent.archived_at` label;
+    /// `None` when unlabelled (archived before the label existed, or never archived).
+    pub archived_at: Option<i64>,
 }
 
 /// The PR a session's list row names, as the server last stored it.
@@ -152,6 +155,16 @@ impl RowPullRequest {
 const AUTOMATION_ORIGIN_LABEL: &str = "omnigent.scheduled_task_origin";
 const AUTOMATION_INITIAL_RUN_LABEL: &str = "omnigent.scheduled_task_initial_run";
 const AUTOMATION_LAUNCH_LABEL: &str = "omnigent.scheduled_task_launch";
+/// The archive time the server writes when a session is archived, Unix seconds.
+const ARCHIVED_AT_LABEL: &str = "omnigent.archived_at";
+
+/// The archive time in `labels`, when it is a positive whole number of seconds.
+fn archived_at(labels: &BTreeMap<String, String>) -> Option<i64> {
+    labels
+        .get(ARCHIVED_AT_LABEL)
+        .and_then(|raw| raw.trim().parse::<i64>().ok())
+        .filter(|seconds| *seconds > 0)
+}
 
 /// Whether `labels` mark a session an automation's run made or launched (the web's
 /// `isSharedAutomationRun` without its ownership check).
@@ -211,6 +224,7 @@ impl SessionSummary {
             family: None,
             pull_request: None,
             is_automation_run: false,
+            archived_at: None,
         }
     }
 
@@ -736,6 +750,11 @@ impl SessionProjection {
                 Field::Absent => previous.is_some_and(|previous| previous.is_automation_run),
                 Field::Null => false,
                 Field::Present(labels) => is_automation_run(labels),
+            },
+            archived_at: match &self.labels {
+                Field::Absent => previous.and_then(|previous| previous.archived_at),
+                Field::Null => None,
+                Field::Present(labels) => archived_at(labels),
             },
         })
     }

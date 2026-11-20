@@ -10,11 +10,12 @@ enum ServerSettingsAdapter {
   ///   - store: The selected server's settings, if one is signed in.
   ///   - servers: The signed-in servers.
   ///   - projects: The server's projects, naming the Archived pane's filter.
+  ///   - advisor: The connection's Omni Advisor, where the server offers it.
   ///   - now: For "last signed in" labels.
   /// - Returns: The state.
   static func state(
     _ store: ServerSettingsStore?, servers: [ServerChoice],
-    projects: [OmnigentCoreFFI.ProjectSummary] = [],
+    projects: [OmnigentCoreFFI.ProjectSummary] = [], advisor: AdvisorStore? = nil,
     now: Date = .now
   ) -> ServerSettingsViewState {
     guard let store else { return ServerSettingsViewState(servers: servers, panes: []) }
@@ -22,7 +23,8 @@ enum ServerSettingsAdapter {
     let info = store.info.value
     state.account = info.map {
       ServerAccountState(
-        userID: $0.userId, isAdmin: $0.isAdmin, canChangePassword: $0.accountsEnabled)
+        userID: $0.userId, isAdmin: $0.isAdmin, canChangePassword: $0.accountsEnabled,
+        offersAdminView: $0.adminView, adminViewOn: $0.adminViewOn)
     }
     let archived = store.archived.value ?? []
     state.archivedInfo = Dictionary(
@@ -30,6 +32,7 @@ enum ServerSettingsAdapter {
       uniquingKeysWith: { first, _ in first })
     state.archivedProjects = archivedProjects(archived, projects: projects)
     state.titleInstructions = titleInstructions(store.titleInstructions)
+    state.advisor = AdvisorMapping.state(advisor, info: info)
     return state
   }
 
@@ -117,26 +120,37 @@ enum ServerSettingsAdapter {
     if info.mcpRegistry { panes.append(.mcp) }
     if !info.connections.isEmpty { panes.append(.integrations) }
     if info.sessionTitleInstructions { panes.append(.sessions) }
+    if info.advisor { panes.append(.advisor) }
     panes += [.git, .importSessions]
-    // As the web's Admin › General: admins and a single-user owner pick where nested agents
-    // start.
-    if info.nestedAgents, info.isAdmin || info.singleUser { panes.append(.adminGeneral) }
-    // Members and Sharing mean nothing without other users.
-    if info.isAdmin, !info.singleUser { panes.append(.members) }
-    if info.isAdmin { panes.append(.policies) }
-    if info.isAdmin, !info.singleUser { panes.append(.sharing) }
+    panes += adminPanes(info)
     panes.append(.archived)
     return panes
   }
 
+  /// The Admin group's panes `info` offers, in order.
+  private static func adminPanes(_ info: ServerSettingsInfo) -> [ServerSettingsPane] {
+    var panes: [ServerSettingsPane] = []
+    // As the web's Admin › General: admins and a single-user owner pick where nested agents
+    // start and manage Omni Advisor.
+    if info.nestedAgents || info.advisor, info.isAdmin || info.singleUser {
+      panes.append(.adminGeneral)
+    }
+    // Members and Sharing mean nothing without other users.
+    if info.isAdmin, !info.singleUser { panes.append(.members) }
+    if info.isAdmin { panes.append(.policies) }
+    if info.isAdmin, !info.singleUser { panes.append(.sharing) }
+    return panes
+  }
+
   /// An archived session's project key, archive time and whether the caller may delete it (only
-  /// their own; an unreported owner is the caller). The archive time is the last change: it is
-  /// never earlier than the archive, so retention can only keep a session longer.
+  /// their own; an unreported owner is the caller). The archive time is the server's
+  /// `omnigent.archived_at` label, else the last change, which is never earlier than the archive,
+  /// so retention can only keep an unlabelled session longer.
   static func archivedInfo(_ session: OmnigentCoreFFI.SessionSummary, userID: String?)
     -> ArchivedSessionInfo
   {
     ArchivedSessionInfo(
-      projectID: projectKey(session), archivedAt: session.updatedAt,
+      projectID: projectKey(session), archivedAt: session.archivedAt ?? session.updatedAt,
       canDelete: session.owner == nil || session.owner == userID)
   }
 

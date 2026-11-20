@@ -123,6 +123,9 @@ pub struct SessionSummary {
     /// An automation's run made it, or a run's session tree launched it.
     #[uniffi(default)]
     pub is_automation_run: bool,
+    /// When it was archived, Unix seconds (`omnigent.archived_at`); `None` when unlabelled.
+    #[uniffi(default)]
+    pub archived_at: Option<i64>,
 }
 
 /// The PR a session's list row names, as the server last stored it.
@@ -373,6 +376,7 @@ impl From<CoreSummary> for SessionSummary {
             family: summary.family.map(Into::into),
             pull_request: summary.pull_request.map(Into::into),
             is_automation_run: summary.is_automation_run,
+            archived_at: summary.archived_at,
         }
     }
 }
@@ -406,6 +410,7 @@ impl From<&SessionSummary> for CoreSummary {
             family: summary.family.clone().map(Into::into),
             pull_request: summary.pull_request.map(Into::into),
             is_automation_run: summary.is_automation_run,
+            archived_at: summary.archived_at,
             ..Self::new(
                 summary.id.clone(),
                 summary.title.clone(),

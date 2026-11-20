@@ -14,6 +14,8 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
   case integrations
   /// Sessions: the caller's title instructions.
   case sessions
+  /// Omni Advisor: the caller's switch.
+  case advisor
   /// Git: worktree defaults.
   case git
   /// Import local sessions from a host.
@@ -41,6 +43,7 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
     case .mcp: "MCP"
     case .integrations: "Sandbox Integrations"
     case .sessions: "Sessions"
+    case .advisor: "Omni Advisor"
     case .git: "Git"
     case .importSessions: "Import Sessions"
     case .members: "Members"
@@ -60,6 +63,7 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
     case .mcp: "powerplug"
     case .integrations: "square.grid.2x2"
     case .sessions: "text.bubble"
+    case .advisor: "lightbulb"
     case .git: "arrow.triangle.branch"
     case .importSessions: "square.and.arrow.down"
     case .members: "person.2"

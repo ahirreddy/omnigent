@@ -291,7 +291,7 @@ extension SessionTabGroups {
   nonisolated static func belongsInGroup(_ content: AppTabContent) -> Bool {
     switch content {
     case .newSession, .nestedSession, .inbox, .canvas, .automations, .workflows, .usage, .project,
-      .harness:
+      .extensionPage, .harness:
       false
     case .newTab, .chat, .terminal, .sideChat, .sideChatSession, .subagent, .browser,
       .agentBrowser, .remoteBrowser:

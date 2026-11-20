@@ -12,8 +12,9 @@ nonisolated public enum SettingsPortability {
     "omnigent:ui-theme-palette", "omnigent:custom-theme", "omnigent:default-workspace-panel",
     "omnigent:default-workspace-tab", "omnigent:pinned-workspace-tabs",
     "omnigent:default-transcript-view", "omnigent:hide-unconfigured-harnesses",
-    "omnigent:fold-assistant-narration", "omnigent:hidden-picker-agents",
-    "omnigent:default-base-branch", "omnigent:always-use-worktree",
+    "omnigent:fold-assistant-narration", "omnigent:session-row-quick-actions",
+    "omnigent:hidden-picker-agents", "omnigent:default-base-branch",
+    "omnigent:always-use-worktree",
     "omnigent:delete-worktrees-on-archive", "omnigent:composer-submit-with-mod-enter",
     "web-theme",
   ]
@@ -26,8 +27,8 @@ nonisolated public enum SettingsPortability {
     "omnigent:ui-theme-palette", "omnigent:custom-theme", "omnigent:default-transcript-view",
     "omnigent:default-workspace-panel", "omnigent:default-workspace-tab",
     "omnigent:pinned-workspace-tabs", "omnigent:hide-unconfigured-harnesses",
-    "omnigent:fold-assistant-narration", "omnigent:hidden-picker-agents", "web-theme",
-    "omnigent:use-system-accent",
+    "omnigent:fold-assistant-narration", "omnigent:session-row-quick-actions",
+    "omnigent:hidden-picker-agents", "web-theme", "omnigent:use-system-accent",
   ]
 
   /// Keys whose `"true"`/`"false"` text is kept as text (a tri-state the app stores as text);

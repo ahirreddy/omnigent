@@ -59,6 +59,27 @@ pub struct ServerSettingsInfo {
     /// Sessions can have nested agents (`sibling_sessions`), so Admin › General says where
     /// they may start.
     pub nested_agents: bool,
+    /// Omni Advisor is offered (`proactive_agent_available`): the caller's switch, and for
+    /// admins its workspace switch, prompt and Run now.
+    pub advisor: bool,
+    /// `/v1/info.admin_view`: an admin can turn the admin view off for their normal access.
+    pub admin_view_supported: bool,
+    /// This connection turned the admin view off (its requests carry the off cookie).
+    pub admin_view_off: bool,
+    /// The server sits in a Databricks workspace, where the web offers no admin view switch.
+    pub workspace_hosted: bool,
+}
+
+impl ServerSettingsInfo {
+    /// Whether Settings offers the Admin view switch, as the web's: to admins where the server
+    /// supports it, and always while it is off so it can be turned back on; not on a single-user
+    /// server or in a workspace.
+    #[must_use]
+    pub const fn offers_admin_view(&self) -> bool {
+        self.admin_view_supported
+            && self.is_admin
+            && (self.admin_view_off || (!self.single_user && !self.workspace_hosted))
+    }
 }
 
 impl ServerSettingsInfo {
@@ -89,6 +110,10 @@ impl ServerSettingsInfo {
             session_title_instructions: opt_bool(info, "session_title_instructions")?
                 .unwrap_or(false),
             nested_agents: crate::session_families::sibling_sessions_enabled(info),
+            advisor: opt_bool(info, "proactive_agent_available")?.unwrap_or(false),
+            admin_view_supported: opt_bool(info, "admin_view")?.unwrap_or(false),
+            admin_view_off: false,
+            workspace_hosted: false,
         })
     }
 }
@@ -507,7 +532,15 @@ impl<T: HttpTransport> ClientCore<T> {
         let result = async {
             let info = self.get_json("/v1/info", &[]).await?;
             let me = self.get_json("/v1/me", &[]).await?;
-            ServerSettingsInfo::from_values(&info, &me).map_err(malformed("/v1/info"))
+            let mut settings =
+                ServerSettingsInfo::from_values(&info, &me).map_err(malformed("/v1/info"))?;
+            if let Some(connection) = super::lock(&self.state).connection.as_ref() {
+                let endpoint = connection.endpoint();
+                settings.admin_view_off = endpoint.admin_view_off();
+                settings.workspace_hosted =
+                    endpoint.databricks_org_id().is_some() || endpoint.routes_by_host();
+            }
+            Ok(settings)
         }
         .await;
         self.dispatch();

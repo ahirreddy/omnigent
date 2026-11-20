@@ -250,12 +250,21 @@ struct SharingPane: View {
   }
 }
 
-/// Admin › General (the web's `AdminGeneralPage`): where a nested agent may start.
+/// Admin › General (the web's `AdminGeneralPage`): where a nested agent may start, and Omni
+/// Advisor's workspace switch, prompt and Run now.
 struct AdminGeneralPane: View {
   let sharing: SharingViewState?
+  var advisor: AdvisorViewState?
   let actions: ServerSettingsActions
 
   var body: some View {
+    nestedAgents
+    if let advisor, advisor.showsAdminControls {
+      AdvisorAdminSections(state: advisor, actions: actions.advisor)
+    }
+  }
+
+  @ViewBuilder private var nestedAgents: some View {
     if let sharing, let destinations = sharing.nestedAgentDestinations {
       Section("Nested agent destinations") {
         Picker(

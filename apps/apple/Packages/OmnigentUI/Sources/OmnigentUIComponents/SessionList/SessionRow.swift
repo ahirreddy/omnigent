@@ -37,6 +37,8 @@ struct SessionRow: View {
 
   @State private var isHovered = false
   @Environment(\.defaultMinListRowHeight) private var rowHeight
+  /// Hover shows Pin and Archive beside More; off, they stay in the menus.
+  @AppStorage(InterfacePreferences.sessionRowQuickActionsKey) private var quickActions = true
 
   var body: some View {
     // One view of one type, whatever the family: a body that chooses between views makes the
@@ -95,7 +97,7 @@ struct SessionRow: View {
       Spacer(minLength: 4)
       if isHovered, menu.showsHoverActions, !isSelecting, inlineRename == nil {
         HStack(spacing: Theme.Spacing.tiny) {
-          if menu.offersPin {
+          if quickActions, menu.offersPin {
             Button(
               session.isPinned ? "Unpin" : "Pin",
               systemImage: session.isPinned ? "pin.slash" : "pin"
@@ -104,7 +106,7 @@ struct SessionRow: View {
             }
             .help(session.isPinned ? "Unpin" : "Pin")
           }
-          if let setArchived = menu.actions.setArchived, session.canArchive {
+          if quickActions, let setArchived = menu.actions.setArchived, session.canArchive {
             Button(
               session.isArchived ? "Unarchive" : "Archive",
               systemImage: session.isArchived ? "tray.and.arrow.up" : "archivebox"

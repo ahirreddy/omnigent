@@ -24,6 +24,10 @@ public final class HarnessSetupStore {
 
   /// Each harness's MCP servers, skills and plugins, by host and harness.
   public private(set) var catalogs: [String: CreationLoad<HarnessInventoryRecord>] = [:]
+  /// MCP switch changes in flight and the state each asks for, by ``mcpToolsKey(_:_:_:)``.
+  public internal(set) var mcpSwitching: [String: Bool] = [:]
+  /// The last MCP switch change the host refused.
+  public internal(set) var mcpSwitchError: CoreError?
   /// Skill pages read, by host, harness and skill.
   public private(set) var skillContents: [String: CreationLoad<SkillContentRecord>] = [:]
   /// MCP servers' tools as their hosts probed them, by host, harness and server row.

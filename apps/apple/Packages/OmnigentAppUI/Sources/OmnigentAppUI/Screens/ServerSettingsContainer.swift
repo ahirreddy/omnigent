@@ -47,7 +47,8 @@ public struct ServerSettingsContainer: View {
     let connection = servers.first { $0.supervisedServerURL == selected }
     var state = ServerSettingsAdapter.state(
       store, servers: servers.map(Self.choice),
-      projects: connection?.sessionList.projects ?? [])
+      projects: connection?.sessionList.projects ?? [],
+      advisor: connection?.pages?.feeds.advisor)
     if let openFailure { state.errorMessage = openFailure }
     return ServerSettingsView(
       state: state, selectedServer: $selected, selectedPane: $pane,

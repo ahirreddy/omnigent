@@ -14,6 +14,9 @@ public final class SandboxStore {
   public private(set) var branches: [String: CreationLoad<[String]>] = [:]
   /// A fork's starting repositories and profile, by source session.
   public private(set) var forkDefaults: [String: CreationLoad<ForkSandboxDefaults>] = [:]
+  /// Profiles looked up by id, by ``profileKey(provider:id:)``: the current revision, or `nil`
+  /// inside `.loaded` when the provider no longer offers it.
+  public private(set) var profileChecks: [String: CreationLoad<SandboxProfile?>] = [:]
 
   private let core: ClientCore
 
@@ -30,6 +33,39 @@ public final class SandboxStore {
     profiles[provider] = .loading
     profiles[provider] = await Self.read {
       try await self.core.sandboxProfiles(provider: provider, search: "", profileId: nil)
+    }
+  }
+
+  /// The key of a profile looked up by id.
+  public static func profileKey(provider: String, id: String) -> String { "\(provider)\n\(id)" }
+
+  /// Looks `id` up by id, for its current revision: once, again after a failure or when
+  /// `force`d, as after a launch the server refused.
+  public func checkProfile(_ provider: String, id: String, force: Bool = false) async {
+    let key = Self.profileKey(provider: provider, id: id)
+    switch profileChecks[key] {
+    case .loading: return
+    case .loaded where !force: return
+    case .idle, .failed, .loaded, nil: break
+    }
+    profileChecks[key] = .loading
+    profileChecks[key] = await Self.read {
+      let page = try await self.core.sandboxProfiles(
+        provider: provider, search: "", profileId: id)
+      return page.profiles.first { $0.id == id }
+    }
+  }
+
+  /// Reads `provider`'s profiles again, and each one looked up, after the server refused a
+  /// launch: a profile may have changed or gone since it was chosen.
+  public func reloadProfiles(_ provider: String) async {
+    profiles[provider] = .loading
+    profiles[provider] = await Self.read {
+      try await self.core.sandboxProfiles(provider: provider, search: "", profileId: nil)
+    }
+    let prefix = Self.profileKey(provider: provider, id: "")
+    for key in profileChecks.keys where key.hasPrefix(prefix) {
+      await checkProfile(provider, id: String(key.dropFirst(prefix.count)), force: true)
     }
   }
 

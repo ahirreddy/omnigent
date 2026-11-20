@@ -60,14 +60,49 @@ extension NewSessionForm {
   }
 
   /// Chooses the sandbox's profile when none is chosen and the provider's are loaded, so a
-  /// session can start without visiting the picker: the one used last, else an x86 one, else
-  /// the first.
-  func defaultSandboxProfile(_ catalog: OmnigentCoreFFI.CreationCatalog?) {
-    guard isSandbox, sandbox.profile == nil,
+  /// session can start without visiting the picker: the one used last (looked up by id when it
+  /// isn't on the first page), else the server's default for the provider, else an x86 one,
+  /// else the first.
+  func defaultSandboxProfile(_ catalog: OmnigentCoreFFI.CreationCatalog?) async {
+    guard isSandbox, sandbox.profile == nil, let sandboxes,
+      let provider = sandbox.profileProvider(catalog),
       let offered = sandbox.profilesState(catalog, sandboxes: sandboxes)?.profiles
     else { return }
+    let last = preferences.string(forKey: DefaultsKey.sandboxProfile)
+    let serverDefault = sandboxes.profiles[provider]?.value?.defaultProfileId
+    for id in [last, serverDefault].compactMap(\.self)
+    where !offered.contains(where: { $0.id == id }) {
+      await sandboxes.checkProfile(provider, id: id)
+    }
+    guard sandbox.profile == nil else { return }
+    var lookedUp: [String: SandboxProfileOption] = [:]
+    for id in [last, serverDefault].compactMap(\.self) {
+      let key = SandboxStore.profileKey(provider: provider, id: id)
+      if case .loaded(let found?) = sandboxes.profileChecks[key] {
+        lookedUp[id] = SandboxChoices.profileOption(found)
+      }
+    }
     sandbox.profile = SandboxChoices.defaultProfile(
-      offered, last: preferences.string(forKey: DefaultsKey.sandboxProfile))
+      offered, last: last, serverDefault: serverDefault, lookedUp: lookedUp)
+  }
+
+  /// What the chosen profile's check depends on: the provider, the profile and its first page.
+  func sandboxProfileCheck(_ creation: CreationStore) -> String? {
+    guard isSandbox, let profile = sandbox.profile,
+      let provider = sandbox.profileProvider(creation.catalog.value),
+      let page = sandboxes?.profiles[provider]?.value
+    else { return nil }
+    let listed = page.profiles.map { "\($0.id)@\($0.revision)" }.joined(separator: ",")
+    return "\(provider)/\(profile.id)@\(profile.revision)/\(listed)"
+  }
+
+  /// Reads the sandbox's profiles and its model choices again, after a refused launch.
+  func reloadSandboxChoices(_ creation: CreationStore) async {
+    guard isSandbox else { return }
+    if let sandboxes, let provider = sandbox.profileProvider(creation.catalog.value) {
+      await sandboxes.reloadProfiles(provider)
+    }
+    await reloadChoices(creation, selection)
   }
 
   /// Keeps this start's host (or sandbox provider) and agent for the next new session. Only
