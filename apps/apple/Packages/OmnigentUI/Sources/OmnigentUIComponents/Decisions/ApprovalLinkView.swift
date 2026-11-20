@@ -38,27 +38,46 @@ public struct ApprovalLinkView: View {
     self.done = done
   }
 
-  /// The sheet.
+  /// The sheet: buttons along the bottom on the Mac, in the navigation bar on iPhone and iPad.
   public var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.large) {
-      content
-        .frame(maxWidth: .infinity, alignment: .leading)
-      HStack {
-        if let openSession {
-          Button("Open Session", action: openSession)
-            .accessibilityIdentifier("approval-link-open-session")
-        }
-        Spacer()
-        Button("Done", action: done)
-          .keyboardShortcut(.cancelAction)
-          .accessibilityIdentifier("approval-link-done")
-      }
-    }
-    .padding(Theme.Spacing.large)
     #if os(macOS)
+      VStack(alignment: .leading, spacing: Theme.Spacing.large) {
+        content
+          .frame(maxWidth: .infinity, alignment: .leading)
+        HStack {
+          if let openSession { openSessionButton(openSession) }
+          Spacer()
+          doneButton
+        }
+      }
+      .padding(Theme.Spacing.large)
       .frame(width: 520)
+      .accessibilityIdentifier("approval-link")
+    #else
+      NavigationStack {
+        content
+          .padding(Theme.Spacing.large)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+          .toolbar {
+            if let openSession {
+              ToolbarItem(placement: .topBarLeading) { openSessionButton(openSession) }
+            }
+            ToolbarItem(placement: .confirmationAction) { doneButton }
+          }
+      }
+      .accessibilityIdentifier("approval-link")
     #endif
-    .accessibilityIdentifier("approval-link")
+  }
+
+  private func openSessionButton(_ openSession: @escaping @MainActor () -> Void) -> some View {
+    Button("Open Session", action: openSession)
+      .accessibilityIdentifier("approval-link-open-session")
+  }
+
+  private var doneButton: some View {
+    Button("Done", action: done)
+      .keyboardShortcut(.cancelAction)
+      .accessibilityIdentifier("approval-link-done")
   }
 
   @ViewBuilder private var content: some View {
@@ -70,7 +89,9 @@ public struct ApprovalLinkView: View {
       ScrollView {
         DecisionCardView(card: card, phase: phase, respond: { respond($0) })
       }
-      .frame(maxHeight: 520)
+      #if os(macOS)
+        .frame(maxHeight: 520)
+      #endif
     case .resolved:
       ContentUnavailableView(
         "Elicitation resolved", systemImage: "checkmark.circle",

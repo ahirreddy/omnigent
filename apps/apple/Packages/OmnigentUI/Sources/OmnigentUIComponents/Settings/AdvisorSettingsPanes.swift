@@ -90,17 +90,20 @@ struct AdvisorAdminSections: View {
           .disabled(state.isSavingPrompt)
           .accessibilityLabel("Prompt")
           .accessibilityIdentifier("settings.advisor-prompt")
-        HStack {
-          Text(overridden ? "Using a custom prompt" : "Using the built-in prompt")
-            .font(.callout).foregroundStyle(.secondary)
-          Spacer()
-          Button("Restore Default") { save(nil) }
-            .disabled(state.isSavingPrompt || !overridden || actions.savePrompt == nil)
-            .accessibilityIdentifier("settings.advisor-prompt-restore")
-          Button("Save Prompt") { save(draft) }
-            .disabled(!canSave(prompt))
-            .accessibilityIdentifier("settings.advisor-prompt-save")
-        }
+        let caption = Text(overridden ? "Using a custom prompt" : "Using the built-in prompt")
+        #if os(macOS)
+          HStack {
+            caption.font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            restoreButton(overridden: overridden)
+            saveButton(prompt: prompt)
+          }
+        #else
+          // A row's buttons all fire on a tap in an iOS form, so each action gets its own row.
+          caption.font(.callout).foregroundStyle(.secondary)
+          saveButton(prompt: prompt)
+          restoreButton(overridden: overridden)
+        #endif
       }
       if let error = state.promptError {
         Text(error).font(.callout).foregroundStyle(Theme.failure)
@@ -116,17 +119,15 @@ struct AdvisorAdminSections: View {
 
   private var runSection: some View {
     Section {
-      HStack {
-        TextField(
-          "Users", text: $users, prompt: Text("alice@example.com, bob@example.com or *")
-        )
-        .labelsHidden()
-        .accessibilityLabel("Users to run for")
-        .accessibilityIdentifier("settings.advisor-run-users")
-        Button("Run Now") { actions.run?(users) }
-          .disabled(state.isRunning || Self.isBlank(users) || actions.run == nil)
-          .accessibilityIdentifier("settings.advisor-run")
-      }
+      #if os(macOS)
+        HStack {
+          usersField
+          runButton
+        }
+      #else
+        usersField
+        runButton
+      #endif
       if let summary = state.runSummary {
         Text(summary).font(.callout).foregroundStyle(.secondary)
           .accessibilityIdentifier("settings.advisor-run-summary")
@@ -141,6 +142,36 @@ struct AdvisorAdminSections: View {
         "Start runs right away for these users, separated by commas or spaces, or * for everyone who has Omni Advisor on. Users who have not started a session since it was enabled have no run to start yet."
       )
     }
+  }
+
+  private func restoreButton(overridden: Bool) -> some View {
+    Button("Restore Default") { save(nil) }
+      .disabled(state.isSavingPrompt || !overridden || actions.savePrompt == nil)
+      .accessibilityIdentifier("settings.advisor-prompt-restore")
+  }
+
+  private func saveButton(prompt: String) -> some View {
+    Button("Save Prompt") { save(draft) }
+      .disabled(!canSave(prompt))
+      .accessibilityIdentifier("settings.advisor-prompt-save")
+  }
+
+  private var usersField: some View {
+    TextField("Users", text: $users, prompt: Text("alice@example.com, bob@example.com or *"))
+      .labelsHidden()
+      .accessibilityLabel("Users to run for")
+      .accessibilityIdentifier("settings.advisor-run-users")
+      #if os(iOS)
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
+        .keyboardType(.emailAddress)
+      #endif
+  }
+
+  private var runButton: some View {
+    Button("Run Now") { actions.run?(users) }
+      .disabled(state.isRunning || Self.isBlank(users) || actions.run == nil)
+      .accessibilityIdentifier("settings.advisor-run")
   }
 
   private func canSave(_ prompt: String) -> Bool {
