@@ -117,6 +117,7 @@ struct ToolFieldsBody: View {
         result(output)
       }
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   @ViewBuilder private func result(_ output: String) -> some View {

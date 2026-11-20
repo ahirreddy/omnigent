@@ -128,19 +128,15 @@ struct PullRequestSuggestionView: View {
       .padding(.vertical, Theme.Spacing.extraSmall)
       Divider()
       if let source {
-        ScrollView([.horizontal, .vertical]) {
-          VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(source.lines.enumerated()), id: \.offset) { index, line in
-              row("-", line, number: source.line + UInt64(index), color: .prRed)
-            }
-            ForEach(Array(added.enumerated()), id: \.offset) { index, line in
-              row("+", line, number: source.line + UInt64(index), color: .prGreen)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+          ForEach(Array(source.lines.enumerated()), id: \.offset) { index, line in
+            row("-", line, number: source.line + UInt64(index), color: .prRed)
           }
-          .padding(.vertical, Theme.Spacing.tiny)
+          ForEach(Array(added.enumerated()), id: \.offset) { index, line in
+            row("+", line, number: source.line + UInt64(index), color: .prGreen)
+          }
         }
-        .frame(maxHeight: 240)
-        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, Theme.Spacing.tiny)
       } else {
         Text("Original lines are unavailable for comparison.")
           .font(.caption)
@@ -167,10 +163,11 @@ struct PullRequestSuggestionView: View {
         .foregroundStyle(.secondary)
         .frame(minWidth: 28, alignment: .trailing)
       Text(sign).foregroundStyle(color)
-      Text(text.isEmpty ? " " : text).textSelection(.enabled)
+      Text(text.isEmpty ? " " : text)
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
     .font(.caption.monospaced())
-    .fixedSize(horizontal: true, vertical: false)
     .padding(.horizontal, Theme.Spacing.small)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(color.opacity(0.1))
