@@ -203,7 +203,7 @@ struct MarkdownTableView: View {
   static let rowPadding: CGFloat = 10
 
   var body: some View {
-    ScrollView(.horizontal) {
+    SidewaysScrollView {
       // Open rows set apart by rules: no frame, fill or stripes. The header's rule is the
       // stronger one.
       Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
@@ -334,7 +334,7 @@ struct CodeBlockView: View {
     if wrapsLines {
       codeText.frame(maxWidth: .infinity, alignment: .leading)
     } else {
-      ScrollView(.horizontal) {
+      SidewaysScrollView {
         codeText.fixedSize(horizontal: true, vertical: true)
       }
     }

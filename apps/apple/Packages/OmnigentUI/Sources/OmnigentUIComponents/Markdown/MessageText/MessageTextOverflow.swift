@@ -94,12 +94,10 @@ nonisolated extension NSParagraphStyle {
 #if os(macOS)
   /// A code block or table drawn again over its own hidden text, in a view that scrolls sideways
   /// as SwiftUI's horizontal scroll view does. A vertical scroll goes on to the transcript.
-  final class MessageTextOverflowView: NSScrollView {
+  final class MessageTextOverflowView: InnerScrollView {
     let textView: MessageTextKitView
     /// How wide the text is past its leading edge.
     private(set) var contentWidth: CGFloat = 0
-    /// Whether the gesture in progress scrolls the transcript instead.
-    private var passesGesture = false
     private let trailingPadding: CGFloat
 
     init(
@@ -168,19 +166,6 @@ nonisolated extension NSParagraphStyle {
       else { return nil }
       return MessageTextLinkRect.rects(in: layout, links: MessageTextDocument.links(in: text))
         .first { $0.rect.contains(point) }?.url
-    }
-
-    override func scrollWheel(with event: NSEvent) {
-      // The gesture's first event decides which way all of it goes, momentum too.
-      if event.phase == .began || (event.phase.isEmpty && event.momentumPhase.isEmpty) {
-        passesGesture = abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX)
-      }
-      guard passesGesture else {
-        super.scrollWheel(with: event)
-        return
-      }
-      // AppKit declares `nextResponder` unowned(unsafe); it is only messaged here.
-      unsafe nextResponder?.scrollWheel(with: event)
     }
   }
 
