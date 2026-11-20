@@ -176,7 +176,7 @@ private struct CLITableView: View {
   private(set) var size = CLIFontSize()
 
   var body: some View {
-    ScrollView(.horizontal) {
+    SidewaysScrollView {
       Grid(alignment: .leading, horizontalSpacing: size.character * 2, verticalSpacing: 0) {
         GridRow {
           ForEach(Array(table.header.enumerated()), id: \.offset) { column, cell in

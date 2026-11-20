@@ -27,14 +27,23 @@
   /// The table transcript's scroll view: it tells the controller about wheel and trackpad
   /// events, which are the reader's scrolls, before it scrolls for them. Overriding
   /// `scrollWheel` keeps it out of responsive scrolling, as SwiftUI's scroll view is: that
-  /// scrolls a gesture on its own thread from the window's event queue.
-  final class TranscriptTableScrollView: NSScrollView {
+  /// scrolls a gesture on its own thread from the window's event queue. A gesture that began
+  /// here stays here as code blocks and tables that scroll sideways pass under the pointer.
+  final class TranscriptTableScrollView: NSScrollView, RoutedScroller {
     weak var owner: TranscriptTableController?
     /// The soft edges under the bars: rows fade out as they pass under them, as SwiftUI's soft
     /// scroll edge effect fades the stack's.
     let edgeMask = CAGradientLayer()
 
     override func scrollWheel(with event: NSEvent) {
+      ScrollGestureRouter.deliver(event, to: self)
+    }
+
+    var isOutermost: Bool { true }
+
+    func accepts(_ event: NSEvent) -> Bool { true }
+
+    func scroll(for event: NSEvent) {
       owner?.readerScrolled()
       super.scrollWheel(with: event)
     }

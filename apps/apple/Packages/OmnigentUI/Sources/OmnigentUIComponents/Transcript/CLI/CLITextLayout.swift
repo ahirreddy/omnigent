@@ -329,13 +329,15 @@ nonisolated enum CLITextLayout {
       }
     }
 
-    /// Places a table's rows and the rules under them. Its scroll view sits on the pixel; what
-    /// follows it doesn't move. A table wider than the text keeps its rules for the copy that
-    /// scrolls it sideways.
+    /// Places a table's rows and the rules under them. A table wider than the text sits on the
+    /// pixel, as its scroll view does, and keeps its rules for the copy that scrolls it
+    /// sideways; what follows it doesn't move.
     private mutating func placeTable(
       rows: [Int], rules: [CGFloat], columns: [CLITextColumn], color: SRGB, at top: CGFloat
     ) {
-      var bottom = metrics.rounded(top)
+      let leading = columns.first?.leading ?? 0
+      let trailing = columns.last.map { $0.leading + $0.width } ?? 0
+      var bottom = trailing > width + 0.5 ? metrics.rounded(top) : top
       var fills: [CLITextDecoration] = []
       for (index, row) in rows.enumerated() {
         bottom += place(.text(row), at: bottom)
@@ -348,8 +350,6 @@ nonisolated enum CLITextLayout {
               color, opacity: 1))
         }
       }
-      let leading = columns.first?.leading ?? 0
-      let trailing = columns.last.map { $0.leading + $0.width } ?? 0
       // Rows are consecutive units: a table's rows are its own texts, in order.
       guard trailing > width + 0.5, let first = rows.first, let last = rows.last,
         last - first + 1 == rows.count

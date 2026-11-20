@@ -52,7 +52,7 @@ struct DiffView: View {
       if wrapsLines {
         lines
       } else {
-        ScrollView(.horizontal) { lines }
+        SidewaysScrollView { lines }
       }
       if diff.lines.count > maxLines {
         if let showAll {

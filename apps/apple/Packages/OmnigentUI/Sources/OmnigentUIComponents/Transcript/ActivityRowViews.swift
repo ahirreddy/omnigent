@@ -118,7 +118,7 @@ private struct TerminalRowView: View {
   }
 
   private func terminalText(_ text: String, color: Color) -> some View {
-    ScrollView(.horizontal) {
+    SidewaysScrollView {
       Text(verbatim: text)
         .font(Theme.codeFont)
         .foregroundStyle(color)

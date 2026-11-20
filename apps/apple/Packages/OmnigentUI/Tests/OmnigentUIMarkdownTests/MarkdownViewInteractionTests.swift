@@ -60,7 +60,10 @@
 
     @Test("A code block names its language, or says Code, and wraps at the click of a toggle")
     func codeBlock() throws {
-      let named = transcriptScreen(CodeBlockView(code: "let answer = 42", language: "swift"))
+      let code =
+        "let answer = 42 // " + String(repeating: "a comment wider than the block, ", count: 8)
+        + "end"
+      let named = transcriptScreen(CodeBlockView(code: code, language: "swift"))
       defer { named.close() }
       #expect(try named.shows("Swift"))
       #expect(try named.shows("let answer = 42"))
@@ -68,8 +71,8 @@
       #expect(controls == 3)
       SystemSideEffects.reset()
       try named.clickControl(at: 2)
-      #expect(copiedLines() == ["let answer = 42"])
-      // Wrapped lines need no scroller; unwrapped, they scroll sideways in one.
+      #expect(copiedLines() == [code])
+      // Wrapped lines need no scroller; unwrapped, a long one scrolls sideways in one.
       let scrollers = { named.allViews.count { $0 is NSScrollView } }
       #expect(scrollers() == 0)
       try named.clickControl(at: 0)
