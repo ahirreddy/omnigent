@@ -43,8 +43,8 @@ pub use content::{
     SERVER_READ_CAP_BYTES, SyntaxLanguage, TextPreview, line_count,
 };
 pub use data_table::{
-    DataColumnType, DataTable, compare_cells, decode_data_file, file_data_table,
-    is_data_table_path, parse_data_table,
+    DataColumnType, DataTable, SpreadsheetFormat, compare_cells, decode_data_file, file_data_table,
+    is_data_table_path, parse_data_table, spreadsheet_format, table_from_records,
 };
 pub use diff::{
     DiffHunk, DiffLine, DiffLineKind, DiffOptions, DiffParseError, DiffStats, FileChangeKind,

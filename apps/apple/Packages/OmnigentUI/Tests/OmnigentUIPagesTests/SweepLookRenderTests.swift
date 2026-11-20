@@ -53,6 +53,8 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case terminalSplit = "sweep-f-terminal-split"
   case composerTints = "sweep-f-composer-tints"
   case overviewChanges = "sweep-f-overview-changes"
+  case spreadsheetSheets = "sweep-f-spreadsheet-sheets"
+  case spreadsheetUnreadable = "sweep-f-spreadsheet-unreadable"
 
   var testDescription: String { rawValue }
 
@@ -65,7 +67,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   var macWidth: CGFloat {
     switch self {
     case .canvasQuickView: 960
-    case .automationsSorted, .terminalSplit: 760
+    case .automationsSorted, .terminalSplit, .spreadsheetSheets: 760
     case .shellComposer, .composerTints: 680
     default: 480
     }
@@ -95,6 +97,8 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .mutedRows: 160
     case .automationsSorted: 640
     case .terminalSplit: 420
+    case .spreadsheetSheets: 440
+    case .spreadsheetUnreadable: 320
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
       .quickAnswer, .staleProfile, .questionSubmitBlocked, .shellComposer, .composerTints,
       .overviewChanges:
@@ -146,6 +150,8 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .terminalSplit: return AnyView(Fixture.terminalSplit)
     case .composerTints: return AnyView(Fixture.composerTints)
     case .overviewChanges: return AnyView(Fixture.overviewChanges)
+    case .spreadsheetSheets: return AnyView(Fixture.spreadsheetSheets)
+    case .spreadsheetUnreadable: return AnyView(Fixture.spreadsheetUnreadable)
     }
   }
 }

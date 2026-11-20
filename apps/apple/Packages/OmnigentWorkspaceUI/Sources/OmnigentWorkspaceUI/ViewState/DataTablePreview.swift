@@ -43,19 +43,35 @@ nonisolated public struct DataTablePreview: Hashable, Sendable {
   public var totalColumns: Int
   /// How the bytes were decoded, for example `utf-8` or `windows-1252`.
   public var encoding: String
+  /// The format the summary names in place of the encoding, for example `Parquet`.
+  public var format: String?
+  /// Text past the preview's budget was cut from a column name or the first row.
+  public var textCut: Bool
   /// The server sent only the start of the file, so ``totalRows`` is a lower bound.
   public var truncated: Bool
+
+  /// Rows the preview keeps; the rest are only counted (`workspace::DATA_TABLE_MAX_ROWS`).
+  static let maxRows = 1000
+  /// Columns the preview keeps.
+  static let maxColumns = 500
+  /// Characters of cell text the preview keeps.
+  static let maxChars = 2_000_000
+  /// Longest a column name is kept.
+  static let maxNameChars = 1000
 
   /// A table.
   public init(
     columns: [DataTableColumn], rows: [[String]], totalRows: Int, totalColumns: Int,
-    encoding: String = "utf-8", truncated: Bool = false
+    encoding: String = "utf-8", format: String? = nil, textCut: Bool = false,
+    truncated: Bool = false
   ) {
     self.columns = columns
     self.rows = rows
     self.totalRows = totalRows
     self.totalColumns = totalColumns
     self.encoding = encoding
+    self.format = format
+    self.textCut = textCut
     self.truncated = truncated
   }
 
@@ -65,16 +81,17 @@ nonisolated public struct DataTablePreview: Hashable, Sendable {
     return rows[row][column]
   }
 
-  /// "1,204 rows · 6 columns", with "At least" for a cut file and the encoding when it isn't
-  /// UTF-8.
+  /// "1,204 rows · 6 columns", with "At least" for a cut file, and the format (`Parquet`) or
+  /// the encoding when it isn't UTF-8.
   public var summary: String {
     let rowCount = "\(truncated ? "At least " : "")\(Self.count(totalRows, "row"))"
-    let encodingNote = encoding == "utf-8" ? "" : " \u{00B7} \(encoding)"
-    return "\(rowCount) \u{00B7} \(Self.count(totalColumns, "column"))\(encodingNote)"
+    let source = format ?? (encoding == "utf-8" ? nil : encoding)
+    let sourceNote = source.map { " \u{00B7} \($0)" } ?? ""
+    return "\(rowCount) \u{00B7} \(Self.count(totalColumns, "column"))\(sourceNote)"
   }
 
   /// What the table leaves out, "Showing the first 1,000 of 5,000 rows. Download the file to
-  /// see every row."; `nil` when it shows the whole file.
+  /// see every row.", and whether text was cut short; `nil` when it shows the whole file.
   public var omissionNote: String? {
     let shown = rows.count
     var notes: [String] = []
@@ -88,11 +105,16 @@ nonisolated public struct DataTablePreview: Hashable, Sendable {
     if columnsCut {
       notes.append("the first \(columns.count.formatted()) of \(totalColumns.formatted()) columns")
     }
-    guard !notes.isEmpty else { return nil }
+    guard !notes.isEmpty || textCut else { return nil }
+    var sentences: [String] = []
+    if !notes.isEmpty { sentences.append("Showing \(notes.joined(separator: " and ")).") }
+    if textCut { sentences.append("Text past the preview's limit is cut short.") }
     // A cut file says so in the viewer's own banner.
-    let download =
-      truncated ? "" : " Download the file to see \(columnsCut ? "all of it" : "every row")."
-    return "Showing \(notes.joined(separator: " and ")).\(download)"
+    if !truncated {
+      let rest = columnsCut || textCut ? "all of it" : "every row"
+      sentences.append("Download the file to see \(rest).")
+    }
+    return sentences.joined(separator: " ")
   }
 
   /// `row` as tab-separated text, quoting cells that hold a tab, line break or quote.

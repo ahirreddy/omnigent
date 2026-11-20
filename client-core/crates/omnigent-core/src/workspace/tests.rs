@@ -255,6 +255,30 @@ fn pdfs_and_videos_preview_as_the_web_shows_them() {
             ..
         }
     ));
+    // A workbook or Parquet file previews as a spreadsheet, from bytes or UTF-8 text.
+    let workbook = file(
+        "out/budget.xlsx",
+        Some("application/zip"),
+        FileBody::Binary(vec![0x50, 0x4b, 0xff]),
+        false,
+    );
+    assert_eq!(
+        workbook.preview(&limits),
+        FilePreview::Spreadsheet {
+            format: SpreadsheetFormat::Xlsx,
+            bytes: vec![0x50, 0x4b, 0xff],
+            truncated: false
+        }
+    );
+    let parquet = file("t.parquet", None, FileBody::Text("PAR1".into()), true);
+    assert!(matches!(
+        parquet.preview(&limits),
+        FilePreview::Spreadsheet {
+            format: SpreadsheetFormat::Parquet,
+            truncated: true,
+            ..
+        }
+    ));
     // The server's type wins over the name, both ways.
     let typed_video = file(
         "recording",

@@ -199,6 +199,8 @@ nonisolated public enum FilePreview: Hashable, Sendable {
   case pdf(data: Data, truncated: Bool)
   /// A 3D model as the server returned it; `truncated` when it is cut and cannot open.
   case model(format: ModelFormat, data: Data, truncated: Bool)
+  /// An Excel workbook or Parquet file, read into tables (it has no text to show).
+  case spreadsheet(format: SpreadsheetFormat, preview: SpreadsheetPreview)
   /// A video, streamed once asked to play.
   case video
   /// None of these.

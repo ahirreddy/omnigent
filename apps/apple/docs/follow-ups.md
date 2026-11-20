@@ -558,11 +558,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Composer tints, left:** a sent prompt's leading command is not tinted in the transcript
   (the web tints it in the bubble); the SwiftUI, TextKit and CLI prompt renderers would each
   need the session's commands. The composer's own tints are native (`TintedTextEditor`).
-- [ ] **Excel and Parquet previews as tables:** the web reads `.xlsx` (zip, deflate, sheet XML)
-  and Parquet (Thrift footer, pages, snappy and zstd) in the browser. The core has no zip,
-  deflate, XML, snappy or zstd decoder and stays dependency-light and wasm-clean, so these
-  open as other binary files. Needs a decoder decision (pure-Rust crates through the mirror,
-  or hand-written readers for the subset the web supports).
+- [ ] **Excel and Parquet previews, left:** a zstd, LZ4, Brotli or LZO Parquet file shows the
+  web's "compressed with …" message (the app reads uncompressed, Snappy and gzip, one codec
+  more than the web); `BIT_PACKED` levels and the `GROUP_VAR_INT` encoding are named as
+  unsupported. Find (Command-F) doesn't search the table, for CSV either.
 - [ ] **Browser Annotate and Draw** (web `63915cd179`, about 4,000 lines with its outbox):
   the desktop Browser pane's tools (pick an element and describe a change; pen, rectangle,
   arrow and text marks with a note) and their outbox are not ported. Plan:
@@ -636,6 +635,15 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   default shell), Close Pane with "Close shell?", dividers kept within 25–75%, unfocused panes
   dimmed, ⌥⇧⌘[ / ] to cycle, and the tree kept per session on this device. Panes of shells that
   ended leave with the list, or with a full read when the view opens. 2026-11-20.
+- [x] **Excel and Parquet previews as tables** (web `c5a6ee0c91`): `.xlsx` and `.parquet` files
+  open on the CSV table, a picker of the visible sheets for a workbook. The app reads the bytes
+  the core hands it (`FilePreview::Spreadsheet`) with no new dependency: the zip and its raw
+  deflate through the Compression framework and `XMLParser` (relationships, shared strings,
+  styles, dates, times, elapsed formats, formulas' results, UTF-16 parts, per-part and
+  per-workbook limits); Parquet's Thrift footer, v1 and v2 pages, plain, dictionary, RLE and
+  delta encodings, nested lists, structs and maps as JSON, with an in-house Snappy decoder and
+  gzip. The core types and ranks each table (`table_from_records`), so sorting matches CSV.
+  Neither format has a source, diff or line view, as on the web. 2026-11-20.
 - [x] **Workflows: the last follow-ups.** An automation's run history shows each run's tasks
   (a segment each), what its agent last wrote, its plan's Stop or Continue, the workflow it
   follows and its graph (`run-steps`). A trigger automation's Instructions tab has the Workflow

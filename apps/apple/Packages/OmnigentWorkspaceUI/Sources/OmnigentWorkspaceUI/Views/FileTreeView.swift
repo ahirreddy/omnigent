@@ -325,6 +325,7 @@ public enum FileIcons {
     case "json", "yaml", "yml", "toml", "plist", "xml": return "curlybraces"
     case "zip", "gz", "tar", "tgz", "xz": return "doc.zipper"
     case "pdf": return "doc.richtext"
+    case "xlsx", "parquet": return "tablecells"
     default: return "chevron.left.forwardslash.chevron.right"
     }
   }
