@@ -84,7 +84,7 @@ struct OmnigentMacApp: App {
       content: { id in Self.windowRoot(id, delegate: appDelegate) }
     )
     .commands {
-      OmnigentDesktopCommands(
+      DesktopMenuCommands(
         actions: DesktopCommandActions(
           defaultServerURL: defaultServerURL,
           helpURL: Self.helpURL, checkForUpdates: appDelegate.checkForUpdates,

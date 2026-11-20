@@ -7,7 +7,6 @@ import OmnigentCoreFFI
 import OmnigentDesktop
 import OmnigentStores
 import OmnigentUIComponents
-import OmnigentWorkspaceUI
 import SwiftUI
 
 #if OMNIGENT_CHROMIUM
@@ -35,8 +34,6 @@ struct ServerWindowRoot: View {
   @State private var settings = SettingsNavigator()
   @Environment(\.openWindow) private var openWindow
   @Environment(\.appearsActive) private var appearsActive
-  /// A data table with the keyboard: Edit > Find acts on it.
-  @FocusedValue(\.dataTableFind) private var tableFind
 
   private var desktop: DesktopController { services.desktop }
 
@@ -225,8 +222,7 @@ struct ServerWindowRoot: View {
       signOut: session.connection.connectedServer?.mode == .localSingleUser || !session.isSignedIn
         ? nil : { signInActions.signOut() },
       reconnect: bound ? { Task { await connectBoundServer(session, force: true) } } : nil,
-      find: tableFind.map(Self.find) ?? browserPage(session).map(Self.find),
-      zoom: browserPage(session).map(Self.zoom))
+      find: browserPage(session).map(Self.find), zoom: browserPage(session).map(Self.zoom))
   }
 
   /// The selected tab's page, when it is a browser tab: Edit > Find and View > Zoom act on it.
