@@ -45,7 +45,7 @@ struct DesignRequestStrip: View {
           .help("Send this request again")
           .accessibilityIdentifier("design-request-retry")
       }
-      if let actions, row.state != .sending {
+      if let actions, row.state != .sending, row.state != .slow {
         Button("Remove", systemImage: "xmark") { actions.remove(row.id) }
           .help("Remove this request")
           .accessibilityIdentifier("design-request-remove")
@@ -53,15 +53,18 @@ struct DesignRequestStrip: View {
     }
   }
 
+  /// The web's note for a send the server is slow to answer.
+  static let slowNote = "The server hasn\u{2019}t answered yet; it\u{2019}s still trying"
+
   @ViewBuilder
   private func stateLabel(_ state: DesignRequestRow.State) -> some View {
     switch state {
     case .waiting:
       Text("Waiting for the agent").font(.caption).foregroundStyle(.secondary)
-    case .sending:
+    case .sending, .slow:
       HStack(spacing: Theme.Spacing.extraSmall) {
         ProgressView().controlSize(.mini)
-        Text("Sending\u{2026}")
+        Text(state == .slow ? Self.slowNote : "Sending\u{2026}")
       }
       .font(.caption)
       .foregroundStyle(.secondary)

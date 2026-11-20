@@ -25,6 +25,8 @@ nonisolated public struct DesignRequestRow: Hashable, Sendable, Identifiable {
     case waiting
     /// On its way.
     case sending
+    /// On its way, and the server hasn't answered for a while.
+    case slow
     /// Not sent, with why; `canRetry` is false for one a policy blocked.
     case failed(String, canRetry: Bool)
   }
