@@ -13,6 +13,9 @@ public final class FloatingPanelController {
   private var panel: FloatingPanelWindow?
   private var observers: [any NSObjectProtocol] = []
   private var escapeMonitor: Any?
+  /// The content answers Escape itself (the composer's completion list is open), so Escape
+  /// closes that rather than hiding the panel.
+  public var contentClaimsEscape = false
 
   /// Creates a controller; the panel is built on the first ``show(content:)``.
   public init() {}
@@ -74,7 +77,7 @@ public final class FloatingPanelController {
         }
       })
     escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-      guard let self, let panel = self.panel, event.window === panel,
+      guard let self, let panel = self.panel, event.window === panel, !self.contentClaimsEscape,
         Self.isBareEscape(keyCode: event.keyCode, modifiers: event.modifierFlags)
       else { return event }
       self.hide()

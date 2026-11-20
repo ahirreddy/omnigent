@@ -64,6 +64,25 @@ struct ComposerTokenTests {
   }
 
   #if os(macOS)
+    @Test("A composer with its completion list open claims Escape, and one without doesn't")
+    func claimsEscape() throws {
+      final class Claim {
+        var value = false
+      }
+      var state = ComposerSamples.idle
+      state.slashCommands = commands
+      for (draft, expected) in [("/re", true), ("hello", false)] {
+        let claim = Claim()
+        let screen = OffscreenWindow(
+          ComposerView(draft: .constant(draft), state: state, actions: ComposerActions(send: {}))
+            .onPreferenceChange(ComposerClaimsEscape.self) { claim.value = $0 }
+            .frame(width: 480, height: 300))
+        defer { screen.close() }
+        screen.settle()
+        #expect(claim.value == expected, "\(draft)")
+      }
+    }
+
     @Test("The editor shows the tint on the command and keeps typing plain after it")
     func editorTint() throws {
       var state = ComposerSamples.idle

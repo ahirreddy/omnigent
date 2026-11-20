@@ -200,6 +200,7 @@ public struct ComposerView: View {
       }
     #endif
     .readingPostureFocus($isFocused, focusRequest: focusRequest)
+    .preference(key: ComposerClaimsEscape.self, value: keyboard.claimsEscape)
     .task(id: modeHUD) { await clearHUD() }
     .composerPickerRequests(state: state, actions: actions)
     .accessibilityElement(children: .contain)
@@ -358,5 +359,17 @@ extension ComposerView {
 
   private var completions: ComposerCompletions {
     .offered(draft: draft, dismissed: dismissedCompletionsDraft, state: state)
+  }
+}
+
+/// Whether a composer inside answers Escape itself (its completion list is open, or a turn can
+/// stop), for a window that otherwise closes on Escape.
+public struct ComposerClaimsEscape: PreferenceKey {
+  /// No composer claims it.
+  public static let defaultValue = false
+
+  /// Any composer that claims it.
+  public static func reduce(value: inout Bool, nextValue: () -> Bool) {
+    value = value || nextValue()
   }
 }

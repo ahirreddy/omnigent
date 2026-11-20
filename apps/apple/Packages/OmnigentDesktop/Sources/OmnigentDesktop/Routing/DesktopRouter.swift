@@ -138,6 +138,19 @@ public final class DesktopRouter {
     if let entry = registry.entry(front.instance) { openWindow?(entry.id) }
   }
 
+  /// Shows Settings in the server window `instance`, bringing it forward; with no such window,
+  /// as ``showSettings(toggling:)``.
+  /// - Parameter instance: The window's instance.
+  public func showSettings(in instance: UUID) {
+    guard let page = registry.settingsPages.page(of: instance), let entry = registry.entry(instance)
+    else {
+      showSettings()
+      return
+    }
+    page.setShown(true)
+    openWindow?(entry.id)
+  }
+
   private func drain() {
     guard drainTask == nil, !queue.isEmpty else { return }
     guard openWindow != nil else {

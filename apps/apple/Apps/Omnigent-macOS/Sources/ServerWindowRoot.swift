@@ -100,7 +100,7 @@ struct ServerWindowRoot: View {
     .desktopAttention(session.connection, serverURL: id.serverURL, desktop: desktop)
     .floatingNewAgentSupport(
       session.connection, window: id.instance, registry: desktop.registry,
-      host: services.floatingNewAgent
+      host: services.floatingNewAgent, settings: settings
     )
     .menuBarSessions(
       session.connection, serverURL: isReady ? id.serverURL : nil, instance: id.instance,

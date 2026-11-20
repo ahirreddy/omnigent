@@ -47,6 +47,18 @@
   struct WindowSettingsPageTests {
     init() { DesktopSideEffects.reset() }
 
+    @Test("A window's own Settings shows and comes forward, whichever window is in front")
+    func showsOneWindow() throws {
+      let harness = SettingsHarness()
+      let (first, firstState) = try harness.window("https://a.test")
+      let (_, secondState) = try harness.window("https://b.test")
+      harness.router.showSettings(in: first.instance)
+      #expect(firstState.isShown && !secondState.isShown)
+      #expect(harness.opened == [first])
+      harness.router.showSettings(in: UUID())
+      #expect(secondState.isShown, "an unknown window falls back to the front one")
+    }
+
     @Test("Command-comma shows the front window's Settings, and again goes back")
     func toggles() throws {
       let harness = SettingsHarness()
