@@ -43,6 +43,7 @@ public struct InterfaceAppearanceSections: View {
   @AppStorage(TranscriptViewDefault.key) private var transcriptView = TranscriptViewDefault.chat
   @AppStorage(InterfacePreferences.harnessIconKey) private var harnessIcon = HarnessIconStyle
     .default
+  @AppStorage(InterfacePreferences.sessionRowQuickActionsKey) private var rowQuickActions = true
   @Environment(\.pickerVisibilitySource) private var pickerSource
   @Bindable private var code = CodeTypography.shared
 
@@ -82,6 +83,15 @@ public struct InterfaceAppearanceSections: View {
             + "active shows a session's brand colors while it runs or its sandbox is up.")
       }
       .accessibilityIdentifier("settings.harness-icon")
+      #if os(macOS)
+        Toggle(isOn: $rowQuickActions) {
+          Text("Show Pin and Archive buttons on session rows")
+          Text(
+            "Turn this off to keep Pin and Archive in the session row\u{2019}s More menu and "
+              + "right-click menu only, so they are harder to click by mistake.")
+        }
+        .accessibilityIdentifier("settings.session-row-quick-actions")
+      #endif
     }
     Section {
       Picker("Workspace panel", selection: $workspacePanel) {

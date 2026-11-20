@@ -21,6 +21,9 @@ nonisolated public enum InterfacePreferences {
   /// `omnigent:project-kanban-board` (the web's key): a project opens its board, where the server
   /// offers one. On unless turned off.
   public static let projectBoardKey = "omnigent:project-kanban-board"
+  /// `omnigent:session-row-quick-actions` (the web's key): hovering a session row shows its Pin
+  /// and Archive buttons beside More. On unless turned off.
+  public static let sessionRowQuickActionsKey = "omnigent:session-row-quick-actions"
 
   /// A Boolean preference; unset reads as `false`, as on the web.
   /// - Parameters:
