@@ -6,6 +6,7 @@
 //! reasoning and embedded bytes never reach a row.
 
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 
 use omnigent_protocol::content::{self, ContentPart};
 use omnigent_protocol::display;
@@ -68,6 +69,46 @@ pub fn interrupted_reply(rows: &[Row]) -> Option<usize> {
     (rows.get(at)?.role == RowRole::Assistant).then_some(at)
 }
 
+/// Claude Code's tool that ends a sub-agent's turn by handing its final report to the caller.
+const SUBAGENT_HANDBACK_TOOL: &str = "SubagentHandback";
+
+/// The report a Claude sub-agent handed back, which is its answer. `None` for any other call, and
+/// for a handback whose arguments carry no report text (it stays an ordinary tool row).
+fn handback_report(call: &FunctionCallData) -> Option<String> {
+    if call.name != SUBAGENT_HANDBACK_TOOL {
+        return None;
+    }
+    // Arguments that aren't a JSON object leave the call as a tool row, as on the web.
+    let arguments = serde_json::from_str::<Value>(&call.arguments).ok()?;
+    let report = arguments.get("message")?.as_str()?;
+    (!report.trim().is_empty()).then(|| report.to_owned())
+}
+
+/// Drops the results of sub-agent handbacks shown as answers: such a result only confirms that the
+/// report was delivered. Returns whether any row went.
+pub fn drop_handback_results(rows: &mut Vec<Row>) -> bool {
+    let handbacks: BTreeSet<String> = rows
+        .iter()
+        .filter(|row| row.is_handback_report())
+        .filter_map(|row| row.call_id.clone())
+        .collect();
+    if handbacks.is_empty() {
+        return false;
+    }
+    let before = rows.len();
+    rows.retain(|row| !is_result_of(row, &handbacks));
+    rows.len() != before
+}
+
+/// Whether `row` is a tool result (or its live output) for one of `calls`.
+fn is_result_of(row: &Row, calls: &BTreeSet<String>) -> bool {
+    row.activity_kind() == Some(ActivityKind::ToolResult)
+        && row
+            .call_id
+            .as_ref()
+            .is_some_and(|call| calls.contains(call))
+}
+
 /// The row for one persisted item, or `None` for hidden context.
 ///
 /// # Errors
@@ -77,7 +118,10 @@ pub fn project_item(item: &ConversationItem) -> Result<Option<Row>, ProjectionEr
     let projector = Projector { item };
     Ok(Some(match &item.data {
         ItemData::Message(message) => return projector.message(message),
-        ItemData::FunctionCall(call) => projector.function_call(call),
+        ItemData::FunctionCall(call) => handback_report(call).map_or_else(
+            || projector.function_call(call),
+            |report| projector.row(RowRole::Assistant, report),
+        ),
         ItemData::FunctionCallOutput(output) => projector.function_call_output(output),
         ItemData::Error(error) => projector.error(error),
         ItemData::Reasoning(reasoning) => projector.reasoning(reasoning),

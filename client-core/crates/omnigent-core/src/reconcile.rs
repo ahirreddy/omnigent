@@ -33,7 +33,7 @@ pub use older::{HistoryItems, HistoryPaging, OlderHistoryRequest};
 use crate::reducer::{
     ChangeSet, ConversationSnapshot, Decision, Effects, LiveReducer, ProjectionError, ReducerError,
     ReportedValue, Row, SessionEventState, SessionHeader, SessionSettings, TurnStatus,
-    decode_event, diff_rows, interrupted_reply, project_item, sections,
+    decode_event, diff_rows, drop_handback_results, interrupted_reply, project_item, sections,
 };
 use crate::sandbox_state::SandboxProfileName;
 
@@ -432,7 +432,7 @@ pub fn event_state_from_snapshot(session: &SessionSnapshot) -> SessionEventState
 ///
 /// A repeated id keeps its first position and its latest content. Hidden context is skipped; an
 /// interrupt marker among it marks the reply it cut off as interrupted (see
-/// [`interrupted_reply`]).
+/// [`interrupted_reply`]). A sub-agent handback shown as its answer drops its delivery result.
 ///
 /// # Errors
 ///
@@ -456,6 +456,7 @@ pub fn history_rows(items: &[ConversationItem]) -> Result<Vec<Row>, ProjectionEr
             rows.push(row);
         }
     }
+    drop_handback_results(&mut rows);
     Ok(rows)
 }
 

@@ -337,6 +337,13 @@ impl Row {
     pub fn activity_kind(&self) -> Option<ActivityKind> {
         self.activity.as_ref().map(|activity| activity.kind)
     }
+
+    /// True for a sub-agent's handed-back report, shown as its answer: the only agent text that
+    /// belongs to a tool call.
+    #[must_use]
+    pub fn is_handback_report(&self) -> bool {
+        self.role == RowRole::Assistant && self.activity.is_none() && self.call_id.is_some()
+    }
 }
 
 /// The session's turn status as the conversation view shows it.
