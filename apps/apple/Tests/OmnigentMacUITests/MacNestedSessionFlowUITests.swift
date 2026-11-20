@@ -4,7 +4,7 @@ import XCTest
 /// opens the composer beside it with a provisional row in the sidebar, the session it starts sits
 /// nested under the fixture, the family collapses and expands, a member offers no Pin or project,
 /// it leaves the nest and joins it again from Move session, Nests, and Option-Command-A on the
-/// member opens the composer again for a peer.
+/// member opens the composer again for a peer, whose draft row stays after leaving it.
 final class MacNestedSessionFlowUITests: XCTestCase {
   override func setUp() {
     super.setUp()
@@ -59,18 +59,22 @@ final class MacNestedSessionFlowUITests: XCTestCase {
       live.waitUntil(timeout: 30) { isNested(memberRow, under: fixtureRow) },
       "joining the fixture's nest did not nest the member under it")
 
-    // Option-Command-A on the open member opens the composer for a peer; leaving drops its row.
+    // Option-Command-A on the open member opens the composer for a peer. Leaving keeps its
+    // draft row, which reopens the composer; Delete Draft drops it.
     live.clickTitle(of: memberRow, "the member row")
     XCTAssertTrue(transcript.appears(within: 15), "the member is not open")
     app.typeKey("a", modifierFlags: [.command, .option])
-    XCTAssertTrue(
-      live.element("new-session-subtitle", in: app).appears(within: 15),
-      "Option-Command-A opened no nested composer")
+    let subtitle = live.element("new-session-subtitle", in: app)
+    XCTAssertTrue(subtitle.appears(within: 15), "Option-Command-A opened no nested composer")
     XCTAssertTrue(draft.appears(within: 10), "no provisional row for the peer")
     live.shot(app, "peer-composer")
     live.clickTitle(of: memberRow, "the member row")
     XCTAssertTrue(transcript.appears(within: 15), "the member did not open again")
-    XCTAssertTrue(draft.disappears(within: 10), "leaving the composer kept its provisional row")
+    XCTAssertTrue(draft.exists, "leaving the composer dropped its draft row")
+    live.clickTitle(of: draft, "the draft row")
+    XCTAssertTrue(subtitle.appears(within: 15), "the draft row did not reopen its composer")
+    choose(["Delete Draft"], inMenuOf: draft, live, app)
+    XCTAssertTrue(draft.disappears(within: 10), "Delete Draft kept the draft row")
     live.assertRunning(app, "after the nested flow")
   }
 
