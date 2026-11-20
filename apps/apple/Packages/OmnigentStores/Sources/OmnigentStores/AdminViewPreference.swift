@@ -1,4 +1,5 @@
 public import Foundation
+import OmnigentCoreFFI
 
 /// Whether an admin uses the admin view on a server, as the web keeps it in the
 /// `omnigent_admin_view` cookie: per origin, on unless turned off.
