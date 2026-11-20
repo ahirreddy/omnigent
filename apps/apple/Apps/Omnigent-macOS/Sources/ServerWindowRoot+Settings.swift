@@ -1,6 +1,7 @@
 import Foundation
 import OmnigentAppUI
 import OmnigentDesktop
+import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
 

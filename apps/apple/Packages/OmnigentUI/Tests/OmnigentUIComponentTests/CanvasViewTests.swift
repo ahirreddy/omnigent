@@ -29,8 +29,11 @@
       transcriptScreen(CanvasView(state: state, actions: actions), width: 900, height: 700)
     }
 
-    /// The zoom in, zoom out, fit, reset and new session controls come after one tab per board.
-    private func controlIndex(_ position: Int) -> Int { boards.count + position }
+    /// Zoom in, Zoom out and Fit view close the key loop below the cards (without reset or
+    /// new session actions); the cards drawn, each in the loop, come before them.
+    private func zoomControl(_ position: Int, on screen: OffscreenWindow<AnyView>) -> Int {
+      screen.controlFrames.count - 3 + position
+    }
 
     @Test("Counts its sessions, singular and plural, and draws each card's facts")
     func header() throws {
@@ -141,20 +144,20 @@
     @Test("Zoom in and Zoom out resize the board, and Fit view brings the fit back")
     func zoomControls() throws {
       let state = CanvasViewState(
-        boards: boards, activeBoard: "main", cards: [card("a"), card("b", left: 6_400, top: 3_200)])
+        boards: boards, activeBoard: "main", cards: [card("a"), card("b", left: 6_400)])
       let screen = page(state)
       defer { screen.close() }
       let fitted = try boardWidth(screen)
-      try screen.clickControl(at: controlIndex(0))
+      try screen.clickControl(at: zoomControl(0, on: screen))
       let zoomedIn = try boardWidth(screen)
       #expect(zoomedIn > fitted)
-      try screen.clickControl(at: controlIndex(0))
+      try screen.clickControl(at: zoomControl(0, on: screen))
       let zoomedInTwice = try boardWidth(screen)
       #expect(zoomedInTwice > zoomedIn + 1)
-      try screen.clickControl(at: controlIndex(1))
+      try screen.clickControl(at: zoomControl(1, on: screen))
       let zoomedOut = try boardWidth(screen)
       #expect(abs(zoomedOut - zoomedIn) < 1, "Zoom out undoes one Zoom in")
-      try screen.clickControl(at: controlIndex(2))
+      try screen.clickControl(at: zoomControl(2, on: screen))
       let refitted = try boardWidth(screen)
       #expect(abs(refitted - fitted) < 1, "Fit view goes back to the fit")
       #expect(try screen.shows("Title b"))
@@ -197,11 +200,11 @@
             actions: actions)
         }
       }
-      let cards = [card("a"), card("b", left: 6_400, top: 3_200)]
+      let cards = [card("a"), card("b", left: 6_400)]
       let screen = transcriptScreen(Host(boards: boards, cards: cards), width: 900, height: 700)
       defer { screen.close() }
       let fitted = try boardWidth(screen)
-      try screen.clickControl(at: controlIndex(0))
+      try screen.clickControl(at: zoomControl(0, on: screen))
       let zoomed = try boardWidth(screen)
       #expect(zoomed > fitted)
       try screen.clickControl(at: 1)
