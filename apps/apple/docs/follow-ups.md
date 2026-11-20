@@ -421,9 +421,8 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   also reviews a remote runner, which native onboarding doesn't offer (see Onboarding above).
 - [ ] **Session overview:** no docked overview beside the chat (it is a popover). Files changed
   counts the Changes list as the host reports it, untracked lines not separately counted.
-- [ ] **Terminal split, left:** the web keeps showing saved shell panes while the agent's
-  terminal is down; native shows the Terminal view's stopped state over every pane. A divider
-  takes VoiceOver's adjust actions but not the arrow keys (a Mac divider isn't a key view).
+- [ ] **Terminal split, left:** a divider takes VoiceOver's adjust actions but not the arrow
+  keys (a Mac divider isn't a key view).
 - [ ] **Settings › Archived (Mac):** retention uses a session's last change, not the server's
   `omnigent.archived_at` label (the core's session summary does not carry it), and the project
   filter covers loaded pages only (the web pages through every archived session).
@@ -554,9 +553,6 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     project's board: list rows carry no labels, so the core can't tell a shared run.
   - Left and Right on a selected project row don't collapse and expand its folder; its button
     does.
-- [ ] **Composer tints, left:** a sent prompt's leading command is not tinted in the transcript
-  (the web tints it in the bubble); the SwiftUI, TextKit and CLI prompt renderers would each
-  need the session's commands. The composer's own tints are native (`TintedTextEditor`).
 - [ ] **Excel and Parquet previews, left:** a ZSTD or LZO Parquet file shows the web's
   "compressed with …" message (Apple's Compression framework has neither; the app reads
   uncompressed, Snappy, gzip, Brotli, LZ4 and LZ4_RAW, four codecs more than the web);
@@ -572,13 +568,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     sanitizes every field, so a hostile page can only misdescribe its own element. CDP's
     `Page.createIsolatedWorld` (a context id per document, through `callDevToolsMethod`) would
     give Chromium WebKit's isolation.
-  - The outbox (`DesignRequestOutbox`) lives as long as its window: a request not yet sent is
-    lost when the window closes or the app quits. The web keeps them in IndexedDB per account,
-    restores them after a reload as "may have reached the agent", expires them after a day and
-    checks the signed-in account before each send; none of that is ported.
-  - Not ported from the outbox either: the 60 s "the server hasn't answered yet" note, the
-    180 s give-up on a POST that never answers (the core's transport timeout applies), and
-    matching a native terminal session's delivery receipts (pending ids) to a failed request.
+  - Not ported from the outbox: matching a native terminal session's delivery receipts
+    (pending ids) to a failed request, and a request that stalled and then arrived late is
+    not marked sent (the outbox stops its send at the give-up). A window that closes leaves its
+    unsent requests on disk for the next launch or sign-in; the web's other tabs adopt them at
+    once.
   - Draw's marks stay where they were drawn on screen when the page zooms or scrolls under
     them (the web's are in page CSS pixels and follow its zoom); Annotate asks again on each
     move, so its outline follows.
@@ -623,6 +617,21 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   Shift-Command-G) opens a find bar over the table that marks the matching cells, selects and
   scrolls to the one found now, and closes on Done or Escape; iPhone and iPad keep it as the
   table's search field (Command-F from a keyboard).
+- [x] **Design outbox kept across launches** (web `63915cd179`): unsent requests are saved per
+  account (server and signed-in user) as a JSON index beside their screenshots in Application
+  Support (`DesignOutboxStorage`); after a relaunch a window takes back its account's as
+  needing a Retry ("may have reached the agent"), deleting ones over a day old and other
+  accounts' on the same server; a request isn't sent as another account; a send unanswered for
+  60 s says so, and at 180 s the outbox stops waiting so the session's next request can go.
+  2026-11-20.
+- [x] **A sent prompt's leading command tinted in the transcript** (web `195df4a52d`): a known
+  command or skill leading a prompt (not another session's, nor one with attachments) takes the
+  composer's tint in the SwiftUI and TextKit chat renderers (the prompt's Markdown marks it, so
+  cached text stays apart) and the CLI palette's command color in both CLI renderers.
+  2026-11-20.
+- [x] **Terminal split while the agent is down** (web `MainTerminalView`): a split whose shells
+  the session still lists keeps its panes, the agent's saying it's unavailable, under a band
+  with the state and Resume. 2026-11-20.
 
 - [x] **Automation schedules as RRULE text** (web `2d0b6abbb1`): the schedule picker has a
   Visual | RRULE switch (RRULE needs `automations_v2`). RRULE starts from the visual schedule's

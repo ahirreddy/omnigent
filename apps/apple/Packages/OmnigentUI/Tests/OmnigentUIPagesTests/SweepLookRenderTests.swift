@@ -60,6 +60,9 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case rruleEditor = "sweep-g-rrule-editor"
   case floatingPanel = "sweep-g-floating-panel"
   case tableFind = "sweep-g-table-find"
+  case outboxSaved = "sweep-g-outbox-saved"
+  case promptCommand = "sweep-g-prompt-command"
+  case terminalKept = "sweep-g-terminal-kept"
 
   var testDescription: String { rawValue }
 
@@ -72,8 +75,10 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   var macWidth: CGFloat {
     switch self {
     case .canvasQuickView: 960
-    case .automationsSorted, .terminalSplit, .spreadsheetSheets, .tableFind: 760
-    case .shellComposer, .composerTints, .designRequests, .designOutbox, .floatingPanel: 680
+    case .automationsSorted, .terminalSplit, .spreadsheetSheets, .tableFind, .terminalKept: 760
+    case .shellComposer, .composerTints, .designRequests, .designOutbox, .floatingPanel,
+      .outboxSaved, .promptCommand:
+      680
     case .rruleEditor: 560
     default: 480
     }
@@ -102,14 +107,15 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .importReview: 480
     case .mutedRows: 160
     case .automationsSorted: 640
-    case .terminalSplit: 420
+    case .terminalSplit, .terminalKept: 420
     case .spreadsheetSheets: 440
     case .spreadsheetUnreadable: 320
     case .rruleEditor: 340
     case .tableFind: 420
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
       .quickAnswer, .staleProfile, .questionSubmitBlocked, .shellComposer, .composerTints,
-      .overviewChanges, .designRequests, .designOutbox, .floatingPanel:
+      .overviewChanges, .designRequests, .designOutbox, .floatingPanel, .outboxSaved,
+      .promptCommand:
       nil
     }
   }
@@ -165,6 +171,9 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .rruleEditor: return AnyView(Fixture.rruleEditor)
     case .floatingPanel: return AnyView(Fixture.floatingPanel)
     case .tableFind: return AnyView(Fixture.tableFind)
+    case .outboxSaved: return AnyView(Fixture.outboxSaved)
+    case .promptCommand: return AnyView(Fixture.promptCommand)
+    case .terminalKept: return AnyView(Fixture.terminalKept)
     }
   }
 }
