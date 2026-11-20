@@ -292,7 +292,8 @@ final class AppServices {
     case .consentDeclined, .awaitingWindowOpener, .acknowledgmentDeclined:
       logger.notice("Desktop: \(message, privacy: .public)")
     case .deepLinkRejected, .acknowledgmentFailed, .invalidServerURL, .routingFailed,
-      .notificationFailed, .unrecognizedNotificationPayload, .localServer, .supervision:
+      .notificationFailed, .unrecognizedNotificationPayload, .localServer, .supervision,
+      .systemShortcut:
       logger.error("Desktop: \(message, privacy: .public)")
     }
   }
