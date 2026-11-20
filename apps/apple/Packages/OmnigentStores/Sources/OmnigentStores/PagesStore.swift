@@ -163,6 +163,8 @@ public final class PagesStore {
   /// Reads the Inbox feeds this server offers: agent-posted items and automation failures.
   public func refreshInboxFeeds() async {
     guard let offered else { return }
+    // The advisor's tab follows its settings, so they come before the items.
+    if offered.advisor { await feeds.advisor.loadSettings() }
     if offered.inboxItems { await feeds.refreshItems() }
     if offered.automationInbox { await feeds.refreshFailures() }
   }

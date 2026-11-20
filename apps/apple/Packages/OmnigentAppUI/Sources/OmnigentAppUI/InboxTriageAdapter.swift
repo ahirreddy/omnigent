@@ -31,7 +31,9 @@ struct InboxTriageAdapter: View {
   /// The feeds the server offers: a change reads them again.
   private var feedsSignature: [Bool] {
     let offered = connection.pages?.offered
-    return [offered?.inboxItems == true, offered?.automationInbox == true]
+    return [
+      offered?.inboxItems == true, offered?.automationInbox == true, offered?.advisor == true,
+    ]
   }
 
   /// Sessions with comments and their counts: a change reads their comments again.
@@ -168,6 +170,7 @@ struct InboxTriageAdapter: View {
     actions.retrySuggestions = { Task { await feeds.refreshItems() } }
     actions.loadMoreSuggestions = { Task { await feeds.loadMoreItems() } }
     actions.retryAutomations = { Task { await feeds.refreshFailures() } }
+    actions.retryAdvisorSettings = { Task { await feeds.advisor.loadSettings() } }
     actions.loadMoreAutomations = { Task { await feeds.loadMoreFailures() } }
   }
 

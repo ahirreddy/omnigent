@@ -15,6 +15,12 @@ struct InboxFeedBanners: View {
       .font(.callout).foregroundStyle(Theme.failure)
       .accessibilityIdentifier("inbox-suggestion-write-error")
     }
+    if filter == .advisor, state.advisorSettingsFailed {
+      banner(
+        "Couldn\u{2019}t load Omni Advisor settings, so its suggestions are not shown.",
+        retry: "Retry settings", action: actions.retryAdvisorSettings,
+        id: "inbox-advisor-settings-error")
+    }
     if state.suggestionsFailed {
       banner(
         "Couldn\u{2019}t load suggestions.", retry: "Retry suggestions",

@@ -9,16 +9,27 @@ nonisolated public struct ServerAccountState: Hashable, Sendable {
   /// Password accounts: the caller can change their password here (an SSO password lives with
   /// the identity provider).
   public var canChangePassword: Bool
+  /// Settings offers the Admin view switch.
+  public var offersAdminView: Bool
+  /// The admin view is on.
+  public var adminViewOn: Bool
 
   /// Creates the account.
   /// - Parameters:
   ///   - userID: The user id.
   ///   - isAdmin: An administrator.
   ///   - canChangePassword: Password accounts.
-  public init(userID: String, isAdmin: Bool = false, canChangePassword: Bool = false) {
+  ///   - offersAdminView: Settings offers the Admin view switch.
+  ///   - adminViewOn: The admin view is on.
+  public init(
+    userID: String, isAdmin: Bool = false, canChangePassword: Bool = false,
+    offersAdminView: Bool = false, adminViewOn: Bool = true
+  ) {
     self.userID = userID
     self.isAdmin = isAdmin
     self.canChangePassword = canChangePassword
+    self.offersAdminView = offersAdminView
+    self.adminViewOn = adminViewOn
   }
 }
 

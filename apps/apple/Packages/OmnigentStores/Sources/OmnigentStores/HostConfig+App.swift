@@ -20,15 +20,17 @@ extension HostConfig {
     #endif
     // Sessions seen before open without network from this device's saved copy.
     let cache = MessageCacheDirectory.prepared()?.path(percentEncoded: false)
+    // Schedules the server makes for the user (Omni Advisor's) follow this device's zone.
+    let timezone = TimeZone.current.identifier
     #if os(macOS)
       return HostConfig(
         urlPolicy: policy, oidcRedirect: .loopback(path: "/oauth/callback"),
-        databricks: databricks, cacheDirectory: cache)
+        databricks: databricks, cacheDirectory: cache, timezone: timezone)
     #else
       return HostConfig(
         urlPolicy: policy,
         oidcRedirect: .privateScheme(redirectUri: "ai.omnigent.ios:/oauth/callback"),
-        databricks: databricks, cacheDirectory: cache)
+        databricks: databricks, cacheDirectory: cache, timezone: timezone)
     #endif
   }
 }

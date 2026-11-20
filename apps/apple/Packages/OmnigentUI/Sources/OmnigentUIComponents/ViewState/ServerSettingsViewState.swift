@@ -46,6 +46,8 @@ nonisolated public struct ServerSettingsViewState: Hashable, Sendable {
   public var archivedProjects: [SettingChoice] = []
   /// The caller's title instructions, for the Sessions pane.
   public var titleInstructions: TitleInstructionsState = .loading
+  /// Omni Advisor, where the server offers it.
+  public var advisor: AdvisorViewState?
 
   /// Creates settings state.
   /// - Parameters:
@@ -145,6 +147,10 @@ public struct ServerSettingsActions {
   public var loadMoreArchived: (@MainActor () -> Void)?
   /// Save the caller's title instructions (`nil` clears them); returns whether they saved.
   public var saveTitleInstructions: (@MainActor (String?) async -> Bool)?
+  /// Omni Advisor's switches, prompt and Run now.
+  public var advisor = AdvisorActions()
+  /// Turn the admin view on or off; the connection reconnects with it.
+  public var setAdminView: (@MainActor (Bool) -> Void)?
 
   /// Creates actions; every one is optional.
   public init() {}

@@ -18,13 +18,16 @@ nonisolated public struct InboxSuggestion: Hashable, Sendable {
   public var sourceTitle: String
   /// The Dismiss menu's reasons.
   public var dismissChoices: [InboxDismissChoice]
+  /// Omni Advisor posted it: the Omni Advisor tab lists it, and it names no source session.
+  public var isAdvisor: Bool
 
   /// Creates a suggestion.
   public init(
     kindLabel: String, title: String, body: String, charts: [InboxChart] = [],
     links: [InboxLink] = [], actions: [String] = [], sourceTitle: String = "its session",
-    dismissChoices: [InboxDismissChoice] = []
+    dismissChoices: [InboxDismissChoice] = [], isAdvisor: Bool = false
   ) {
+    self.isAdvisor = isAdvisor
     self.kindLabel = kindLabel
     self.title = title
     self.body = body

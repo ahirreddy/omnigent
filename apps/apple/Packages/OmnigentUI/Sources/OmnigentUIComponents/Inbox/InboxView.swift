@@ -26,7 +26,12 @@ public struct InboxView: View {
   }
 
   private var filtered: [InboxItem] {
-    InboxTriage.items(state.items, filter: filter, search: search, now: state.now ?? .now)
+    InboxTriage.items(state.items, filter: shownFilter, search: search, now: state.now ?? .now)
+  }
+
+  /// The chosen tab, or All while Omni Advisor's tab isn't offered.
+  private var shownFilter: InboxFilter {
+    InboxFilter.effective(filter, advisorTab: state.advisorTab)
   }
 
   /// The triage list and its keyboard hints.
@@ -53,7 +58,7 @@ public struct InboxView: View {
           if state.hasMoreSessions, let loadMore = actions.loadMoreSessions {
             loadMoreRow(loadMore)
           }
-          InboxFeedPaging(state: state, actions: actions, filter: filter)
+          InboxFeedPaging(state: state, actions: actions, filter: shownFilter)
         }
         .accessibilityIdentifier("inbox")
         .listStyle(.plain)
@@ -120,7 +125,9 @@ public struct InboxView: View {
   /// Loading until the items are read; the empty state only once nothing is left to read and
   /// nothing failed, so it never claims "nothing waiting" too early.
   @ViewBuilder private var emptyState: some View {
-    if state.isAssembling, search.isEmpty {
+    if state.isAssembling || (shownFilter == .advisor && state.advisorTab == .loading),
+      search.isEmpty
+    {
       LoadingCaption(title: "Loading inbox\u{2026}")
         .controlSize(.small)
         .accessibilityIdentifier("inbox-loading")
@@ -157,8 +164,10 @@ public struct InboxView: View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       heading
       HStack {
-        Picker("Filter", selection: $filter) {
-          ForEach(InboxFilter.allCases) { Text($0.title).tag($0) }
+        Picker("Filter", selection: Binding(get: { shownFilter }, set: { filter = $0 })) {
+          ForEach(InboxFilter.offered(advisorTab: state.advisorTab, chosen: filter)) {
+            Text($0.title).tag($0)
+          }
         }
         .pickerStyle(.segmented)
         .tint(Theme.secondary)
@@ -190,7 +199,7 @@ public struct InboxView: View {
         .font(.callout)
         .accessibilityIdentifier("inbox-load-error")
       }
-      InboxFeedBanners(state: state, actions: actions, filter: filter)
+      InboxFeedBanners(state: state, actions: actions, filter: shownFilter)
     }
     .padding(Theme.Spacing.medium)
   }
@@ -212,19 +221,22 @@ public struct InboxView: View {
     if state.hasMoreSuggestions || state.hasMoreAutomations {
       return "Nothing waiting in the loaded items"
     }
-    return switch filter {
+    return switch shownFilter {
     case .all: "Nothing waiting on you"
     case .unread: "You’re all caught up"
     case .awaiting: "No approvals waiting"
+    case .advisor: "No suggestions from Omni Advisor"
     }
   }
 
   private var emptyDescription: String {
-    switch filter {
+    switch shownFilter {
     case .all:
       "When an agent replies or needs your input, or someone comments on a file, it will show up here."
     case .unread: "New agent replies and unseen file comments will show up here."
     case .awaiting: "When an agent needs your input, it will show up here."
+    case .advisor:
+      "Follow-ups, related information, and reminders about your recent work will show up here."
     }
   }
 

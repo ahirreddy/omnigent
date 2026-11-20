@@ -59,7 +59,7 @@ struct InboxTriageLogicTests {
       kinds.map(\.title) == [
         "Approval needed", "Question", "Comment", "Unread", "Suggestion", "Automation failed",
       ])
-    #expect(InboxFilter.allCases.map(\.title) == ["All", "Unread", "Needs you"])
+    #expect(InboxFilter.allCases.map(\.title) == ["All", "Unread", "Needs you", "Omni Advisor"])
     #expect(InboxFilter.allCases.map(\.id) == InboxFilter.allCases)
   }
 
@@ -150,6 +150,31 @@ struct InboxTriageLogicTests {
     #expect(found("friday") == ["s"])
     #expect(found("nightly") == ["f"])
     #expect(found("offline") == ["f"])
+  }
+
+  @Test("Omni Advisor's tab lists only its items, and shows only while it runs for the caller")
+  func advisorTab() {
+    var advisor = item("advisor", kind: .suggestion)
+    advisor.suggestion = InboxSuggestion(
+      kindLabel: "Omni Advisor \u{00B7} Reminder", title: "Renew", body: "", isAdvisor: true)
+    var other = item("other", kind: .suggestion)
+    other.suggestion = InboxSuggestion(kindLabel: "Reminder", title: "Ship", body: "")
+    let items = [advisor, other, item("approval", kind: .approval, decision: approval("a"))]
+    func shown(_ filter: InboxFilter) -> [String] {
+      InboxTriage.items(items, filter: filter, search: "", now: now).map(\.id)
+    }
+    #expect(shown(.advisor) == ["advisor"])
+    #expect(Set(shown(.all)) == ["advisor", "other", "approval"], "All keeps the advisor's items")
+
+    let base: [InboxFilter] = [.all, .unread, .awaiting]
+    #expect(InboxFilter.offered(advisorTab: .shown, chosen: .all) == base + [.advisor])
+    #expect(InboxFilter.offered(advisorTab: .hidden, chosen: .advisor) == base)
+    // While the settings load, the tab stays only where it was already chosen.
+    #expect(InboxFilter.offered(advisorTab: .loading, chosen: .advisor) == base + [.advisor])
+    #expect(InboxFilter.offered(advisorTab: .loading, chosen: .unread) == base)
+    #expect(InboxFilter.effective(.advisor, advisorTab: .hidden) == .all)
+    #expect(InboxFilter.effective(.advisor, advisorTab: .shown) == .advisor)
+    #expect(InboxFilter.effective(.unread, advisorTab: .hidden) == .unread)
   }
 
   @Test(
