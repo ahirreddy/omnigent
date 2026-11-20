@@ -1,3 +1,5 @@
+import OmnigentCoreFFI
+
 /// The `/btw` answer over the composer: closed here, it stays closed until another arrives,
 /// and the session's terminal is told to close its own.
 extension ComposerStore {
