@@ -19,14 +19,17 @@ public struct TranscriptSettingsSection: View {
       }
       .pickerStyle(.segmented)
       .accessibilityIdentifier("settings.transcript-style")
+      .settingsSearchAnchor("settings.transcript-style")
       Picker("Output rendering", selection: $preferences.outputRendering) {
         ForEach(OutputRendering.allCases) { Text($0.title).tag($0) }
       }
       .accessibilityIdentifier("settings.output-rendering")
+      .settingsSearchAnchor("settings.output-rendering")
       Picker("Content width", selection: $preferences.contentWidth) {
         ForEach(TranscriptContentWidth.allCases) { Text($0.title).tag($0) }
       }
       .accessibilityIdentifier("settings.content-width")
+      .settingsSearchAnchor("settings.content-width")
       if preferences.style == .cli {
         LabeledContent("CLI font size") {
           Stepper(

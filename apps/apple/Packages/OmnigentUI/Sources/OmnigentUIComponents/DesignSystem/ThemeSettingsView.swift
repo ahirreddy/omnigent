@@ -27,6 +27,7 @@ public struct ThemeSettingsView: View {
       .pickerStyle(.segmented)
       .tint(Theme.secondary)
       .accessibilityIdentifier("settings.appearance")
+      .settingsSearchAnchor("settings.appearance")
       Picker(selection: $preferences.terminal) {
         ForEach(TerminalThemePreference.allCases) { Text($0.title).tag($0) }
       } label: {
@@ -34,6 +35,7 @@ public struct ThemeSettingsView: View {
         Text("Use a light or dark terminal, or match the app.")
       }
       .accessibilityIdentifier("settings.terminal-theme")
+      .settingsSearchAnchor("settings.terminal-theme")
     }
     TranscriptSettingsSection(preferences: preferences.transcript)
     InterfaceAppearanceSections()
@@ -51,6 +53,7 @@ public struct ThemeSettingsView: View {
         Text(paletteDescription)
       }
       .accessibilityIdentifier("settings.theme")
+      .settingsSearchAnchor("settings.theme")
       Toggle(isOn: $preferences.usesSystemAccent) {
         Text("Use system accent")
         Text(
@@ -58,6 +61,7 @@ public struct ThemeSettingsView: View {
             + "theme's.")
       }
       .accessibilityIdentifier("settings.system-accent")
+      .settingsSearchAnchor("settings.system-accent")
       ColorPicker("Accent", selection: colorBinding(accent: true), supportsOpacity: false)
       ColorPicker("Background tint", selection: colorBinding(accent: false), supportsOpacity: false)
       LabeledContent {

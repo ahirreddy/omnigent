@@ -43,6 +43,7 @@ enum PaletteCatalog {
         id: "terminal", title: "Toggle Chat / Terminal view", detail: "Current session",
         symbol: "apple.terminal", shortcut: AppShortcuts.text(AppShortcuts.toggleViewMode),
         isEnabled: commands.toggleViewMode != nil, target: .toggleTerminal),
+      searchSettings,
       PaletteEntry(
         id: "server", title: "Switch server", detail: "Configured servers", symbol: "server.rack",
         target: .switchServer),
@@ -52,6 +53,12 @@ enum PaletteCatalog {
     entries.insert(contentsOf: pages(state), at: inbox)
     return entries
   }
+
+  /// Search settings…, as the web's ⌘K offers it.
+  private static let searchSettings = PaletteEntry(
+    id: "search-settings", title: "Search settings\u{2026}",
+    detail: "Settings and keyboard shortcuts", symbol: "magnifyingglass",
+    keywords: ["preferences", "find a setting", "shortcut"], target: .searchSettings)
 
   /// Automations, Workflows and Usage, when the server offers them.
   private static func pages(_ state: PaletteViewState) -> [PaletteEntry] {

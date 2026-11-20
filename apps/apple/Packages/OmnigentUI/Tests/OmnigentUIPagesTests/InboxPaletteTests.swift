@@ -128,7 +128,7 @@ struct InboxPaletteTests {
         "New chat", "Go to Inbox", "Go to Settings", "Toggle conversations sidebar",
         "Toggle workspace sidebar",
       ])
-    #expect(entries.count == 11)
+    #expect(entries.count == 12)
     #expect(
       entries.filter { !$0.isEnabled }.map(\.target) == [
         .toggleInspector, .nextRequest, .changes, .composer, .toggleTerminal,

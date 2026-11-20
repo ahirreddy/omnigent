@@ -108,6 +108,8 @@
     let connection: ConnectionStore?
     let theme: ThemePreferences?
     let openSession: @MainActor (URL, String) -> Void
+    @State private var reveal: SettingsReveal?
+    @State private var showsShortcuts = false
 
     var body: some View {
       NavigationStack(path: $router.path) {
@@ -121,6 +123,20 @@
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: PhoneSettingsPage.self) { page($0) }
+        .searchable(
+          text: $router.searchQuery, isPresented: $router.isSearching, prompt: "Search Settings"
+        )
+        .searchSuggestions {
+          ForEach(SettingsSearchIndex.results(router.searchQuery, in: searchEntries)) { entry in
+            Button {
+              pick(entry)
+            } label: {
+              SettingsSearchResultRow(entry: entry)
+            }
+            .accessibilityIdentifier("settings-search-result-\(entry.id)")
+          }
+        }
+        .sheet(isPresented: $showsShortcuts) { KeyboardShortcutsSheet() }
         .task { router.screenAppeared() }
         .toolbar {
           ToolbarItem(placement: .confirmationAction) {
@@ -133,9 +149,45 @@
       .accessibilityIdentifier("settings-screen")
     }
 
+    /// The pages this screen shows, in order.
+    private var pages: [PhoneSettingsPage] {
+      PhoneSettingsPage.allCases.filter { $0 != .appearance || theme != nil }
+    }
+
+    /// Settings search over the pages shown and the server panes offered.
+    private var searchEntries: [SettingsSearchEntry] {
+      let connections = SupervisionConnections.shared.connections(including: connection)
+      return SettingsSearchIndex.entries(
+        SettingsSearchScope(
+          categories: pages.map(\.title),
+          serverPanes: ServerSettingsContainer.searchablePanes(
+            navigator: router.navigator, connections: connections),
+          isMac: false))
+    }
+
+    /// Pushes a result's page and scrolls to its row; a shortcut opens Keyboard Shortcuts.
+    private func pick(_ entry: SettingsSearchEntry) {
+      router.searchQuery = ""
+      router.isSearching = false
+      let server = connection?.supervisedServerURL
+      switch entry.target {
+      case .category(let title):
+        guard let page = PhoneSettingsPage.allCases.first(where: { $0.title == title }) else {
+          return
+        }
+        router.show(.app(page), server: server)
+      case .serverPane(let pane):
+        router.show(.server(pane), server: server)
+      case .shortcut:
+        showsShortcuts = true
+        return
+      }
+      reveal = entry.anchor.map { SettingsReveal(anchor: $0) }
+    }
+
     private var appSection: some View {
       Section {
-        ForEach(PhoneSettingsPage.allCases.filter { $0 != .appearance || theme != nil }) { page in
+        ForEach(pages) { page in
           NavigationLink(value: page) {
             Label(page.title, systemImage: page.systemImage)
               .foregroundStyle(ThemeColor.primary)
@@ -147,6 +199,7 @@
 
     private func page(_ page: PhoneSettingsPage) -> some View {
       content(page)
+        .revealsSettingsRows($reveal)
         .navigationTitle(page.title)
         .navigationBarTitleDisplayMode(.inline)
     }

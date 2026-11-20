@@ -37,18 +37,24 @@
     private let categories: [SettingsPageCategory]
     @Binding private var selection: String
     private let back: @MainActor () -> Void
+    private let search: SettingsSearchConfiguration?
+    @State private var query = ""
+    @State private var reveal: SettingsReveal?
+    @State private var showsShortcuts = false
 
     /// Creates the page.
     /// - Parameters:
     ///   - categories: The categories, in sidebar order.
     ///   - selection: The shown category's id; one the page does not have shows the first.
+    ///   - search: Settings search in the sidebar; `nil` leaves it out.
     ///   - back: Leaves Settings for the window's own content.
     public init(
       categories: [SettingsPageCategory], selection: Binding<String>,
-      back: @escaping @MainActor () -> Void
+      search: SettingsSearchConfiguration? = nil, back: @escaping @MainActor () -> Void
     ) {
       self.categories = categories
       _selection = selection
+      self.search = search
       self.back = back
     }
 
@@ -61,12 +67,32 @@
     public var body: some View {
       HStack(spacing: 0) {
         SettingsPageSidebar(
-          categories: categories, shownID: shown?.id, select: { selection = $0 }, back: back)
+          categories: categories, shownID: shown?.id, select: { selection = $0 }, back: back,
+          search: search.map { search in
+            SettingsSidebarSearch(
+              query: $query, focusRequest: search.focusRequest,
+              results: SettingsSearchIndex.results(query, in: search.entries), pick: pick)
+          })
         pane
       }
       .themeCanvas()
+      .sheet(isPresented: $showsShortcuts) { KeyboardShortcutsSheet() }
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("settings-page")
+    }
+
+    /// Opens a result's category or pane and scrolls to its row; a shortcut opens the
+    /// Keyboard Shortcuts sheet.
+    private func pick(_ entry: SettingsSearchEntry) {
+      query = ""
+      switch entry.target {
+      case .category(let category): selection = category
+      case .serverPane(let pane): search?.openServerPane(pane)
+      case .shortcut:
+        showsShortcuts = true
+        return
+      }
+      reveal = entry.anchor.map { SettingsReveal(anchor: $0) }
     }
 
     @ViewBuilder private var pane: some View {
@@ -87,10 +113,46 @@
             .frame(maxWidth: SettingsPageMetrics.columnWidth)
           }
         }
+        .revealsSettingsRows($reveal)
         // The panes are grouped forms; the theme's canvas shows behind their groups.
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .id(category.id)
+      }
+    }
+  }
+
+  /// The sidebar's search: the field's text and focus, the results and what picking one does.
+  struct SettingsSidebarSearch {
+    let query: Binding<String>
+    let focusRequest: Binding<Bool>
+    let results: [SettingsSearchEntry]
+    let pick: @MainActor (SettingsSearchEntry) -> Void
+  }
+
+  /// The results while there is a query, as two-line rows, or the system's no-results view.
+  private struct SettingsSearchResultsList: View {
+    let search: SettingsSidebarSearch
+
+    var body: some View {
+      if search.results.isEmpty {
+        ContentUnavailableView.search(text: search.query.wrappedValue)
+      } else {
+        List {
+          ForEach(search.results) { entry in
+            Button {
+              search.pick(entry)
+            } label: {
+              SettingsSearchResultRow(entry: entry)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings-search-result-\(entry.id)")
+          }
+        }
+        .listStyle(.sidebar)
+        .accessibilityIdentifier("settings-search-results")
       }
     }
   }
@@ -110,8 +172,48 @@
     let shownID: String?
     let select: @MainActor (String) -> Void
     let back: @MainActor () -> Void
+    var search: SettingsSidebarSearch?
+    /// Bumped to put the keyboard in the search field.
+    @State private var searchFocus = 0
+
+    /// Typing in the search field lists results in place of the categories.
+    private var isSearching: Bool { search.map { !$0.query.wrappedValue.isEmpty } ?? false }
 
     var body: some View {
+      // The header stays put while the list under it swaps between categories and results, so
+      // the search field keeps the keyboard.
+      VStack(spacing: 0) {
+        header
+        Group {
+          if let search, isSearching {
+            SettingsSearchResultsList(search: search)
+          } else {
+            categoryList
+          }
+        }
+        .font(.callout)
+        .environment(\.defaultMinListRowHeight, Theme.Control.sidebarRow)
+        .scrollContentBackground(.hidden)
+      }
+      .task(id: search?.focusRequest.wrappedValue) {
+        // After the page appears, so the keyboard lands in the field and stays there.
+        guard let request = search?.focusRequest, request.wrappedValue else { return }
+        searchFocus += 1
+        request.wrappedValue = false
+      }
+      .frame(width: AppShellMetrics.sidebarIdealWidth)
+      .frame(maxHeight: .infinity)
+      .background {
+        // Only the panel reaches under the title bar; its rows start below it.
+        Color.clear
+          .glassSurface(in: RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous))
+          .padding(.top, Theme.Spacing.small)
+          .ignoresSafeArea(.container, edges: .top)
+      }
+      .padding([.horizontal, .bottom], Theme.Spacing.small)
+    }
+
+    private var categoryList: some View {
       List(selection: listSelection) {
         ForEach(categories) { category in
           Button {
@@ -129,20 +231,6 @@
         }
       }
       .listStyle(.sidebar)
-      .font(.callout)
-      .environment(\.defaultMinListRowHeight, Theme.Control.sidebarRow)
-      .scrollContentBackground(.hidden)
-      .safeAreaInset(edge: .top, spacing: 0) { header }
-      .frame(width: AppShellMetrics.sidebarIdealWidth)
-      .frame(maxHeight: .infinity)
-      .background {
-        // Only the panel reaches under the title bar; its rows start below it.
-        Color.clear
-          .glassSurface(in: RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous))
-          .padding(.top, Theme.Spacing.small)
-          .ignoresSafeArea(.container, edges: .top)
-      }
-      .padding([.horizontal, .bottom], Theme.Spacing.small)
     }
 
     /// The arrow keys move the list's selection; a click runs the row's button.
@@ -157,13 +245,19 @@
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
-        .keyboardShortcut(.cancelAction)
+        // While searching, Escape clears the field first.
+        .keyboardShortcut(isSearching ? nil : .cancelAction)
         .help("Back (Esc)")
         .accessibilityIdentifier("settings-back")
         // The page's name, where the session sidebar has the wordmark.
         Text("Settings")
           .font(.headline.weight(.semibold))
           .accessibilityAddTraits(.isHeader)
+        if let search {
+          SettingsSearchField(
+            text: search.query, focusToken: searchFocus,
+            submit: { if let first = search.results.first { search.pick(first) } })
+        }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.horizontal, Theme.Spacing.large)

@@ -24,6 +24,8 @@ nonisolated public enum PaletteTarget: Hashable, Sendable {
   case usage
   /// Open Settings.
   case settings
+  /// Open Settings with the keyboard in its search field.
+  case searchSettings
   /// Show or hide the sessions sidebar.
   case toggleSidebar
   /// Show or hide the selected session's right panel.

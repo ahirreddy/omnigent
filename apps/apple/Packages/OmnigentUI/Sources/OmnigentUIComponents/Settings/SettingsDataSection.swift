@@ -64,10 +64,13 @@ public struct SettingsDataSection: View {
   @ViewBuilder private var buttons: some View {
     Button("Export\u{2026}", action: flow.beginExport)
       .accessibilityIdentifier("settings.data.export")
+      .settingsSearchAnchor("settings.data.export")
     Button("Import\u{2026}") { flow.isImporting = true }
       .accessibilityIdentifier("settings.data.import")
+      .settingsSearchAnchor("settings.data.import")
     Button("Reset to Defaults\u{2026}") { confirmingReset = true }
       .accessibilityIdentifier("settings.data.reset")
+      .settingsSearchAnchor("settings.data.reset")
   }
 
   /// What reading a settings file did, in the words the section shows.
