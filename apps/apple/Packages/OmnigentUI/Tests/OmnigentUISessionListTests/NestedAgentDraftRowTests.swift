@@ -9,7 +9,7 @@
   @testable import OmnigentUITestSupport
 
   /// An Add nested agent composer's provisional row in the sidebar: the last of its source's
-  /// family, highlighted while its composer is open, with nothing to do on it.
+  /// family, highlighted while its composer is open, with Delete Draft its only action.
   @Suite("Add nested agent: the provisional row", .serialized)
   @MainActor
   struct NestedAgentDraftRowTests {
@@ -35,15 +35,19 @@
       #expect(state.destination(of: state.list.sessions[0]) == .session("src"))
       var actions = SessionListActions()
       actions.rename = { _, _ in }
+      actions.deleteNestedDraft = { _ in }
       #expect(state.rowActions(state.list.sessions[1], actions).rename == nil)
       #expect(state.rowActions(state.list.sessions[0], actions).rename != nil)
+      #expect(state.rowActions(state.list.sessions[1], actions).deleteNestedDraft != nil)
+      #expect(state.rowActions(state.list.sessions[0], actions).deleteNestedDraft == nil)
     }
 
-    @Test("it shows under its source, offers no actions, and choosing it reopens the composer")
+    @Test("it shows under its source, offers Delete Draft alone, and reopens the composer")
     func row() throws {
       let spy = SidebarSpy(state)
       var actions = spy.actions
       actions.sessions.addNestedAgent = { [spy] in spy.calls.append("nested \($0.id)") }
+      actions.sessions.deleteNestedDraft = { [spy] in spy.calls.append("delete \($0.id)") }
       let screen = OffscreenWindow(
         SidebarHarness(spy: spy, actions: actions), width: 300, height: 700)
       defer { screen.close() }
@@ -60,6 +64,8 @@
       #expect(menus[1].menu.item(named: "Add nested agent") == nil)
       #expect(menus[1].menu.item(named: "Rename\u{2026}") == nil)
       #expect(menus[1].menu.item(named: "Delete\u{2026}") == nil)
+      #expect(menus[1].menu.item(named: "Delete Draft") != nil)
+      #expect(menus[0].menu.item(named: "Delete Draft") == nil)
       try screen.clickRow(menus[1].row)
       #expect(spy.selection == .nestedSession(sourceID: "src"))
       #expect(spy.calls.isEmpty)

@@ -132,8 +132,8 @@ struct NestedAgentDraftRowTests {
     #expect(try !screen.shows("New nested agent"))
   }
 
-  @Test("Leaving the composer takes its row away")
-  func leaving() async throws {
+  @Test("Leaving keeps the draft's row: it reopens the composer as left, and Delete Draft ends it")
+  func leavingKeepsTheDraft() async throws {
     let session = try await signedInSession(nestedServer())
     let selection = WindowSelection(.nestedSession(sourceID: "conv_src"))
     let view = ConnectedServerView(
@@ -142,10 +142,54 @@ struct NestedAgentDraftRowTests {
     let screen = OffscreenWindow(view, width: 1200, height: 800)
     defer { screen.close() }
     try await settle(screen, untilShowing: "New nested agent")
-    selection.page = .newSession
-    try await settle(screen, until: "the row to go") {
-      session.connection.creationStore?.nestedDrafts.isEmpty == true
+    let creation = try #require(session.connection.creationStore)
+    let row = try #require(creation.nestedDrafts.first)
+    let field = try #require(screen.allViews.first { $0 is NSTextView })
+    try screen.click(field)
+    try screen.type("draft words")
+    try await settle(screen, until: "the draft kept") {
+      creation.composerDrafts["conv_src"] == "draft words"
     }
-    #expect(try !screen.shows("New nested agent"))
+    session.nestedComposerDrafts.form(for: "conv_src").name = "Kept name"
+    selection.page = .newSession
+    try await settle(screen, untilShowing: NewSessionPage.defaultHeading)
+    #expect(creation.nestedDrafts.map(\.key) == [row.key], "the row stays")
+    #expect(try screen.shows("New nested agent"))
+
+    selection.page = .nestedSession(sourceID: "conv_src")
+    try await settle(screen, untilShowing: "A new conversation alongside Coordinator")
+    try await settle(screen, until: "the text back") {
+      screen.allViews.contains { ($0 as? NSTextView)?.string == "draft words" }
+    }
+    #expect(session.nestedComposerDrafts.form(for: "conv_src").name == "Kept name")
+    #expect(creation.nestedDrafts.map(\.key) == [row.key], "the same row")
+
+    view.deleteNestedDraft(rowID: row.id)
+    #expect(creation.nestedDrafts.isEmpty)
+    #expect(creation.composerDrafts["conv_src"] == nil)
+    #expect(selection.page == .session("conv_src"), "the source shows in the composer's place")
+    #expect(session.nestedComposerDrafts.form(for: "conv_src").name.isEmpty, "a fresh composer")
+  }
+
+  @Test("A nested composer keeps its files apart from the other composers' while it is away")
+  func keptFiles() async throws {
+    let connection = try await signedInStore(nestedServer())
+    let creation = try #require(connection.creation())
+    let drafts = NestedComposerDrafts()
+    _ = drafts.form(for: "conv_src")
+    let page = PendingAttachment(filename: "page.txt", mediaType: "text/plain", data: Data())
+    let nested = PendingAttachment(filename: "nested.txt", mediaType: "text/plain", data: Data())
+    creation.stageAttachment(page)
+    drafts.arrive("conv_src", creation: creation)
+    #expect(creation.attachments.isEmpty, "the new session's file waits")
+    creation.stageAttachment(nested)
+    drafts.leave("conv_src", creation: creation)
+    #expect(creation.attachments.map(\.filename) == ["page.txt"])
+    drafts.arrive("conv_src", creation: creation)
+    #expect(creation.attachments.map(\.filename) == ["nested.txt"])
+    drafts.leave("conv_src", creation: creation)
+    drafts.discard("conv_src")
+    drafts.arrive("conv_src", creation: creation)
+    #expect(creation.attachments.isEmpty, "a deleted draft's files go with it")
   }
 }

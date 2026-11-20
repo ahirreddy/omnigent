@@ -1,3 +1,4 @@
+import OmnigentCoreFFI
 import OmnigentRemoteBrowser
 import OmnigentStores
 import OmnigentUIComponents
@@ -14,13 +15,16 @@ extension ConnectedServerView {
     let selection = selectionBinding
     let open: @MainActor (String) -> Void = { selection.wrappedValue = .session($0) }
     if case .nestedSession(let sourceID) = destination {
+      // A kept composer comes back as it was left.
       NewSessionContainer(
-        connection: connection, nestedSourceID: sourceID, open: open,
+        connection: connection, form: session.nestedComposerDrafts.form(for: sourceID),
+        nestedSourceID: sourceID, open: open,
         openWithNotice: { sessionID, notice in
           open(sessionID)
           notify(notice)
         },
-        continueInNewSession: { selection.wrappedValue = .newSession }
+        continueInNewSession: { selection.wrappedValue = .newSession },
+        nestedDrafts: session.nestedComposerDrafts
       )
       .id(sourceID)
     } else {
@@ -31,6 +35,29 @@ extension ConnectedServerView {
           selection.wrappedValue = .workflows
         })
     }
+  }
+
+  /// Opens the Add nested agent composer beside `sourceID`, with its family, folder and section
+  /// open in the sidebar so its provisional row shows.
+  func addNestedAgent(beside sourceID: String) {
+    sidebarModel.collapsedFamilies = SidebarNavigationOrder.reveal(sourceID, in: sidebarState)
+    selectionBinding.wrappedValue = .nestedSession(sourceID: sourceID)
+  }
+
+  /// Deletes an Add nested agent composer's draft: its row, text, choices and files. An open
+  /// composer for it gives way to its source session.
+  func deleteNestedDraft(rowID: String) {
+    guard let creation = connection.creationStore,
+      let draft = creation.nestedDrafts.first(where: { $0.id == rowID }),
+      draft.createdSessionID == nil
+    else { return }
+    let sourceID = draft.source.id
+    if selectionBinding.wrappedValue == .nestedSession(sourceID: sourceID) {
+      selectionBinding.wrappedValue = .session(sourceID)
+    }
+    creation.closeNestedDraft(key: draft.key)
+    creation.composerDrafts[sourceID] = nil
+    session.nestedComposerDrafts.discard(sourceID)
   }
 
   /// The strip's tabs, read when the titlebar asks for them; a session-less page has no strip.

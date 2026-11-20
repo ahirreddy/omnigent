@@ -136,6 +136,11 @@ struct SessionRowMenu {
   }
 
   @ViewBuilder var items: some View {
+    if let deleteNestedDraft = actions.deleteNestedDraft {
+      Button("Delete Draft", systemImage: "trash", role: .destructive) {
+        deleteNestedDraft(session)
+      }
+    }
     if offersNestedAgent, let addNestedAgent = actions.addNestedAgent {
       Button("Add nested agent", systemImage: "plus.square.on.square") { addNestedAgent(session) }
       Divider()

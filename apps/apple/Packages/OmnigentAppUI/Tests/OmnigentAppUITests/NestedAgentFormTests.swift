@@ -164,14 +164,14 @@ struct NestedAgentFormTests {
 
     form.nestedCreated("conv_new", creation)
     #expect(creation.nestedDrafts.first?.id == "conv_new", "the row stands for the session")
-    form.closeNestedDraft(creation)
+    creation.closeNestedDraft(key: draft.key)
     #expect(creation.nestedDrafts.count == 1, "a created row waits for the server's")
     let other = try await loadedNestedForm(nestedServer())
-    other.form.closeNestedDraft(other.creation)
-    #expect(other.creation.nestedDrafts.isEmpty, "a row with no session leaves with its composer")
+    let otherKey = try #require(other.form.nested?.draftKey)
+    other.creation.closeNestedDraft(key: otherKey)
+    #expect(other.creation.nestedDrafts.isEmpty, "a deleted draft with no session goes")
     let plain = try isolatedForm()
     plain.nestedCreated("x", creation)
-    plain.closeNestedDraft(creation)
     plain.showNestedDraft(creation)
     #expect(creation.nestedDrafts.count == 1, "a new session's form has no row")
   }

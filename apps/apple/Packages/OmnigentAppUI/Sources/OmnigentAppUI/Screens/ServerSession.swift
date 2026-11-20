@@ -29,6 +29,8 @@ public final class ServerSession {
   public let tabs = SessionTabGroups()
   /// The drafts of new side chats, by tab.
   let sideChatDrafts = SideChatDrafts()
+  /// What Add nested agent composers keep while the user is elsewhere, by source session.
+  let nestedComposerDrafts = NestedComposerDrafts()
   /// The sessions waiting for the side chat their agent forks from a typed `/side`.
   let forkedSideChats = ForkedSideChats()
   /// Messages that `?message=` links ask the transcript to scroll to.

@@ -257,6 +257,9 @@ public struct SessionListActions {
   public var newSession: (@MainActor () -> Void)?
   /// Open the Add nested agent composer beside a session; `nil` where the server can't add one.
   public var addNestedAgent: (@MainActor (SessionSummary) -> Void)?
+  /// Delete an Add nested agent composer's draft, by its provisional row; offered on that row
+  /// alone.
+  public var deleteNestedDraft: (@MainActor (SessionSummary) -> Void)?
   /// Retry after a load failure.
   public var retry: (@MainActor () -> Void)?
 
