@@ -57,4 +57,34 @@ struct DesignPickerWebKitTests {
     #expect(
       try BrowserDesignPicker.hit(from: try await tab.evaluateIsolatedJavaScript(below)) == nil)
   }
+
+  @Test("the page says where it sits as it scrolls and zooms, for Draw's marks")
+  func viewportFollowsScrollAndZoom() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: "DesignViewportTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let page = directory.appending(path: "page.html")
+    try """
+    <!doctype html><title>Viewport</title><body style="margin:0;height:3000px"></body>
+    """.write(to: page, atomically: true, encoding: .utf8)
+    let tab = try SystemBrowserEngine().makeTab(
+      profile: .ephemeral("design-viewport"), initialURL: page)
+    defer { tab.close() }
+    tab.platformView.frame = CGRect(x: 0, y: 0, width: 400, height: 300)
+    #expect(try await waitUntil { !tab.state.isLoading && tab.state.title == "Viewport" })
+    let read = { () async throws -> BrowserDesignViewport in
+      try BrowserDesignViewport.viewport(
+        from: try await tab.evaluateIsolatedJavaScript(BrowserDesignViewport.script))
+    }
+    #expect(try await read() == BrowserDesignViewport(origin: .zero, width: 400))
+    _ = try await tab.evaluateJavaScript("window.scrollTo(0, 300); 0")
+    #expect(try await read().origin == CGPoint(x: 0, y: 300))
+    tab.setZoomFactor(2)
+    var zoomed = try await read()
+    for _ in 0..<100 where zoomed.width != 200 {
+      try await Task.sleep(for: .milliseconds(20))
+      zoomed = try await read()
+    }
+    #expect(zoomed.width == 200)
+  }
 }

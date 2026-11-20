@@ -204,6 +204,13 @@ nonisolated public struct BrowserDesignMark: Hashable, Sendable {
     guard let first = points.first else { return false }
     return points.contains { $0 != first }
   }
+
+  /// The mark with each point moved by `move`.
+  func mapped(_ move: (CGPoint) -> CGPoint) -> Self {
+    var mark = self
+    mark.points = points.map(move)
+    return mark
+  }
 }
 
 /// What a tool hands the app to send to the tab's session.

@@ -24,6 +24,11 @@ extension BrowserTabModel {
       snapshot: { [weak self] () async throws(BrowserError) -> CGImage in
         guard let tab = self?.tab else { throw .tabNotReady }
         return try BrowserDesignCapture.image(fromPNG: try await tab.takeSnapshotPNG())
+      },
+      viewport: { [weak self] () async throws(BrowserError) -> BrowserDesignViewport in
+        guard let tab = self?.tab else { throw .tabNotReady }
+        return try BrowserDesignViewport.viewport(
+          from: try await tab.evaluateIsolatedJavaScript(BrowserDesignViewport.script))
       })
     designTools.send = { [weak self] request throws(BrowserError) in
       guard let self, let sender = self.environment.designRequestSender else {

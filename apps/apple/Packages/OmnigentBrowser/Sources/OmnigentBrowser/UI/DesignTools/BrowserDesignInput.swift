@@ -2,15 +2,6 @@
   internal import AppKit
   internal import SwiftUI
 
-  /// What the tools' input layer reports, in its points from the top left.
-  struct BrowserDesignInputHandlers {
-    var move: (CGPoint) -> Void = { _ in }
-    var press: (CGPoint) -> Void = { _ in }
-    var drag: (CGPoint) -> Void = { _ in }
-    var release: (CGPoint) -> Void = { _ in }
-    var escape: () -> Void = {}
-  }
-
   /// A transparent layer over the page that takes the pointer and the keys while a tool is
   /// open, so the page sees none of them. The wheel still scrolls the page when `scrolls`.
   struct BrowserDesignInput: NSViewRepresentable {
