@@ -219,7 +219,8 @@ public struct CLIComposer: View {
       TintedTextEditor(
         text: $draft,
         source: ComposerTokenSource(
-          commands: state.slashCommands, isShell: shellHint != nil, mentions: state.mentions)
+          commands: state.slashCommands, isShell: shellHint != nil, mentions: state.mentions),
+        textColor: palette.userText.color
       )
       .cliFont()
       .foregroundStyle(palette.userText.color)

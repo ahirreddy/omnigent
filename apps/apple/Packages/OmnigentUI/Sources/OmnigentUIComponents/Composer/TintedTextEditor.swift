@@ -8,13 +8,17 @@ import SwiftUI
 struct TintedTextEditor: View {
   @Binding var text: String
   let source: ComposerTokenSource
+  /// The untinted text's color. Every character carries one: text with none draws black, even
+  /// in dark mode.
+  var textColor: Color = Self.systemText
 
   @State private var editor = AttributedString()
   @State private var selection = SelectionBox()
   @Environment(\.controlAccent) private var accent
 
   var body: some View {
-    let style = TintStyle(source: source, tint: accent, fill: accent.opacity(0.12))
+    let style = TintStyle(
+      source: source, base: textColor, tint: accent, fill: accent.opacity(0.12))
     TextEditor(text: typed, selection: selected)
       .onChange(of: editor) { retint(style) }
       .onChange(of: text, initial: true) { draftChanged(style) }
@@ -24,6 +28,7 @@ struct TintedTextEditor: View {
   /// The tints and what they follow.
   private struct TintStyle: Equatable {
     let source: ComposerTokenSource
+    let base: Color
     let tint: Color
     let fill: Color
 
@@ -34,26 +39,36 @@ struct TintedTextEditor: View {
       return text
     }
 
-    /// Whether `text`'s tints sit on `plain`'s tokens; attributes the editor adds don't count.
+    /// Whether `text`'s colors are `plain`'s: the base color with its tokens' tints. Other
+    /// attributes the editor adds don't count.
     func isTinted(_ text: AttributedString, plain: String) -> Bool {
       spans(of: text) == spans(of: styled(plain))
     }
 
+    /// The colored runs, with neighbours of the same colors joined.
     private func spans(of text: AttributedString) -> [TintSpan] {
-      text.runs.compactMap { run in
+      var spans: [TintSpan] = []
+      for run in text.runs {
         let foreground: Color? = run.foregroundColor
         let background: Color? = run.backgroundColor
-        guard foreground != nil || background != nil else { return nil }
-        return TintSpan(
-          start: text.characters.distance(from: text.startIndex, to: run.range.lowerBound),
-          end: text.characters.distance(from: text.startIndex, to: run.range.upperBound),
-          foreground: foreground, background: background)
+        let start = text.characters.distance(from: text.startIndex, to: run.range.lowerBound)
+        let end = text.characters.distance(from: text.startIndex, to: run.range.upperBound)
+        if let last = spans.last, last.foreground == foreground, last.background == background {
+          spans[spans.count - 1] = TintSpan(
+            start: last.start, end: end, foreground: foreground, background: background)
+        } else {
+          spans.append(
+            TintSpan(start: start, end: end, foreground: foreground, background: background))
+        }
       }
+      return spans
     }
 
-    /// Clears every attribute of `text`, then tints its tokens.
+    /// Clears every attribute of `text`, gives it the base color, then tints its tokens.
     func apply(to text: inout AttributedString, plain: String) {
-      text.setAttributes(AttributeContainer())
+      var base = AttributeContainer()
+      base.foregroundColor = self.base
+      text.setAttributes(base)
       for token in ComposerTokens(draft: plain, source: source).tokens {
         let start = text.characters.index(text.startIndex, offsetBy: token.range.lowerBound)
         let end = text.characters.index(start, offsetBy: token.range.count)
@@ -63,7 +78,16 @@ struct TintedTextEditor: View {
     }
   }
 
-  /// A tinted run, by character offsets.
+  /// The system's text color, light or dark with the appearance.
+  static let systemText: Color = {
+    #if os(macOS)
+      Color(nsColor: .textColor)
+    #else
+      Color(uiColor: .label)
+    #endif
+  }()
+
+  /// A colored run, by character offsets.
   private struct TintSpan: Equatable {
     let start: Int
     let end: Int
