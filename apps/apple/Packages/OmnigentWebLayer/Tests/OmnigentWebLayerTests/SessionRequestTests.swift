@@ -73,6 +73,69 @@ struct SessionRequestTests {
     }
   }
 
+  /// The host's answer to a DevTools method that went through, with its JSON.
+  private func devTools(_ json: String) -> WireEncoder {
+    WireEncoder().bool(.success, true).string(.JSON, json)
+  }
+
+  private let frameTree = #"{"frameTree":{"frame":{"id":"F1","url":"https://a.example/"}}}"#
+
+  // The fake host never reads, so each test sends fewer messages than its channel holds.
+
+  @Test func anIsolatedScriptRunsInAWorldMadeForItsDocument() async throws {
+    let fixture = try connected()
+    defer { fixture.session.tearDownConnection() }
+    // The first script finds the main frame, makes its world, then runs in it.
+    let first = Task {
+      try await fixture.webView.evaluateIsolatedJavaScript("1", worldName: "tools")
+    }
+    try await answer(fixture, devTools(frameTree))
+    try await answer(fixture, devTools(#"{"executionContextId":7}"#))
+    try await answer(fixture, devTools(#"{"result":{"type":"number","value":2}}"#))
+    #expect(try await first.value == .number(2))
+    #expect(fixture.webView.isolatedContexts == ["tools": 7])
+    // The same document keeps its world.
+    let again = Task {
+      try await fixture.webView.evaluateIsolatedJavaScript("2", worldName: "tools")
+    }
+    try await answer(fixture, devTools(#"{"result":{"value":3}}"#))
+    #expect(try await again.value == .number(3))
+  }
+
+  @Test func aNewDocumentGetsAWorldOfItsOwn() async throws {
+    let fixture = try connected()
+    defer { fixture.session.tearDownConnection() }
+    fixture.webView.isolatedContexts = ["tools": 7]
+    // After a navigation DevTools no longer knows the context.
+    let next = Task {
+      try await fixture.webView.evaluateIsolatedJavaScript("3", worldName: "tools")
+    }
+    try await answer(
+      fixture, WireEncoder().string(.JSON, #"{"message":"Cannot find context with specified id"}"#))
+    try await answer(fixture, devTools(frameTree))
+    try await answer(fixture, devTools(#"{"executionContextId":9}"#))
+    try await answer(fixture, devTools(#"{"result":{"value":4}}"#))
+    #expect(try await next.value == .number(4))
+    #expect(fixture.webView.isolatedContexts == ["tools": 9])
+  }
+
+  @Test func aPageWithoutAMainFrameOrAWorldSaysSo() async throws {
+    let fixture = try connected()
+    defer { fixture.session.tearDownConnection() }
+    let frameless = Task {
+      try await fixture.webView.evaluateIsolatedJavaScript("4", worldName: "tools")
+    }
+    try await answer(fixture, devTools("{}"))
+    await #expect(throws: WebLayerError.self) { try await frameless.value }
+    let worldless = Task {
+      try await fixture.webView.evaluateIsolatedJavaScript("5", worldName: "tools")
+    }
+    try await answer(fixture, devTools(frameTree))
+    try await answer(fixture, devTools("{}"))
+    await #expect(throws: WebLayerError.self) { try await worldless.value }
+    #expect(fixture.webView.isolatedContexts.isEmpty)
+  }
+
   @Test func aRequestThatIsNeverAnsweredTimesOut() async throws {
     let fixture = try connected(timeout: .milliseconds(10))
     defer { fixture.session.tearDownConnection() }

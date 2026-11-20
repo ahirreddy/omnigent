@@ -82,5 +82,22 @@
       }
       return source
     }
+
+    /// The world isolated scripts run in, apart from the page's scripts.
+    static let isolatedWorldName = "omnigent-design-tools"
+
+    var evaluatesInIsolatedWorld: Bool { true }
+
+    /// Runs `script` in an isolated world DevTools makes for the page's document.
+    func evaluateIsolatedJavaScript(_ script: String) async throws(BrowserError)
+      -> BrowserScriptValue
+    {
+      do {
+        return Self.convert(
+          try await webView.evaluateIsolatedJavaScript(script, worldName: Self.isolatedWorldName))
+      } catch {
+        throw Self.convert(error)
+      }
+    }
   }
 #endif
