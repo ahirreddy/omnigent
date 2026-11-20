@@ -304,6 +304,12 @@ extension DecisionCardView {
       local == nil
       ? validatorField : fields.first { draft.wrappedValue.problem(for: $0) != nil }
     let canSubmit = canRespond && problem == nil
+    let blockedReason =
+      canRespond
+      ? draft.wrappedValue.submitBlockedReason(
+        for: fields, asQuestions: DecisionQuestionTitle.asksQuestions(card),
+        validatorProblem: validator?.message)
+      : nil
     return VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
       DecisionFormFields(
         fields: fields, draft: draft, cardID: card.id,
@@ -325,7 +331,9 @@ extension DecisionCardView {
           .tint(canSubmit ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color.secondary))
           .controlSize(.large)
           .disabled(!canSubmit)
+          .accessibilityHint(blockedReason ?? "")
           .accessibilityIdentifier("\(idPrefix)decision-form-submit-\(card.id)")
+          .submitBlockedHelp(blockedReason)
         dismissButton
       }
     }
@@ -381,16 +389,5 @@ extension DecisionCardView {
 
 extension DecisionCardView {
   /// The web's card titles.
-  private var displayTitle: String {
-    if card.permissions.plan != nil { return "Plan review" }
-    if card.permissions.command != nil { return "Command approval" }
-    switch card.kind {
-    case .approval: return DecisionSummary.isGeneric(card.title) ? "Approval required" : card.title
-    case .choice: return "Choose an option"
-    case .form:
-      return DecisionSummary.isGeneric(card.title)
-        ? DecisionQuestionTitle.title(for: card) : card.title
-    case .externalPage, .unsupported: return card.title
-    }
-  }
+  private var displayTitle: String { DecisionQuestionTitle.cardTitle(for: card) }
 }

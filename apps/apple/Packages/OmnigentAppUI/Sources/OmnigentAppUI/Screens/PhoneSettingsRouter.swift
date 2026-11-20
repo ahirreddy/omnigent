@@ -82,6 +82,9 @@ struct PhoneSettingsRoute: Equatable {
     case .harness(let url, _):
       serverURL = url ?? sceneServer
       page = .server(.harnesses)
+    case .search:
+      serverURL = sceneServer
+      page = nil
     }
   }
 }
@@ -95,6 +98,10 @@ final class PhoneSettingsRouter {
   var isPresented = false
   /// The pushed pages: ``PhoneSettingsPage`` and ``ServerSettingsPane`` values.
   var path = NavigationPath()
+  /// What Settings search holds.
+  var searchQuery = ""
+  /// The search field is active (the palette's Search Settings… opens the screen in it).
+  var isSearching = false
   /// Picks the server the screen's panes show.
   let navigator = SettingsNavigator()
   /// The scene's signed-in server, which the screen shows unless a destination names another.
@@ -121,6 +128,7 @@ final class PhoneSettingsRouter {
     let route = PhoneSettingsRoute(destination, sceneServer: sceneServer())
     show(route.page, server: route.serverURL)
     if case .harness(_, let focus) = destination { navigator.focusHarness(focus) }
+    if case .search = destination { isSearching = true }
   }
 
   /// Shows the screen on `server`'s panes at `page` (the root list when `nil`).

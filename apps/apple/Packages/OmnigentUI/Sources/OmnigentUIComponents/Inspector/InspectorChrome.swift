@@ -131,7 +131,12 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
       .holdsSizeWhileTabHidden(holdsTabSize)
       .unmeasuredMinimum(UnmeasuredMinimum.column)
       .overlay {
-        if isPresented, maximized { panel }
+        if isPresented, maximized {
+          // A file in full screen leaves it on Escape, keeping its tab, as the web's viewer does.
+          panel.fullScreenEscape(
+            isActive: handlesShortcuts && slots.documents?.selected != nil
+          ) { maximized = false }
+        }
       }
       .modifier(InspectorColumn(isPresented: sideColumnPresented) { panel })
       .onChange(of: isPresented) { _, isShowing in
@@ -236,7 +241,7 @@ struct InspectorTrailingControls: View {
               ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
         }
         .buttonStyle(.borderless)
-        .help(maximized.wrappedValue ? "Exit full screen" : "Full screen")
+        .help(fullScreenHelp(maximized.wrappedValue))
         .accessibilityIdentifier("inspector-full-screen")
       }
     }
@@ -247,6 +252,15 @@ struct InspectorTrailingControls: View {
     #endif
     .foregroundStyle(ThemeColor.mutedText)
     .fixedSize()
+  }
+
+  /// The full-screen toggle's tooltip; a file in full screen also leaves it on Escape (Mac).
+  private func fullScreenHelp(_ isMaximized: Bool) -> String {
+    guard isMaximized else { return "Full screen" }
+    #if os(macOS)
+      if documents?.selected != nil { return "Exit full screen (Esc)" }
+    #endif
+    return "Exit full screen"
   }
 }
 

@@ -6,6 +6,7 @@ enum OwnerOnlyReason {
   static let runNow = "Only the automation\u{2019}s owner can run it."
   static let edit = "Only the automation\u{2019}s owner can edit it."
   static let share = "Only the automation\u{2019}s owner can share it."
+  static let clone = "Only the automation\u{2019}s owner can clone it."
   static let pause = "Only the automation\u{2019}s owner can pause it."
   static let resume = "Only the automation\u{2019}s owner can resume it."
   static let delete = "Only the automation\u{2019}s owner can delete it."
@@ -20,6 +21,9 @@ struct AutomationRowView: View {
     var runNow: (@MainActor () -> Void)?
     var delete: (@MainActor () -> Void)?
     var share: (@MainActor () -> Void)?
+    var clone: (@MainActor () -> Void)?
+    /// The server clones automations: Clone shows, disabled on one shared with the caller.
+    var offersClone = false
     var openLastRun: (@MainActor () -> Void)?
     /// Opens the automation's page; without it a double click edits.
     var open: (@MainActor () -> Void)?
@@ -108,6 +112,10 @@ struct AutomationRowView: View {
     } else if let share = actions.share {
       Button("Share", systemImage: "square.and.arrow.up", action: share)
         .accessibilityIdentifier("automation-share")
+    }
+    if actions.offersClone {
+      item("Clone", "plus.square.on.square", actions.clone, ownerOnly: OwnerOnlyReason.clone)
+        .accessibilityIdentifier("automation-clone")
     }
     if row.isPaused {
       item("Resume", "play.circle", actions.togglePaused, ownerOnly: OwnerOnlyReason.resume)

@@ -79,6 +79,25 @@ nonisolated public enum AutomationsFilter: String, Hashable, Sendable, CaseItera
   }
 }
 
+/// The Automations page order.
+nonisolated public enum AutomationsSort: String, Hashable, Sendable, CaseIterable, Identifiable {
+  /// Active by soonest next run, then paused by name.
+  case nextRun
+  /// Every automation by name.
+  case name
+
+  /// The order itself.
+  public var id: Self { self }
+
+  /// The label.
+  public var title: String {
+    switch self {
+    case .nextRun: "Next run"
+    case .name: "Name"
+    }
+  }
+}
+
 /// The Automations page.
 nonisolated public struct AutomationsViewState: Hashable, Sendable {
   /// The rows for the current filter and search, in the page's order.
@@ -195,6 +214,8 @@ nonisolated public struct AutomationTemplateCard: Hashable, Sendable, Identifiab
 public struct AutomationsActions {
   /// Narrow the list.
   public var filter: (@MainActor (AutomationsFilter, String) -> Void)?
+  /// Order the list.
+  public var sort: (@MainActor (AutomationsSort) -> Void)?
   /// Open the editor for a new automation.
   public var create: (@MainActor () -> Void)?
   /// Open the editor on an integration template, by its card id.
@@ -211,6 +232,8 @@ public struct AutomationsActions {
   public var edit: (@MainActor (String) -> Void)?
   /// Pause or resume.
   public var setPaused: (@MainActor (String, Bool) -> Void)?
+  /// Copy an automation under a new id ("Clone"); shown where the server clones.
+  public var clone: (@MainActor (String) -> Void)?
   /// Run now.
   public var runNow: (@MainActor (String) -> Void)?
   /// Delete.

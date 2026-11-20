@@ -56,6 +56,8 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
   public var family: SessionFamilyInfo?
   /// The automation whose runs start from a copy of it; deleting the session deletes it too.
   public var automationSourceID: String?
+  /// The caller muted it: no unread, badge or notifications for them.
+  public var isMuted = false
 
   /// Creates a summary.
   /// - Parameters:
@@ -207,6 +209,8 @@ public struct SessionListActions {
   public var rename: (@MainActor (SessionSummary, String) -> Void)?
   /// Mark read or unread.
   public var setUnread: (@MainActor (SessionSummary, Bool) -> Void)?
+  /// Mute or unmute for the caller; `nil` where the server keeps no per-viewer mute.
+  public var setMuted: (@MainActor (SessionSummary, Bool) -> Void)?
   /// Whether a session is unread now, read when a command runs rather than when it is drawn.
   public var isUnread: (@MainActor (String) -> Bool)?
   /// Open the Share sheet.

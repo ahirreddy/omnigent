@@ -15,6 +15,9 @@
 //!
 //! The write is [`crate::ClientCore::put_read_state`].
 //!
+//! **A muted session is never unread** for the caller: no dot, badge or Unread entry. It can still
+//! be marked seen (so unmuting doesn't light up what was read meanwhile), but not marked unread.
+//!
 //! **The server is authoritative.** Its baseline always counts, and its explicit flag wins once
 //! this device's last mark is settled: the server reported it back, or the write succeeded
 //! ([`ReadState::mark_written`]) and a later row arrived. Until then (the write is in flight,
@@ -69,6 +72,8 @@ struct Entry {
     pending: Option<Pending>,
     /// `updated_at` at first sight, when no baseline existed anywhere.
     first_sight: Option<i64>,
+    /// The caller muted it.
+    muted: bool,
 }
 
 impl Entry {
@@ -88,9 +93,15 @@ impl Entry {
         }
     }
 
+    /// Unread as the read state alone has it, muted or not.
     fn is_unread(&self) -> bool {
         self.explicitly_unread()
             || (!self.running && self.baseline().is_some_and(|seen| self.updated_at > seen))
+    }
+
+    /// Unread as the caller sees it: never while muted.
+    fn shows_unread(&self) -> bool {
+        !self.muted && self.is_unread()
     }
 }
 
@@ -113,6 +124,7 @@ impl ReadState {
         let entry = self.sessions.entry(summary.id.clone()).or_default();
         entry.updated_at = summary.updated_at;
         entry.running = summary.status == SummaryStatus::Running;
+        entry.muted = summary.is_muted;
         if let Some(read) = summary.viewer_read {
             self.server_tracks_reads = true;
             entry.server_last_seen = read.last_seen;
@@ -148,18 +160,29 @@ impl ReadState {
         self.server_tracks_reads
     }
 
-    /// Whether `session_id` has activity the caller has not seen (false for an unknown session).
+    /// Whether `session_id` has activity the caller has not seen (false for an unknown or muted
+    /// session).
     #[must_use]
     pub fn is_unread(&self, session_id: &str) -> bool {
-        self.sessions.get(session_id).is_some_and(Entry::is_unread)
+        self.sessions
+            .get(session_id)
+            .is_some_and(Entry::shows_unread)
     }
 
-    /// Every unread session.
+    /// Whether the caller muted `session_id`, as its latest summary says.
+    #[must_use]
+    pub fn is_muted(&self, session_id: &str) -> bool {
+        self.sessions
+            .get(session_id)
+            .is_some_and(|entry| entry.muted)
+    }
+
+    /// Every unread session, muted ones left out.
     #[must_use]
     pub fn unread_ids(&self) -> BTreeSet<String> {
         self.sessions
             .iter()
-            .filter(|(_, entry)| entry.is_unread())
+            .filter(|(_, entry)| entry.shows_unread())
             .map(|(id, _)| id.clone())
             .collect()
     }
@@ -216,11 +239,11 @@ impl ReadState {
     }
 
     /// Marks `session_id` unread explicitly (the row menu's "Mark as unread") and returns the
-    /// write, or `None` when it is already explicitly unread. The baseline stays, so a later
-    /// "Mark as read" or opening the session clears it.
+    /// write, or `None` when it is already explicitly unread or muted. The baseline stays, so a
+    /// later "Mark as read" or opening the session clears it.
     pub fn mark_unread(&mut self, session_id: &str) -> Option<ReadMark> {
         let entry = self.sessions.entry(session_id.to_owned()).or_default();
-        if entry.explicitly_unread() {
+        if entry.explicitly_unread() || entry.muted {
             return None;
         }
         // The server needs a baseline; just below the last activity reads as unseen too.

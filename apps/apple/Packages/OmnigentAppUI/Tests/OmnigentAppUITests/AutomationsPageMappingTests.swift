@@ -35,10 +35,11 @@ struct AutomationsPageMappingTests {
     return pages
   }
 
-  private func state(_ pages: PagesStore, filter: AutomationsFilter = .all, search: String = "")
-    -> AutomationsViewState
-  {
-    AutomationsMapping.state(pages: pages, filter: filter, search: search, now: now)
+  private func state(
+    _ pages: PagesStore, filter: AutomationsFilter = .all, sort: AutomationsSort = .nextRun,
+    search: String = ""
+  ) -> AutomationsViewState {
+    AutomationsMapping.state(pages: pages, filter: filter, sort: sort, search: search, now: now)
   }
 
   @Test("Rows show the schedule and next run; a state the app doesn't know is named")
@@ -68,6 +69,16 @@ struct AutomationsPageMappingTests {
     let empty = state(loaded, search: String(repeating: "\u{1F600}", count: 100_000))
     #expect(empty.rows.isEmpty)
     #expect(empty.hasAny)
+  }
+
+  @Test("Sorted by name, every row is alphabetical whatever its state; next run leads otherwise")
+  func sorting() async throws {
+    let loaded = try await pages(tasks: [
+      task(id: "t1", name: "Standup"), task(id: "t2", name: "Off", state: "paused"),
+      task(id: "t3", name: "alpha", nextRun: #""2026-11-06T09:00:00Z""#),
+    ])
+    #expect(state(loaded).rows.map(\.id) == ["t1", "t3", "t2"])
+    #expect(state(loaded, sort: .name).rows.map(\.id) == ["t3", "t2", "t1"])
   }
 
   @Test("Hostile tasks either decode into rows or fail as a load error, never a crash")

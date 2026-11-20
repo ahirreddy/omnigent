@@ -87,6 +87,9 @@ pub struct ServerPages {
     /// Desktop onboarding reviews what a new host carries over (`import_review`).
     #[uniffi(default)]
     pub import_review: bool,
+    /// The Mac's system-wide shortcut opens a floating New Agent panel (`floating_composer`).
+    #[uniffi(default)]
+    pub floating_composer: bool,
     /// Hosts and continued sessions run schedules under an hour (`scheduled_task_subhour`).
     #[uniffi(default)]
     pub automation_subhour: bool,
@@ -111,6 +114,12 @@ pub struct ServerPages {
     /// The Shared with me list.
     #[uniffi(default)]
     pub automation_shared_with_me: bool,
+    /// An automation can be copied under a new id.
+    #[uniffi(default)]
+    pub automation_clone: bool,
+    /// Agent-created automations take the zone the apps record for the caller.
+    #[uniffi(default)]
+    pub automation_default_timezone: bool,
     /// The PRs each run created or worked on.
     #[uniffi(default)]
     pub automation_run_pull_requests: bool,
@@ -132,6 +141,9 @@ pub struct ServerPages {
     /// A trigger's workers can start as runs of the saved workflow their instructions run.
     #[uniffi(default)]
     pub session_create_workflow_id: bool,
+    /// The server keeps each viewer's mute to themselves, so Mute is offered (`session_mute`).
+    #[uniffi(default)]
+    pub session_mute: bool,
 }
 
 /// Whether an automation fires.
@@ -519,6 +531,15 @@ pub enum AutomationFilter {
     Paused,
 }
 
+/// The automations page order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum AutomationSort {
+    /// Active first with the soonest next run on top, then paused by name.
+    NextRun,
+    /// Every automation by name, whatever its state.
+    Name,
+}
+
 /// A day of the week.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum Weekday {
@@ -630,6 +651,7 @@ mirror_enum!(
     core::AutomationFilter,
     [All, Active, Paused]
 );
+mirror_enum!(AutomationSort, core::AutomationSort, [NextRun, Name]);
 
 impl From<ScheduleModel> for rules::ScheduleModel {
     fn from(model: ScheduleModel) -> Self {
@@ -754,11 +776,25 @@ impl From<AutomationDraft> for core::AutomationDraft {
 }
 
 /// Why an automation's offered Share shows disabled, or `None` while it works: sharing off
-/// wins over a legacy automation the server can't keep grants for.
+/// wins over a legacy automation the server can't keep grants for, which `can_clone` offers to
+/// copy and share instead.
 #[must_use]
 #[uniffi::export]
-pub fn automation_share_disabled_reason(sharing_disabled: bool, shareable: bool) -> Option<String> {
-    core::automation_share_disabled_reason(sharing_disabled, shareable).map(str::to_owned)
+pub fn automation_share_disabled_reason(
+    sharing_disabled: bool,
+    shareable: bool,
+    can_clone: bool,
+) -> Option<String> {
+    core::automation_share_disabled_reason(sharing_disabled, shareable, can_clone)
+        .map(str::to_owned)
+}
+
+/// The note after a clone: the copy is paused like the original, its schedule has no runs
+/// left, or both now run.
+#[must_use]
+#[uniffi::export]
+pub fn automation_clone_message(clone: Automation) -> String {
+    core::automation_clone_message(&clone.into()).to_owned()
 }
 
 /// Why the cost limit typed into the editor can't be saved, or `None`.
@@ -832,16 +868,18 @@ pub fn schedule_needs_anchored_scheduling(model: ScheduleModel) -> bool {
     rules::needs_anchored_scheduling(&model.into())
 }
 
-/// `automations` filtered and in the page's order: active soonest first, then paused by name.
+/// `automations` filtered and in the page's `sort` order: by next run (active soonest first,
+/// then paused by name) or by name.
 #[must_use]
 #[uniffi::export]
 pub fn arrange_automations(
     automations: Vec<Automation>,
     filter: AutomationFilter,
+    sort: AutomationSort,
     search: String,
 ) -> Vec<Automation> {
     let core: Vec<core::Automation> = automations.into_iter().map(Into::into).collect();
-    core::arrange_automations(&core, filter.into(), &search)
+    core::arrange_automations(&core, filter.into(), sort.into(), &search)
         .into_iter()
         .map(Into::into)
         .collect()
@@ -959,6 +997,7 @@ impl ClientCore {
             project_kanban: pages.project_kanban,
             session_overview: pages.session_overview,
             import_review: pages.import_review,
+            floating_composer: pages.floating_composer,
             automation_subhour: pages.automation_subhour,
             automation_trigger_headers: pages.automation_trigger_headers,
             automation_trigger_poll_minutes: pages.automation_trigger_poll_minutes,
@@ -967,6 +1006,8 @@ impl ClientCore {
             automation_source_sessions: pages.automation_source_sessions,
             automation_sharing: pages.automation_sharing,
             automation_shared_with_me: pages.automation_shared_with_me,
+            automation_clone: pages.automation_clone,
+            automation_default_timezone: pages.automation_default_timezone,
             automation_run_pull_requests: pages.automation_run_pull_requests,
             automation_harness_settings: pages.automation_harness_settings,
             automation_approval_skipping_modes: pages.automation_approval_skipping_modes,
@@ -974,6 +1015,7 @@ impl ClientCore {
             workflows: pages.workflows,
             workflow_sharing: pages.workflow_sharing,
             session_create_workflow_id: pages.session_create_workflow_id,
+            session_mute: pages.session_mute,
         })
     }
 
@@ -1200,6 +1242,52 @@ impl ClientCore {
     pub async fn delete_source_automation(&self, id: String) -> Result<(), CoreError> {
         self.sessions()
             .delete_source_automation(&id)
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// Copies an automation under a new id, with its settings and schedule and none of its runs.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`], its message the web's "Couldn't clone the automation" with the
+    /// server's reason when it refused: `InvalidIdentifier`; `Rejected` or `Forbidden` for a
+    /// reminder or another owner's automation; the write errors; `MalformedResponse`.
+    pub async fn clone_automation(&self, automation: Automation) -> Result<Automation, CoreError> {
+        self.sessions()
+            .clone_automation(&automation.into())
+            .await
+            .map(Into::into)
+            .map_err(|error| {
+                let shown = core::automation_clone_failure(&error);
+                match CoreError::from(error) {
+                    CoreError::Session {
+                        kind,
+                        detail,
+                        requires_sign_in,
+                        delivery_uncertain,
+                        ..
+                    } => CoreError::Session {
+                        kind,
+                        message: shown,
+                        detail,
+                        requires_sign_in,
+                        delivery_uncertain,
+                    },
+                    other => other,
+                }
+            })
+    }
+
+    /// Records this device's IANA time zone as the one agent-created automations run in.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `Rejected` for an empty zone (nothing is sent) or one the server
+    /// refuses; the write errors.
+    pub async fn report_automation_timezone(&self, timezone: String) -> Result<(), CoreError> {
+        self.sessions()
+            .report_automation_timezone(&timezone)
             .await
             .map_err(CoreError::from)
     }

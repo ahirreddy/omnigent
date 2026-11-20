@@ -195,12 +195,13 @@ struct BrowserTabErrorBanner: View {
 struct BrowserFindBar: View {
   let model: BrowserTabModel
   @FocusState private var focused: Bool
+  @State private var selection: TextSelection?
 
   var body: some View {
     @Bindable var find = model.find
     HStack(spacing: 8) {
       Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
-      TextField("Find in page", text: $find.query)
+      TextField("Find in page", text: $find.query, selection: $selection)
         .textFieldStyle(.roundedBorder)
         .frame(maxWidth: 280)
         .focused($focused)
@@ -227,13 +228,24 @@ struct BrowserFindBar: View {
     .buttonStyle(.borderless)
     .padding(.horizontal, 10)
     .padding(.vertical, 5)
-    .onAppear { focused = true }
+    .onAppear {
+      focused = true
+      if model.find.selectAllRequest > 0 { selectQuery() }
+    }
     .onChange(of: model.find.focusRequest) { focused = true }
+    .onChange(of: model.find.selectAllRequest) { selectQuery() }
+    .onChange(of: focused) { model.find.isFieldFocused = focused }
     .accessibilityIdentifier("browser.find")
   }
 
   private var matchText: String {
     Self.matchText(query: model.find.query, result: model.find.result)
+  }
+
+  /// Selects the whole query, so typing replaces a seeded one.
+  private func selectQuery() {
+    let query = model.find.query
+    selection = TextSelection(range: query.startIndex..<query.endIndex)
   }
 
   /// What the count beside the field says.
@@ -259,7 +271,7 @@ struct BrowserTabShortcuts: View {
   var body: some View {
     ZStack {
       shortcut("Open Location", "l") { model.focusOmnibox() }
-      shortcut("Find", "f") { model.showFindBar() }
+      shortcut("Find", "f") { model.findSeedingSelection() }
       shortcut("Find Next", "g") { findAgain(forward: true) }
       shortcut("Find Previous", "g", [.command, .shift]) { findAgain(forward: false) }
       shortcut("Zoom In", "=") { model.zoomIn() }

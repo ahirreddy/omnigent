@@ -20,6 +20,7 @@ public struct LinksAndSessionsSettingsSection: View {
             + "browser.")
       }
       .accessibilityIdentifier("settings.open-links-in-app")
+      .settingsSearchAnchor("settings.open-links-in-app")
       Toggle(isOn: $openSubagentsInPanel) {
         Text("Open sub-agents in a new window")
         Text(
@@ -27,6 +28,7 @@ public struct LinksAndSessionsSettingsSection: View {
             + "tab beside its session's chat. On iPhone, sub-agents always open in a tab.")
       }
       .accessibilityIdentifier("settings.open-subagents-in-panel")
+      .settingsSearchAnchor("settings.open-subagents-in-panel")
     }
   }
 }
@@ -60,6 +62,7 @@ public struct InterfaceAppearanceSections: View {
             + "badging the others.")
       }
       .accessibilityIdentifier("settings.hide-unconfigured-harnesses")
+      .settingsSearchAnchor("settings.hide-unconfigured-harnesses")
       if let pickerSource {
         PickerVisibilitySetting(source: pickerSource)
       }
@@ -72,6 +75,7 @@ public struct InterfaceAppearanceSections: View {
             + "window stays open as its tab.")
       }
       .accessibilityIdentifier("settings.default-transcript-view")
+      .settingsSearchAnchor("settings.default-transcript-view")
     }
     Section("Session list") {
       Picker(selection: $harnessIcon) {
@@ -83,6 +87,7 @@ public struct InterfaceAppearanceSections: View {
             + "active shows a session's brand colors while it runs or its sandbox is up.")
       }
       .accessibilityIdentifier("settings.harness-icon")
+      .settingsSearchAnchor("settings.harness-icon")
       #if os(macOS)
         Toggle(isOn: $rowQuickActions) {
           Text("Show Pin and Archive buttons on session rows")
@@ -91,6 +96,7 @@ public struct InterfaceAppearanceSections: View {
               + "right-click menu only, so they are harder to click by mistake.")
         }
         .accessibilityIdentifier("settings.session-row-quick-actions")
+        .settingsSearchAnchor("settings.session-row-quick-actions")
       #endif
     }
     Section {
@@ -98,10 +104,12 @@ public struct InterfaceAppearanceSections: View {
         ForEach(WorkspacePanelDefault.allCases) { Text($0.title).tag($0) }
       }
       .accessibilityIdentifier("settings.workspace-panel")
+      .settingsSearchAnchor("settings.workspace-panel")
       Picker("Default tab", selection: $workspaceTab) {
         ForEach(DefaultWorkspaceTab.allCases) { Text($0.title).tag($0) }
       }
       .accessibilityIdentifier("settings.workspace-tab")
+      .settingsSearchAnchor("settings.workspace-tab")
     } header: {
       Text("Workspace")
     } footer: {
@@ -116,10 +124,13 @@ public struct InterfaceAppearanceSections: View {
         }
       }
       .accessibilityIdentifier("settings.code-font-size")
+      .settingsSearchAnchor("settings.code-font-size")
       TextField("Code font family", text: $code.family, prompt: Text("System monospaced"))
         .accessibilityIdentifier("settings.code-font-family")
+        .settingsSearchAnchor("settings.code-font-family")
       Toggle("Heavier code font", isOn: $code.isHeavier)
         .accessibilityIdentifier("settings.code-font-weight")
+        .settingsSearchAnchor("settings.code-font-weight")
       Text("let answer = 42").font(CodeTypography.shared.font(size: 12))
         .foregroundStyle(.secondary)
     }

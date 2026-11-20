@@ -11,6 +11,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
+use super::activity::drop_handback_results;
 use super::live::{LiveReducer, matches_text, same_tool_call};
 use super::ops::{ChangeSet, diff_rows};
 use super::state::{ConversationSnapshot, LIVE_PREFIX, Row, TurnStatus};
@@ -28,6 +29,8 @@ impl LiveReducer {
         if !older.is_empty() {
             self.journal.structural(&self.snap.rows);
             self.snap.rows.splice(0..0, older);
+            // A page boundary can split a handback from its result.
+            drop_handback_results(&mut self.snap.rows);
         }
         self.finish(&checkpoint)
     }
@@ -93,6 +96,7 @@ impl LiveReducer {
         }
         let streaming = previews.iter().any(|preview| preview.is_streaming);
         self.reinsert_previews(&previous_rows, previews, &anchors);
+        drop_handback_results(&mut self.snap.rows);
         if streaming && !self.snap.has_pending_decisions() {
             self.snap.header.status = TurnStatus::Running;
         }

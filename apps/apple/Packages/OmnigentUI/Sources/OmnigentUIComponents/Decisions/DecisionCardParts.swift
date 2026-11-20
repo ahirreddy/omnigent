@@ -319,8 +319,10 @@ struct ApprovalControls: View {
           Button {
             act(choice.response)
           } label: {
-            Label(choice.label, systemImage: choice.systemImage)
+            Label(choice.menuTitle, systemImage: choice.systemImage)
           }
+          .help(choice.label)
+          .accessibilityLabel(choice.label)
           .accessibilityIdentifier("\(idPrefix)approval-permission-\(card.id)-\(index)")
         }
       } label: {

@@ -9,6 +9,7 @@ public struct AutomationsView: View {
   private let actions: AutomationsActions
   @State private var tab: AutomationsTab
   @State private var filter: AutomationsFilter = .all
+  @State private var sort: AutomationsSort = .nextRun
   @State private var search = ""
   @State private var confirmingDelete: AutomationRow?
   @Environment(\.layoutWidth) private var layoutWidth
@@ -56,6 +57,7 @@ public struct AutomationsView: View {
     .navigationTitle("Automations")
     .onChange(of: filter) { actions.filter?(filter, search) }
     .onChange(of: search) { actions.filter?(filter, search) }
+    .onChange(of: sort) { actions.sort?(sort) }
     .onChange(of: tab) { _, tab in if tab == .shared { actions.loadShared?() } }
     .confirmationDialog(
       "Delete this automation?",
@@ -97,31 +99,6 @@ public struct AutomationsView: View {
           .accessibilityIdentifier("automations-new")
       }
     }
-  }
-
-  /// The system's search field and, once there is anything to filter, the All / Active /
-  /// Paused segments.
-  private func controls(hasAny: Bool) -> some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-      SearchField("Search automations", text: $search, identifier: "automations-search")
-        .controlSize(.large)
-        .accessibilityIdentifier("automations-search")
-      if hasAny {
-        Picker("Filter automations", selection: $filter) {
-          ForEach(AutomationsFilter.allCases) { Text($0.title).tag($0) }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
-        .accessibilityIdentifier("automations-filter")
-      }
-      if let error = state.actionError {
-        AutomationErrorBanner(
-          message: error, actionTitle: actions.dismissError == nil ? nil : "Dismiss",
-          action: actions.dismissError)
-      }
-    }
-    .padding(.bottom, Theme.Spacing.large)
   }
 
   @ViewBuilder private var yours: some View {
@@ -262,6 +239,10 @@ public struct AutomationsView: View {
     if let runNow = actions.runNow, !row.isTrigger { rowActions.runNow = { runNow(id) } }
     if actions.delete != nil { rowActions.delete = { confirmingDelete = row } }
     if let share = actions.share, row.canShare { rowActions.share = { share(id) } }
+    if let clone = actions.clone {
+      rowActions.offersClone = true
+      rowActions.clone = { clone(id) }
+    }
     rowActions.openLastRun = openLastRun(row)
     if let openDetail = actions.openDetail { rowActions.open = { openDetail(id) } }
     return rowActions
@@ -270,6 +251,45 @@ public struct AutomationsView: View {
   private func openLastRun(_ row: AutomationRow) -> (@MainActor () -> Void)? {
     guard let id = row.lastRunSessionID, let open = actions.openSession else { return nil }
     return { open(id) }
+  }
+}
+
+extension AutomationsView {
+  /// The system's search field and, once there is anything to filter, the All / Active /
+  /// Paused segments and the Next run / Name order.
+  private func controls(hasAny: Bool) -> some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+      SearchField("Search automations", text: $search, identifier: "automations-search")
+        .controlSize(.large)
+        .accessibilityIdentifier("automations-search")
+      if hasAny {
+        HStack(spacing: Theme.Spacing.medium) {
+          Picker("Filter automations", selection: $filter) {
+            ForEach(AutomationsFilter.allCases) { Text($0.title).tag($0) }
+          }
+          .pickerStyle(.segmented)
+          .labelsHidden()
+          .fixedSize()
+          .accessibilityIdentifier("automations-filter")
+          Spacer(minLength: 0)
+          if actions.sort != nil {
+            Picker("Sort By", selection: $sort) {
+              ForEach(AutomationsSort.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            .help("Sort automations")
+            .accessibilityIdentifier("automations-sort")
+          }
+        }
+      }
+      if let error = state.actionError {
+        AutomationErrorBanner(
+          message: error, actionTitle: actions.dismissError == nil ? nil : "Dismiss",
+          action: actions.dismissError)
+      }
+    }
+    .padding(.bottom, Theme.Spacing.large)
   }
 }
 

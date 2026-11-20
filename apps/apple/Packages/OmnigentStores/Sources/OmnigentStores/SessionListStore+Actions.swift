@@ -25,6 +25,17 @@ extension SessionListStore {
     await edit(sessionID, .pinned(pinned: pinned))
   }
 
+  /// Mutes or unmutes `sessionID` for the caller alone (view permission, servers that offer
+  /// `sessionMute`): a muted session sends no notifications and shows no unread.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - muted: Mute or unmute.
+  /// - Returns: Whether the change was saved; a failure is in ``editError``.
+  @discardableResult
+  public func setMuted(_ sessionID: String, _ muted: Bool) async -> Bool {
+    await edit(sessionID, .muted(muted: muted))
+  }
+
   /// Archives or restores `sessionID` (owner permission).
   /// - Parameters:
   ///   - sessionID: The session.

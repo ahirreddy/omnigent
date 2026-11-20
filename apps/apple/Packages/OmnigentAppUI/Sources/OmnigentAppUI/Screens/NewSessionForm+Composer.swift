@@ -58,7 +58,9 @@ extension NewSessionForm {
   /// The Host menu: what the server's policy offers a nested agent, else every row.
   private func hostRows(_ creation: CreationStore) -> [ComposerHost] {
     guard let choices = nestedChoices(creation) else {
-      return NewSessionAdapter.hosts(creation.catalog.value)
+      return NewSessionAdapter.hosts(creation.catalog.value).filter { row in
+        NewSessionAdapter.sandboxProvider(hostID: row.id) != nil || offersMachine(row.id)
+      }
     }
     return NewSessionAdapter.nestedHosts(creation.catalog.value, choices: choices)
   }

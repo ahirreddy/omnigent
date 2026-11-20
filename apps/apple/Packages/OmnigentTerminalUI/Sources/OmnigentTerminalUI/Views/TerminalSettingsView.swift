@@ -42,6 +42,7 @@ public struct TerminalSettingsView: View {
             ForEach(families, id: \.self) { Text($0).tag(Optional($0)) }
           }
           .accessibilityIdentifier("settings.terminal-font-family")
+          .id("settings.terminal-font-family")
         }
       }
       Section("Behavior") {
@@ -60,6 +61,7 @@ public struct TerminalSettingsView: View {
           ForEach(TerminalClipboardPolicy.allCases) { Text($0.title).tag($0) }
         }
         .accessibilityIdentifier("settings.terminal-clipboard")
+        .id("settings.terminal-clipboard")
       } header: {
         Text("Clipboard")
       } footer: {

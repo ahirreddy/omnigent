@@ -74,17 +74,33 @@ private struct BackgroundTasksButton: View {
     return "\(count) background task\(count == 1 ? "" : "s")"
   }
 
+  /// "Agent working — 2 background tasks still running" while the turn runs (web
+  /// `BackgroundTaskIndicator`).
+  private var status: String {
+    indicators.agentWorking
+      ? "Agent working \u{2014} \(label) still running" : "\(label) still running"
+  }
+
   var body: some View {
     Button {
       isShown.toggle()
     } label: {
-      Label("\(indicators.backgroundTasks)", systemImage: "apple.terminal")
-        .monospacedDigit()
-        .foregroundStyle(.secondary)
-        .contentShape(Rectangle())
+      Label {
+        Text("\(indicators.backgroundTasks)").monospacedDigit()
+      } icon: {
+        if indicators.agentWorking {
+          ProgressView()
+            .controlSize(.mini)
+            .accessibilityIdentifier("composer-background-tasks-working")
+        } else {
+          Image(systemName: "apple.terminal")
+        }
+      }
+      .foregroundStyle(.secondary)
+      .contentShape(Rectangle())
     }
-    .help("\(label) still running")
-    .accessibilityLabel("\(label) still running")
+    .help(status)
+    .accessibilityLabel(status)
     .accessibilityHint("Lists what each one runs")
     .accessibilityIdentifier("composer-background-tasks")
     .popover(isPresented: $isShown, arrowEdge: .top) {

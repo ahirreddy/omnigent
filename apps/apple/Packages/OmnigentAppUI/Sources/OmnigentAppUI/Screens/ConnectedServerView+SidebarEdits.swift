@@ -76,6 +76,17 @@ extension ConnectedServerView {
     }
   }
 
+  /// Mutes or unmutes a session for the caller; a refusal offers it again.
+  func setMuted(_ sessionID: String, _ muted: Bool) {
+    let list = connection.sessionList
+    Task {
+      if await !list.setMuted(sessionID, muted) {
+        let title = muted ? "Could Not Mute the Session" : "Could Not Unmute the Session"
+        list.offerRetry(title) { setMuted(sessionID, muted) }
+      }
+    }
+  }
+
   /// Files a session into `project`, or out of its project; a refusal offers the move again.
   func move(_ sessionID: String, to project: ProjectSummary?) {
     let list = connection.sessionList

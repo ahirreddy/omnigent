@@ -65,8 +65,21 @@ struct AppSettingsView: View {
       #endif
     } page: { tabs, selection in
       SettingsPage(
-        categories: tabs.map(Self.category), selection: selection, back: { navigator.close() })
+        categories: tabs.map(Self.category), selection: selection, search: search(tabs),
+        back: { navigator.close() })
     }
+  }
+
+  /// Settings search over the tabs shown and the server panes offered.
+  private func search(_ tabs: [SettingsTabItem]) -> SettingsSearchConfiguration {
+    let scope = SettingsSearchScope(
+      categories: tabs.map(\.title),
+      serverPanes: ServerSettingsContainer.searchablePanes(navigator: navigator),
+      serversCategory: SettingsNavigator.serversTab, isMac: true)
+    return SettingsSearchConfiguration(
+      entries: SettingsSearchIndex.entries(scope),
+      focusRequest: Bindable(navigator).focusesSearch,
+      openServerPane: { pane in navigator.show(.server(url: nil, pane: pane)) })
   }
 
   /// A tab as a category of the page.

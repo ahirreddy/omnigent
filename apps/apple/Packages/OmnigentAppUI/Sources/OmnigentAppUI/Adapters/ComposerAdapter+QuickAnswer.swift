@@ -31,3 +31,18 @@ extension ComposerAdapter {
     }
   }
 }
+
+/// A leading `!` in a native Claude Code or Codex session: the hint, and why a send is refused.
+extension ComposerAdapter {
+  /// `draft`'s shell hint, or `nil` when it is not a shell command. The composer asks as it
+  /// draws, so typing redraws the composer alone.
+  /// - Parameters:
+  ///   - store: The conversation.
+  ///   - draft: The text in the field.
+  /// - Returns: The hint.
+  static func shellHint(_ store: ConversationStore, draft: String) -> ComposerShellHint? {
+    store.composer.shellInput(text: draft, permissionLevel: store.header?.permissionLevel).map {
+      ComposerShellHint(refusal: $0.refusal)
+    }
+  }
+}

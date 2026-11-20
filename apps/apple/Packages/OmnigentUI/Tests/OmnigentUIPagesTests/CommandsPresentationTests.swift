@@ -128,8 +128,9 @@
       let log = CommandLog()
       let screen = try open(log, publishes: false)
       defer { screen.close() }
-      // Down from Alpha: New chat, Inbox, Settings, Sidebar, Find, Switch server: nothing else.
-      for _ in 0..<6 { try screen.press(keyCode: 125, characters: "\u{F701}") }
+      // Down from Alpha: New chat, Inbox, Settings, Sidebar, Find, Search settings, Switch
+      // server: nothing else.
+      for _ in 0..<7 { try screen.press(keyCode: 125, characters: "\u{F701}") }
       #expect(screen.window.attachedSheet != nil)
       try screen.press(keyCode: 36, characters: "\r")
       #expect(

@@ -180,6 +180,7 @@ public struct BrowserEngineSettingsView: View {
         }
       }
       .accessibilityIdentifier("settings.browserEngine")
+      .id("settings.browserEngine")
       if case .unavailable(let error) = provider.availability(of: preferences.engine) {
         Text(error.localizedDescription)
           .font(.caption)

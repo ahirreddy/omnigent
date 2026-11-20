@@ -15,6 +15,24 @@ public final class BrowserFindModel {
   public internal(set) var result: BrowserFindResult?
   /// Increments when the find field should take focus.
   public internal(set) var focusRequest = 0
+  /// Increments when the field should select its whole query, so typing replaces it.
+  public internal(set) var selectAllRequest = 0
+  /// Whether the find field has the keyboard.
+  public internal(set) var isFieldFocused = false
+  /// Counts Find requests, so a slow selection read never overrides a later one.
+  var seedGeneration = 0
+
+  /// Longest selection that seeds the query; longer ones leave it unchanged.
+  static let maxSeedLength = 1000
+
+  /// The query a page selection seeds, or `nil`: one trimmed line of at most
+  /// ``maxSeedLength`` characters, since find doesn't match across lines.
+  static func seed(fromSelection selection: String) -> String? {
+    let text = selection.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty, !text.contains(where: \.isNewline), text.count <= maxSeedLength
+    else { return nil }
+    return text
+  }
 
   /// Creates hidden find state.
   public init() {}

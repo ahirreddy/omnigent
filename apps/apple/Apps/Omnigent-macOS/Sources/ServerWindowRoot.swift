@@ -98,6 +98,10 @@ struct ServerWindowRoot: View {
       onRoute: { route in follow(route, in: session, settings: settings) }
     )
     .desktopAttention(session.connection, serverURL: id.serverURL, desktop: desktop)
+    .floatingNewAgentSupport(
+      session.connection, window: id.instance, registry: desktop.registry,
+      host: services.floatingNewAgent
+    )
     .menuBarSessions(
       session.connection, serverURL: isReady ? id.serverURL : nil, instance: id.instance,
       in: services.menuBar

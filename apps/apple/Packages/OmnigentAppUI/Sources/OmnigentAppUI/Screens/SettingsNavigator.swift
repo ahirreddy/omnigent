@@ -13,6 +13,8 @@ public enum SettingsDestination: Hashable, Sendable {
   /// The Harnesses pane of `url`'s settings, on a host and harness, as the web's
   /// `/settings/harnesses/<harness>?host=<host>`.
   case harness(url: String?, focus: HarnessSettingsFocus)
+  /// Settings search, with the keyboard in its field (the palette's Search Settings…).
+  case search
 }
 
 /// The host and harness the Harnesses pane opens to. Each request is distinct, so asking again
@@ -77,6 +79,19 @@ public final class SettingsNavigator {
   /// Whether a Mac window shows its Settings page over its content. iPhone and iPad present
   /// their Settings screen themselves.
   public private(set) var isPresented = false
+  /// Settings search takes the keyboard; its field clears this once it has.
+  public var focusesSearch = false
+  /// The panes the shown server's settings offer, once they have shown (``hasServerPanes``).
+  public private(set) var serverPanes: [ServerSettingsPane] = []
+  /// Whether a server's settings have shown and said which panes they offer.
+  public private(set) var hasServerPanes = false
+
+  /// Records the panes the shown server's settings offer, for Settings search.
+  /// - Parameter panes: The panes.
+  public func recordServerPanes(_ panes: [ServerSettingsPane]) {
+    if serverPanes != panes { serverPanes = panes }
+    if !hasServerPanes { hasServerPanes = true }
+  }
 
   /// Creates a navigator on General.
   public init() {}
@@ -94,6 +109,8 @@ public final class SettingsNavigator {
       select(Self.serversTab)
       serverRequest = ServerSettingsRequest(url: url, pane: .harnesses)
       harnessFocus = focus
+    case .search:
+      focusesSearch = true
     }
   }
 

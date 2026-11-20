@@ -27,6 +27,8 @@ nonisolated public enum DesktopIssue: Sendable {
   /// Starting, adopting or stopping the local server or host failed. The manager's state shows
   /// it too.
   case localServer(LocalServerError)
+  /// A system-wide shortcut could not be registered or released.
+  case systemShortcut(SystemHotKeyError)
 }
 
 /// Receives `DesktopIssue`s. The app binds this to its logger.

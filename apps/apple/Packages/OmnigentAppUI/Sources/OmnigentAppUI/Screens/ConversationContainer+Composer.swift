@@ -36,6 +36,7 @@ extension ConversationContainer {
       openHarness = { focus in openSettingsAt(.harness(url: serverURL, focus: focus)) }
     }
     extras.dismissQuickAnswer = ComposerAdapter.dismissQuickAnswer(conversation)
+    extras.shellHint = { draft in ComposerAdapter.shellHint(conversation, draft: draft) }
     extras.mcp = ComposerAdapter.mcpActions(
       conversation.composer.mcp, signIn: { url in Task { _ = await signInOpener.open(url) } },
       openSettings: openSettings, openHarness: openHarness)

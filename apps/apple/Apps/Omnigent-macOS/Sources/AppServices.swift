@@ -50,6 +50,8 @@ final class AppServices {
   let browserTabs: BrowserTabHost
   /// Saves and restores each window's tabs; `nil` when Application Support is unavailable.
   let tabPersistence: TabPersistence?
+  /// The floating New Agent panel and its system-wide shortcut.
+  @ObservationIgnored let floatingNewAgent: FloatingNewAgentHost
   /// Set when the app starts quitting, so closing windows keep their saved tabs.
   @ObservationIgnored private(set) var isTerminating = false
   /// Why automatic updates are off, when the updater could not start.
@@ -103,6 +105,7 @@ final class AppServices {
     browserProvider = AppEdition.makeBrowserProvider()
     browserPreferences = BrowserPreferences(defaults: defaults, provider: browserProvider)
     theme = ThemePreferences(defaults: defaults)
+    floatingNewAgent = FloatingNewAgentHost(desktop: desktop, theme: theme)
     keychain = KeychainModeSelection.current()
     agentBrowser = AgentBrowserPerformer.forEdition(provider: browserProvider)
     browser = BrowserEnvironment(
@@ -289,7 +292,8 @@ final class AppServices {
     case .consentDeclined, .awaitingWindowOpener, .acknowledgmentDeclined:
       logger.notice("Desktop: \(message, privacy: .public)")
     case .deepLinkRejected, .acknowledgmentFailed, .invalidServerURL, .routingFailed,
-      .notificationFailed, .unrecognizedNotificationPayload, .localServer, .supervision:
+      .notificationFailed, .unrecognizedNotificationPayload, .localServer, .supervision,
+      .systemShortcut:
       logger.error("Desktop: \(message, privacy: .public)")
     }
   }

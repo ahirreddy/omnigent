@@ -43,6 +43,7 @@ struct SessionTitleInstructionsPane: View {
           .disabled(!isReady || isSaving)
           .accessibilityLabel("Title instructions")
           .accessibilityIdentifier("settings.session-title-instructions")
+          .settingsSearchAnchor("settings.session-title-instructions")
       }
       HStack {
         Text(status)

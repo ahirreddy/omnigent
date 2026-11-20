@@ -586,11 +586,65 @@ impl LiveReducer {
         let Some(row) = project_item(&item)? else {
             return Ok(self.mark_interrupted_reply(&item));
         };
+        // A handback's result only confirms that the report shown as the answer was delivered.
+        if self.is_handback_result(&row) {
+            let dropped = row
+                .call_id
+                .as_deref()
+                .is_some_and(|call| self.drop_results_of(call));
+            return Ok(Effects {
+                changed: dropped,
+                ..Effects::default()
+            });
+        }
+        let handback = row
+            .is_handback_report()
+            .then(|| row.call_id.clone())
+            .flatten();
         self.commit(row);
+        if let Some(call) = handback {
+            self.drop_results_of(&call);
+        }
         Ok(Effects {
             changed: true,
             ..Effects::default()
         })
+    }
+
+    /// Whether `row` is a result (or live output) of a handback already shown as an answer.
+    pub(super) fn is_handback_result(&self, row: &Row) -> bool {
+        row.activity_kind() == Some(ActivityKind::ToolResult)
+            && row
+                .call_id
+                .as_ref()
+                .is_some_and(|call| self.is_handback_call(call))
+    }
+
+    /// Whether `call` is a sub-agent's handback shown as its answer.
+    pub(super) fn is_handback_call(&self, call: &str) -> bool {
+        self.snap
+            .rows
+            .iter()
+            .any(|row| row.is_handback_report() && row.call_id.as_deref() == Some(call))
+    }
+
+    /// Removes `call`'s results and live output, retiring the output's preview. Returns whether any
+    /// row went.
+    fn drop_results_of(&mut self, call: &str) -> bool {
+        let mut dropped = false;
+        while let Some(at) = self.snap.rows.iter().position(|row| {
+            row.activity_kind() == Some(ActivityKind::ToolResult)
+                && row.call_id.as_deref() == Some(call)
+        }) {
+            if let Some(preview) = self.snap.rows.get(at).cloned()
+                && preview.is_ephemeral()
+            {
+                self.retire_preview(&preview);
+            }
+            self.remove_row(at);
+            dropped = true;
+        }
+        dropped
     }
 
     /// Inserts a persisted row: replaces the row with its id, else retires the one matching

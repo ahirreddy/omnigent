@@ -16,14 +16,16 @@ enum ShareAdapter {
   /// `nil` where Share works or is hidden (single-user servers, pages not read yet).
   static func unavailableReason(_ pages: ServerPages?) -> String? {
     pages?.sharingDisabled == true
-      ? automationShareDisabledReason(sharingDisabled: true, shareable: true) : nil
+      ? automationShareDisabledReason(sharingDisabled: true, shareable: true, canClone: false)
+      : nil
   }
 
   /// Why an automation's Share shows disabled: sharing off, else a legacy automation the server
-  /// can't keep grants for; `nil` where Share works.
+  /// can't keep grants for (which it may offer to clone and share); `nil` where Share works.
   static func unavailableReason(_ pages: ServerPages?, automation: Automation) -> String? {
     automationShareDisabledReason(
-      sharingDisabled: pages?.sharingDisabled == true, shareable: automation.shareable)
+      sharingDisabled: pages?.sharingDisabled == true, shareable: automation.shareable,
+      canClone: pages?.automationClone == true)
   }
 
   /// Whether Share appears at all: on a server that shares, or one that turned sharing off.

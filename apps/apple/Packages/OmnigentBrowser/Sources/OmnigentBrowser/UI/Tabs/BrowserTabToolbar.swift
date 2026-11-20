@@ -144,7 +144,7 @@ struct BrowserTabMenu: View {
       }
       Toggle("Show Bookmarks Bar", isOn: $settings.showsBookmarksBar)
       Divider()
-      Button("Find…") { model.showFindBar() }
+      Button("Find…") { model.findSeedingSelection() }
       Menu("Zoom") {
         Button("Zoom In") { model.zoomIn() }
         Button("Zoom Out") { model.zoomOut() }

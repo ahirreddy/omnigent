@@ -64,6 +64,7 @@ struct ArchivedSessionsPane: View {
       ForEach(ArchivedRetention.choices, id: \.self) { Text(ArchivedRetention.title($0)).tag($0) }
     }
     .accessibilityIdentifier("settings.archived.retention")
+    .settingsSearchAnchor("settings.archived.retention")
     if !projects.isEmpty {
       Picker("Project", selection: Binding(get: { shownProject }, set: { project = $0 })) {
         Text("All projects").tag(String?.none)

@@ -174,11 +174,13 @@ enum SessionToolsAdapter {
     let background = store.sections.first { $0.id == "status" }?.details
       .first { $0.id == "background" }.flatMap { Int($0.text) }
     let tasks = backgroundTasks(store.sections)
-    return ComposerTaskIndicators(
+    var indicators = ComposerTaskIndicators(
       backgroundTasks: background ?? 0, backgroundTaskList: tasks.list,
       backgroundTaskNote: tasks.note,
       subagents: SubagentGroup(state: screen)?.tally ?? [],
       goal: store.tools.goal.map(goal))
+    indicators.agentWorking = screen.header.status == .running
+    return indicators
   }
 
   /// The named background tasks of the core's `background-tasks` section, and its note about

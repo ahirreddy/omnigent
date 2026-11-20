@@ -275,6 +275,30 @@
     }
   }
 
+  @Suite("Find: the selection as the query")
+  @MainActor
+  struct FindSeedTests {
+    @Test("Find takes a text view's selected line as its query, never a field's or several lines")
+    func findSeedsFromSelection() {
+      let view = NSTextView()
+      view.string = "  first needle  \nsecond line"
+      #expect(!FindMenu.seedsFind(from: view))
+      view.setSelectedRange(NSRange(location: 0, length: 16))
+      #expect(FindMenu.seedsFind(from: view))
+      view.setSelectedRange(NSRange(location: 0, length: 20))
+      #expect(!FindMenu.seedsFind(from: view))
+      view.string = String(repeating: "x", count: FindMenu.maxSeedLength + 1)
+      view.selectAll(nil)
+      #expect(!FindMenu.seedsFind(from: view))
+      // The find bar's own field keeps what was typed.
+      view.string = "needle"
+      view.selectAll(nil)
+      view.isFieldEditor = true
+      #expect(!FindMenu.seedsFind(from: view))
+      #expect(!FindMenu.seedsFind(from: nil))
+    }
+  }
+
   /// Takes the Find menu's forwarded actions at the end of the responder chain, by sender tag.
   final class FindActionRecorder: NSObject, NSApplicationDelegate {
     var tagsActedOn: [Int] = []

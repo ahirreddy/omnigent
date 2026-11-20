@@ -84,6 +84,9 @@ nonisolated public struct ComposerTaskIndicators: Hashable, Sendable {
   public var subagents: [SubagentChild]
   /// The goal, when the session has one.
   public var goal: ComposerGoal?
+  /// The agent's own turn is running: the background-task count doubles as the working cue,
+  /// since on a phone the transcript's working line scrolls off screen.
+  public var agentWorking = false
 
   /// Creates indicators.
   /// - Parameters:

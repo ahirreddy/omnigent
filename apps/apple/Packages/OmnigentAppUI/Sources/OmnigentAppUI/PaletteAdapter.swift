@@ -147,6 +147,8 @@ struct PaletteAdapter: ViewModifier {
       session.signIn.connect(url)
     case .settings:
       openSettingsAt?(.tab(SettingsNavigator.generalTab))
+    case .searchSettings:
+      openSettingsAt?(.search)
     case .toggleSidebar:
       #if os(macOS)
         // The split view's own toggle, as View > Show Sidebar sends it.

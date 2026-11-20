@@ -30,6 +30,7 @@ struct AdvisorSettingsPane: View {
             || actions.setEnabled == nil
         )
         .accessibilityIdentifier("settings.advisor-switch")
+        .settingsSearchAnchor("settings.advisor-switch")
       }
       if let error = state?.switchError {
         Text(error).font(.callout).foregroundStyle(Theme.failure)

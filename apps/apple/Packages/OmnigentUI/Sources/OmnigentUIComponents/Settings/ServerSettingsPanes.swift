@@ -272,6 +272,7 @@ struct ImportSessionsPane: View {
           if mode == .session { source = Self.singleSource(source, in: sources) }
         }
         .accessibilityIdentifier("settings.import.mode")
+        .settingsSearchAnchor("settings.import.mode")
         Picker("Harness", selection: $source) {
           ForEach(sources.filter { mode == .recent || $0.id != "all" }) {
             Text($0.title).tag($0.id)

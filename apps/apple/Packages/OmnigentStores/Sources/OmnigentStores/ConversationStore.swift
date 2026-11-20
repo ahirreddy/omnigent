@@ -146,7 +146,7 @@ public final class ConversationStore {
     return ConversationFacts(
       tokensUsed: number("context_tokens"), contextWindow: number("context_window"),
       items: transcriptRows.count, isRunning: isRunning, hostOnline: settings?.hostOnline ?? false,
-      mcpSession: .init(settings))
+      mcpSession: .init(settings), permissionLevel: header?.permissionLevel)
   }
 
   /// Observes the row `rowID` on its own, for a view that shows only that row (see

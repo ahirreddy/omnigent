@@ -57,19 +57,39 @@ struct FormDraft: Hashable {
       return numberProblem(for: field)
     case .text:
       return field.required && !field.exactText && text(for: field).isEmpty
-        ? .missing("Enter \(field.title).") : nil
+        ? .missing(Self.sentence("Enter \(field.title)")) : nil
     case .boolean:
       return field.required && booleanAnswer(for: field) == nil
-        ? .missing("Choose Yes or No for \(field.title).") : nil
+        ? .missing(Self.sentence("Choose Yes or No for \(field.title)")) : nil
     case .singleChoice, .multipleChoice:
       return field.required && value(for: field) == nil
-        ? .missing("Choose an answer for \(field.title).") : nil
+        ? .missing(Self.sentence("Choose an answer for \(field.title)")) : nil
     }
+  }
+
+  /// Why Submit is off, or `nil` when it can be sent. A harness question names the first one
+  /// still unanswered as the web does ("Answer question 2 (Platforms) to submit"); another form
+  /// gives its first field's problem. A validator problem no field shows stands as it is.
+  func submitBlockedReason(
+    for fields: [FormField], asQuestions: Bool, validatorProblem: String?
+  ) -> String? {
+    for (index, field) in fields.enumerated() {
+      guard let problem = problem(for: field) else { continue }
+      guard asQuestions, !problem.isInvalid else { return problem.message }
+      let header = field.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+      return "Answer question \(index + 1)\(header.isEmpty ? "" : " (\(header))") to submit"
+    }
+    return validatorProblem
+  }
+
+  /// `text` ending as a sentence: a full stop unless a question's own mark already ends it.
+  static func sentence(_ text: String) -> String {
+    text.last.map { ".?!".contains($0) } == true ? text : text + "."
   }
 
   private func numberProblem(for field: FormField) -> FieldProblem? {
     let raw = text(for: field).trimmingCharacters(in: .whitespaces)
-    if raw.isEmpty { return field.required ? .missing("Enter \(field.title).") : nil }
+    if raw.isEmpty { return field.required ? .missing(Self.sentence("Enter \(field.title)")) : nil }
     if field.kind == .integer, Int64(raw) == nil {
       return .invalid("\(field.title) must be a whole number.")
     }
@@ -133,6 +153,16 @@ struct FieldProblem: Hashable {
 
   static func missing(_ message: String) -> Self { Self(message: message, isInvalid: false) }
   static func invalid(_ message: String) -> Self { Self(message: message, isInvalid: true) }
+}
+
+extension View {
+  /// Says why a disabled Submit is off while the pointer rests on it. A disabled control shows
+  /// no tooltip of its own, so the reason sits on a wrapper around it.
+  func submitBlockedHelp(_ reason: String?) -> some View {
+    ZStack { self }
+      .contentShape(Rectangle())
+      .help(reason ?? "")
+  }
 }
 
 /// The fields of a form decision, laid out as native controls. Each field's problem shows right

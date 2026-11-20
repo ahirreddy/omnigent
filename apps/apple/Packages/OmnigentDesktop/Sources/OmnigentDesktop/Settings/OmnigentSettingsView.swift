@@ -52,7 +52,8 @@ public struct OmnigentSettingsView<BrowserSettings: View, Page: View>: View {
       SettingsTabItem(SettingsTabID.general, systemImage: "gearshape") {
         GeneralSettingsTab(
           preferences: desktop.preferences, managed: desktop.managedPreferences,
-          recentServers: recentServers, browserSettings: browserSettings)
+          recentServers: recentServers, browserSettings: browserSettings,
+          floatingPanel: desktop.floatingPanelShortcut)
       },
       SettingsTabItem(SettingsTabID.notifications, systemImage: "bell.badge") {
         NotificationSettingsTab(
@@ -109,6 +110,8 @@ struct GeneralSettingsTab<BrowserSettings: View>: View {
   let managed: ManagedPreferences
   let recentServers: [URL]
   let browserSettings: BrowserSettings
+  /// The floating New Agent panel's shortcut, shown while a server offers the panel.
+  var floatingPanel: FloatingPanelShortcut?
   @State private var organizationServers: [ManagedServer] = []
   @State private var managedError: ManagedPreferencesError?
 
@@ -144,6 +147,9 @@ struct GeneralSettingsTab<BrowserSettings: View>: View {
         }
       } header: {
         Text("Servers")
+      }
+      if let floatingPanel {
+        FloatingPanelShortcutSection(shortcut: floatingPanel)
       }
       browserSettings
     }
@@ -200,6 +206,7 @@ struct NotificationSettingsTab: View {
       Section {
         Toggle("Play sound", isOn: $preferences.soundEnabled)
           .accessibilityIdentifier("settings.notifications.play-sound")
+          .id("settings.notifications.play-sound")
         Picker("Sound", selection: $preferences.soundName) {
           ForEach(soundNames, id: \.self) { Text($0).tag($0) }
         }

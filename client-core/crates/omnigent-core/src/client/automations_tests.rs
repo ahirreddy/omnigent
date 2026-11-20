@@ -9,7 +9,8 @@ use super::super::test_support::{
 };
 use super::{
     Automation, AutomationDraft, AutomationFilter, AutomationGrant, AutomationRunStatus,
-    AutomationState, RunPullRequestStatus, ServerPages, arrange_automations, automation_from,
+    AutomationSort, AutomationState, RunPullRequestStatus, ServerPages, arrange_automations,
+    automation_clone_failure, automation_clone_message, automation_from,
     automation_share_disabled_reason, describe_run_failure, draft_body, format_cost_usd,
     format_run_duration, parse_cost_limit, run_from, run_pull_requests_summary,
 };
@@ -95,20 +96,60 @@ fn arranges_active_soonest_first_then_paused_by_name() {
     ];
     let ids = |list: Vec<Automation>| list.into_iter().map(|a| a.id).collect::<Vec<_>>();
     assert_eq!(
-        ids(arrange_automations(&all, AutomationFilter::All, "")),
+        ids(arrange_automations(
+            &all,
+            AutomationFilter::All,
+            AutomationSort::NextRun,
+            ""
+        )),
         ["a1", "a2", "a3", "p1", "p2"]
     );
     assert_eq!(
-        ids(arrange_automations(&all, AutomationFilter::Paused, "")),
+        ids(arrange_automations(
+            &all,
+            AutomationFilter::Paused,
+            AutomationSort::NextRun,
+            ""
+        )),
         ["p1", "p2"]
     );
     assert_eq!(
         ids(arrange_automations(
             &all,
             AutomationFilter::Active,
+            AutomationSort::NextRun,
             " LATER "
         )),
         ["a2"]
+    );
+}
+
+#[test]
+fn sorted_by_name_every_automation_is_alphabetical_whatever_its_state() {
+    let all = vec![
+        automation("p2", "zeta", AutomationState::Paused, None),
+        automation("a2", "Later", AutomationState::Active, Some(200)),
+        automation("p1", "Alpha", AutomationState::Paused, None),
+        automation("a1", "beta", AutomationState::Active, Some(100)),
+    ];
+    let ids = |list: Vec<Automation>| list.into_iter().map(|a| a.id).collect::<Vec<_>>();
+    assert_eq!(
+        ids(arrange_automations(
+            &all,
+            AutomationFilter::All,
+            AutomationSort::Name,
+            ""
+        )),
+        ["p1", "a1", "a2", "p2"]
+    );
+    assert_eq!(
+        ids(arrange_automations(
+            &all,
+            AutomationFilter::Active,
+            AutomationSort::Name,
+            ""
+        )),
+        ["a1", "a2"]
     );
 }
 
@@ -404,6 +445,21 @@ fn a_sessions_automation_already_gone_counts_as_deleted() {
 }
 
 #[test]
+fn the_floating_new_agent_panel_follows_its_feature() {
+    assert!(
+        !ServerPages::from_value(&json!({}))
+            .unwrap()
+            .floating_composer
+    );
+    let floating = json!({"features": {"floating_composer": true}});
+    assert!(
+        ServerPages::from_value(&floating)
+            .unwrap()
+            .floating_composer
+    );
+}
+
+#[test]
 fn pages_follow_what_the_server_advertises() {
     let current = json!({"automations_enabled": true, "scheduled_task_session_modes": true,
         "features": {"usage_page": true, "canvas": true}, "archive_worktree_cleanup": true,
@@ -446,6 +502,9 @@ fn pages_follow_what_the_server_advertises() {
     );
     // Sharing is on unless the server turns it off.
     assert!(ServerPages::from_value(&json!({})).is_ok_and(|pages| pages.sharing));
+    // Mute only where the server keeps it per viewer; an older server would share it.
+    assert!(ServerPages::from_value(&json!({"session_mute": true})).is_ok_and(|p| p.session_mute));
+    assert!(ServerPages::from_value(&json!({})).is_ok_and(|pages| !pages.session_mute));
     let off = ServerPages::from_value(&json!({"sharing_mode": "off"})).unwrap();
     assert!(!off.sharing && off.sharing_disabled);
     // A single-user server never shares, so Share is hidden rather than disabled.
@@ -573,10 +632,11 @@ fn active_automations_without_a_next_run_sort_after_those_with_one() {
         automation("none_a", "A", AutomationState::Active, None),
         automation("soon", "Z", AutomationState::Active, Some(10)),
     ];
-    let ids: Vec<String> = arrange_automations(&all, AutomationFilter::All, "")
-        .into_iter()
-        .map(|automation| automation.id)
-        .collect();
+    let ids: Vec<String> =
+        arrange_automations(&all, AutomationFilter::All, AutomationSort::NextRun, "")
+            .into_iter()
+            .map(|automation| automation.id)
+            .collect();
     assert_eq!(ids, ["soon", "none_a", "none_b"]);
 }
 
@@ -695,10 +755,11 @@ fn an_active_automation_with_no_next_run_sorts_after_a_scheduled_one_either_way(
     let unknown = automation("b", "Early name", AutomationState::Active, None);
     for input in [[&scheduled, &unknown], [&unknown, &scheduled]] {
         let rows: Vec<Automation> = input.into_iter().cloned().collect();
-        let ids: Vec<String> = arrange_automations(&rows, AutomationFilter::All, "")
-            .into_iter()
-            .map(|automation| automation.id)
-            .collect();
+        let ids: Vec<String> =
+            arrange_automations(&rows, AutomationFilter::All, AutomationSort::NextRun, "")
+                .into_iter()
+                .map(|automation| automation.id)
+                .collect();
         assert_eq!(ids, ["a", "b"]);
     }
 }
@@ -711,7 +772,8 @@ fn pages_read_mains_automation_fields() {
         "scheduled_task_source_sessions": true, "scheduled_task_sharing": true,
         "scheduled_task_shared_with_me": true, "scheduled_task_run_pull_requests": true,
         "scheduled_task_harness_settings": true, "scheduled_task_approval_skipping_modes": true,
-        "session_create_permission_modes": true, "single_user": false});
+        "session_create_permission_modes": true, "single_user": false,
+        "scheduled_task_clone": true, "scheduled_task_default_timezone": true});
     let pages = ServerPages::from_value(&info).unwrap();
     assert!(pages.automation_subhour && pages.automation_trigger_headers);
     assert_eq!(pages.automation_trigger_poll_minutes, 15);
@@ -720,6 +782,7 @@ fn pages_read_mains_automation_fields() {
     assert!(pages.automation_sharing && pages.automation_shared_with_me);
     assert!(pages.automation_run_pull_requests && pages.automation_harness_settings);
     assert!(pages.automation_approval_skipping_modes && pages.session_create_permission_modes);
+    assert!(pages.automation_clone && pages.automation_default_timezone);
     // No MCP registry, no services to pick; one user, nobody to share with.
     let lone = json!({"scheduled_task_mcp_services": true, "enabled_connections": [],
         "scheduled_task_sharing": true, "scheduled_task_shared_with_me": true,
@@ -732,6 +795,7 @@ fn pages_read_mains_automation_fields() {
     assert_eq!(older.automation_trigger_poll_minutes, 10);
     assert_eq!(older.session_message_max_chars, 0);
     assert!(!older.automation_subhour);
+    assert!(!older.automation_clone && !older.automation_default_timezone);
 }
 
 #[test]
@@ -1017,15 +1081,117 @@ fn reads_shared_automations_run_pull_requests_and_grants() {
 
 #[test]
 fn share_shows_disabled_with_why() {
-    assert_eq!(automation_share_disabled_reason(false, true), None);
+    assert_eq!(automation_share_disabled_reason(false, true, false), None);
     assert_eq!(
-        automation_share_disabled_reason(false, false),
+        automation_share_disabled_reason(false, false, false),
         Some("This is a legacy automation. Recreate it to share it.")
     );
     // Sharing off is the reason given when both apply, as the server refuses for it first.
     assert_eq!(
-        automation_share_disabled_reason(true, false),
+        automation_share_disabled_reason(true, false, false),
         Some("Sharing has been disabled for this Omnigent server.")
+    );
+}
+
+#[test]
+fn a_legacy_automation_is_cloned_to_share_where_the_server_clones() {
+    assert_eq!(
+        automation_share_disabled_reason(false, false, true),
+        Some("This is a legacy automation. Clone it, then share the copy.")
+    );
+    assert_eq!(automation_share_disabled_reason(false, true, true), None);
+    assert_eq!(
+        automation_share_disabled_reason(true, false, true),
+        Some("Sharing has been disabled for this Omnigent server.")
+    );
+}
+
+#[test]
+fn clone_posts_with_the_originals_host_and_returns_the_copy() {
+    let transport = RouteTransport::local();
+    let copy = r#"{"id":"t2","name":"Standup (copy)","prompt":"p","rrule":"FREQ=DAILY;BYHOUR=9;BYMINUTE=0","agent_id":"a1","timezone":"UTC","state":"paused","next_run_at":null,"updated_at":1}"#;
+    transport.enqueue(
+        "POST",
+        "/v1/scheduled-tasks/t1/clone",
+        vec![
+            Reply::json(201, copy),
+            Reply::json(201, copy),
+            Reply::json(
+                403,
+                r#"{"detail":"Only the owner can clone this automation"}"#,
+            ),
+        ],
+    );
+    let core = connected(transport);
+    let mut original = automation("t1", "Standup", AutomationState::Paused, None);
+    original.host_id = Some("h1".into());
+    let clone = block_on(core.clone_automation(&original)).unwrap();
+    assert_eq!(clone.id, "t2");
+    assert_eq!(clone.name, "Standup (copy)");
+    assert_eq!(
+        automation_clone_message(&clone),
+        "Automation cloned. The copy is paused like the original."
+    );
+    original.host_id = None;
+    block_on(core.clone_automation(&original)).unwrap();
+    let refused = block_on(core.clone_automation(&original)).unwrap_err();
+    assert!(
+        automation_clone_failure(&refused).starts_with("Couldn\u{2019}t clone the automation: "),
+        "{refused:?}"
+    );
+    let writes = core.transport().writes();
+    assert_eq!(body_json(&writes[0]), json!({"host_id": "h1"}));
+    assert_eq!(body_json(&writes[1]), json!({}));
+    assert!(matches!(
+        block_on(core.clone_automation(&automation("a/b", "x", AutomationState::Active, None))),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}
+
+#[test]
+fn a_clone_says_whether_both_will_run() {
+    assert_eq!(
+        automation_clone_message(&automation("c", "c", AutomationState::Active, Some(10))),
+        "Automation cloned. Pause or delete the original so they don't both run."
+    );
+    assert_eq!(
+        automation_clone_message(&automation("c", "c", AutomationState::Active, None)),
+        "Automation cloned. Its schedule has no runs left."
+    );
+    let server_error = SessionError::Rejected {
+        status: 503,
+        message: "down".into(),
+    };
+    assert_eq!(
+        automation_clone_failure(&server_error),
+        "Couldn\u{2019}t clone the automation"
+    );
+}
+
+#[test]
+fn the_devices_time_zone_is_recorded_for_agent_created_automations() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "PUT",
+        "/v1/scheduled-tasks/default-timezone",
+        vec![
+            Reply::json(200, r#"{"timezone":"America/Chicago"}"#),
+            Reply::json(501, r#"{"detail":"not supported"}"#),
+        ],
+    );
+    let core = connected(transport);
+    block_on(core.report_automation_timezone(" America/Chicago ")).unwrap();
+    // A store that keeps no preferences answers 501, which reaches the caller.
+    assert!(block_on(core.report_automation_timezone("America/Chicago")).is_err());
+    assert!(matches!(
+        block_on(core.report_automation_timezone("  ")),
+        Err(SessionError::Rejected { status: 400, .. })
+    ));
+    let writes = core.transport().writes();
+    assert_eq!(writes.len(), 2, "an empty zone is never sent");
+    assert_eq!(
+        body_json(&writes[0]),
+        json!({"timezone": "America/Chicago"})
     );
 }
 

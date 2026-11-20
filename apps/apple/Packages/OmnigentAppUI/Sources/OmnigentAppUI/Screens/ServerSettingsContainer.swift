@@ -1,7 +1,7 @@
 public import Foundation
 import OmnigentCoreFFI
 public import OmnigentStores
-import OmnigentUIComponents
+public import OmnigentUIComponents
 public import SwiftUI
 
 /// Settings > Servers: the server settings of each signed-in server, with a server picker. Each
@@ -66,6 +66,22 @@ public struct ServerSettingsContainer: View {
     }
     .onChange(of: selected) { refresh() }
     .onChange(of: navigator.serverRequest) { showRequest() }
+    // Settings search offers the panes this server shows.
+    .onChange(of: state.panes, initial: true) { _, panes in navigator.recordServerPanes(panes) }
+  }
+
+  /// The server panes Settings search offers: those the shown server's settings offer, or,
+  /// before they have shown, those every signed-in server offers.
+  /// - Parameters:
+  ///   - navigator: The Settings navigator.
+  ///   - connections: The signed-in connections.
+  /// - Returns: The panes.
+  public static func searchablePanes(
+    navigator: SettingsNavigator,
+    connections: [ConnectionStore] = SupervisionConnections.shared.connections
+  ) -> [ServerSettingsPane] {
+    if navigator.hasServerPanes { return navigator.serverPanes }
+    return connections.isEmpty ? [] : ServerSettingsAdapter.panes(nil)
   }
 
   /// Harnesses and Custom Agents run over the connection's own stores. As on the web, agents

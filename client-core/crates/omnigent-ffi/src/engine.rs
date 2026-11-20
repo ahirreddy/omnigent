@@ -25,6 +25,7 @@ use omnigent_core::realtime::{
     AttemptId, JitterSource, SessionUpdates, SplitMix64, StreamInput, UpdatesConfig, UpdatesInput,
     UpdatesOutput, WatchError,
 };
+use omnigent_core::sessions::MUTED_LABEL;
 use omnigent_core::{ClientEvent, SessionError};
 use omnigent_protocol::SessionListItem;
 
@@ -711,12 +712,30 @@ impl Engine {
         }
     }
 
+    /// The attention rows of sessions the caller hasn't muted, by the latest summary or the row's
+    /// own label: a muted session never notifies or counts toward the badge.
+    fn audible_rows(&self) -> Vec<SessionListItem> {
+        self.attention
+            .rows
+            .values()
+            .filter(|row| {
+                let labelled = row
+                    .labels
+                    .value()
+                    .and_then(|labels| labels.get(MUTED_LABEL))
+                    .is_some_and(|value| !value.is_empty());
+                !labelled && !self.read.is_muted(&row.id)
+            })
+            .cloned()
+            .collect()
+    }
+
     pub(crate) fn observe_attention(&mut self) {
         let view = ViewContext {
             active_session_id: self.attention.view.active_session_id.clone(),
             window_focused: self.attention.view.focused,
         };
-        let rows: Vec<SessionListItem> = self.attention.rows.values().cloned().collect();
+        let rows = self.audible_rows();
         let now = self.host.unix_ms();
         let notifications =
             self.attention
@@ -737,7 +756,7 @@ impl Engine {
             active_session_id: self.attention.view.active_session_id.clone(),
             window_focused: self.attention.view.focused,
         };
-        let rows: Vec<SessionListItem> = self.attention.rows.values().cloned().collect();
+        let rows = self.audible_rows();
         let badge = unread_badge_ids(&rows, &view, |row| self.read.is_unread(&row.id));
         if badge != self.attention.badge {
             self.attention.badge.clone_from(&badge);
@@ -767,6 +786,11 @@ impl Engine {
         };
         let now = self.host.unix_ms();
         let notifications = self.attention.tracker.due(&view, now);
+        // A session muted while its turn end settled stays silent.
+        let notifications: Vec<_> = notifications
+            .into_iter()
+            .filter(|notification| !self.read.is_muted(&notification.session_id))
+            .collect();
         for notification in notifications {
             self.emit(CoreEvent::Notification {
                 notification: notification.into(),

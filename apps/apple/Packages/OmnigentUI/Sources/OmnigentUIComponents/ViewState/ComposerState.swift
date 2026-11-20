@@ -4,6 +4,29 @@ public import UniformTypeIdentifiers
 // `HarnessChoice.builtin` mirrors the core's `Option<bool>` (not reported is not false).
 // swiftlint:disable discouraged_optional_boolean
 
+/// A draft that runs as a shell command: "Shell command", or why such a send is refused.
+nonisolated public struct ComposerShellHint: Hashable, Sendable {
+  /// Why sending it is refused; `nil` when it can go out.
+  public var refusal: String?
+
+  /// What the hint reads.
+  public var text: String { refusal ?? "Shell command" }
+
+  /// Creates a hint.
+  public init(refusal: String? = nil) {
+    self.refusal = refusal
+  }
+}
+
+extension ComposerViewState {
+  /// The state with `hint` as its shell hint.
+  func withShellHint(_ hint: ComposerShellHint?) -> Self {
+    var state = self
+    state.shellHint = hint
+    return state
+  }
+}
+
 /// Whether the composer can send, and why not. The reason comes from the core
 /// (read-only, archived, host offline, runner unbound, ...) and is shown verbatim.
 nonisolated public enum ComposerAvailability: Hashable, Sendable {
@@ -174,6 +197,10 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var offersUnsentMessage = false
   /// The output of a local command (`/help`, a usage line), shown above the card.
   public var commandNotice: String?
+  /// The draft runs as a shell command (a leading `!` in Claude Code and Codex native
+  /// sessions): the card takes an accent ring and this hint, "Shell command", or why such a
+  /// send is refused. `nil` for any other draft.
+  public var shellHint: ComposerShellHint?
   /// The `/mcp` panel, shown in place of the completions while the draft is `/mcp`; `nil` where
   /// the session has none (a side chat).
   public var mcpPanel: McpServersPanelState?

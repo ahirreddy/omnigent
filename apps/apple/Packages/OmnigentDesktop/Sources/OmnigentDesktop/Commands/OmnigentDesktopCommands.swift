@@ -222,7 +222,15 @@ struct FindMenu: View {
   var body: some View {
     Menu("Find") {
       Button("Find\u{2026}") {
-        if let find { find.show() } else { Self.sendTextFinderAction(.showFindInterface) }
+        if let find {
+          find.show()
+        } else {
+          // A line selected in a text view becomes the query, as in browsers and editors.
+          if Self.seedsFind(from: NSApplication.shared.keyWindow?.firstResponder) {
+            Self.sendTextFinderAction(.setSearchString)
+          }
+          Self.sendTextFinderAction(.showFindInterface)
+        }
       }
       .keyboardShortcut("f", modifiers: .command)
       Button("Find Next") {
@@ -243,6 +251,22 @@ struct FindMenu: View {
       .keyboardShortcut("e", modifiers: .command)
       .disabled(find != nil && find?.useSelection == nil)
     }
+  }
+
+  /// Longest selection that seeds the query; longer ones leave it unchanged.
+  static let maxSeedLength = 1000
+
+  /// Whether Find should take `responder`'s selection as its query: a text view's (not a find
+  /// field's own editor) single trimmed line of at most ``maxSeedLength`` characters.
+  static func seedsFind(from responder: NSResponder?) -> Bool {
+    guard let textView = responder as? NSTextView, !textView.isFieldEditor else { return false }
+    let range = textView.selectedRange()
+    let text = textView.string
+    guard range.length > 0, range.length <= maxSeedLength * 4,
+      let selected = Range(range, in: text)
+    else { return false }
+    let line = text[selected].trimmingCharacters(in: .whitespacesAndNewlines)
+    return !line.isEmpty && !line.contains(where: \.isNewline) && line.count <= maxSeedLength
   }
 
   /// `performTextFinderAction(_:)` reads the action from the sender's `tag`.

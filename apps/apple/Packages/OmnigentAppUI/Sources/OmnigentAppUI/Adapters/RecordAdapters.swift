@@ -181,6 +181,7 @@ nonisolated extension OmnigentUIComponents.SessionSummary {
       canStop: summary.canStop, isNestedMember: summary.isNestedMember,
       family: summary.family.map(SessionFamilyInfo.init))
     automationSourceID = summary.automationSourceId
+    isMuted = summary.isMuted
   }
 }
 

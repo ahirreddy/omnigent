@@ -49,6 +49,7 @@ pub mod session_families;
 pub mod session_index;
 pub mod session_journal;
 pub mod session_query;
+pub mod shell_input;
 pub mod slash;
 pub mod sse;
 pub mod terminal;

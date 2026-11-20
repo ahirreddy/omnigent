@@ -78,6 +78,23 @@ fn posts_a_truncated_fork_and_records_its_summary() {
 }
 
 #[test]
+fn a_list_page_that_lags_the_fork_keeps_its_row() {
+    let core = connected(forking(Reply::json(201, FORKED)));
+    block_on(core.fork_session(&request())).unwrap();
+    core.transport().ok(
+        "/v1/sessions",
+        r#"{"object":"list","data":[{"id":"conv_other","status":"idle","created_at":1}],"has_more":false}"#,
+    );
+    let listed: Vec<String> = block_on(core.session_page(None, 50))
+        .unwrap()
+        .sessions
+        .into_iter()
+        .map(|row| row.id)
+        .collect();
+    assert_eq!(listed, ["conv_fork", "conv_other"]);
+}
+
+#[test]
 fn sends_a_switched_agent_and_trimmed_title() {
     let core = connected(forking(Reply::json(201, FORKED)));
     block_on(core.fork_session(&ForkRequest {

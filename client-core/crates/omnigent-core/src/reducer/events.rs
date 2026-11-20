@@ -362,7 +362,11 @@ impl LiveReducer {
     }
 
     fn tool_output_delta(&mut self, delta: &ToolOutputDeltaEvent) -> Effects {
-        if !self.accepts_response_deltas || delta.call_id.is_empty() {
+        // A handback's output only confirms delivery of the report shown as the answer.
+        if !self.accepts_response_deltas
+            || delta.call_id.is_empty()
+            || self.is_handback_call(&delta.call_id)
+        {
             return Effects::default();
         }
         let id = format!("live:tool:{}:{}", self.scope_id(), delta.call_id);

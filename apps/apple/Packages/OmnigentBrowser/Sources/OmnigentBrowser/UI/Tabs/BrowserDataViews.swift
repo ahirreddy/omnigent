@@ -166,6 +166,7 @@ public struct BrowserSettingsView: View {
         Text("Custom").tag("custom")
       }
       .accessibilityIdentifier("settings.browser.searchEngine")
+      .id("settings.browser.searchEngine")
       if settings.searchEngineID == "custom" {
         TextField("Search URL with %s", text: $settings.customSearchTemplate)
         if !BrowserSearchEngine.isValidTemplate(settings.customSearchTemplate) {

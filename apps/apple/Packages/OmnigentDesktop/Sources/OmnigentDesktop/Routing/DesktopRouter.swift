@@ -89,6 +89,31 @@ public final class DesktopRouter {
     drain()
   }
 
+  /// Shows a route in a window already on its server without bringing that window forward or
+  /// activating the app, as the floating New Agent panel opens the session it starts behind
+  /// itself. With no window on the server, it opens one as ``open(_:onServer:)`` does.
+  /// - Parameters:
+  ///   - route: The destination.
+  ///   - serverURL: The full server URL including any workspace mount.
+  public func openBehind(_ route: DeepLinkRoute, onServer serverURL: URL) {
+    let origin: ServerOrigin
+    do {
+      origin = try ServerOrigin(url: serverURL)
+    } catch {
+      reportIssue(.invalidServerURL(serverURL, error))
+      return
+    }
+    let strategy = DeepLinkRouting.strategy(
+      target: origin, windows: registry.routingSnapshots, knownOrigins: [origin],
+      focused: registry.keyWindow)
+    switch strategy {
+    case .navigate(let instance), .navigateWhenReady(let instance):
+      registry.deliver(route, to: instance)
+    case .openKnownServer, .requireConsent:
+      open(route, onServer: serverURL)
+    }
+  }
+
   /// Opens a route in a new window on a server the app already trusts, even while another
   /// window shows that server: the user asked for a window, not for the route.
   /// - Parameters:

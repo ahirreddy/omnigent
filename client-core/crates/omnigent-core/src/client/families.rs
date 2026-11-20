@@ -36,7 +36,7 @@ pub(super) fn family_changed_by(
             represents.then(|| family.id.clone())
         }
         SessionChange::Archived { .. } => Some(family.id.clone()),
-        SessionChange::Title(_) => None,
+        SessionChange::Title(_) | SessionChange::Muted(_) => None,
     }
 }
 

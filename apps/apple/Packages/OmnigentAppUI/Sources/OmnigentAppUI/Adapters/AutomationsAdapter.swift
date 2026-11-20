@@ -15,6 +15,7 @@ struct AutomationsAdapter: View {
   /// Opens a saved workflow's page, from a run that follows it.
   var openWorkflow: (@MainActor (String) -> Void)?
   @State private var filter: AutomationsFilter = .all
+  @State private var sort: AutomationsSort = .nextRun
   @State private var search = ""
   @State private var editing: Editing?
   @State private var draft = AutomationDraftState()
@@ -89,7 +90,7 @@ struct AutomationsAdapter: View {
       TimelineView(.periodic(from: .now, by: 60)) { context in
         AutomationsView(
           state: AutomationsMapping.state(
-            pages: pages, filter: filter, search: search, now: context.date),
+            pages: pages, filter: filter, sort: sort, search: search, now: context.date),
           actions: actions(pages))
       }
       .automationsIntro(connection, defaults: defaults, reopenRequests: introRequests)
@@ -103,24 +104,6 @@ struct AutomationsAdapter: View {
       started:
         "Run triggered, it will start shortly. Open automation details to check run history.",
       notify: { banner = TransientBanner(message: $0) })
-  }
-
-  /// Starts a run of `id`, saying so as the web's toast; a run in flight is not an error.
-  @MainActor @discardableResult
-  static func runNow(
-    _ pages: PagesStore, id: String, started: String, notify: @escaping @MainActor (String) -> Void
-  ) async -> Bool {
-    if await pages.runAutomation(id) {
-      notify(started)
-      return true
-    }
-    if case .HttpStatus(409, _) = pages.automationError {
-      notify("This run is already in progress")
-    } else {
-      notify("Couldn\u{2019}t start the run")
-    }
-    pages.dismissAutomationError()
-    return false
   }
 
   /// The caller's automation, or one shared with them.
@@ -222,6 +205,7 @@ struct AutomationsAdapter: View {
       filter = $0
       search = $1
     }
+    actions.sort = { sort = $0 }
     actions.create = {
       draft = AutomationsMapping.newDraft(catalog: pages.automationCatalog.value)
       present(id: "")
@@ -245,6 +229,9 @@ struct AutomationsAdapter: View {
     actions.runNow = { id in Task { await runNow(pages, id: id) } }
     actions.showIntro = { introRequests += 1 }
     actions.delete = { id in Task { await pages.deleteAutomation(id) } }
+    if pages.offered?.automationClone == true {
+      actions.clone = { id in Task { await clone(pages, id: id) } }
+    }
     if pages.offered?.automationSharing == true {
       actions.share = { id in
         guard let automation = pages.automations.value?.first(where: { $0.id == id }) else {
@@ -267,6 +254,16 @@ struct AutomationsAdapter: View {
     guard let automation = pages.automations.value?.first(where: { $0.id == id }) else { return }
     draft = AutomationsMapping.draft(automation, workflows: pages.offered?.workflows == true)
     present(id: id)
+  }
+
+  /// Clones `id`, says what the copy is, and opens its page where the server has pages; a
+  /// refusal shows in the page's error banner in the server's words.
+  private func clone(_ pages: PagesStore, id: String) async {
+    guard let automation = pages.automations.value?.first(where: { $0.id == id }),
+      let copy = await pages.cloneAutomation(automation)
+    else { return }
+    banner = TransientBanner(message: automationCloneMessage(clone: copy))
+    if pages.offered?.automationsV2 == true { detailID = copy.id }
   }
 
 }

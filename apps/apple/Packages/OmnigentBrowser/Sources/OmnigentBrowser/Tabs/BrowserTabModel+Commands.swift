@@ -72,6 +72,69 @@ extension BrowserTabModel {
     find.focusRequest += 1
   }
 
+  /// The page's selection for seeding find: the focused text field's selected range, else the
+  /// document selection; never a password field's.
+  static let findSeedScript = """
+    (() => {
+      const active = document.activeElement;
+      const types = ["text", "search", "url", "tel", "email"];
+      const isControl = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement;
+      const isField = active instanceof HTMLTextAreaElement
+        || (active instanceof HTMLInputElement && types.includes(active.type));
+      if (isField && active.selectionEnd > active.selectionStart) {
+        return active.value.slice(active.selectionStart, active.selectionEnd);
+      }
+      return isControl ? "" : String(window.getSelection()?.toString() ?? "");
+    })()
+    """
+
+  /// Find (Command-F) from a menu or key: shows the bar at once, then fills it from the page's
+  /// selected line once the page answers (``showFindBarSeedingSelection()``).
+  public func findSeedingSelection() {
+    let inField = find.isVisible && find.isFieldFocused
+    showFindBar()
+    // The shown bar searches the seeded query itself.
+    if !inField { Task { await seedFindQuery(searches: false) } }
+  }
+
+  /// Find (Command-F): shows the bar with the page's selected line as its query, searched and
+  /// selected so typing replaces it. Pressed in the field, it keeps what was typed; a query typed
+  /// while the selection is read wins, and a later Find replaces an earlier one's read.
+  public func showFindBarSeedingSelection() async {
+    if find.isVisible, find.isFieldFocused {
+      showFindBar()
+      return
+    }
+    await seedFindQuery(searches: !find.isVisible)
+  }
+
+  /// Reads the page's selection into the query and shows the bar; `searches` runs the search for
+  /// a bar that won't run it itself.
+  private func seedFindQuery(searches: Bool) async {
+    find.seedGeneration += 1
+    let generation = find.seedGeneration
+    let typed = find.query
+    var seed: String?
+    if let tab {
+      do {
+        if case .string(let text) = try await tab.evaluateJavaScript(Self.findSeedScript) {
+          seed = BrowserFindModel.seed(fromSelection: text)
+        }
+      } catch {
+        lastError = error
+      }
+    }
+    guard generation == find.seedGeneration else { return }
+    let seeded = seed.flatMap { find.query == typed ? $0 : nil }
+    if let seeded {
+      find.query = seeded
+      find.selectAllRequest += 1
+    }
+    showFindBar()
+    // A shown bar searches its changed query itself; a newly shown one starts here.
+    if seeded != nil, searches { await findNext(forward: true) }
+  }
+
   /// Highlights the next (or previous) match of `find.query`.
   public func findNext(forward: Bool = true) async {
     guard let tab, !find.query.isEmpty else {

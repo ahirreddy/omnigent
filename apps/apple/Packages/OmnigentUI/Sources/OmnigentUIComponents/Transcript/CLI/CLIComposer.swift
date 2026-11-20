@@ -85,8 +85,11 @@ public struct CLIComposer: View {
   }
 
   private var rules: ComposerSendRules {
-    ComposerSendRules(
-      state: state, draft: draft, canQueue: actions.extras.queueDraft != nil, layout: layout)
+    // A refused shell command holds sending here too.
+    let shellHint = actions.extras.shellHint.map { $0(draft) } ?? state.shellHint
+    return ComposerSendRules(
+      state: state.withShellHint(shellHint), draft: draft,
+      canQueue: actions.extras.queueDraft != nil, layout: layout)
   }
 
   private var isEditable: Bool { state.availability.reason == nil }

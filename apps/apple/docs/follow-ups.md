@@ -153,6 +153,13 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Apps
 
+- [ ] **Muted sessions:** the menus offer no Mark as read on a muted session with unseen
+  activity (the core hides its unread, so the menu can't tell); opening it still marks it read.
+  The bulk selection's Mark as unread stays enabled when every selected row is muted (the core
+  skips them, as the web's bulk action does).
+- [ ] **Nested session drafts** (web `e3e08fbaef`): keep an Add nested agent draft's text,
+  attachments and settings after navigating away, reopened from its provisional row, and a
+  Delete draft item on that row's menu.
 - [ ] **Read state:** persist this device's read marks across relaunches; today they are kept in
   memory only.
 - [ ] **Phone supervision on a physical iPhone:** approve from the Lock Screen end to end (Face
@@ -556,6 +563,40 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     project's board: list rows carry no labels, so the core can't tell a shared run.
   - Left and Right on a selected project row don't collapse and expand its folder; its button
     does.
+- [ ] **Composer tints:** a leading known `/command`, skill or shell `!` and `@` mentions are
+  not tinted inside the draft, and a sent prompt's leading command is not tinted either. The
+  composer is SwiftUI's string `TextEditor`; tinting needs its `AttributedString` form with the
+  selection, mention and completion handling moved over. Shell mode itself (ring, hint,
+  refused sends) is native.
+- [ ] **Excel and Parquet previews as tables:** the web reads `.xlsx` (zip, deflate, sheet XML)
+  and Parquet (Thrift footer, pages, snappy and zstd) in the browser. The core has no zip,
+  deflate, XML, snappy or zstd decoder and stays dependency-light and wasm-clean, so these
+  open as other binary files. Needs a decoder decision (pure-Rust crates through the mirror,
+  or hand-written readers for the subset the web supports).
+- [ ] **Browser Annotate and Draw:** the desktop Browser pane's tools (pick an element and
+  describe a change; pen, rectangle, arrow and text marks with a note) and their outbox are not
+  ported. Native needs an overlay view above both the WebKit and the out-of-process Chromium
+  view, an element picker script per engine in an isolated world, a snapshot crop or
+  composite, and a persisted outbox of external sends.
+- [ ] **Design-tool messages in the transcript:** a message ending in the web's
+  `[Design Mode — …]` block shows as its plain Markdown; the web shows the request and its
+  subject ("p#blurb \"Hello\" on localhost:5173") as a compact card. Parse it in the core and
+  draw it in the SwiftUI, TextKit and CLI prompt renderers.
+- [ ] **Floating New Agent panel (Mac, `floating_composer`):**
+  - Only package tests cover it (shortcut, chord, placement); no Mac flow drives the panel, the
+    Carbon hot key or a launch behind it, and it has no renders yet.
+  - Escape hides the panel even while the composer's completion list is open.
+  - A Settings link in the panel opens the front window's Settings at its last category, not
+    the link's destination.
+- [ ] **Find:** the transcript has no find of its own (the Find menu reaches a text view's find
+  bar or a browser tab's); Command-F in a terminal doesn't take the selection.
+- [ ] **Settings search:**
+  - Rows in the General, Notifications, Local Server and Terminal panes that their own packages
+    draw scroll into view but aren't marked; rows drawn by OmnigentUI are marked for two seconds.
+  - Before Settings › Servers has shown, server-pane results are the panes every signed-in
+    server offers; the shown server's own panes replace them once it shows.
+  - Picking a result doesn't put the keyboard in the row's control.
+  - iPhone and iPad scroll to a row only on the app's own pages, not server panes.
 
 ## Product decisions
 

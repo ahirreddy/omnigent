@@ -56,7 +56,13 @@ public struct ComposerView: View {
 
   private var rules: ComposerSendRules {
     ComposerSendRules(
-      state: state, draft: draft, canQueue: actions.extras.queueDraft != nil, layout: layout)
+      state: state.withShellHint(shellHint), draft: draft,
+      canQueue: actions.extras.queueDraft != nil, layout: layout)
+  }
+
+  /// Whether the field's text runs as a shell command, read as the composer draws.
+  private var shellHint: ComposerShellHint? {
+    actions.extras.shellHint.map { $0(draft) } ?? state.shellHint
   }
 
   /// The touch bar at rest: one row until the user focuses it or there is something to send. A
@@ -143,6 +149,10 @@ public struct ComposerView: View {
       .modifier(
         ComposerCardSurface(layout: layout, isTargeted: isDropTargeted, isFocused: isFocused)
       )
+      .overlay {
+        // A shell command rings the card in the accent, as the web's composer does.
+        if shellHint != nil { ComposerShellRing() }
+      }
       .overlay(alignment: .top) {
         if let modeHUD {
           ApprovalModeHUD(option: modeHUD)
@@ -152,6 +162,9 @@ public struct ComposerView: View {
         }
       }
       .animation(reduceMotion ? nil : Theme.Motion.feedback, value: modeHUD)
+      if let hint = shellHint {
+        ComposerShellHintRow(hint: hint)
+      }
       if layout == .card {
         ComposerFooter(
           state: state, actions: actions, isEditable: isEditable,

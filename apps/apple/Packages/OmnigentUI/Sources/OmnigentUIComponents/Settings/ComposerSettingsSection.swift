@@ -20,6 +20,7 @@ public struct ComposerSettingsSection: View {
             : "Return sends; Shift-Return or Option-Return inserts a new line.")
       }
       .accessibilityIdentifier("settings.submit-with-command-return")
+      .settingsSearchAnchor("settings.submit-with-command-return")
       Toggle(isOn: $alwaysSteer) {
         Text("Always steer")
         Text(
@@ -27,6 +28,7 @@ public struct ComposerSettingsSection: View {
             + "folds each one into its current work where the harness supports it.")
       }
       .accessibilityIdentifier("settings.always-steer")
+      .settingsSearchAnchor("settings.always-steer")
     } header: {
       Text("Composer")
     }
@@ -55,6 +57,7 @@ public struct SessionSettingsSection: View {
             + "to keep the default session name.")
       }
       .accessibilityIdentifier("settings.background-session-titles")
+      .settingsSearchAnchor("settings.background-session-titles")
     } header: {
       Text("Sessions")
     }
@@ -77,6 +80,7 @@ public struct ProjectBoardSettingsSection: View {
         Text("Monitor a project's agents in one view and respond the moment one needs you.")
       }
       .accessibilityIdentifier("settings.project-kanban-board")
+      .settingsSearchAnchor("settings.project-kanban-board")
     } header: {
       Text("Projects")
     }

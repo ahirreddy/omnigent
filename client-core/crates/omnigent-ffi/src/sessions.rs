@@ -95,6 +95,10 @@ pub struct SessionSummary {
     /// The Pinned section's sort key (the `omnigent.pinned` label); `None` when unpinned.
     #[uniffi(default)]
     pub pin_stamp: Option<String>,
+    /// The caller muted it: no unread, badge or notifications for them; its pending decisions
+    /// still show.
+    #[uniffi(default)]
+    pub is_muted: bool,
     /// The session that started this independent worker, when one did.
     #[uniffi(default)]
     pub created_by_session_id: Option<String>,
@@ -242,6 +246,11 @@ pub enum SessionChange {
         /// The project id.
         project_id: Option<String>,
     },
+    /// Mute or unmute for the caller alone (view permission; `ServerPages::session_mute`).
+    Muted {
+        /// Mute or unmute.
+        muted: bool,
+    },
 }
 
 /// One session's edit in [`ClientCore::edit_sessions`].
@@ -380,6 +389,7 @@ impl From<CoreSummary> for SessionSummary {
             agent_name: summary.agent_name,
             is_pinned: summary.is_pinned,
             pin_stamp: summary.pin_stamp,
+            is_muted: summary.is_muted,
             is_archived: summary.is_archived,
             permission_level: summary.permission_level,
             failure_message: summary.failure_message,
@@ -414,6 +424,7 @@ impl From<&SessionSummary> for CoreSummary {
             agent_name: summary.agent_name.clone(),
             is_pinned: summary.is_pinned,
             pin_stamp: summary.pin_stamp.clone(),
+            is_muted: summary.is_muted,
             is_archived: summary.is_archived,
             permission_level: summary.permission_level,
             failure_message: summary.failure_message.clone(),
@@ -589,6 +600,7 @@ impl ClientCore {
                 delete_worktree,
             },
             SessionChange::Project { project_id } => CoreChange::Project(project_id),
+            SessionChange::Muted { muted } => CoreChange::Muted(muted),
         }
     }
 
