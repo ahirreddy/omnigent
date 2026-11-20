@@ -27,6 +27,12 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case quickAnswer = "sweep-quick-answer"
   case markdownContents = "sweep-markdown-toc"
   case sideChatSettings = "sweep-side-chat-model"
+  case switchHostSandbox = "sweep-c-switch-host-sandbox"
+  case executionStream = "sweep-c-execution-stream"
+  case sessionOverview = "sweep-c-session-overview"
+  case agentCosts = "sweep-c-agent-costs"
+  case canvasQuickView = "sweep-c-canvas-quick-view"
+  case importReview = "sweep-c-import-review"
 
   var testDescription: String { rawValue }
 
@@ -36,7 +42,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     return list.split(separator: ",").contains { rawValue.hasPrefix($0) }
   }
 
-  var macWidth: CGFloat { 480 }
+  var macWidth: CGFloat { self == .canvasQuickView ? 960 : 480 }
 
   var macHeight: CGFloat? {
     switch self {
@@ -44,6 +50,11 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .prComments: 560
     case .prUnresolved, .prRemote, .markdownContents: 420
     case .sideChatSettings: 520
+    case .switchHostSandbox, .executionStream: 460
+    case .sessionOverview: 360
+    case .agentCosts: 300
+    case .canvasQuickView: 420
+    case .importReview: 480
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
       .quickAnswer:
       nil
@@ -68,6 +79,12 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .quickAnswer: return AnyView(Fixture.quickAnswer)
     case .markdownContents: return AnyView(Fixture.markdownContents)
     case .sideChatSettings: return AnyView(Fixture.sideChatSettings)
+    case .switchHostSandbox: return AnyView(Fixture.switchHostSandbox)
+    case .executionStream: return AnyView(Fixture.executionStream)
+    case .sessionOverview: return AnyView(Fixture.sessionOverview)
+    case .agentCosts: return AnyView(Fixture.agentCosts)
+    case .canvasQuickView: return AnyView(Fixture.canvasQuickView)
+    case .importReview: return AnyView(Fixture.importReview)
     }
   }
 }

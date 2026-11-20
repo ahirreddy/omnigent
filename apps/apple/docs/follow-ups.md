@@ -412,14 +412,20 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   server's 1,000-row page cap the rows beyond it fall out until Load more reads them again; a
   folder's pages are dropped on a reload (the folder reads its first page again); search and the
   quick filters still match loaded sessions only (the web's tabs query the server).
-- [ ] **Canvas:** cards show no pull request (summaries carry no `pull_request`), every card is
-  drawn (the web draws only visible ones, which matters past a few hundred sessions), the board
-  pans with scrolling but not by dragging the background, and there is no "+" to create a project
-  from the board tabs.
+- [ ] **Canvas:** each board's pan and zoom aren't remembered within a visit (a switch refits),
+  a resize doesn't keep the view's middle, cards snap only on drop, the first load waits for every
+  page (the web paints the sidebar's rows first and stays silent on reloads), archived or nested
+  rows leave only at the next reload, deleted sessions' spots are pruned only past the cap, and
+  `/canvas?canvas=<id>` and `/canvas/c/<id>` links aren't read.
 - [ ] **Toasts:** fork's "Session created [Open]" should use `TransientBanner` (fork flow).
-- [ ] **Host import review (Mac):** the web's `ImportReviewGate` (behind the `import_review`
-  feature) opens the import modal for a newly connected host's MCPs, skills and plugins; the Mac
-  app has no harness-inventory read or modal yet.
+- [ ] **Host import review (Mac):** plugins come from Claude's plugin list (the web derives them
+  from `plugin:skill` names and MCP servers, so it leaves disabled plugins out), and only "This
+  Mac" onboarding asks for the review (the web also reviews a remote runner).
+- [ ] **Session overview:** no Files changed / Lines rows, no docked overview beside the chat
+  (it is a popover), and `cost_hidden` isn't read, so a server hiding costs shows "—".
+- [ ] **Terminal split (`splittable_terminal_view_ui`, off):** the session's Terminal view
+  doesn't split into shell panes (Split right / down with a shell, Close pane, the split tree with
+  its 25–75% dividers kept per session, ⌘⌥⇧\ and ⌘⌥-, pane cycling).
 - [ ] **Settings › Archived (Mac):** retention uses a session's last change, not the server's
   `omnigent.archived_at` label (the core's session summary does not carry it), and the project
   filter covers loaded pages only (the web pages through every archived session).
