@@ -556,6 +556,25 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     project's board: list rows carry no labels, so the core can't tell a shared run.
   - Left and Right on a selected project row don't collapse and expand its folder; its button
     does.
+- [ ] **Composer tints:** a leading known `/command`, skill or shell `!` and `@` mentions are
+  not tinted inside the draft, and a sent prompt's leading command is not tinted either. The
+  composer is SwiftUI's string `TextEditor`; tinting needs its `AttributedString` form with the
+  selection, mention and completion handling moved over. Shell mode itself (ring, hint,
+  refused sends) is native.
+- [ ] **Excel and Parquet previews as tables:** the web reads `.xlsx` (zip, deflate, sheet XML)
+  and Parquet (Thrift footer, pages, snappy and zstd) in the browser. The core has no zip,
+  deflate, XML, snappy or zstd decoder and stays dependency-light and wasm-clean, so these
+  open as other binary files. Needs a decoder decision (pure-Rust crates through the mirror,
+  or hand-written readers for the subset the web supports).
+- [ ] **Browser Annotate and Draw:** the desktop Browser pane's tools (pick an element and
+  describe a change; pen, rectangle, arrow and text marks with a note) and their outbox are not
+  ported. Native needs an overlay view above both the WebKit and the out-of-process Chromium
+  view, an element picker script per engine in an isolated world, a snapshot crop or
+  composite, and a persisted outbox of external sends.
+- [ ] **Design-tool messages in the transcript:** a message ending in the web's
+  `[Design Mode — …]` block shows as its plain Markdown; the web shows the request and its
+  subject ("p#blurb \"Hello\" on localhost:5173") as a compact card. Parse it in the core and
+  draw it in the SwiftUI, TextKit and CLI prompt renderers.
 
 ## Product decisions
 
