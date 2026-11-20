@@ -106,6 +106,26 @@ struct SpreadsheetParquetTests {
     #expect(other == .unreadable("This file isn't a readable Parquet file."))
   }
 
+  @Test("Brotli and LZ4 pages decode, LZ4 in Hadoop's frames or as one raw block")
+  func blockCodecs() throws {
+    let text = Array("hello world".utf8)
+    // One uncompressed Brotli meta-block of 11 bytes, then the empty last one.
+    let brotli: [UInt8] = [0xA0, 0x00, 0x10] + text + [0x03]
+    #expect(try Decompression.decode(brotli[...], size: 11, format: .brotli) == text)
+    // A raw LZ4 block of 11 literals.
+    let lz4: [UInt8] = [0xB0] + text
+    #expect(try Decompression.decode(lz4[...], size: 11, format: .lz4) == text)
+    #expect(try Decompression.hadoopLZ4(([0, 0, 0, 11, 0, 0, 0, 12] + lz4)[...], size: 11) == text)
+    #expect(try Decompression.hadoopLZ4(lz4[...], size: 11) == text, "older writers' raw block")
+    #expect(throws: DecompressionFailure.self) {
+      try Decompression.decode(lz4[...], size: 12, format: .lz4)
+    }
+    #expect(throws: DecompressionFailure.self) {
+      try Decompression.decode(lz4[...], size: 10, format: .lz4)
+    }
+    #expect(ParquetReader.readableCodecs.isSuperset(of: [4, 5, 7]))
+  }
+
   @Test("values show as the web shows them")
   func cellText() {
     let march = SpreadsheetText.days(year: 2026, month: 3, day: 1) * SpreadsheetText.dayMillis

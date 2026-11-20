@@ -6,8 +6,9 @@ nonisolated struct ParquetReader {
   static let maxValues = 10_000_000
   /// The most uncompressed bytes the selected chunks may hold.
   static let maxBytes: Int64 = 64 * 1024 * 1024
-  /// Codecs this reader decompresses: uncompressed, Snappy and gzip.
-  static let readableCodecs: Set<Int64> = [0, 1, 2]
+  /// Codecs this reader decompresses: uncompressed, Snappy, gzip, Brotli, LZ4 (Hadoop frames or
+  /// a raw block) and LZ4_RAW. LZO and ZSTD are named in a message.
+  static let readableCodecs: Set<Int64> = [0, 1, 2, 4, 5, 7]
 
   private static let notParquet = SpreadsheetFailure(
     message: "This file isn't a readable Parquet file.")

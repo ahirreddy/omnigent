@@ -1,25 +1,34 @@
 import SwiftUI
 
-/// An iPhone's rows: each shows its first fields, and opens the whole record.
+/// An iPhone's rows: each shows its first fields, and opens the whole record. The row holding
+/// the find's match found now is tinted and scrolled into view.
 struct DataTableList: View {
   let table: DataTablePreview
   let shown: [Int]
+  var find = DataTableFind()
   @State private var opened: DataTableRow?
 
   /// Fields after the first that a row shows before "more".
   private static let previewFields = 3
 
   var body: some View {
-    List(shown, id: \.self) { row in
-      Button {
-        opened = DataTableRow(id: row)
-      } label: {
-        summary(row)
+    ScrollViewReader { proxy in
+      List(shown, id: \.self) { row in
+        Button {
+          opened = DataTableRow(id: row)
+        } label: {
+          summary(row)
+        }
+        .foregroundStyle(.primary)
+        .contextMenu { DataTableCopyItems(table: table, row: row, cell: nil) }
+        .listRowBackground(
+          find.currentMatch?.row == row ? Color.accentColor.opacity(0.15) : nil)
       }
-      .foregroundStyle(.primary)
-      .contextMenu { DataTableCopyItems(table: table, row: row, cell: nil) }
+      .listStyle(.plain)
+      .onChange(of: find.currentMatch) { _, match in
+        if let match { proxy.scrollTo(match.row, anchor: .center) }
+      }
     }
-    .listStyle(.plain)
     .sheet(item: $opened) { row in
       DataTableRecord(table: table, row: row.id)
     }

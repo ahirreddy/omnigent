@@ -8,9 +8,92 @@ nonisolated enum DecompressionFailure: Error {
   case malformed
 }
 
-/// The decompressors the spreadsheet readers use: raw deflate (zip parts), gzip and Snappy
-/// (Parquet pages).
+/// The decompressors the spreadsheet readers use: raw deflate (zip parts), gzip, Snappy, LZ4 and
+/// Brotli (Parquet pages).
 nonisolated enum Decompression {
+  /// A block format whose page declares its decoded size, decoded by the Compression framework.
+  enum Block {
+    /// A raw LZ4 block (Parquet's `LZ4_RAW`).
+    case lz4
+    /// A Brotli stream (Parquet's `BROTLI`).
+    case brotli
+
+    fileprivate var algorithm: compression_algorithm {
+      switch self {
+      case .lz4: COMPRESSION_LZ4_RAW
+      case .brotli: COMPRESSION_BROTLI
+      }
+    }
+  }
+
+  /// The bytes of `input`, which must decode to exactly `size` bytes.
+  /// - Parameters:
+  ///   - input: The compressed block.
+  ///   - size: The size the page declares.
+  ///   - format: The block's format.
+  /// - Returns: The decoded bytes.
+  /// - Throws: ``DecompressionFailure/malformed`` when the block decodes to another size.
+  static func decode(_ input: ArraySlice<UInt8>, size: Int, format: Block)
+    throws(DecompressionFailure) -> [UInt8]
+  {
+    guard size > 0 else { return [] }
+    // One spare byte: a block holding more than it declares fills it and fails.
+    var output = [UInt8](repeating: 0, count: size + 1)
+    let written = output.withUnsafeMutableBufferPointer { destination in
+      input.withUnsafeBufferPointer { source -> Int in
+        guard let target = destination.baseAddress, let origin = source.baseAddress else {
+          return 0
+        }
+        return unsafe compression_decode_buffer(
+          target, destination.count, origin, source.count, nil, format.algorithm)
+      }
+    }
+    guard written == size else { throw .malformed }
+    output.removeLast()
+    return output
+  }
+
+  /// Parquet's older `LZ4` pages: Hadoop's frames (each block after its decoded and encoded
+  /// sizes, big-endian), else one raw block, as Arrow reads them.
+  /// - Parameters:
+  ///   - input: The page.
+  ///   - size: The size the page declares.
+  /// - Returns: The decoded bytes.
+  /// - Throws: ``DecompressionFailure/malformed`` when neither reading fits.
+  static func hadoopLZ4(_ input: ArraySlice<UInt8>, size: Int) throws(DecompressionFailure)
+    -> [UInt8]
+  {
+    do {
+      return try hadoopFrames(input, size: size)
+    } catch {
+      return try decode(input, size: size, format: .lz4)
+    }
+  }
+
+  private static func hadoopFrames(_ input: ArraySlice<UInt8>, size: Int)
+    throws(DecompressionFailure) -> [UInt8]
+  {
+    var output: [UInt8] = []
+    var position = input.startIndex
+    let bigEndian = { (start: Int) -> Int in
+      input[start..<(start + 4)].reduce(0) { $0 << 8 | Int($1) }
+    }
+    while position < input.endIndex {
+      guard input.endIndex - position >= 8 else { throw .malformed }
+      let decoded = bigEndian(position)
+      let encoded = bigEndian(position + 4)
+      position += 8
+      guard encoded <= input.endIndex - position, decoded <= size - output.count else {
+        throw .malformed
+      }
+      output.append(
+        contentsOf: try decode(input[position..<(position + encoded)], size: decoded, format: .lz4))
+      position += encoded
+    }
+    guard output.count == size else { throw .malformed }
+    return output
+  }
+
   /// The output of the raw deflate stream `input`, at most `limit` bytes.
   /// - Parameters:
   ///   - input: The deflate stream; anything after its end is ignored.
