@@ -48,6 +48,7 @@ mod harness_setup;
 pub mod host_switch;
 pub mod html_comments;
 mod hydration;
+pub mod import_review;
 pub mod inbox;
 pub mod inbox_items;
 mod intent_lanes;

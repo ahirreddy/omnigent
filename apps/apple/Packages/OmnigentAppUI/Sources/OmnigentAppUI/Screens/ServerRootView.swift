@@ -41,7 +41,9 @@ public struct ServerRootView: View {
         ConnectedServerView(
           session: session, selection: $selection, isWindowFocused: isWindowFocused,
           openInNewWindow: openInNewWindow, tabContext: tabContext,
-          serverSwitching: serverSwitching)
+          serverSwitching: serverSwitching
+        )
+        .importReview(session.connection)
       } else {
         AuthFlowView(
           state: session.signIn.state, actions: session.signIn.actions, validator: .app
