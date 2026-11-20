@@ -36,6 +36,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case staleProfile = "sweep-sandbox-profile-changed"
   case brandedNewSession = "sweep-branded-new-session"
   case adminView = "sweep-admin-view"
+  case mcpSwitches = "sweep-mcp-switches"
 
   var testDescription: String { rawValue }
 
@@ -60,6 +61,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .approvalLinkResolved: 300
     case .brandedNewSession: 620
     case .adminView: 260
+    case .mcpSwitches: 300
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
       .quickAnswer, .staleProfile:
       nil
@@ -93,6 +95,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .staleProfile: return AnyView(Fixture.staleProfile)
     case .brandedNewSession: return AnyView(Fixture.brandedNewSession)
     case .adminView: return AnyView(Fixture.adminView)
+    case .mcpSwitches: return AnyView(Fixture.mcpSwitches)
     }
   }
 }

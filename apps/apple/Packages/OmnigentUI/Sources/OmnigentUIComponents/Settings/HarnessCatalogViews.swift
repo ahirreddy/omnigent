@@ -25,6 +25,8 @@ struct HarnessCatalogList: View {
   let openSkill: (@MainActor (HarnessCatalogState.Skill) -> Void)?
   let openPlugin: @MainActor (HarnessCatalogState.Plugin) -> Void
   var probeServer: (@MainActor (String) -> Void)?
+  /// Turns a server on or off for Omnigent sessions.
+  var setServerEnabled: (@MainActor (String, Bool) -> Void)?
 
   var body: some View {
     Section {
@@ -34,10 +36,14 @@ struct HarnessCatalogList: View {
           notice(text)
         } else {
           ForEach(catalog.servers) { server in
-            if server.probes, !server.isOff, let probeServer {
-              HarnessProbedServerRow(server: server, probe: probeServer)
-            } else {
-              HarnessServerRow(server: server)
+            HStack {
+              if server.probes, !server.isOff, let probeServer {
+                HarnessProbedServerRow(server: server, probe: probeServer)
+              } else {
+                HarnessServerRow(server: server)
+                Spacer(minLength: 0)
+              }
+              HarnessMcpSwitchView(server: server, toggle: setServerEnabled)
             }
           }
         }

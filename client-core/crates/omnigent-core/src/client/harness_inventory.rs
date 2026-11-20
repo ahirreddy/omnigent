@@ -73,10 +73,21 @@ pub struct HostMcpServer {
     pub enabled: Option<bool>,
     /// Pinned for every user on the host by an organization.
     pub managed: bool,
+    /// Its Omnigent switch is fixed by an organization's policy.
+    pub locked: bool,
     /// The host's sign-in manager's account state: `connected` or `sign_in_required`.
     pub auth_status: Option<String>,
     /// Where to finish signing in, with `sign_in_required`.
     pub sign_in_url: Option<String>,
+}
+
+impl HostMcpServer {
+    /// The host reports an Omnigent on/off switch for it: a Claude or Codex server with a known
+    /// state. Its organization may still lock it ([`Self::managed`]).
+    #[must_use]
+    pub fn has_switch(&self) -> bool {
+        self.enabled.is_some() && matches!(self.harness.as_str(), "claude" | "codex")
+    }
 }
 
 /// One plugin installed for Claude (`PluginSummary`).
@@ -129,6 +140,19 @@ pub struct McpRow {
     pub name: String,
     /// The plugin server's id, which the tool probe names.
     pub source_id: Option<String>,
+    /// Its Omnigent on/off switch, where the host reports one.
+    pub switch: Option<McpSwitch>,
+}
+
+/// An MCP server's Omnigent on/off switch, as the web's `McpSwitch`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpSwitch {
+    /// The harness it belongs to (`claude` or `codex`), which a change names.
+    pub harness: String,
+    /// On for Omnigent sessions.
+    pub enabled: bool,
+    /// An organization pins it, so it can't change here.
+    pub locked: bool,
 }
 
 /// A row of the Skills tab, or a plugin's skill.
@@ -250,6 +274,14 @@ fn mcp_row(family: &str, server: &HostMcpServer) -> McpRow {
             server.url_host.clone(),
         ]),
         plugin: server.plugin.clone(),
+        switch: server
+            .enabled
+            .filter(|_| server.has_switch())
+            .map(|enabled| McpSwitch {
+                harness: server.harness.clone(),
+                enabled,
+                locked: server.locked,
+            }),
         is_off: server.enabled == Some(false),
         name: server.name.clone(),
         source_id: server.source_id.clone(),
@@ -417,6 +449,7 @@ fn plugin_row(family: &str, plugin: &HostPlugin, servers: &[&HostMcpServer]) -> 
                     is_off: inventory.is_some_and(|server| server.enabled == Some(false)),
                     name: name.clone(),
                     source_id: entry.clone(),
+                    switch: None,
                 }
             })
             .collect()
@@ -476,6 +509,7 @@ fn mcp_server_from(value: &Value) -> Result<HostMcpServer, String> {
         url_host: opt_str(object, "url_host")?,
         enabled,
         managed: opt_bool(object, "managed")?.unwrap_or(false),
+        locked: opt_bool(object, "locked")?.unwrap_or(false),
         auth_status: opt_str(object, "auth_status")?,
         sign_in_url: opt_str(object, "sign_in_url")?,
     })
@@ -618,6 +652,54 @@ impl<T: HttpTransport> ClientCore<T> {
         let value = self.get_json(&path, &[]).await;
         self.dispatch();
         list(&value?, &path, "mcp_servers", mcp_server_from)
+    }
+
+    /// Turns a row's server on or off for Omnigent sessions of its harness on `host_id` (`PUT
+    /// /v1/hosts/{id}/mcp-servers/enabled`), as the web's switch; the server as it is now. Only
+    /// rows with an unlocked [`McpSwitch`] can change.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier` before any request, also for a row without a free switch; `Rejected`
+    /// for one the host refuses (an organization's, say); the write errors;
+    /// `DeliveryUncertain` for an unreadable answer.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn set_host_mcp_server_enabled(
+        &self,
+        host_id: &str,
+        row: &McpRow,
+        enabled: bool,
+    ) -> Result<HostMcpServer, SessionError> {
+        validate_identifier(host_id)?;
+        let Some(switch) = row.switch.as_ref().filter(|switch| !switch.locked) else {
+            return Err(SessionError::InvalidIdentifier {
+                value: row.name.clone(),
+            });
+        };
+        let path = format!("/v1/hosts/{host_id}/mcp-servers/enabled");
+        let mut body = serde_json::Map::new();
+        body.insert("harness".into(), Value::String(switch.harness.clone()));
+        body.insert("server".into(), Value::String(row.name.clone()));
+        if let Some(plugin) = &row.plugin {
+            body.insert("plugin".into(), Value::String(plugin.clone()));
+        }
+        if let Some(source_id) = &row.source_id {
+            body.insert("source_id".into(), Value::String(source_id.clone()));
+        }
+        body.insert("enabled".into(), Value::Bool(enabled));
+        let result = self.write_json("PUT", &path, &Value::Object(body)).await;
+        self.dispatch();
+        let value = result?;
+        value
+            .get("server")
+            .ok_or_else(|| "`server` is missing".to_owned())
+            .and_then(mcp_server_from)
+            .map_err(|detail| SessionError::DeliveryUncertain {
+                detail: format!("unreadable {path} answer: {detail}"),
+            })
     }
 
     /// Claude's plugins on `host_id`; `None` from a host or server too old to list them (404

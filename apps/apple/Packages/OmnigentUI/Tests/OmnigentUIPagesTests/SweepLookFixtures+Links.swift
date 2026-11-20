@@ -36,6 +36,24 @@ extension SweepLookFixtures {
     .formStyle(.grouped)
   }
 
+  /// A harness's MCP servers with their Omnigent switches: on, locked, and none.
+  static var mcpSwitches: some View {
+    var catalog = HarnessCatalogState()
+    var github = HarnessCatalogState.Server(
+      id: "github", title: "GitHub", detail: "api.github.com")
+    github.omnigentSwitch = HarnessMcpSwitch(isOn: true)
+    var jira = HarnessCatalogState.Server(
+      id: "jira", title: "Jira", detail: "tools plugin", isOff: true)
+    jira.omnigentSwitch = HarnessMcpSwitch(isOn: false, isLocked: true)
+    catalog.servers = [github, jira, .init(id: "notes", title: "Notes")]
+    return Form {
+      HarnessCatalogList(
+        catalog: catalog, tab: .mcpServers, openSkill: nil, openPlugin: { _ in },
+        setServerEnabled: { _, _ in })
+    }
+    .formStyle(.grouped)
+  }
+
   /// The sandbox profile chip once the chosen profile changed on the server.
   static var staleProfile: some View {
     let chosen = SandboxProfileOption(id: "p1", name: "Linux x86 32 GB", revision: "r1")

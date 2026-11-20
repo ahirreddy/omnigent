@@ -73,7 +73,36 @@ enum HarnessCatalogAdapter {
   }
 
   private static func server(_ row: InventoryMcpServer) -> HarnessCatalogState.Server {
-    HarnessCatalogState.Server(id: row.id, title: row.title, detail: row.detail, isOff: row.isOff)
+    var server = HarnessCatalogState.Server(
+      id: row.id, title: row.title, detail: row.detail, isOff: row.isOff)
+    if row.switchHarness != nil {
+      server.omnigentSwitch = HarnessMcpSwitch(isOn: !row.isOff, isLocked: row.switchLocked)
+    }
+    return server
+  }
+
+  /// `catalog` with the switch changes in flight shown as asked, as the web keeps a pending
+  /// row's state.
+  /// - Parameters:
+  ///   - catalog: The tabs' state.
+  ///   - switching: The asked states, by key.
+  ///   - prefix: The keys' host and harness part, `host/harness/`.
+  /// - Returns: The state.
+  static func switching(
+    _ catalog: HarnessCatalogState, _ switching: [String: Bool], prefix: String
+  ) -> HarnessCatalogState {
+    var shown = catalog
+    shown.servers = catalog.servers.map { server in
+      guard var omnigentSwitch = server.omnigentSwitch, let asked = switching[prefix + server.id]
+      else { return server }
+      var server = server
+      omnigentSwitch.isOn = asked
+      omnigentSwitch.isSaving = true
+      server.omnigentSwitch = omnigentSwitch
+      server.isOff = !asked
+      return server
+    }
+    return shown
   }
 
   private static func skill(_ row: InventorySkill, opens: Bool) -> HarnessCatalogState.Skill {

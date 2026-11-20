@@ -38,6 +38,29 @@ struct HarnessCatalogAdapterTests {
       load, harness: harness, ready: ready, canFix: canFix, host: "Mac")
   }
 
+  @Test("A server the host reports a switch for gets one, shown as asked while it saves")
+  func omnigentSwitch() throws {
+    var switchable = record()
+    switchable.mcpServers = [
+      InventoryMcpServer(
+        id: "claude:github", title: "GitHub", detail: nil, isOff: false, switchHarness: "claude"),
+      InventoryMcpServer(
+        id: "claude:jira", title: "Jira", detail: nil, isOff: true, switchHarness: "claude",
+        switchLocked: true),
+      InventoryMcpServer(id: "claude:notes", title: "Notes", detail: nil, isOff: false),
+    ]
+    let state = try #require(catalog(.loaded(switchable)))
+    #expect(
+      state.servers.map(\.omnigentSwitch) == [
+        HarnessMcpSwitch(isOn: true), HarnessMcpSwitch(isOn: false, isLocked: true), nil,
+      ])
+    let saving = HarnessCatalogAdapter.switching(
+      state, ["h1/claude-native/claude:github": false], prefix: "h1/claude-native/")
+    #expect(saving.servers[0].omnigentSwitch == HarnessMcpSwitch(isOn: false, isSaving: true))
+    #expect(saving.servers[0].isOff)
+    #expect(saving.servers[1] == state.servers[1])
+  }
+
   @Test("Only inventory harnesses that are ready or fixable get the tabs")
   func offered() {
     #expect(catalog(.loading) != nil)

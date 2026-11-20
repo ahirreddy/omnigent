@@ -20,6 +20,7 @@ fn host(name: &str, plugin: Option<&str>, auth: Option<&str>, url: Option<&str>)
         url_host: Some("mcp.example.com".into()),
         enabled: None,
         managed: false,
+        locked: false,
         auth_status: auth.map(str::to_owned),
         sign_in_url: url.map(str::to_owned),
     }

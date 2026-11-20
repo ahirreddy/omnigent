@@ -58,13 +58,17 @@ struct HarnessDetailContainer: View {
 
   private func state(_ detail: HarnessDetail) -> HarnessDetailState {
     var state = HarnessFixAdapter.detail(
-      detail, startup: fix.startup["\(hostID)/\(harness)"], notice: notice)
+      detail, startup: fix.startup["\(hostID)/\(harness)"],
+      notice: setup.mcpSwitchError.map { "Couldn\u{2019}t change the MCP server: \($0.message)" }
+        ?? notice)
     state.catalog = HarnessCatalogAdapter.catalog(
       setup.catalogs["\(hostID)/\(harness)"], detail: detail)
+    let prefix = HarnessSetupStore.mcpToolsKey(hostID, harness, "")
     state.catalog = state.catalog.map {
-      HarnessCatalogAdapter.probing(
-        $0, tools: setup.mcpTools, prefix: HarnessSetupStore.mcpToolsKey(hostID, harness, ""),
-        harness: harness, host: detail.hostName)
+      HarnessCatalogAdapter.switching(
+        HarnessCatalogAdapter.probing(
+          $0, tools: setup.mcpTools, prefix: prefix, harness: harness, host: detail.hostName),
+        setup.mcpSwitching, prefix: prefix)
     }
     if let openSkill {
       let key = HarnessSetupStore.skillKey(hostID, harness, openSkill.name)
@@ -95,6 +99,12 @@ struct HarnessDetailContainer: View {
     actions.probeServer = { id in
       guard let server = servers.first(where: { $0.id == id }) else { return }
       Task { await setup.loadMcpTools(server, harness: harness, hostID: hostID) }
+    }
+    actions.setServerEnabled = { id, enabled in
+      guard let server = servers.first(where: { $0.id == id }) else { return }
+      Task {
+        await setup.setMcpServerEnabled(server, enabled: enabled, harness: harness, hostID: hostID)
+      }
     }
     return actions
   }

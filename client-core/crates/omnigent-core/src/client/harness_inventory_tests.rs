@@ -5,8 +5,8 @@ use futures::executor::block_on;
 use super::super::SessionError;
 use super::super::test_support::{Reply, RouteTransport, connected, path_of, query_value};
 use super::{
-    HostMcpServer, HostPlugin, harness_inventory, inventory_family, mcp_server_display_name,
-    skill_pages_open,
+    HostMcpServer, HostPlugin, McpRow, McpSwitch, harness_inventory, inventory_family,
+    mcp_server_display_name, skill_pages_open,
 };
 use crate::slash::Skill;
 
@@ -27,6 +27,7 @@ fn server(name: &str, harness: &str, plugin: Option<&str>) -> HostMcpServer {
         url_host: Some("mcp.example.com".into()),
         enabled: None,
         managed: false,
+        locked: false,
         auth_status: None,
         sign_in_url: None,
     }
@@ -240,4 +241,72 @@ fn reads_mcp_servers_plugins_and_skill_contents() {
         block_on(core.host_mcp_servers("h1")),
         Err(SessionError::HttpStatus { status: 409 })
     ));
+}
+
+#[test]
+fn a_servers_omnigent_switch_turns_it_on_and_off_unless_locked() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/hosts/h1/mcp-servers",
+        r#"{"mcp_servers":[
+            {"name":"github","harness":"claude","transport":"http","scope":"user",
+             "enabled":true,"locked":false},
+            {"name":"jira","harness":"codex","transport":"http","scope":"user",
+             "enabled":false,"locked":true},
+            {"name":"notes","harness":"pi","transport":"stdio","scope":"user","enabled":true},
+            {"name":"docs","harness":"claude","transport":"http","scope":"user"}]}"#,
+    );
+    let servers = block_on(core.host_mcp_servers("h1")).unwrap();
+    let switchable: Vec<bool> = servers.iter().map(HostMcpServer::has_switch).collect();
+    assert_eq!(switchable, [true, true, false, false]);
+    assert!(servers[1].locked && !servers[1].managed);
+
+    let row = McpRow {
+        id: "claude:github".into(),
+        title: "GitHub".into(),
+        detail: None,
+        plugin: Some("tools".into()),
+        is_off: false,
+        name: "github".into(),
+        source_id: Some("s1".into()),
+        switch: Some(McpSwitch {
+            harness: "claude".into(),
+            enabled: true,
+            locked: false,
+        }),
+    };
+    core.transport().ok(
+        "/v1/hosts/h1/mcp-servers/enabled",
+        r#"{"server":{"name":"github","harness":"claude","transport":"http","scope":"user",
+            "enabled":false,"locked":false}}"#,
+    );
+    let saved = block_on(core.set_host_mcp_server_enabled("h1", &row, false)).unwrap();
+    assert_eq!(saved.enabled, Some(false));
+    assert_eq!(
+        core.transport().write_bodies(),
+        [
+            serde_json::json!({"harness": "claude", "server": "github", "plugin": "tools",
+                            "source_id": "s1", "enabled": false})
+        ]
+    );
+
+    // A locked switch, or a row without one, sends nothing.
+    for switch in [
+        None,
+        Some(McpSwitch {
+            harness: "codex".into(),
+            enabled: false,
+            locked: true,
+        }),
+    ] {
+        let fixed = McpRow {
+            switch,
+            ..row.clone()
+        };
+        assert!(matches!(
+            block_on(core.set_host_mcp_server_enabled("h1", &fixed, true)),
+            Err(SessionError::InvalidIdentifier { .. })
+        ));
+    }
+    assert_eq!(core.transport().writes().len(), 1);
 }

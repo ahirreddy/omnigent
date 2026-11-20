@@ -34,4 +34,22 @@ extension HarnessSetupStore {
       mcpTools[key] = .failed(coreError(error))
     }
   }
+
+  /// Turns `server` on or off for Omnigent sessions of `harness` on `hostID`, then reads the
+  /// harness's lists again; the row shows the asked state until the host answers.
+  public func setMcpServerEnabled(
+    _ server: InventoryMcpServer, enabled: Bool, harness: String, hostID: String
+  ) async {
+    let key = Self.mcpToolsKey(hostID, harness, server.id)
+    guard mcpSwitching[key] == nil else { return }
+    mcpSwitching[key] = enabled
+    mcpSwitchError = nil
+    do {
+      _ = try await core.setMcpServerEnabled(hostId: hostID, server: server, enabled: enabled)
+      await loadCatalog(harness: harness, hostID: hostID)
+    } catch {
+      mcpSwitchError = coreError(error)
+    }
+    mcpSwitching[key] = nil
+  }
 }
