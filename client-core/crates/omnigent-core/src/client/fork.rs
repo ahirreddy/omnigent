@@ -483,6 +483,8 @@ impl<T: HttpTransport> ClientCore<T> {
             });
         }
         state.events.push(ClientEvent::InventoryInvalidated);
+        // A list page the server built before the fork keeps its row, as for a created session.
+        state.unlisted_creations.insert(id.clone());
         Ok(CreationReceipt {
             session_id: id,
             summary,
