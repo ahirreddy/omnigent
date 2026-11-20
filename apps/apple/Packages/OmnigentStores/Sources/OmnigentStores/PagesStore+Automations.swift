@@ -1,5 +1,6 @@
 import Foundation
-import OmnigentCoreFFI
+public import OmnigentCoreFFI
+import os
 
 /// The session an automation is created from: each run starts from a copy of it.
 public struct AutomationSource: Hashable, Sendable {
@@ -165,4 +166,33 @@ extension PagesStore {
   public func dismissAutomationError() {
     automationError = nil
   }
+
+  /// Copies `automation` under a new id, then reloads the list.
+  /// - Returns: The copy; `nil` on failure, which is in ``automationError`` in the web's words.
+  public func cloneAutomation(_ automation: Automation) async -> Automation? {
+    var copy: Automation?
+    let cloned = await writeAutomation(automation.id) { core in
+      copy = try await core.cloneAutomation(automation: automation)
+    }
+    return cloned ? copy : nil
+  }
+
+  /// Records this device's time zone for the caller's agent-created automations, where the
+  /// server takes it, once per server, account and zone. A failure is logged and the next read
+  /// of the pages records it again.
+  public func reportAutomationTimezone(_ timezone: String) async {
+    guard offered?.automationDefaultTimezone == true else { return }
+    let key = "\(offeredOwner ?? "")\n\(timezone)"
+    guard key != reportedTimezone else { return }
+    reportedTimezone = key
+    do {
+      try await core.reportAutomationTimezone(timezone: timezone)
+    } catch {
+      reportedTimezone = nil
+      automationTimezoneLogger.error(
+        "Recording the automation time zone failed: \(coreError(error).message, privacy: .public)")
+    }
+  }
 }
+
+private let automationTimezoneLogger = Logger(subsystem: "ai.omnigent", category: "automations")

@@ -91,6 +91,11 @@ pub struct ServerPages {
     pub automation_sharing: bool,
     /// `scheduled_task_shared_with_me` on a multi-user server: the Shared with me list.
     pub automation_shared_with_me: bool,
+    /// `scheduled_task_clone`: an automation can be copied under a new id.
+    pub automation_clone: bool,
+    /// `scheduled_task_default_timezone`: agent-created automations take the zone the apps
+    /// record for the caller.
+    pub automation_default_timezone: bool,
     /// `scheduled_task_run_pull_requests`: the PRs each run created or worked on.
     pub automation_run_pull_requests: bool,
     /// `scheduled_task_harness_settings`: every native harness takes a permission mode.
@@ -152,6 +157,8 @@ impl ServerPages {
             automation_source_sessions: flag("scheduled_task_source_sessions")?,
             automation_sharing: flag("scheduled_task_sharing")? && !single_user,
             automation_shared_with_me: flag("scheduled_task_shared_with_me")? && !single_user,
+            automation_clone: flag("scheduled_task_clone")?,
+            automation_default_timezone: flag("scheduled_task_default_timezone")?,
             automation_run_pull_requests: flag("scheduled_task_run_pull_requests")?,
             automation_harness_settings: flag("scheduled_task_harness_settings")?,
             automation_approval_skipping_modes: flag("scheduled_task_approval_skipping_modes")?,
@@ -516,24 +523,61 @@ pub fn run_pull_requests_summary(pull_requests: &[RunPullRequest]) -> String {
 
 /// Why Share shows disabled on a server whose admin turned sharing off (web `SHARING_OFF_REASON`).
 pub const SHARING_OFF_REASON: &str = "Sharing has been disabled for this Omnigent server.";
-/// Why Share shows disabled on an automation the server can't keep grants for; the server says
-/// the same when it refuses one.
+/// Why Share shows disabled on an automation the server can't keep grants for, where the server
+/// can clone it; the server says the same when it refuses one.
 pub const LEGACY_AUTOMATION_SHARE_REASON: &str =
+    "This is a legacy automation. Clone it, then share the copy.";
+/// The same reason on a server that can't clone automations.
+pub const LEGACY_AUTOMATION_RECREATE_REASON: &str =
     "This is a legacy automation. Recreate it to share it.";
 
-/// Why an automation's offered Share shows disabled, or `None` while it works: sharing off wins
-/// over a legacy automation (web `automationShareDisabledReason`).
+/// Why an automation's offered Share shows disabled, or `None` while it works.
+///
+/// Sharing off wins over a legacy automation, which the server's `can_clone` lets the user copy
+/// and share instead (web `automationShareDisabledReason`).
 #[must_use]
 pub const fn automation_share_disabled_reason(
     sharing_disabled: bool,
     shareable: bool,
+    can_clone: bool,
 ) -> Option<&'static str> {
     if sharing_disabled {
         Some(SHARING_OFF_REASON)
     } else if shareable {
         None
-    } else {
+    } else if can_clone {
         Some(LEGACY_AUTOMATION_SHARE_REASON)
+    } else {
+        Some(LEGACY_AUTOMATION_RECREATE_REASON)
+    }
+}
+
+/// The note after a clone: what the copy is, and what's left to do (web `cloneCreatedMessage`).
+#[must_use]
+pub fn automation_clone_message(clone: &Automation) -> &'static str {
+    if clone.is_paused() {
+        "Automation cloned. The copy is paused like the original."
+    } else if clone.next_run_at.is_none() {
+        // An active copy is always armed, so no next run means a finite schedule ran out.
+        "Automation cloned. Its schedule has no runs left."
+    } else {
+        "Automation cloned. Pause or delete the original so they don't both run."
+    }
+}
+
+/// The note when a clone fails, with the server's reason when it refused (web
+/// `cloneFailedMessage`).
+#[must_use]
+pub fn automation_clone_failure(error: &SessionError) -> String {
+    match error {
+        SessionError::Rejected { status, message } if *status < 500 && !message.is_empty() => {
+            format!("Couldn\u{2019}t clone the automation: {message}")
+        }
+        SessionError::Forbidden => {
+            "Couldn\u{2019}t clone the automation: Only the automation\u{2019}s owner can clone it."
+                .to_owned()
+        }
+        _ => "Couldn\u{2019}t clone the automation".to_owned(),
     }
 }
 
@@ -575,12 +619,25 @@ pub enum AutomationFilter {
     Paused,
 }
 
-/// `automations` matching `filter` and `search` (name, case-insensitive), in the web's order:
-/// active first with the soonest next run on top (unknown next runs after), then paused by name.
+/// The automations page order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum AutomationSort {
+    /// Active first with the soonest next run on top, then paused by name.
+    #[default]
+    NextRun,
+    /// Every automation by name, whatever its state.
+    Name,
+}
+
+/// `automations` matching `filter` and `search` (name, case-insensitive), in `sort` order.
+///
+/// By next run: active first with the soonest next run on top (unknown next runs after), then
+/// paused by name. By name: alphabetical ignoring case, whatever the state.
 #[must_use]
 pub fn arrange_automations(
     automations: &[Automation],
     filter: AutomationFilter,
+    sort: AutomationSort,
     search: &str,
 ) -> Vec<Automation> {
     let query = search.trim().to_lowercase();
@@ -594,6 +651,15 @@ pub fn arrange_automations(
         .filter(|automation| query.is_empty() || automation.name.to_lowercase().contains(&query))
         .cloned()
         .collect();
+    if sort == AutomationSort::Name {
+        matches.sort_by(|left, right| {
+            left.name
+                .to_lowercase()
+                .cmp(&right.name.to_lowercase())
+                .then_with(|| left.name.cmp(&right.name))
+        });
+        return matches;
+    }
     matches.sort_by(|left, right| {
         left.is_paused()
             .cmp(&right.is_paused())
@@ -1330,6 +1396,70 @@ impl<T: HttpTransport> ClientCore<T> {
     )]
     pub async fn delete_automation(&self, id: &str) -> Result<(), SessionError> {
         let result = self.automation_write("DELETE", id, "").await;
+        self.dispatch();
+        result
+    }
+
+    /// Copies `automation` under a new id, named "<name> (copy)", with its settings and schedule
+    /// and none of its runs (`POST /v1/scheduled-tasks/{id}/clone`, where `automation_clone`).
+    /// The copy is paused when the original is. The original's host routes the request.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; `Rejected` when the caller doesn't own it or it is a reminder; the
+    /// write errors; [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn clone_automation(
+        &self,
+        automation: &Automation,
+    ) -> Result<Automation, SessionError> {
+        let result = async {
+            validate_identifier(&automation.id)?;
+            let path = format!("/v1/scheduled-tasks/{}/clone", automation.id);
+            let body = filled(automation.host_id.as_ref())
+                .map_or_else(|| json!({}), |host| json!({"host_id": host}));
+            let value = self.write_json("POST", &path, &body).await?;
+            automation_from(&value).map_err(malformed(&path))
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Records `timezone` (IANA) as the zone the caller's agent-created automations run in
+    /// (`PUT /v1/scheduled-tasks/default-timezone`, where `automation_default_timezone`).
+    ///
+    /// # Errors
+    ///
+    /// `Rejected` for an empty zone (no request is made) or one the server refuses (501 where
+    /// the store keeps no preference); the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn report_automation_timezone(&self, timezone: &str) -> Result<(), SessionError> {
+        let result = async {
+            let zone = timezone.trim();
+            if zone.is_empty() {
+                return Err(SessionError::Rejected {
+                    status: 400,
+                    message: "This device reports no time zone.".to_owned(),
+                });
+            }
+            let body = json!({"timezone": zone});
+            self.write(self.prepare(
+                "PUT",
+                "/v1/scheduled-tasks/default-timezone",
+                &[],
+                Some(&body),
+            )?)
+            .await
+            .map(|_| ())
+        }
+        .await;
         self.dispatch();
         result
     }

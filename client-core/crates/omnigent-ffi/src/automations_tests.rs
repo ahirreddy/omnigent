@@ -21,11 +21,11 @@ use crate::automation_triggers::{
     trigger_prompt_display, trigger_session_link_placeholder, trigger_sources, trigger_template,
 };
 use crate::automations::{
-    Automation, AutomationDraft, AutomationFilter, AutomationRunStatus, AutomationState,
-    ScheduleEnd, ScheduleFrequency, ScheduleLimits, ScheduleModel, SchedulePreset, ServerPages,
-    Weekday, arrange_automations, build_schedule_rrule, default_schedule_model, describe_schedule,
-    format_next_run, maximum_schedule_interval, minimum_schedule_interval, parse_schedule_rrule,
-    schedule_needs_anchored_scheduling, validate_schedule,
+    Automation, AutomationDraft, AutomationFilter, AutomationRunStatus, AutomationSort,
+    AutomationState, ScheduleEnd, ScheduleFrequency, ScheduleLimits, ScheduleModel, SchedulePreset,
+    ServerPages, Weekday, arrange_automations, build_schedule_rrule, default_schedule_model,
+    describe_schedule, format_next_run, maximum_schedule_interval, minimum_schedule_interval,
+    parse_schedule_rrule, schedule_needs_anchored_scheduling, validate_schedule,
 };
 use crate::automations::{
     RunPullRequestStatus, RunPullRequests, cost_limit_problem, describe_cost_limit,
@@ -294,16 +294,49 @@ fn a_saved_automation_round_trips_and_arranges_each_state() {
     assert!(core_record.runs_in_sandbox);
 
     let list = vec![paused.clone(), active.clone(), odd];
-    let arranged = arrange_automations(list.clone(), AutomationFilter::All, String::new());
+    let arranged = arrange_automations(
+        list.clone(),
+        AutomationFilter::All,
+        AutomationSort::NextRun,
+        String::new(),
+    );
     assert_eq!(arranged[0].id, "a", "active comes first");
     assert_eq!(
-        arrange_automations(list.clone(), AutomationFilter::Active, String::new()),
+        arrange_automations(
+            list.clone(),
+            AutomationFilter::Active,
+            AutomationSort::NextRun,
+            String::new()
+        ),
         [active]
     );
     assert_eq!(
-        arrange_automations(list, AutomationFilter::Paused, "p".into()),
+        arrange_automations(
+            list.clone(),
+            AutomationFilter::Paused,
+            AutomationSort::NextRun,
+            "p".into()
+        ),
         [paused]
     );
+    let by_name = arrange_automations(
+        list,
+        AutomationFilter::All,
+        AutomationSort::Name,
+        String::new(),
+    );
+    let ids: Vec<&str> = by_name
+        .iter()
+        .map(|automation| automation.id.as_str())
+        .collect();
+    assert_eq!(ids, ["a", "p", "u"]);
+    for (ffi, core_value) in [
+        (AutomationSort::NextRun, core::AutomationSort::NextRun),
+        (AutomationSort::Name, core::AutomationSort::Name),
+    ] {
+        assert_eq!(core::AutomationSort::from(ffi), core_value);
+        assert_eq!(AutomationSort::from(core_value), ffi);
+    }
 }
 
 #[test]
@@ -374,6 +407,8 @@ fn server_pages_map_each_flag_to_its_own_field() {
         automation_source_sessions: false,
         automation_sharing: false,
         automation_shared_with_me: false,
+        automation_clone: false,
+        automation_default_timezone: false,
         automation_run_pull_requests: false,
         automation_harness_settings: false,
         automation_approval_skipping_modes: false,

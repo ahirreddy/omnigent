@@ -96,6 +96,50 @@ struct PagesStoreTests {
   }
 
   @Test(.timeLimit(.minutes(1)))
+  func cloneReturnsTheCopyAndTheZoneIsRecordedOnce() async throws {
+    let server = PagesServer()
+    server.route(
+      "/v1/info",
+      .json(
+        #"{"single_user":true,"automations_enabled":true,"scheduled_task_clone":true,"scheduled_task_default_timezone":true}"#
+      ))
+    server.route(
+      "/v1/scheduled-tasks/t1/clone", method: "POST",
+      .json(
+        #"{"id":"t2","name":"Standup (copy)","prompt":"Summarize","rrule":"FREQ=DAILY;BYHOUR=9;BYMINUTE=0","agent_id":"a1","timezone":"UTC","state":"active","next_run_at":"2026-11-05T09:00:00Z","updated_at":2}"#,
+        status: 201))
+    server.route(
+      "/v1/scheduled-tasks/default-timezone", method: "PUT",
+      .json(#"{"timezone":"America/Chicago"}"#))
+    let pages = try #require(try await connected(server).pages)
+    #expect(await pages.loadOffered() == nil)
+    #expect(pages.offered?.automationClone == true)
+    await pages.loadAutomations()
+    let original = try #require(pages.automations.value?.first)
+    let copy = try #require(await pages.cloneAutomation(original))
+    #expect(copy.id == "t2")
+    #expect(pages.busyAutomationIDs.isEmpty)
+    #expect(
+      automationCloneMessage(clone: copy)
+        == "Automation cloned. Pause or delete the original so they don't both run.")
+
+    #expect(server.writes.contains("POST /v1/scheduled-tasks/t1/clone"))
+
+    // The connection records the device's zone itself once the pages are read, and only once.
+    let puts = { server.writes.filter { $0 == "PUT /v1/scheduled-tasks/default-timezone" } }
+    let deadline = ContinuousClock.now + .seconds(10)
+    while puts().isEmpty, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(puts().count == 1)
+    await pages.reportAutomationTimezone(TimeZone.current.identifier)
+    #expect(puts().count == 1)
+    let elsewhere = TimeZone.current.identifier == "Pacific/Chatham" ? "UTC" : "Pacific/Chatham"
+    await pages.reportAutomationTimezone(elsewhere)
+    #expect(puts().count == 2)
+  }
+
+  @Test(.timeLimit(.minutes(1)))
   func runHistoryAndEditsOfTheSavedAutomation() async throws {
     let server = PagesServer()
     server.route(

@@ -109,9 +109,11 @@ public final class PagesStore {
   /// The activity each session's latest output was read at.
   private var outputStamps: [String: Int64] = [:]
   /// The server and account ``offered`` belongs to.
-  private var offeredOwner: String?
+  private(set) var offeredOwner: String?
   /// Reads of ``offered`` started so far; only the latest one lands.
   private var offeredReads = 0
+  /// The server, account and zone last recorded for agent-created automations.
+  var reportedTimezone: String?
 
   init(core: ClientCore, defaults: UserDefaults = .standard) {
     self.core = core
@@ -251,7 +253,7 @@ public final class PagesStore {
     }
   }
 
-  private func writeAutomation(_ id: String?, _ operation: (ClientCore) async throws -> Void)
+  func writeAutomation(_ id: String?, _ operation: (ClientCore) async throws -> Void)
     async -> Bool
   {
     if let id {

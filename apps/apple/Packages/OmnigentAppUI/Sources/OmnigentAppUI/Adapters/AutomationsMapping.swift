@@ -5,11 +5,15 @@ import OmnigentUIComponents
 
 /// Maps automations between the core's records and the list, editor and schedule view state.
 enum AutomationsMapping {
-  static func state(pages: PagesStore, filter: AutomationsFilter, search: String, now: Date)
+  static func state(
+    pages: PagesStore, filter: AutomationsFilter, sort: AutomationsSort = .nextRun, search: String,
+    now: Date
+  )
     -> AutomationsViewState
   {
     let all = pages.automations.value ?? []
-    let arranged = arrangeAutomations(automations: all, filter: filter.core, search: search)
+    let arranged = arrangeAutomations(
+      automations: all, filter: filter.core, sort: sort.core, search: search)
     let rows = arranged.map { row($0, pages: pages, now: now) }
     let isLoading = if case .loading = pages.automations { true } else { false }
     var state = AutomationsViewState(
@@ -19,26 +23,9 @@ enum AutomationsMapping {
       state.templates = AutomationTriggerMapping.cards
     }
     if pages.offered?.automationSharedWithMe == true {
-      state.shared = shared(pages: pages, filter: filter, search: search, now: now)
+      state.shared = shared(pages: pages, filter: filter, sort: sort, search: search, now: now)
     }
     return state
-  }
-
-  /// The Shared with me tab, read-only rows a page at a time.
-  static func shared(pages: PagesStore, filter: AutomationsFilter, search: String, now: Date)
-    -> SharedAutomationsState
-  {
-    let all = pages.sharedAutomations.value ?? []
-    var shared = SharedAutomationsState()
-    shared.rows = arrangeAutomations(automations: all, filter: filter.core, search: search).map {
-      row($0, pages: pages, now: now)
-    }
-    shared.hasAny = !all.isEmpty
-    shared.isLoading = pages.sharedAutomations == .loading || pages.sharedAutomations == .idle
-    shared.loadError = pages.sharedAutomations.error?.message
-    shared.hasMore = pages.sharedAutomationsCursor != nil
-    shared.isLoadingMore = pages.isLoadingMoreSharedAutomations
-    return shared
   }
 
   /// One card: its schedule or trigger line, last-run warning, owner, and whether it shares.
@@ -319,12 +306,41 @@ extension Weekday {
   var index: Int { Self.ordered.firstIndex(of: self) ?? 0 }
 }
 
+extension AutomationsMapping {
+  /// The Shared with me tab, read-only rows a page at a time.
+  static func shared(
+    pages: PagesStore, filter: AutomationsFilter, sort: AutomationsSort = .nextRun,
+    search: String, now: Date
+  ) -> SharedAutomationsState {
+    let all = pages.sharedAutomations.value ?? []
+    var shared = SharedAutomationsState()
+    shared.rows = arrangeAutomations(
+      automations: all, filter: filter.core, sort: sort.core, search: search
+    ).map { row($0, pages: pages, now: now) }
+    shared.hasAny = !all.isEmpty
+    shared.isLoading = pages.sharedAutomations == .loading || pages.sharedAutomations == .idle
+    shared.loadError = pages.sharedAutomations.error?.message
+    shared.hasMore = pages.sharedAutomationsCursor != nil
+    shared.isLoadingMore = pages.isLoadingMoreSharedAutomations
+    return shared
+  }
+}
+
 extension AutomationsFilter {
   fileprivate var core: AutomationFilter {
     switch self {
     case .all: .all
     case .active: .active
     case .paused: .paused
+    }
+  }
+}
+
+extension AutomationsSort {
+  fileprivate var core: AutomationSort {
+    switch self {
+    case .nextRun: .nextRun
+    case .name: .name
     }
   }
 }
