@@ -5,6 +5,10 @@ import SwiftUI
 /// `AttributedString` of its own: typing changes it and the draft follows, and a draft set from
 /// outside (a completion, a recalled prompt, a send) replaces it. Only the tints are kept as
 /// attributes; anything else a paste or a format command adds is dropped.
+///
+/// The text view writes its text while it holds its storage, where an update of the view traps
+/// on the storage's exclusive access. So the text lives outside SwiftUI's state, and the draft
+/// and tints follow in a run loop block, before the window draws: a key lays out once.
 struct TintedTextEditor: View {
   @Binding var text: String
   let source: ComposerTokenSource
@@ -12,20 +16,20 @@ struct TintedTextEditor: View {
   /// in dark mode.
   var textColor: Color = Self.systemText
 
-  @State private var editor = AttributedString()
+  @State private var editor = EditorBox()
   @State private var selection = SelectionBox()
+  /// Bumped when the editor's text changes other than by typing, so the text view takes it.
+  @State private var revision = 0
   @Environment(\.controlAccent) private var accent
 
   var body: some View {
     let style = TintStyle(
       source: source, base: textColor, tint: accent, fill: accent.opacity(0.12))
-    TextEditor(text: typed, selection: selected)
-      .onChange(of: editor) {
-        syncDraft()
-        retint(style)
-      }
+    TextEditor(text: typed(style), selection: selected)
+      // Read here so a bump draws the text view with the box's new text.
+      .onChange(of: revision) {}
       .onChange(of: text, initial: true) { draftChanged(style) }
-      .onChange(of: style) { retint(style) }
+      .onChange(of: style) { if retint(style) { revision += 1 } }
   }
 
   /// The tints and what they follow.
@@ -98,6 +102,11 @@ struct TintedTextEditor: View {
     let background: Color?
   }
 
+  /// The editor's text, outside SwiftUI's state: typing it needs no update of the view.
+  private final class EditorBox {
+    var value = AttributedString()
+  }
+
   /// The caret and selection, outside SwiftUI's state: moving them needs no update of the view.
   private final class SelectionBox {
     var value = AttributedTextSelection()
@@ -107,31 +116,49 @@ struct TintedTextEditor: View {
     Binding(get: { selection.value }, set: { selection.value = $0 })
   }
 
-  /// The editor's text. The draft follows from `onChange`, never from this setter: the text
-  /// view calls it while it holds its storage, and a draft write there can update the view
-  /// again at once, which traps on the storage's exclusive access.
-  private var typed: Binding<AttributedString> {
-    Binding(get: { editor }, set: { editor = $0 })
+  /// The editor's text. The text view sets it while it holds its storage; the draft and tints
+  /// follow once it lets go.
+  private func typed(_ style: TintStyle) -> Binding<AttributedString> {
+    Binding(
+      get: { editor.value },
+      set: { typed in
+        editor.value = typed
+        // A run loop block, not the main queue: it runs in a nested run loop too.
+        RunLoop.main.perform(inModes: [.common]) {
+          MainActor.assumeIsolated { follow(style) }
+        }
+      })
   }
 
-  /// Copies the editor's text to the draft when they differ.
-  private func syncDraft() {
-    let plain = String(editor.characters)
-    if plain != text { text = plain }
+  /// The draft follows the typed text and the tints its tokens; either change draws the text
+  /// view again in one update.
+  private func follow(_ style: TintStyle) {
+    let retinted = retint(style)
+    let plain = String(editor.value.characters)
+    if plain != text {
+      text = plain
+    } else if retinted {
+      revision += 1
+    }
   }
 
   /// A draft set from outside replaces the editor's text, with the caret at its end.
   private func draftChanged(_ style: TintStyle) {
-    guard String(editor.characters) != text else { return }
-    editor = style.styled(text)
-    selection.value = AttributedTextSelection(insertionPoint: editor.endIndex)
+    guard String(editor.value.characters) != text else { return }
+    editor.value = style.styled(text)
+    selection.value = AttributedTextSelection(insertionPoint: editor.value.endIndex)
+    revision += 1
   }
 
   /// Puts the tints where the text's tokens are now, keeping the selection, when they moved
   /// (a character typed after a token takes its tint until here).
-  private func retint(_ style: TintStyle) {
-    let plain = String(editor.characters)
-    guard !style.isTinted(editor, plain: plain) else { return }
-    editor.transform(updating: &selection.value) { text in style.apply(to: &text, plain: plain) }
+  /// - Returns: Whether the tints moved.
+  private func retint(_ style: TintStyle) -> Bool {
+    let plain = String(editor.value.characters)
+    guard !style.isTinted(editor.value, plain: plain) else { return false }
+    editor.value.transform(updating: &selection.value) { text in
+      style.apply(to: &text, plain: plain)
+    }
+    return true
   }
 }
