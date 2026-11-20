@@ -7,10 +7,10 @@ extension ConnectionStore {
   /// - Parameters:
   ///   - run: The run.
   ///   - planName: The plan's name, which the stop message names.
-  ///   - workflowID: The workflow whose page lists the run.
+  ///   - workflowID: The workflow whose page lists the run; `nil` for an automation's run.
   /// - Returns: Whether the session took the stop message.
   @discardableResult
-  public func stopWorkflowRun(_ run: WorkflowRun, planName: String?, workflowID: String) async
+  public func stopWorkflowRun(_ run: WorkflowRun, planName: String?, workflowID: String?) async
     -> Bool
   {
     guard let workflows else { return false }

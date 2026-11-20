@@ -9,6 +9,8 @@ struct NewSessionWorkflow: Hashable {
   var launch: WorkflowLaunch
   /// A run starts with the user reviewing its plan.
   var reviewPlanFirst = false
+  /// The planning prompt a host session keeps as its chat's draft rather than sending it.
+  var plannerDraft: String?
 }
 
 /// The new-session page set to run a saved workflow or start its planning chat (web
@@ -56,7 +58,9 @@ extension NewSessionForm {
   }
 
   /// The title and first message of the session `text` starts, filing a run under its workflow.
-  /// A run sends its request with `text` as the details; a planning chat is named for its workflow.
+  /// A run sends its request with `text` as the details; a planning chat is named for its
+  /// workflow, and on a host keeps `text` as its chat's draft for the user to send, as the web's
+  /// planning chat does. A sandbox sends it once it is up.
   func workflowStart(text: String, selection: inout OmnigentCoreFFI.CreationSelection) -> (
     title: String, message: String
   ) {
@@ -69,7 +73,10 @@ extension NewSessionForm {
         reviewPlanFirst: workflow?.reviewPlanFirst == true)
       return (typed, message)
     case .plan(let target, _):
-      return (typed.isEmpty ? "Plan workflow: \(target.name)" : typed, text)
+      let title = typed.isEmpty ? "Plan workflow: \(target.name)" : typed
+      guard !isSandbox else { return (title, text) }
+      workflow?.plannerDraft = text
+      return (title, "")
     case nil:
       return (typed, text)
     }
@@ -107,12 +114,15 @@ extension NewSessionForm {
     }
   }
 
-  /// A planning chat that started is kept as its workflow's, whose page then opens with it.
+  /// A planning chat that started is kept as its workflow's, whose page then opens with it, its
+  /// prompt waiting in the chat's composer when it wasn't sent.
   /// - Returns: Whether `sessionID` is a planning chat.
   func planningStarted(
-    _ sessionID: String, workflows: WorkflowsStore?, openWorkflow: (@MainActor (String) -> Void)?
+    _ sessionID: String, creation: CreationStore, workflows: WorkflowsStore?,
+    openWorkflow: (@MainActor (String) -> Void)?
   ) -> Bool {
     guard case .plan(let target, _) = workflow?.launch, let workflows else { return false }
+    if let draft = workflow?.plannerDraft { creation.leaveDraft(draft, inSession: sessionID) }
     Task {
       await workflows.setPlanningSession(target.id, sessionID: sessionID)
       openWorkflow?(target.id)

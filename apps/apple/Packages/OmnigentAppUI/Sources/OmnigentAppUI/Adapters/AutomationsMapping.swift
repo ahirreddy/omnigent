@@ -123,7 +123,7 @@ enum AutomationsMapping {
     draft.isTrigger = automation.isTrigger
     restoreOverrides(&draft, from: automation)
     if automation.isTrigger, let config = decodeTriggerPrompt(prompt: automation.prompt) {
-      return AutomationTriggerMapping.editDraft(config, base: draft)
+      return AutomationTriggerMapping.editDraft(config, base: draft, workflows: workflows)
     }
     let withoutHeader = stripTriggerHeader(prompt: automation.prompt)
     if withoutHeader != automation.prompt {
@@ -134,11 +134,10 @@ enum AutomationsMapping {
       draft.prompt = parts.userPrompt
       draft.systemPrompt = parts.systemPrompt
     }
-    // A saved workflow's run opens as its Workflow, with any additional instructions.
-    if workflows, let run = parseSavedWorkflowMessage(text: draft.prompt) {
-      draft.workflow = AutomationOption(id: run.id, name: run.name)
-      draft.workflowDetailsID = run.details.isEmpty ? nil : run.id
-      draft.prompt = run.details
+    if workflows {
+      let prompt = draft.prompt
+      let details = openWorkflow(prompt, in: &draft)
+      draft.prompt = details
     }
     return draft
   }

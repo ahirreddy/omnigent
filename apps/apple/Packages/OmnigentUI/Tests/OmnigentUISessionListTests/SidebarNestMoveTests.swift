@@ -69,45 +69,46 @@ struct SidebarNestMoveTests {
     #expect(all.map(\.id) == ["lead", "coord"])
   }
 
-  @Test("A drag joins a row's nest or leaves its own; others' sessions and own nests refuse")
-  func dragsBetweenNests() {
-    let theirs = SessionSummary(
-      id: "theirs", title: "Theirs", family: SessionFamilyInfo(id: "theirs"))
-    var state = FamilyFixture.state([Self.lead, Self.helper, FamilyFixture.solo, theirs])
-    state.rowInfo = ["theirs": SessionRowInfo(isShared: true)]
-    let spy = SidebarSpy(state)
-    var actions = spy.actions
-    actions.sessions.moveToNest = { [spy] session, destination in
-      spy.calls.append("nest \(session.id) \(destination?.id ?? "none")")
-    }
-    actions.sessions.canJoinNests = true
-    let handler = SidebarDropHandler(state: state, actions: actions)
-    // A nested member drags only because it can move between nests; the lead's row takes it.
-    #expect(handler.rowDrag(Self.helper, movesWithFamily: true).payload != nil)
-    #expect(handler.rowDrag(Self.lead, movesWithFamily: false).joinsNest)
-    #expect(!handler.rowDrag(FamilyFixture.solo, movesWithFamily: false).joinsNest)
-    #expect(handler.rowDrag(theirs, movesWithFamily: true).payload == nil)
-    #expect(handler.drop(.session("solo"), on: .nest(Self.lead)))
-    #expect(!handler.drop(.session("helper"), on: .nest(Self.lead)), "its own nest")
-    #expect(!handler.drop(.session("theirs"), on: .nest(Self.lead)))
-    #expect(handler.leavesNest("helper") && !handler.leavesNest("solo"))
-    #expect(handler.drop(.session("helper"), on: .leaveNest))
-    #expect(!handler.drop(.session("solo"), on: .leaveNest), "it is in no nest")
-    // Dropped on a row outside its nest, a nested member leaves it; on its own nest, nothing.
-    #expect(
-      handler.rowDrop(.session("helper"), on: FamilyFixture.solo, zone: .row, target: .sessions))
-    #expect(!handler.rowDrop(.session("helper"), on: Self.lead, zone: .row, target: .sessions))
-    #expect(handler.rowDrop(.session("solo"), on: Self.lead, zone: .nest, target: .sessions))
-    #expect(
-      spy.calls == ["nest solo lead", "nest helper none", "nest helper none", "nest solo lead"])
-
-    actions.sessions.canJoinNests = false
-    let leaveOnly = SidebarDropHandler(state: state, actions: actions)
-    #expect(!leaveOnly.rowDrag(Self.lead, movesWithFamily: false).joinsNest)
-    #expect(!leaveOnly.drop(.session("solo"), on: .nest(Self.lead)))
-  }
-
+  // The spy and the drop handler's harness are the Mac's.
   #if os(macOS)
+    @Test("A drag joins a row's nest or leaves its own; others' sessions and own nests refuse")
+    func dragsBetweenNests() {
+      let theirs = SessionSummary(
+        id: "theirs", title: "Theirs", family: SessionFamilyInfo(id: "theirs"))
+      var state = FamilyFixture.state([Self.lead, Self.helper, FamilyFixture.solo, theirs])
+      state.rowInfo = ["theirs": SessionRowInfo(isShared: true)]
+      let spy = SidebarSpy(state)
+      var actions = spy.actions
+      actions.sessions.moveToNest = { [spy] session, destination in
+        spy.calls.append("nest \(session.id) \(destination?.id ?? "none")")
+      }
+      actions.sessions.canJoinNests = true
+      let handler = SidebarDropHandler(state: state, actions: actions)
+      // A nested member drags only because it can move between nests; the lead's row takes it.
+      #expect(handler.rowDrag(Self.helper, movesWithFamily: true).payload != nil)
+      #expect(handler.rowDrag(Self.lead, movesWithFamily: false).joinsNest)
+      #expect(!handler.rowDrag(FamilyFixture.solo, movesWithFamily: false).joinsNest)
+      #expect(handler.rowDrag(theirs, movesWithFamily: true).payload == nil)
+      #expect(handler.drop(.session("solo"), on: .nest(Self.lead)))
+      #expect(!handler.drop(.session("helper"), on: .nest(Self.lead)), "its own nest")
+      #expect(!handler.drop(.session("theirs"), on: .nest(Self.lead)))
+      #expect(handler.leavesNest("helper") && !handler.leavesNest("solo"))
+      #expect(handler.drop(.session("helper"), on: .leaveNest))
+      #expect(!handler.drop(.session("solo"), on: .leaveNest), "it is in no nest")
+      // Dropped on a row outside its nest, a nested member leaves it; on its own nest, nothing.
+      #expect(
+        handler.rowDrop(.session("helper"), on: FamilyFixture.solo, zone: .row, target: .sessions))
+      #expect(!handler.rowDrop(.session("helper"), on: Self.lead, zone: .row, target: .sessions))
+      #expect(handler.rowDrop(.session("solo"), on: Self.lead, zone: .nest, target: .sessions))
+      #expect(
+        spy.calls == ["nest solo lead", "nest helper none", "nest helper none", "nest solo lead"])
+
+      actions.sessions.canJoinNests = false
+      let leaveOnly = SidebarDropHandler(state: state, actions: actions)
+      #expect(!leaveOnly.rowDrag(Self.lead, movesWithFamily: false).joinsNest)
+      #expect(!leaveOnly.drop(.session("solo"), on: .nest(Self.lead)))
+    }
+
     private func sidebar(canJoin: Bool = true) -> (SidebarSpy, OffscreenWindow<SidebarHarness>) {
       let state = FamilyFixture.state([
         FamilyFixture.coordinator, FamilyFixture.implementation, Self.lead, Self.helper,

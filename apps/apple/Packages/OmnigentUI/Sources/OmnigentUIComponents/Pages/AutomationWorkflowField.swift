@@ -53,7 +53,7 @@ extension AutomationEditorSheet {
     context.offersWorkflows && (!context.workflows.isEmpty || draft.workflow != nil)
   }
 
-  var workflowField: some View {
+  var workflowField: AutomationWorkflowField {
     AutomationWorkflowField(draft: $draft, workflows: context.workflows)
   }
 }

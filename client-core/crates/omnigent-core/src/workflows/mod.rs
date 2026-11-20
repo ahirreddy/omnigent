@@ -15,6 +15,7 @@ use crate::automation_triggers::{
 use crate::client::json::{as_object, opt_array, opt_bool, opt_object, opt_str, req_str};
 use crate::session_journal::{GraphRevision, JournalEntry, PlanStep, plan_steps};
 
+pub mod automation_runs;
 pub mod graph;
 pub mod proposal;
 pub mod runs;

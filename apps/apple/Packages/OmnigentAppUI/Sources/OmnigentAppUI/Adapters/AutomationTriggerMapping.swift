@@ -92,10 +92,11 @@ enum AutomationTriggerMapping {
     return draft
   }
 
-  /// The editor's draft of a saved trigger's header, as the form reopens it.
-  static func editDraft(_ config: TriggerConfig, base: AutomationDraftState)
-    -> AutomationDraftState
-  {
+  /// The editor's draft of a saved trigger's header, as the form reopens it; where the server
+  /// runs `workflows`, instructions that run a saved workflow reopen as its Workflow.
+  static func editDraft(
+    _ config: TriggerConfig, base: AutomationDraftState, workflows: Bool = false
+  ) -> AutomationDraftState {
     var draft = base
     draft.prompt = ""
     draft.systemPrompt = nil
@@ -106,6 +107,9 @@ enum AutomationTriggerMapping {
       inSandboxes: config.worker.placement == .managed, agentID: config.worker.agentId,
       model: config.worker.model, effort: config.worker.effort,
       permissionMode: config.worker.permissionMode)
+    if workflows {
+      trigger.instructions = AutomationsMapping.openWorkflow(trigger.instructions, in: &draft)
+    }
     draft.trigger = trigger
     return draft
   }

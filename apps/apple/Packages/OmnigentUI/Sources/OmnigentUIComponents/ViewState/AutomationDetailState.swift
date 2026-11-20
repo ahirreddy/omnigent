@@ -165,12 +165,33 @@ nonisolated public struct AutomationRunRow: Hashable, Sendable, Identifiable {
   public var pullRequests: [AutomationRunPullRequest] = []
   /// Its session, to open it.
   public var sessionID: String?
+  /// What its agent last wrote about its work, when it follows a plan.
+  public var statusText: AutomationRunStatusText?
+  /// Its plan's tasks, control and graph; `nil` when it wrote no plan.
+  public var tasks: WorkflowRunRowState?
 
   /// Creates a row.
   public init(id: String, indicator: Indicator, timestamp: String) {
     self.id = id
     self.indicator = indicator
     self.timestamp = timestamp
+  }
+}
+
+/// What a run's agent last wrote: "Done" and "Opened 2 PRs".
+nonisolated public struct AutomationRunStatusText: Hashable, Sendable {
+  /// The status's label: "Done", "Waiting for you".
+  public var label: String
+  /// The agent's words.
+  public var text: String
+  /// A failed task wrote it, which the line shows in the warning color.
+  public var isFailure: Bool
+
+  /// Creates a line.
+  public init(label: String, text: String, isFailure: Bool) {
+    self.label = label
+    self.text = text
+    self.isFailure = isFailure
   }
 }
 
@@ -192,6 +213,9 @@ public struct AutomationDetailActions {
   public var openSession: (@MainActor (String) -> Void)?
   /// Open a run's PR.
   public var openPullRequest: (@MainActor (URL) -> Void)?
+  /// What a run's tasks, plan control and graph do: open a task or the workflow, stop or
+  /// continue the plan, act on a task.
+  public var runTasks = WorkflowDetailActions()
   /// Read the runs again.
   public var retry: (@MainActor () -> Void)?
   /// Dismiss the last action error.

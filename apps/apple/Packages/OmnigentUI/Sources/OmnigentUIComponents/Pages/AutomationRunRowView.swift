@@ -1,17 +1,59 @@
 import SwiftUI
 
 /// One run: its status icon, when it fired, how long it took, its session's cost, what it is
-/// doing or waiting on, why it failed, and the PRs it made, at the row's top right. A run with
-/// a session opens it.
+/// doing or waiting on, what its agent last wrote, why it failed, and the PRs it made and its
+/// plan's buttons at the row's top right, with a segment per task below. A run with a session
+/// opens it.
 struct AutomationRunRowView: View {
   let run: AutomationRunRow
   let open: (@MainActor () -> Void)?
   var openPullRequest: (@MainActor (URL) -> Void)?
+  /// What the run's tasks, plan control and graph do.
+  var taskActions = WorkflowDetailActions()
   @State private var isHovered = false
   @Environment(\.layoutWidth) private var layoutWidth
 
   var body: some View {
-    let row = HStack(
+    let summary = run.pullRequestSummary.flatMap { run.pullRequests.isEmpty ? nil : $0 }
+    let tasks = run.tasks.flatMap { $0.steps.isEmpty ? nil : $0 }
+    // On a phone the PR line and the plan's buttons go under the run, which they would
+    // otherwise squeeze.
+    let layout =
+      layoutWidth == .compact
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+      : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.small))
+    VStack(alignment: .leading, spacing: 0) {
+      layout {
+        if let open {
+          Button(action: open) { row }.buttonStyle(.plain)
+        } else {
+          row
+        }
+        if summary != nil || tasks != nil {
+          HStack(spacing: Theme.Spacing.small) {
+            if let summary { pullRequests(summary) }
+            if let tasks { WorkflowRunControls(run: tasks, actions: taskActions) }
+          }
+          .padding(.top, layoutWidth == .compact ? 0 : Theme.Spacing.small)
+          .padding(.leading, layoutWidth == .compact ? 40 : 0)
+          .padding(.trailing, Theme.Spacing.small)
+        }
+      }
+      if let tasks {
+        WorkflowRunStrip(run: tasks, actions: taskActions)
+          .padding(.leading, 40).padding(.trailing, Theme.Spacing.medium)
+          .padding(.bottom, Theme.Spacing.small)
+      }
+    }
+    .background(
+      RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
+        .fill(isHovered && open != nil ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
+    )
+    .onHover { isHovered = $0 }
+  }
+
+  private var row: some View {
+    HStack(
       alignment: run.failureReason == nil ? .center : .top, spacing: Theme.Spacing.medium
     ) {
       indicator.frame(width: 20, height: 20)
@@ -35,6 +77,15 @@ struct AutomationRunRowView: View {
             .foregroundStyle(Theme.warning)
             .accessibilityIdentifier("automation-run-approval-\(run.id)")
         }
+        if let status = run.statusText {
+          Text("\(Text("\(status.label): ").fontWeight(.medium))\(status.text)")
+            .foregroundStyle(
+              status.isFailure ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.secondary)
+            )
+            .lineLimit(1)
+            .help(status.text)
+            .accessibilityIdentifier("automation-run-status-text-\(run.id)")
+        }
         if let reason = run.failureReason {
           Text(failureText(reason)).foregroundStyle(.secondary)
           if let detail = run.errorDetail {
@@ -47,30 +98,8 @@ struct AutomationRunRowView: View {
       Spacer(minLength: 0)
     }
     .padding(.horizontal, Theme.Spacing.small).padding(.vertical, Theme.Spacing.small)
-    .background(
-      RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-        .fill(isHovered && open != nil ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
-    )
     .contentShape(Rectangle())
     .accessibilityIdentifier("automation-run-\(run.id)")
-    let summary = run.pullRequestSummary.flatMap { run.pullRequests.isEmpty ? nil : $0 }
-    // On a phone the PR line goes under the run, which it would otherwise squeeze.
-    let layout =
-      layoutWidth == .compact
-      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
-      : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.small))
-    layout {
-      if let open {
-        Button(action: open) { row }.buttonStyle(.plain).onHover { isHovered = $0 }
-      } else {
-        row
-      }
-      if let summary {
-        pullRequests(summary)
-          .padding(.top, layoutWidth == .compact ? 0 : Theme.Spacing.small)
-          .padding(.leading, layoutWidth == .compact ? 40 : 0)
-      }
-    }
   }
 
   /// The run's PRs as one underlined line that opens the list, as the web's `RunPullRequests`.

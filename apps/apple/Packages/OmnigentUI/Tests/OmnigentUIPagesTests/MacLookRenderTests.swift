@@ -52,6 +52,9 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case tasksHistory = "tasks-history"
   case automationsLegacyShare = "automations-legacy-share"
   case automationsNew = "automations-new"
+  /// Runs that follow a plan: tasks, the agent's last words and the plan's buttons.
+  case automationsRunTasks = "automations-run-tasks"
+  case automationsTriggerWorkflow = "automations-trigger-workflow"
   case viewersPDF = "viewers-pdf"
   case viewersVideo = "viewers-video"
   /// Recording links in a reply: a workspace recording and a remote one.
@@ -105,8 +108,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .composerRewind, .tasksPlan, .tasksStopping, .prFileHeader: 480
     case .tasksHistory: 420
     case .sessionsDeleteAutomation: 460
-    case .automationsLegacyShare: 900
-    case .automationsNew: 600
+    case .automationsLegacyShare, .automationsRunTasks: 900
+    case .automationsNew, .automationsTriggerWorkflow: 600
     case .projectsNewFolder, .projectsNewRepository: 460
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin,
       .settingsAdminGeneral:
@@ -124,6 +127,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .tasksPlan: 620
     case .tasksStopping: 420
     case .automationsLegacyShare: 640
+    case .automationsRunTasks: 900
     case .automationsNew: 760
     case .projectsNewFolder, .projectsNewRepository: 440
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 560
@@ -194,6 +198,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .tasksHistory: return AnyView(Fixture.taskHistory)
     case .automationsLegacyShare: return AnyView(Fixture.legacyShareDetail)
     case .automationsNew: return AnyView(Fixture.newAutomation)
+    case .automationsRunTasks: return AnyView(Fixture.automationRunTasks)
+    case .automationsTriggerWorkflow: return AnyView(Fixture.triggerWorkflow)
     case .viewersPDF: return AnyView(PDFPreviewView(data: Fixture.pdf, truncated: false))
     case .viewersVideo: return AnyView(Fixture.video)
     case .viewersChatVideo: return AnyView(Fixture.chatVideo)

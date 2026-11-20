@@ -300,7 +300,8 @@ extension AutomationDetailView {
       LazyVStack(spacing: Theme.Spacing.extraSmall) {
         ForEach(state.runs) { run in
           AutomationRunRowView(
-            run: run, open: openAction(run), openPullRequest: actions.openPullRequest)
+            run: run, open: openAction(run), openPullRequest: actions.openPullRequest,
+            taskActions: actions.runTasks)
         }
       }
       .accessibilityIdentifier("automation-detail-runs")

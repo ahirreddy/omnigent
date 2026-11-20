@@ -241,7 +241,13 @@ enum AutomationEditorMapping {
   static func triggerPrompt(
     pages: PagesStore, draft: AutomationDraftState, saved: Automation?, sessionLink: String
   ) -> String {
-    let draft = withWorkflowSessions(draft)
+    var draft = withWorkflowSessions(draft)
+    // With a workflow, each match's instructions are the message that runs it.
+    if let instructions = draft.trigger?.instructions, draft.workflow != nil {
+      let message = AutomationsMapping.withWorkflow(
+        instructions, draft: draft, skillPrefix: skillPrefix(pages, agentID: draft.agentID))
+      draft.trigger?.instructions = message
+    }
     let budget = budget(pages: pages, draft: draft, saved: saved)
     let options = overrides(
       pages: pages, agentID: draft.agentID, hostID: draft.hostID, inSandbox: draft.runsInSandbox)

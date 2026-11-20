@@ -139,7 +139,10 @@ extension AutomationEditorSheet {
       AutomationTriggerFields(
         trigger: triggerBinding, template: template, renderedPrompt: context.triggerPrompt,
         mcp: context.triggerMcp, usesMcp: usesTriggerMcp,
-        switchEvent: context.switchTriggerEvent, editAsPrompt: editAsPrompt)
+        switchEvent: context.switchTriggerEvent,
+        workflowField: showsWorkflowField ? workflowField : nil,
+        instructionsAreDetails: draft.workflow != nil,
+        hidesInstructions: !draft.showsInstructions, editAsPrompt: editAsPrompt)
     }
   }
 

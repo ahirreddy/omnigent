@@ -60,6 +60,8 @@ public final class PagesStore {
   public internal(set) var isLoadingMoreSharedAutomations = false
   /// The PRs each run created or worked on, by automation and then run.
   public internal(set) var automationRunPullRequests: [String: [String: RunPullRequests]] = [:]
+  /// The plan each run follows, by automation and then run.
+  public internal(set) var automationRunSteps: [String: [String: AutomationRunSteps]] = [:]
   /// Who each automation is shared with, by automation.
   public internal(set) var automationGrants: [String: CreationLoad<[AutomationGrant]>] = [:]
   /// A share change is in flight.

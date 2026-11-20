@@ -17,6 +17,15 @@ extension AutomationsMapping {
     return draft
   }
 
+  /// A saved workflow's run reopens as its Workflow, with any additional instructions: the
+  /// workflow goes in `draft`, and the instructions left are returned (`text` when it runs none).
+  static func openWorkflow(_ text: String, in draft: inout AutomationDraftState) -> String {
+    guard let run = parseSavedWorkflowMessage(text: text) else { return text }
+    draft.workflow = AutomationOption(id: run.id, name: run.name)
+    draft.workflowDetailsID = run.details.isEmpty ? nil : run.id
+    return run.details
+  }
+
   /// `text` as the message that runs the draft's workflow, which keeps it as additional
   /// instructions only while the form shows them (the web's `withWorkflow`).
   static func withWorkflow(_ text: String, draft: AutomationDraftState, skillPrefix: String)

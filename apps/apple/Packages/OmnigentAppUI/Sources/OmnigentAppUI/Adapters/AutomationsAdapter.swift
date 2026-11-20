@@ -12,6 +12,8 @@ struct AutomationsAdapter: View {
   let open: (String) -> Void
   /// Where the guide remembers it was seen.
   var defaults = UserDefaults.standard
+  /// Opens a saved workflow's page, from a run that follows it.
+  var openWorkflow: (@MainActor (String) -> Void)?
   @State private var filter: AutomationsFilter = .all
   @State private var search = ""
   @State private var editing: Editing?
@@ -112,7 +114,8 @@ struct AutomationsAdapter: View {
         back: { self.detailID = nil },
         edit: { edit(pages, id: detailID) },
         share: shareAction(pages, automation: automation),
-        notify: { banner = TransientBanner(message: $0) })
+        notify: { banner = TransientBanner(message: $0) },
+        connection: connection, openWorkflow: openWorkflow)
     } else {
       TimelineView(.periodic(from: .now, by: 60)) { context in
         AutomationsView(

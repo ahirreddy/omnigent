@@ -11,6 +11,12 @@ struct CreationCalls {
 }
 
 extension CreationStore {
+  /// Leaves `text` in a created session's composer instead of sending it, as a planning chat's
+  /// prompt waits there for the user (web `sideChatDrafts`).
+  public func leaveDraft(_ text: String, inSession sessionID: String) {
+    conversation?(sessionID)?.composer.text = text
+  }
+
   /// Creates the session, then sends `firstMessage` to it when it is not blank. Creation is
   /// never retried: an unclear outcome becomes ``CreationPhase/uncertain(_:)``. Staged files
   /// are uploaded to the new session and sent with the first message.

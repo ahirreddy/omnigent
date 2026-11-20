@@ -5,8 +5,8 @@ import OmnigentUIComponents
 import SwiftUI
 
 /// An automation's page over ``PagesStore``: its settings and run history, read again every
-/// half minute while shown so a started run appears, with each run's PRs where the server
-/// keeps them. One shared with the caller is read-only.
+/// half minute while shown so a started run appears, with each run's PRs and plan where the
+/// server keeps them. One shared with the caller is read-only.
 struct AutomationDetailAdapter: View {
   let pages: PagesStore
   let automation: Automation
@@ -16,6 +16,10 @@ struct AutomationDetailAdapter: View {
   var share: (@MainActor () -> Void)?
   /// Shows one of the web's toasts.
   var notify: @MainActor (String) -> Void = { _ in }
+  /// The server, for a run plan's session activity and its Stop and Continue.
+  var connection: ConnectionStore?
+  /// Opens a saved workflow's page.
+  var openWorkflow: (@MainActor (String) -> Void)?
   var readsRunsEvery: Duration = .seconds(30)
   @Environment(\.openURL) private var openURL
 
@@ -23,15 +27,13 @@ struct AutomationDetailAdapter: View {
     TimelineView(.periodic(from: .now, by: 60)) { context in
       AutomationDetailView(
         state: AutomationDetailMapping.state(
-          automation, pages: pages, now: context.date, calendar: .current),
+          automation, pages: pages, now: context.date, calendar: .current,
+          tasks: connection.map(runTasksContext)),
         actions: actions)
     }
     .task(id: automation.id) {
       while !Task.isCancelled {
-        await pages.loadAutomationRuns(automation.id)
-        if AutomationDetailMapping.showsPullRequests(automation, pages: pages) {
-          await pages.loadAutomationRunPullRequests(automation.id)
-        }
+        await reloadRuns()
         do {
           try await Task.sleep(for: readsRunsEvery)
         } catch {
@@ -63,6 +65,7 @@ struct AutomationDetailAdapter: View {
     actions.share = share
     actions.openSession = { open($0) }
     actions.openPullRequest = { openURL($0) }
+    actions.runTasks = runTaskActions()
     actions.retry = { Task { await pages.loadAutomationRuns(id) } }
     actions.dismissError = { pages.dismissAutomationError() }
     return actions
@@ -71,7 +74,10 @@ struct AutomationDetailAdapter: View {
 
 /// Maps an automation and its runs to its page.
 enum AutomationDetailMapping {
-  static func state(_ automation: Automation, pages: PagesStore, now: Date, calendar: Calendar)
+  static func state(
+    _ automation: Automation, pages: PagesStore, now: Date, calendar: Calendar,
+    tasks: RunTasksContext? = nil
+  )
     -> AutomationDetailState
   {
     let catalog = pages.automationCatalog.value
@@ -118,10 +124,7 @@ enum AutomationDetailMapping {
     let runs = pages.automationRuns[automation.id]
     state.isLoadingRuns = runs == .loading
     state.runsError = runs?.error?.message
-    let pullRequests = pages.automationRunPullRequests[automation.id] ?? [:]
-    state.runs = (runs?.value ?? []).map {
-      row($0, now: now, calendar: calendar, pullRequests: pullRequests[$0.id])
-    }
+    state.runs = rows(automation, pages: pages, now: now, calendar: calendar, tasks: tasks)
     return state
   }
 
@@ -198,20 +201,25 @@ enum AutomationDetailMapping {
     return automation.sharedWithMe ? "The owner\u{2019}s host" : id
   }
 
+  /// One run's row; its session's activity shows unless its plan is no longer the session's
+  /// current one, since a continued session has moved on to a later run.
   static func row(
-    _ run: AutomationRun, now: Date, calendar: Calendar, pullRequests: RunPullRequests? = nil
+    _ run: AutomationRun, now: Date, calendar: Calendar, pullRequests: RunPullRequests? = nil,
+    steps: AutomationRunSteps? = nil
   ) -> AutomationRunRow {
+    let showsActivity = steps?.isCurrent ?? true
     var row = AutomationRunRow(
-      id: run.id, indicator: indicator(run),
+      id: run.id, indicator: indicator(run, showsActivity: showsActivity),
       timestamp: timestamp(
         Date(timeIntervalSince1970: TimeInterval(run.startedAt)), now: now, calendar: calendar))
     row.duration = run.duration
-    row.statusLabel = run.inFlightLabel ?? (run.sessionRunning ? "Session running" : nil)
+    row.statusLabel =
+      run.inFlightLabel ?? (showsActivity && run.sessionRunning ? "Session running" : nil)
     row.failureStage = run.failureStage
     row.failureReason = run.failureReason
     row.errorDetail = run.errorDetail
     row.sessionCost = run.sessionCost
-    row.needsApproval = run.needsApproval
+    row.needsApproval = showsActivity && run.needsApproval
     row.sessionID = run.sessionId
     if let pullRequests, !pullRequests.pullRequests.isEmpty {
       row.pullRequestSummary = pullRequests.summary
@@ -228,12 +236,14 @@ enum AutomationDetailMapping {
     return row
   }
 
-  private static func indicator(_ run: AutomationRun) -> AutomationRunRow.Indicator {
+  private static func indicator(_ run: AutomationRun, showsActivity: Bool)
+    -> AutomationRunRow.Indicator
+  {
     switch run.status {
     case .failed, .incomplete: .failed
     case .skipped: .skipped
     case .starting, .running: .inFlight
-    case .succeeded where run.sessionRunning: .sessionRunning
+    case .succeeded where showsActivity && run.sessionRunning: .sessionRunning
     case .succeeded: run.unread ? .unread : .completed
     case .scheduled, .unknown: .queued
     }

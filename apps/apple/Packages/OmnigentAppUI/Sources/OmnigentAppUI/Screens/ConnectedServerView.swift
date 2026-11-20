@@ -218,7 +218,7 @@ public struct ConnectedServerView: View {
         connection: connection, open: { selection = .session($0) },
         newSession: { selection = .newSession })
     case .automations:
-      AutomationsAdapter(connection: connection) { selection = .session($0) }
+      automationsPage
     case .workflows:
       workflowsPage
     case .usage:
