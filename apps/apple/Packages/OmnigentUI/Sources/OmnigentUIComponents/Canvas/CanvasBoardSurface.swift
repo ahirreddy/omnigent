@@ -101,11 +101,6 @@ struct CanvasBoardSurface: View {
       .zIndex(moving ? 1 : 0)
       .onTapGesture { select(card.id) }
       .gesture(drag(card))
-      .focusable()
-      .onKeyPress(keys: [.return, .space]) { _ in
-        select(card.id)
-        return .handled
-      }
       .accessibilityElement(children: .combine)
       .accessibilityLabel("\(card.title). \(card.state.label). \(card.workspace)")
       .accessibilityAddTraits(.isButton)
@@ -132,6 +127,8 @@ struct CanvasBoardSurface: View {
             }
             .onEnded { _ in panStart = nil }
         )
+        // Panning is a pointer gesture; VoiceOver scrolls the board itself.
+        .accessibilityHidden(true)
     #endif
   }
 

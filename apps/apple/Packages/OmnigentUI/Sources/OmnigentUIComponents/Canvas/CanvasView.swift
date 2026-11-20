@@ -55,9 +55,11 @@ public struct CanvasView: View {
     .themeCanvas()
     .navigationTitle("Canvas")
     .modifier(
-      ProjectDialogs(
-        prompt: $projectPrompt, name: $projectName, confirmingDelete: $deletingProject,
-        actions: dialogActions)
+      CanvasProjectDialogs(
+        isOn: projectActions?.createProject != nil,
+        dialogs: ProjectDialogs(
+          prompt: $projectPrompt, name: $projectName, confirmingDelete: $deletingProject,
+          actions: dialogActions))
     )
     .onChange(of: state.boards) { _, boards in selectAwaitedProject(boards) }
   }
@@ -165,5 +167,16 @@ public struct CanvasView: View {
     }
     awaitedProject = nil
     actions.selectBoard?(board.id)
+  }
+}
+
+/// The project dialogs, only where the page can make projects, so a page without them has no
+/// sheet waiting behind it.
+private struct CanvasProjectDialogs: ViewModifier {
+  let isOn: Bool
+  let dialogs: ProjectDialogs
+
+  func body(content: Content) -> some View {
+    if isOn { content.modifier(dialogs) } else { content }
   }
 }

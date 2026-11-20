@@ -36,7 +36,6 @@ extension ConversationContainer {
       openHarness = { focus in openSettingsAt(.harness(url: serverURL, focus: focus)) }
     }
     extras.dismissQuickAnswer = ComposerAdapter.dismissQuickAnswer(conversation)
-    extras.agentCosts = AgentTreeAdapter.costSource(conversation)
     extras.mcp = ComposerAdapter.mcpActions(
       conversation.composer.mcp, signIn: { url in Task { _ = await signInOpener.open(url) } },
       openSettings: openSettings, openHarness: openHarness)

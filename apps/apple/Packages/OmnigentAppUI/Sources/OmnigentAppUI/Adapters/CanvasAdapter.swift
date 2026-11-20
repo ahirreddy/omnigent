@@ -129,7 +129,8 @@ enum CanvasMapping {
   static func project(of board: String, canvas: CanvasStore, list: SessionListStore)
     -> SessionProject?
   {
-    zip(list.projects, canvas.projectBoards).first { $0.1 == board }?.0
+    let pair = zip(list.projects, canvas.projectBoards).first { _, id in id == board }
+    return pair.map { project, _ in ProjectBoardAdapter.folder(project) }
   }
 
   static func card(

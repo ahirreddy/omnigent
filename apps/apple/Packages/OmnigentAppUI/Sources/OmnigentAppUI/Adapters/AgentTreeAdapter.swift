@@ -116,7 +116,8 @@ struct AgentTreePanelHost: View {
 
   private func load() async {
     await conversation.tools.loadAgentTree()
-    if showsCosts { await costs.load(conversation) }
+    guard showsCosts, costs.isSupported else { return }
+    costs = await costs.read(conversation)
   }
 }
 
@@ -127,17 +128,19 @@ struct AgentCostReading {
   /// Why the latest read failed; the last tags stay.
   private(set) var failure: String?
 
-  mutating func load(_ conversation: ConversationStore) async {
-    guard isSupported else { return }
+  /// These tags read again: the new ones, or the old ones and why the read failed.
+  func read(_ conversation: ConversationStore) async -> Self {
+    var next = self
     do throws(CoreError) {
       if let read = try await conversation.agentCostTags() {
-        tags = read
+        next.tags = read
       } else {
-        isSupported = false
+        next.isSupported = false
       }
-      failure = nil
+      next.failure = nil
     } catch {
-      failure = error.message
+      next.failure = error.message
     }
+    return next
   }
 }

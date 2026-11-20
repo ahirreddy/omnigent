@@ -103,7 +103,7 @@ struct SessionSurface {
     let (kept, conversation, report) = (kept, chat.conversation, report)
     var sessionActions = chat.sessionActions
     if let fork = forkSession { sessionActions.fork = { _ in fork() } }
-    return ConversationExtras(
+    var extras = ConversationExtras(
       sessionActions: sessionActions, slots: chat.workspaceSlots(routes: toolRoutes),
       sandbox: chat.sandboxActions,
       share: chat.share(over: kept.shareStore),
@@ -113,6 +113,8 @@ struct SessionSurface {
         TranscriptExport.read(conversation, into: { kept.export = $0 }, report: report)
       },
       shareOpened: { Task { await kept.shareStore?.load() } })
+    extras.agentCosts = AgentTreeAdapter.costSource(conversation)
+    return extras
   }
 
   /// The session menu's Fork copies the whole session; `nil` when this app cannot fork it.
