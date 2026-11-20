@@ -668,7 +668,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   draft write inside the text view's storage commit (a trap while typing) is covered by
   `ComposerTokenTests/typingAfterTints`, `ComposerTypingWindowTests` and the Mac flow
   `testTypingOnAfterATintedCommandKeepsTheDraft`, none of which trapped on the old editor (see
-  the flow's comment). 2026-11-20.
+  the flow's comment). The trap's first fix wrote the draft from `onChange`, so each key laid
+  the window out twice (the split keystroke's render budget); the editor's text now lives
+  outside SwiftUI's state and the draft follows in a run loop block, one layout a key, with no
+  update inside the text view's commit. 2026-11-20.
 
 - [x] **Browser Annotate and Draw on the Mac** (web `63915cd179`): Annotate and Draw toggles in
   the browser toolbar and the Browser menu. Annotate outlines the element under the pointer
