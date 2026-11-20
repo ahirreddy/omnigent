@@ -26,6 +26,7 @@ struct SidebarHeader: View {
   let state: SidebarViewState
   let actions: SidebarActions
   @Environment(\.openCommandPalette) private var openPalette
+  @Environment(\.appBranding) private var branding
   #if os(macOS)
     @Environment(\.openSettingsPage) private var openSettingsPage
   #endif
@@ -63,12 +64,14 @@ struct SidebarHeader: View {
   }
 
   @ViewBuilder private var wordmark: some View {
-    let text = Text("Omnigent").font(.headline.weight(.semibold))
+    // The server's name for the app replaces the wordmark, as on the web.
+    let name = branding?.name ?? AppBranding.defaultAppName
+    let text = Text(name).font(.headline.weight(.semibold)).lineLimit(1)
     if let newSession = actions.sessions.newSession {
       Button(action: newSession) { text }
         .buttonStyle(.plain)
         .help("New session")
-        .accessibilityLabel("Omnigent, new session")
+        .accessibilityLabel("\(name), new session")
         .accessibilityIdentifier("sidebar-brand")
     } else {
       text.accessibilityAddTraits(.isHeader)

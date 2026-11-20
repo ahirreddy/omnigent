@@ -24,6 +24,7 @@ public struct NewSessionPage: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.composerLayoutStyle) private var composerLayout
   @Environment(\.isActiveTabPane) private var isActivePane
+  @Environment(\.appBranding) private var branding
 
   /// A phone: the composer stays on the keyboard.
   private var pinsComposer: Bool { layoutWidth == .compact && composerLayout == .touch }
@@ -100,6 +101,7 @@ public struct NewSessionPage: View {
               hero(in: geometry.size)
               composerView
               importButton
+              if branding?.poweredBy == true { PoweredByFooter() }
             }
             .padding(.vertical, Theme.Spacing.section)
             .frame(minHeight: geometry.size.height)
@@ -141,18 +143,32 @@ public struct NewSessionPage: View {
     }
   }
 
-  /// Otto with tracking eyes and the heading (and, on a phone, the import button).
+  /// The server's logo, else Otto with tracking eyes.
+  @ViewBuilder private var mark: some View {
+    if let logo = branding?.logoImage {
+      logo.resizable().scaledToFit()
+        .accessibilityLabel(branding?.name ?? AppBranding.defaultAppName)
+        .accessibilityIdentifier("new-session-logo")
+    } else {
+      OttoView(gaze: gaze)
+    }
+  }
+
+  /// Otto (or the server's logo) and the heading (and, on a phone, the import button).
   private func hero(in size: CGSize) -> some View {
     VStack(spacing: Theme.Spacing.large) {
       // Once per window: a split's other pane keeps the space but not the mascot.
-      OttoView(gaze: gaze)
+      mark
         .frame(width: Theme.Control.mascot, height: Theme.Control.mascot)
         .opacity(isActivePane ? 1 : 0)
-      Text(heading)
-        .font(layoutWidth == .compact ? Theme.Typography.title : .largeTitle.weight(.medium))
-        .multilineTextAlignment(.center)
-        .fixedSize(horizontal: false, vertical: true)
-        .accessibilityAddTraits(.isHeader)
+      // A server's branding can hide the heading with an empty one.
+      if !heading.isEmpty {
+        Text(heading)
+          .font(layoutWidth == .compact ? Theme.Typography.title : .largeTitle.weight(.medium))
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityAddTraits(.isHeader)
+      }
       if let subtitle {
         Text(subtitle)
           .font(.body)
