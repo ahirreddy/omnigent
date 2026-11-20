@@ -63,6 +63,25 @@ extension LookFixtures {
       showsAdvanced: .constant(true))
   }
 
+  /// An edited trigger's Advanced settings: the polling session's note, then its matching
+  /// sessions' harness, model, effort and permissions.
+  static var triggerWorkers: some View {
+    var draft = AutomationUXFixtures.triggerDraft
+    draft.permissionMode = "auto"
+    draft.trigger?.worker = AutomationTriggerWorker(
+      inSandboxes: false, agentID: nil, model: "sonnet", effort: "", permissionMode: "")
+    var context = AutomationUXFixtures.triggerContext
+    context.isEditing = true
+    context.hasContinuingSession = true
+    context.workerOptions = context.overrides
+    context.workerInheritsPolling = true
+    context.workerModesApply = true
+    return AutomationEditorForm(
+      editor: AutomationEditorSheet(
+        draft: .constant(draft), context: context, save: {}, cancel: {}),
+      showsAdvanced: .constant(true))
+  }
+
   /// A sandboxed automation with the provider's notice under Advanced.
   static var sandboxNotice: some View {
     var draft = AutomationUXFixtures.scheduleDraft

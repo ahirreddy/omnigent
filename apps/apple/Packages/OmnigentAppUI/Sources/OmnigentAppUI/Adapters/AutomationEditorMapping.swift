@@ -122,6 +122,7 @@ enum AutomationEditorMapping {
         pages: pages, draft: draft, saved: inputs.saved, sessionLink: inputs.sessionLink)
       context.switchTriggerEvent = inputs.switchTriggerEvent
       context.triggerMcp = triggerMcpService(source, services: context.mcpServices)
+      workers(&context, pages: pages, inputs: inputs)
     }
     return context
   }

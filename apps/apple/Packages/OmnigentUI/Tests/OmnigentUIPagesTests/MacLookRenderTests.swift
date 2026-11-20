@@ -65,6 +65,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case automationsRunHighlight = "automations-run-highlight"
   case automationsNewDefaults = "automations-new-defaults"
   case automationsSandboxNotice = "automations-sandbox-notice"
+  case automationsTriggerWorkers = "automations-trigger-workers"
   case viewersPDF = "viewers-pdf"
   case viewersVideo = "viewers-video"
   /// Recording links in a reply: a workspace recording and a remote one.
@@ -122,7 +123,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
       .automationsRunHighlight:
       900
     case .automationsNew, .automationsTriggerWorkflow, .automationsNewDefaults,
-      .automationsSandboxNotice:
+      .automationsSandboxNotice, .automationsTriggerWorkers:
       600
     case .shareManaged, .composerReconnectThisMac: 520
     case .transcriptPresence: 240
@@ -145,7 +146,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .automationsLegacyShare: 640
     case .automationsRunTasks, .automationsRunHighlight: 900
     case .automationsNew: 760
-    case .automationsNewDefaults, .automationsSandboxNotice: 1_640
+    case .automationsNewDefaults, .automationsSandboxNotice, .automationsTriggerWorkers: 1_640
     case .shareManaged: 760
     case .composerReconnectThisMac: 820
     case .projectsNewFolder, .projectsNewRepository: 440
@@ -234,6 +235,8 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
       return AnyView(Fixture.newAutomationDefaults.omnigentAppearance(.omni))
     case .automationsSandboxNotice:
       return AnyView(Fixture.sandboxNotice.omnigentAppearance(.omni))
+    case .automationsTriggerWorkers:
+      return AnyView(Fixture.triggerWorkers.omnigentAppearance(.omni))
     case .automationsExamples:
       return AnyView(AutomationExamplesView(back: {}, done: {}).omnigentAppearance(.omni))
     case .automationsTriggerWorkflow: return AnyView(Fixture.triggerWorkflow)

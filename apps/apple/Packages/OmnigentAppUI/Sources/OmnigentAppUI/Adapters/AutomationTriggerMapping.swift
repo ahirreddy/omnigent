@@ -222,8 +222,9 @@ enum AutomationTriggerMapping {
     else { return nil }
     let worker =
       trigger.worker.map {
-        TriggerWorker(
-          placement: $0.inSandboxes ? .managed : .sameHost, agentId: $0.agentID, model: $0.model,
+        let inSandboxes = $0.followsTarget ? draft.runsInSandbox : $0.inSandboxes
+        return TriggerWorker(
+          placement: inSandboxes ? .managed : .sameHost, agentId: $0.agentID, model: $0.model,
           effort: $0.effort, permissionMode: $0.permissionMode)
       }
       ?? TriggerWorker(

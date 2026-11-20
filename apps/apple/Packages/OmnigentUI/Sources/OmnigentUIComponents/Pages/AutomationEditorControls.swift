@@ -234,6 +234,7 @@ extension AutomationEditorSheet {
       rows.append(AdvancedRow("project", "Project", projectPicker))
     }
     rows.append(AdvancedRow("cost", "Cost limit per run (USD)", costField))
+    rows += workerRows
     return rows
   }
 

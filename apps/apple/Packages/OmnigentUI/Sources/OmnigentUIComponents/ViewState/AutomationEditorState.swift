@@ -166,6 +166,15 @@ public struct AutomationEditorContext {
   public var sandboxNotice: String?
   /// Whether the pinned folder is a Git repository, for Random worktree.
   public var worktreeCheck = AutomationWorktreeCheck.unavailable
+  /// A trigger's matching sessions: their harness's models, efforts and modes that don't skip
+  /// approval; `nil` hides their fields.
+  public var workerOptions: AutomationOverrideOptions?
+  /// What a new trigger's matching sessions take while they follow the polling session.
+  public var workerDefaults: AutomationTriggerWorker?
+  /// Matching sessions without a mode of their own run in the polling session's.
+  public var workerInheritsPolling = false
+  /// The server applies a session's requested permission mode.
+  public var workerModesApply = false
   /// Lists the pinned host's folders for the Workspace row's Browse; `nil` hides it.
   public var browseWorkspace:
     (@MainActor (String?) async -> Result<FolderListing, FolderBrowseError>)?

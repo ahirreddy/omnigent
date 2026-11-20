@@ -144,13 +144,6 @@ enum AutomationsMapping {
     return draft
   }
 
-  /// Puts back `automation`'s model, effort and permission mode, as the editor opened with.
-  static func restoreOverrides(_ draft: inout AutomationDraftState, from automation: Automation?) {
-    draft.model = automation?.modelOverride ?? ""
-    draft.effort = automation?.reasoningEffort ?? ""
-    draft.permissionMode = automation?.permissionMode ?? ""
-  }
-
   /// The prompt to save: a trigger's, the instructions put back into an older trigger's text,
   /// or the typed one; with a workflow, the message that runs it.
   static func prompt(_ draft: AutomationDraftState, triggerPrompt: String, skillPrefix: String)
