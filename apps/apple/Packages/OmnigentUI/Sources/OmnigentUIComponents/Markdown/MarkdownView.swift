@@ -271,12 +271,17 @@ struct MarkdownTableView: View {
   }
 }
 
+/// Where the choice to wrap long code lines is kept (the web's key).
+let codeBlockWordWrapKey = "omnigent:code-block-word-wrap"
+
 /// Selectable code with a language header, wrap control and copy confirmation.
 struct CodeBlockView: View {
   let code: String
   let language: String?
   var maxLines: Int?
-  @State private var wrapsLines = true
+  /// One choice for every block, kept across sessions and launches, as the web's
+  /// `codeWrapPreferences`.
+  @AppStorage(codeBlockWordWrapKey) private var wrapsLines = true
   @Environment(\.typeRamp) private var ramp
   @Environment(\.colorScheme) private var scheme
   @Environment(\.markdownBlockIsOpen) private var isOpen

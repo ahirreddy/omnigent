@@ -111,15 +111,24 @@ public struct ServerSettingsView: View {
     }
   #endif
 
-  /// The panes, with the Admin ones and Archived in sections of their own.
+  /// The panes in the web's groups: General; Customize (Harnesses and Custom Agents, where the
+  /// server offers custom agents); Admin; Archived.
   @ViewBuilder
   private func paneSections<Row: View>(row: @escaping (ServerSettingsPane) -> Row) -> some View {
+    let customize =
+      state.panes.contains(.customAgents)
+      ? state.panes.filter { $0 == .harnesses || $0 == .customAgents } : []
     Section {
-      ForEach(state.panes.filter { !$0.isAdmin && $0 != .archived }, content: row)
+      ForEach(
+        state.panes.filter { !$0.isAdmin && $0 != .archived && !customize.contains($0) },
+        content: row)
     } header: {
       #if os(iOS)
         Text(serverName)
       #endif
+    }
+    if !customize.isEmpty {
+      Section("Customize") { ForEach(customize, content: row) }
     }
     let admin = state.panes.filter(\.isAdmin)
     if !admin.isEmpty {

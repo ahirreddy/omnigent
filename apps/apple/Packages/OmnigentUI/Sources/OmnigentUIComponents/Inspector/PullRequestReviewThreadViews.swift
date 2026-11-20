@@ -144,7 +144,14 @@ struct PullRequestReviewThreadCard: View {
       if comment.hidden {
         Text("Comment hidden on GitHub.").font(.callout).foregroundStyle(.secondary)
       } else {
-        MarkdownView(comment.body).textSelection(.enabled)
+        let parts = Array(PullRequestReviewBodyPart.split(comment.body).enumerated())
+        ForEach(parts, id: \.offset) { item in
+          switch item.element {
+          case .markdown(let text): MarkdownView(text).textSelection(.enabled)
+          case .suggestion(let replacement):
+            PullRequestSuggestionView(source: thread.suggestionSource, replacement: replacement)
+          }
+        }
       }
     }
     .padding(Theme.Spacing.small)
@@ -160,10 +167,12 @@ struct PullRequestReviewThreadCard: View {
         .padding(Theme.Spacing.small)
     }
     if thread.canReply, let reply = actions.reply {
-      PullRequestReviewField(
-        prompt: "Reply", text: thread.reply, isBusy: actions.isBusy,
-        problem: nil, setText: { actions.setReply?(thread.id, $0) },
-        post: { reply(thread.id) }, postTitle: "Reply", cancel: nil)
+      PullRequestCommentField(
+        prompt: "Write a reply\u{2026}", text: thread.reply, isBusy: actions.isBusy,
+        problem: nil,
+        destination: .provider(account: actions.account, providerName: actions.providerName),
+        setText: { actions.setReply?(thread.id, $0) }, post: { reply(thread.id) },
+        postTitle: "Reply")
     } else if !thread.reply.isEmpty {
       Text("Your reply draft is saved. Replying is unavailable with the current permissions.")
         .font(.callout)
@@ -214,11 +223,13 @@ struct PullRequestNewThreadCard: View {
         note("Your draft is saved. Commenting is currently unavailable.")
       }
       Divider()
-      PullRequestReviewField(
+      PullRequestCommentField(
         prompt: state.toAgent ? "Leave a comment for your agent" : "Leave a comment",
-        text: state.body, isBusy: actions.isBusy,
-        problem: state.problem, setText: { actions.setNewBody?($0) },
-        post: canPost ? actions.postNew : nil, postTitle: "Comment", cancel: actions.cancelNew)
+        text: state.body, isBusy: actions.isBusy, problem: state.problem,
+        destination: state.toAgent
+          ? .agent : .newThread(account: actions.account, providerName: actions.providerName),
+        setText: { actions.setNewBody?($0) }, post: canPost ? actions.postNew : nil,
+        postTitle: "Comment", cancel: actions.cancelNew)
     }
     // The conversation being written is edged in the focus color.
     .cardSurface(cornerRadius: Theme.Radius.small, stroke: ThemeColor.focus)
@@ -231,46 +242,5 @@ struct PullRequestNewThreadCard: View {
       .foregroundStyle(.secondary)
       .padding(.horizontal, Theme.Spacing.small)
       .padding(.bottom, Theme.Spacing.small)
-  }
-}
-
-/// The field a reply or a new conversation is written in.
-private struct PullRequestReviewField: View {
-  let prompt: String
-  let text: String
-  let isBusy: Bool
-  let problem: String?
-  let setText: @MainActor (String) -> Void
-  let post: (@MainActor () -> Void)?
-  let postTitle: String
-  let cancel: (@MainActor () -> Void)?
-
-  private var blank: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      TextField(prompt, text: Binding(get: { text }, set: { setText($0) }), axis: .vertical)
-        .textFieldStyle(.roundedBorder)
-        .lineLimit(1...8)
-        .disabled(isBusy)
-      if let problem {
-        Text(problem).font(.caption).foregroundStyle(Theme.failure)
-      }
-      HStack {
-        Spacer(minLength: 0)
-        if let cancel {
-          Button("Cancel", action: cancel)
-            .buttonStyle(.bordered)
-            .disabled(isBusy)
-        }
-        if let post {
-          Button(postTitle, action: post)
-            .primaryActionStyle()
-            .disabled(isBusy || blank || problem != nil)
-        }
-      }
-      .controlSize(.small)
-    }
-    .padding(Theme.Spacing.small)
   }
 }

@@ -100,6 +100,9 @@ pub struct SessionPullRequest {
     /// The git provider's id (`github`, `gitlab`, `azure_devops`).
     #[uniffi(default)]
     pub provider: String,
+    /// What the provider calls a PR ("merge request"), when the server says.
+    #[uniffi(default)]
+    pub request_name: Option<String>,
 }
 
 impl From<core::SessionPullRequest> for SessionPullRequest {
@@ -116,6 +119,7 @@ impl From<core::SessionPullRequest> for SessionPullRequest {
             status: pr.status.into(),
             state_checked_at: pr.state_checked_at,
             provider: pr.provider,
+            request_name: pr.request_name,
         }
     }
 }

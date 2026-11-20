@@ -270,6 +270,16 @@ public struct PullRequestPanelExtras {
   public var labelsTruncated = false
   /// Who a review can be requested from.
   public var reviewerChoices: PullRequestChoices = .idle
+  /// The provider lists more review candidates than were read.
+  public var reviewersTruncated = false
+  /// The accounts to pick from while the upstream repository can't be reached.
+  public var accountChoices: [PullRequestAccountChoice] = []
+  /// Each listed PR's checks and offline state, by URL.
+  public var rows: [String: PullRequestRowExtras] = [:]
+  /// What the provider calls a PR, for the list's wording.
+  public var provider = PullRequestProviderWording()
+  /// Why the list hasn't synced, when the session's sandbox or host is down.
+  public var notSyncedHint: String?
   /// Merge methods, the default first.
   public var mergeMethods: PullRequestChoices = .idle
   /// A change is in flight.

@@ -103,7 +103,7 @@
       let screen = panel(.loaded(PullRequestFixture.two, synced: true), spy: spy)
       defer { screen.close() }
       spy.calls = []
-      try screen.clickControl(at: screen.controlFrames.count - 1)
+      try clickLastRow(screen)
       #expect(spy.calls == ["select \(PullRequestFixture.otherURL)"])
       #expect(spy.opened.isEmpty)
     }
@@ -130,7 +130,7 @@
         AnyView(PullRequestList(pullRequests: [PullRequestFixture.summary()], open: spy.open)),
         width: 500, height: 300)
       defer { good.close() }
-      try good.clickControl(at: good.controlFrames.count - 1)
+      try clickLastRow(good)
       #expect(spy.opened == [URL(string: PullRequestFixture.url)])
 
       let broken = OffscreenWindow(
@@ -138,8 +138,14 @@
           PullRequestList(pullRequests: [PullRequestFixture.summary(url: "")], open: spy.open)),
         width: 500, height: 300)
       defer { broken.close() }
-      try broken.clickControl(at: broken.controlFrames.count - 1)
+      try clickLastRow(broken)
       #expect(spy.opened.count == 1)
+    }
+
+    /// Clicks the last row's title, not the narrow actions menu beside it.
+    private func clickLastRow(_ screen: OffscreenWindow<AnyView>) throws {
+      let row = try #require(screen.controlFrames.last { $0.width > 80 })
+      try screen.click(CGPoint(x: row.midX, y: row.midY))
     }
 
     @Test("A row reads as title, status, repository and number, and its detail")
@@ -166,12 +172,12 @@
       func menu() throws -> NSMenu {
         try #require(try screen.menu(ofRow: 0))
       }
-      #expect(try menu().titles == ["Open in Browser", "Copy Link", "Unlink"])
-      try screen.choose("Open in Browser", in: menu())
+      #expect(try menu().titles == ["Open in GitHub", "Copy PR Link", "Unlink PR"])
+      try screen.choose("Open in GitHub", in: menu())
       #expect(spy.opened == [URL(string: PullRequestFixture.url)])
-      try screen.choose("Copy Link", in: menu())
+      try screen.choose("Copy PR Link", in: menu())
       #expect(SystemSideEffects.pasteboard.string(forType: .string) == PullRequestFixture.url)
-      try screen.choose("Unlink", in: menu())
+      try screen.choose("Unlink PR", in: menu())
       #expect(spy.calls == ["unlink \(PullRequestFixture.url)"])
     }
 
@@ -182,7 +188,7 @@
         pullRequests: [PullRequestFixture.summary(url: "")], open: spy.open, actions: spy.actions)
       let screen = OffscreenWindow(AnyView(list), width: 500, height: 300)
       defer { screen.close() }
-      #expect(try #require(try screen.menu(ofRow: 0)).titles == ["Unlink"])
+      #expect(try #require(try screen.menu(ofRow: 0)).titles == ["Unlink PR"])
     }
 
     @Test("Each status has its symbol, and finished states share no color with live ones")

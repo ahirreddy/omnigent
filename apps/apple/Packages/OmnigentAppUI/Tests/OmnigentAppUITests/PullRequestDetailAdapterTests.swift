@@ -121,7 +121,7 @@ struct PullRequestDetailAdapterTests {
       Issue.record("expected an explanation, got \(content)")
       return
     }
-    #expect(title == "gh not found")
+    #expect(title == "GitHub CLI not found")
   }
 
   @Test func reviewerIdsRoundTripAndMergeMethodsLeadWithTheDefault() {
@@ -266,7 +266,7 @@ struct PullRequestUnavailableTests {
         == "Run gh auth login")
     #expect(
       try shown(info(nil, availability: .repositoryUnresolved(hint: nil))).message
-        == "Sign in to GitHub on the session\u{2019}s host, then refresh.")
+        == "Sign in to GitHub on the host.")
     #expect(try shown(info(nil, availability: .unavailable)).title == "Pull request unavailable")
   }
 

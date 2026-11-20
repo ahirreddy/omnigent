@@ -19,20 +19,18 @@ struct PullRequestCommentsView: View {
     }
   }
 
-  private var draftBinding: Binding<String> {
-    keptDraft ?? $ownDraft
-  }
-
   var body: some View {
     VStack(spacing: 0) {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: Theme.Spacing.small) {
           notes
+          let hues = PullRequestAuthorAvatar.hues(state.comments.map(\.author))
           ForEach(state.feed) { entry in
             switch entry {
             case .comment(let comment):
               PullRequestCommentCard(
-                comment: comment, providerName: state.providerName, open: open)
+                comment: comment, providerName: state.providerName,
+                hue: hues[comment.author.lowercased()], open: open)
             case .event(let event):
               PullRequestTimelineRowView(
                 event: event, providerName: state.providerName, open: open)
@@ -79,30 +77,19 @@ struct PullRequestCommentsView: View {
   private func composer(
     _ post: @escaping @MainActor (String, @escaping @MainActor (Bool) -> Void) -> Void
   ) -> some View {
-    HStack(alignment: .bottom, spacing: Theme.Spacing.small) {
-      VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-        TextField("Leave a comment", text: draftBinding, axis: .vertical)
-          .textFieldStyle(.roundedBorder)
-          .lineLimit(1...6)
-          .accessibilityIdentifier("pr-comment")
-        if let problem = extras.actions.commentProblem?(draft) {
-          Text(problem).font(.caption).foregroundStyle(Theme.failure)
-            .accessibilityIdentifier("pr-comment-problem")
-        }
-      }
-      Button("Comment") {
+    PullRequestCommentField(
+      prompt: "Leave a comment\u{2026}", text: draft, isBusy: extras.isBusy,
+      problem: extras.actions.commentProblem?(draft),
+      destination: .provider(account: state.account, providerName: state.providerName),
+      setText: { draft = $0 },
+      post: {
         let body = draft
         post(body) { posted in
           if posted, draft == body { draft = "" }
         }
-      }
-      .keyboardShortcut(.return, modifiers: .command)
-      .primaryActionStyle()
-      .disabled(
-        extras.isBusy || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-          || extras.actions.commentProblem?(draft) != nil)
-    }
-    .padding(Theme.Spacing.small)
+      },
+      postTitle: "Comment", lineLimit: 1...6, identifier: "pr-comment",
+      postsOnCommandReturn: true)
   }
 }
 
@@ -110,12 +97,14 @@ struct PullRequestCommentsView: View {
 private struct PullRequestCommentCard: View {
   let comment: PullRequestCommentRow
   let providerName: String
+  let hue: Double?
   let open: (@MainActor (URL) -> Void)?
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
       HStack(spacing: Theme.Spacing.small) {
-        Text(comment.author).font(.callout.weight(.semibold))
+        PullRequestAuthorAvatar(author: comment.author, hue: hue)
+        Text(comment.author).font(.callout.weight(.semibold)).lineLimit(1)
         if let date = comment.date {
           Text(Theme.relativeDate(date, now: .now))
             .font(.caption)
@@ -204,4 +193,36 @@ struct PullRequestTimelineRowView: View {
 
   /// The first seven characters, as the provider abbreviates a commit.
   static func short(_ sha: String) -> String { String(sha.prefix(7)) }
+}
+
+/// An author's initial on a circle of their own hue, as the web's comment avatars; the hues
+/// spread evenly over the PR's authors.
+struct PullRequestAuthorAvatar: View {
+  let author: String
+  let hue: Double?
+
+  var body: some View {
+    Text(author.first.map { String($0).uppercased() } ?? "?")
+      .font(.system(size: 10, weight: .semibold))
+      .foregroundStyle(hue == nil ? Color.secondary : Color.white)
+      .frame(width: 18, height: 18)
+      .background(
+        hue.map { Color(hue: $0 / 360, saturation: 0.55, brightness: 0.62) }
+          ?? Color.secondary.opacity(0.2),
+        in: Circle()
+      )
+      .accessibilityHidden(true)
+  }
+
+  /// Each author's hue in degrees, by lowercased name: evenly spaced, authors sorted by their
+  /// reversed names so shared suffixes sit together, as the web's `pullRequestAuthorHues`.
+  static func hues(_ authors: [String]) -> [String: Double] {
+    let unique = Set(authors.map { $0.lowercased() }).sorted {
+      String($0.reversed()) < String($1.reversed())
+    }
+    return Dictionary(
+      uniqueKeysWithValues: unique.enumerated().map { index, author in
+        (author, Double(index) * 360 / Double(unique.count))
+      })
+  }
 }

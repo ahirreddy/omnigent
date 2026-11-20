@@ -18,6 +18,8 @@ struct WorkspacePanelSlots {
   let permissionLevel: Int64?
   /// The caller can change the session, so the Pull Requests tab offers its changes.
   var canEdit = true
+  /// The session's managed sandbox, for the Pull Requests tab's offline wording.
+  var pullRequestSandbox = PullRequestSandbox.awake
   /// Starts a side chat; `nil` hides it.
   var newSideChat: (@MainActor () -> Void)?
   /// The Agents tab; `nil` lists the conversation's own sub-agents.
@@ -38,7 +40,8 @@ struct WorkspacePanelSlots {
     if let panel {
       slots.pullRequests = PullRequestAdapter.state(panel)
       slots.refreshPullRequests = { Task { await panel.reloadPullRequests() } }
-      slots.pullRequestPanel = PullRequestPanelSlots.extras(panel, canEdit: canEdit)
+      slots.pullRequestPanel = PullRequestPanelSlots.extras(
+        panel, canEdit: canEdit, sandbox: pullRequestSandbox)
     }
     guard let workspace else { return slots }
     let mention = composer.map { composer in { (path: String) in composer.addMention(path) } }

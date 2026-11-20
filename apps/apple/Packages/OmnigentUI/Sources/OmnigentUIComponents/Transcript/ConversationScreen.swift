@@ -198,9 +198,16 @@ extension ConversationScreen {
       approvableCardID: approveCandidate?.cardID)
   }
 
-  /// A reply to selected text lands in the composer, focused for typing.
+  /// A reply to selected text lands in the composer, focused for typing, as does a key typed
+  /// in the transcript (the web's `useTypeToComposer`).
   private var transcriptActions: ConversationActions {
     var actions = actions
+    if !showsTerminal, composerState.availability == .available {
+      actions.typeIntoComposer = { [draft] characters in
+        draft.set(draft.get() + characters)
+        focusRequest += 1
+      }
+    }
     if let reply = actions.replyWithSelection {
       actions.replyWithSelection = { text in
         reply(text)

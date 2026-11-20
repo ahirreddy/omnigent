@@ -119,6 +119,10 @@ pub struct McpRow {
     pub plugin: Option<String>,
     /// Turned off for Omnigent sessions.
     pub is_off: bool,
+    /// Its configured name, which the tool probe asks for.
+    pub name: String,
+    /// The plugin server's id, which the tool probe names.
+    pub source_id: Option<String>,
 }
 
 /// A row of the Skills tab, or a plugin's skill.
@@ -241,6 +245,8 @@ fn mcp_row(family: &str, server: &HostMcpServer) -> McpRow {
         ]),
         plugin: server.plugin.clone(),
         is_off: server.enabled == Some(false),
+        name: server.name.clone(),
+        source_id: server.source_id.clone(),
     }
 }
 
@@ -403,6 +409,8 @@ fn plugin_row(family: &str, plugin: &HostPlugin, servers: &[&HostMcpServer]) -> 
                     detail: None,
                     plugin: Some(plugin.name.clone()),
                     is_off: inventory.is_some_and(|server| server.enabled == Some(false)),
+                    name: name.clone(),
+                    source_id: entry.clone(),
                 }
             })
             .collect()

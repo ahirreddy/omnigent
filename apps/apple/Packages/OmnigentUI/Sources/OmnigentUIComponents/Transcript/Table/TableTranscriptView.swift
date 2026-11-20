@@ -115,6 +115,13 @@
       .overlay(alignment: .bottom) {
         TableJumpPill(model: pill) { jumpToLatest() }
       }
+      #if os(iOS)
+        .overlay(alignment: .bottomTrailing) {
+          TranscriptMessageStepper(
+            isShown: keys.hasUserMessages, previous: { controller.step(.previous) },
+            next: { controller.step(.next) })
+        }
+      #endif
       .countsRenders("transcript")
     }
 
@@ -225,11 +232,11 @@
         .onChange(of: isReadByAssistiveClient, initial: true) { _, isRead in
           controller.setReadByAssistiveClient(isRead)
         }
-        // Previous and next need a second message to move between.
-        .onChange(of: state.rows.count { $0.role == .user } > 1, initial: true) { _, several in
-          if keys.hasUserMessages != several { keys.hasUserMessages = several }
-        }
       #endif
+      // Previous and next need a second message to move between.
+      .onChange(of: state.rows.count { $0.role == .user } > 1, initial: true) { _, several in
+        if keys.hasUserMessages != several { keys.hasUserMessages = several }
+      }
       .modifier(PacedWhileShown(pacer: pacer))
       .modifier(TableShownWatch(controller: controller))
       .modifier(messageFocus(state))

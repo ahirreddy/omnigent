@@ -525,6 +525,33 @@ pub struct PullRequestInfo {
     /// workspace.
     #[uniffi(default)]
     pub provider: Option<String>,
+    /// The accounts the provider's CLI is signed in as.
+    #[uniffi(default)]
+    pub accounts: Vec<PullRequestAccount>,
+    /// The account the host reads and writes this PR as.
+    #[uniffi(default)]
+    pub selected_account: Option<String>,
+    /// What the provider calls a PR ("merge request"); `None` for "pull request".
+    #[uniffi(default)]
+    pub request_name: Option<String>,
+}
+
+/// An account the provider's CLI is signed in as on the host.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct PullRequestAccount {
+    /// The login.
+    pub login: String,
+    /// The CLI's active account for the host.
+    pub active: bool,
+}
+
+impl From<core::PullRequestAccount> for PullRequestAccount {
+    fn from(account: core::PullRequestAccount) -> Self {
+        Self {
+            login: account.login,
+            active: account.active,
+        }
+    }
 }
 
 /// How often a reader re-reads a PR's info, in milliseconds; `None` rests until a turn ends,
@@ -588,6 +615,9 @@ impl From<core::PullRequestInfo> for PullRequestInfo {
             pull_request: info.pull_request.map(Into::into),
             polling: info.polling.into(),
             provider: info.provider,
+            accounts: info.accounts.into_iter().map(Into::into).collect(),
+            selected_account: info.selected_account,
+            request_name: info.request_name,
         }
     }
 }
@@ -922,6 +952,52 @@ impl ClientCore {
         self.sessions()
             .merge_pull_request(&session_id, &pr_url, method.into(), &expected_head)
             .await
+            .map_err(CoreError::from)
+    }
+
+    /// Merges `pr_url` as `merge_pull_request` does, through the host's `merge-as` route as
+    /// `account`.
+    ///
+    /// # Errors
+    ///
+    /// As `merge_pull_request`; `Rejected` saying so when the server or host can't merge as a
+    /// chosen account.
+    pub async fn merge_pull_request_as(
+        &self,
+        session_id: String,
+        pr_url: String,
+        method: MergeMethod,
+        expected_head: String,
+        account: String,
+    ) -> Result<(), CoreError> {
+        self.sessions()
+            .merge_pull_request_as(
+                &session_id,
+                &pr_url,
+                method.into(),
+                &expected_head,
+                Some(&account),
+            )
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// Saves the provider account the host reads and writes the session's PRs as, for
+    /// `pr_url`'s repository; answers the info read as that account.
+    ///
+    /// # Errors
+    ///
+    /// As `link_pull_request`.
+    pub async fn set_pull_request_account(
+        &self,
+        session_id: String,
+        pr_url: Option<String>,
+        account: String,
+    ) -> Result<PullRequestInfo, CoreError> {
+        self.sessions()
+            .set_pull_request_account(&session_id, pr_url.as_deref(), &account)
+            .await
+            .map(Into::into)
             .map_err(CoreError::from)
     }
 

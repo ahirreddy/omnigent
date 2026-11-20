@@ -1,9 +1,13 @@
 import SwiftUI
 
-/// The PR's reviewers; when editable, a picker requests reviews and a pending request can be
-/// withdrawn from its row's menu.
+/// The PR's reviewers with their review states; when editable, a picker requests reviews, and
+/// each row re-requests a review or withdraws a pending request, as the web's.
 struct PullRequestReviewersSection: View {
   let reviewers: [PullRequestChip]
+  /// Chip ids with a pending request.
+  var requested: Set<String> = []
+  /// The PR's author, left out of the picker.
+  var author: String?
   let editable: Bool
   let extras: PullRequestPanelExtras
 
@@ -26,35 +30,59 @@ struct PullRequestReviewersSection: View {
           .disabled(extras.isBusy)
           .help("Request a review")
           .popover(isPresented: $picking, arrowEdge: .bottom) {
-            PullRequestChoiceList(
-              title: "Request a review", choices: extras.reviewerChoices,
-              selected: Set(reviewers.map(\.id)),
+            PullRequestReviewerPicker(
+              choices: extras.reviewerChoices, requested: requested, author: author,
+              truncated: extras.reviewersTruncated,
               toggle: { id, add in actions.setReviewer?(id, add) })
           }
         }
       }
       if reviewers.isEmpty {
-        Text("No reviewers").font(.callout).foregroundStyle(.secondary)
+        Text("No reviewers assigned.").font(.callout).foregroundStyle(.secondary)
       }
       ForEach(reviewers) { reviewer in
-        HStack(spacing: Theme.Spacing.small) {
-          Image(systemName: reviewer.systemImage ?? "person")
-            .foregroundStyle(.secondary)
-            .frame(width: 16)
-            .accessibilityHidden(true)
-          Text(reviewer.title).lineLimit(1)
-          Spacer(minLength: 0)
-          if let detail = reviewer.detail {
-            Text(detail).font(.caption).foregroundStyle(.secondary)
-          }
+        row(reviewer)
+      }
+    }
+  }
+
+  private func row(_ reviewer: PullRequestChip) -> some View {
+    let pending = requested.contains(reviewer.id)
+    let subject = reviewer.id.hasPrefix("team:") ? "Team \(reviewer.title)" : reviewer.title
+    return HStack(spacing: Theme.Spacing.small) {
+      Image(systemName: reviewer.systemImage ?? "person")
+        .foregroundStyle(.secondary)
+        .frame(width: 16)
+        .accessibilityHidden(true)
+      Text(reviewer.title).lineLimit(1)
+      Spacer(minLength: 0)
+      if let detail = reviewer.detail {
+        Text(detail).font(.caption).foregroundStyle(.secondary)
+      }
+      if canEdit {
+        Button {
+          actions.setReviewer?(reviewer.id, !pending)
+        } label: {
+          Image(systemName: pending ? "xmark" : "arrow.clockwise")
+            .accessibilityLabel(
+              pending
+                ? "Withdraw review request from \(subject)" : "Re-request review from \(subject)")
         }
-        .accessibilityElement(children: .combine)
-        .contextMenu {
-          if canEdit {
-            Button("Withdraw Request", role: .destructive) {
-              actions.setReviewer?(reviewer.id, false)
-            }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .disabled(extras.isBusy)
+        .help(pending ? "Withdraw review request" : "Re-request review")
+      }
+    }
+    .accessibilityElement(children: .combine)
+    .contextMenu {
+      if canEdit {
+        if pending {
+          Button("Withdraw Review Request", role: .destructive) {
+            actions.setReviewer?(reviewer.id, false)
           }
+        } else {
+          Button("Re-request Review") { actions.setReviewer?(reviewer.id, true) }
         }
       }
     }

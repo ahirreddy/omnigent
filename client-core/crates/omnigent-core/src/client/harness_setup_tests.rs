@@ -373,3 +373,37 @@ fn unreadable_detected_credentials_and_install_versions_name_their_route() {
         Err(SessionError::DeliveryUncertain { detail }) if detail.contains("unreadable")
     ));
 }
+
+#[test]
+fn an_account_probe_applies_the_hosts_accounts_and_an_older_server_opts_out() {
+    let core = connected(RouteTransport::local());
+    core.transport().enqueue(
+        "POST",
+        "/v1/hosts/h1/harnesses/accounts/refresh",
+        vec![
+            Reply::json(
+                200,
+                r#"{"harness_accounts":{"codex":{"kind":"chatgpt","email":"a@example.com"}}}"#,
+            ),
+            Reply::json(404, r#"{"detail":"Not Found"}"#),
+        ],
+    );
+    let snapshot = block_on(core.refresh_harness_accounts("h1"))
+        .unwrap()
+        .unwrap();
+    assert!(snapshot.harnesses.is_none(), "readiness stays as it was");
+    assert!(
+        snapshot
+            .accounts
+            .is_some_and(|accounts| accounts.contains_key("codex"))
+    );
+    assert!(
+        block_on(core.refresh_harness_accounts("h1"))
+            .unwrap()
+            .is_none()
+    );
+    assert!(matches!(
+        block_on(core.refresh_harness_accounts("../x")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}

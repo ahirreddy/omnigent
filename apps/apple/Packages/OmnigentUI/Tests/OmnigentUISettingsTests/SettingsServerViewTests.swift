@@ -75,12 +75,13 @@
       #expect(log.entries == ["load \(selected.rawValue)"])
     }
 
-    @Test("the sidebar's sections keep Admin and Archived apart, each pane once")
+    @Test("the sidebar's sections keep Customize, Admin and Archived apart, each pane once")
     func sidebar() throws {
       let screen = screen(state())
       defer { screen.close() }
       let shown = try screen.shownText()
       #expect(shown.contains("Admin"))
+      #expect(shown.contains("Customize"))
       for pane in ServerSettingsPane.allCases {
         #expect(shown.contains(pane.title), "\(pane)")
       }

@@ -216,7 +216,7 @@
           $0.showsLabels = true
         }, spy: PullRequestSpy())
       defer { screen.close() }
-      for line in ["REVIEWERS", "No reviewers", "LABELS", "None yet"] {
+      for line in ["REVIEWERS", "No reviewers assigned.", "LABELS", "None yet"] {
         #expect(try screen.shows(line))
       }
       // Nothing is editable here.
@@ -236,7 +236,7 @@
       for line in ["sam", "Approved", "kim", "bug", "plain"] {
         #expect(try screen.shows(line))
       }
-      #expect(try !screen.shows("No reviewers"))
+      #expect(try !screen.shows("No reviewers assigned."))
       #expect(try !screen.shows("None yet"))
     }
 
@@ -257,18 +257,26 @@
       #expect(spy.calls == ["load reviewers", "load labels"])
     }
 
-    @Test("A review request can be withdrawn from its row, when editable")
+    @Test("A pending request can be withdrawn from its row, and a review re-requested")
     func withdraw() throws {
       let spy = PullRequestSpy()
       let section = PullRequestReviewersSection(
-        reviewers: [sam], editable: true, extras: spy.extras)
+        reviewers: [sam], requested: ["sam"], editable: true, extras: spy.extras)
       let screen = OffscreenWindow(AnyView(section), width: 400, height: 200)
       defer { screen.close() }
       let rowMiddle = try chipCenter(in: screen, x: 30)
       let menu = try #require(try screen.contextMenu(at: rowMiddle))
-      #expect(menu.titles == ["Withdraw Request"])
-      try screen.choose("Withdraw Request", in: menu)
+      #expect(menu.titles == ["Withdraw Review Request"])
+      try screen.choose("Withdraw Review Request", in: menu)
       #expect(spy.calls == ["reviewer sam false"])
+
+      let reviewed = OffscreenWindow(
+        AnyView(PullRequestReviewersSection(reviewers: [sam], editable: true, extras: spy.extras)),
+        width: 400, height: 200)
+      defer { reviewed.close() }
+      // The plus, then the row's re-request button.
+      try reviewed.clickControl(at: reviewed.controlFrames.count - 1)
+      #expect(spy.calls == ["reviewer sam false", "reviewer sam true"])
     }
 
     @Test("A label can be removed from its chip, when editable")

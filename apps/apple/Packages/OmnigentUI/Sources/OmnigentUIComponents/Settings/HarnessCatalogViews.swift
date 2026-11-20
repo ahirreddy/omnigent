@@ -24,6 +24,7 @@ struct HarnessCatalogList: View {
   let tab: HarnessCatalogState.Tab
   let openSkill: (@MainActor (HarnessCatalogState.Skill) -> Void)?
   let openPlugin: @MainActor (HarnessCatalogState.Plugin) -> Void
+  var probeServer: (@MainActor (String) -> Void)?
 
   var body: some View {
     Section {
@@ -32,7 +33,13 @@ struct HarnessCatalogList: View {
         if let text = catalog.serversNotice {
           notice(text)
         } else {
-          ForEach(catalog.servers) { HarnessServerRow(server: $0) }
+          ForEach(catalog.servers) { server in
+            if server.probes, !server.isOff, let probeServer {
+              HarnessProbedServerRow(server: server, probe: probeServer)
+            } else {
+              HarnessServerRow(server: server)
+            }
+          }
         }
       case .skills:
         if let text = catalog.skillsNotice {

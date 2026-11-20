@@ -239,17 +239,39 @@ struct ConfigurationMenu: View {
     }
   }
 
+  /// The models; a long catalog from several creators opens one submenu per creator, the
+  /// picked model's marked, as the web's grouped model list.
+  @ViewBuilder
   private func modelPicker(_ select: @escaping @MainActor (String?) -> Void) -> some View {
-    Picker(
-      "Model",
-      selection: Binding(get: { configuration.pickedModelId }, set: { select($0) })
-    ) {
+    let selection = Binding(get: { configuration.pickedModelId }, set: { select($0) })
+    let groups = ModelCreator.groups(configuration.visibleModels)
+    Picker("Model", selection: selection) {
       Text(configuration.defaultModelTitle).tag(String?.none)
-      ForEach(configuration.visibleModels) { option in
-        Text(option.label).tag(Optional(option.id))
+      if groups.count == 1 {
+        ForEach(configuration.visibleModels) { option in
+          Text(option.label).tag(Optional(option.id))
+        }
       }
     }
     .pickerStyle(.inline)
+    if groups.count > 1 {
+      ForEach(groups, id: \.creator) { group in
+        Menu {
+          Picker(group.creator.label, selection: selection) {
+            ForEach(group.models) { option in Text(option.label).tag(Optional(option.id)) }
+          }
+          .pickerStyle(.inline)
+          .labelsHidden()
+        } label: {
+          if group.models.contains(where: { $0.id == configuration.pickedModelId }) {
+            Label(group.creator.label, systemImage: "checkmark")
+          } else {
+            Text(group.creator.label)
+          }
+        }
+        .accessibilityIdentifier("composer-model-creator-\(group.creator.id)")
+      }
+    }
   }
 
   private func effortPicker(_ select: @escaping @MainActor (String?) -> Void) -> some View {

@@ -5,6 +5,8 @@ use omnigent_core::harness_inventory::{
     self as core, InventoryRead, McpRow, PluginRow, SkillContent, SkillRow,
 };
 
+use omnigent_core::mcp_tools as mcp;
+
 use crate::client::ClientCore;
 use crate::errors::CoreError;
 
@@ -40,6 +42,15 @@ pub struct InventoryMcpServer {
     pub detail: Option<String>,
     /// Turned off for Omnigent sessions.
     pub is_off: bool,
+    /// Its configured name, which the tool probe asks for.
+    #[uniffi(default)]
+    pub name: String,
+    /// The plugin that ships it.
+    #[uniffi(default)]
+    pub plugin: Option<String>,
+    /// The plugin server's id.
+    #[uniffi(default)]
+    pub source_id: Option<String>,
 }
 
 impl From<McpRow> for InventoryMcpServer {
@@ -49,6 +60,81 @@ impl From<McpRow> for InventoryMcpServer {
             title: row.title,
             detail: row.detail,
             is_off: row.is_off,
+            name: row.name,
+            plugin: row.plugin,
+            source_id: row.source_id,
+        }
+    }
+}
+
+/// How the host's connection to an MCP server went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum McpConnection {
+    /// It answered with its tools.
+    Connected,
+    /// It needs a sign-in the harness's credentials can't stand in for.
+    NeedsAuth,
+    /// It couldn't be reached.
+    Unreachable,
+    /// It didn't answer in time.
+    Timeout,
+    /// Its configuration can't be probed.
+    Unsupported,
+}
+
+/// One tool an MCP server offers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct McpTool {
+    /// Its name.
+    pub name: String,
+    /// What it does.
+    pub description: Option<String>,
+}
+
+/// An MCP tool probe's outcome, or why the host couldn't probe.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum McpToolsRead {
+    /// The host probed the server.
+    Probed {
+        /// The tools.
+        tools: Vec<McpTool>,
+        /// How the connection went.
+        connection: McpConnection,
+        /// Only the first 500 are listed.
+        truncated: bool,
+    },
+    /// The server has no probe route.
+    RouteMissing,
+    /// The host predates the probe.
+    HostOutdated,
+    /// The host is busy probing other servers.
+    Busy,
+}
+
+impl From<mcp::McpToolsRead> for McpToolsRead {
+    fn from(read: mcp::McpToolsRead) -> Self {
+        match read {
+            mcp::McpToolsRead::Probed(found) => Self::Probed {
+                tools: found
+                    .tools
+                    .into_iter()
+                    .map(|tool| McpTool {
+                        name: tool.name,
+                        description: tool.description,
+                    })
+                    .collect(),
+                connection: match found.connection {
+                    mcp::McpConnection::Connected => McpConnection::Connected,
+                    mcp::McpConnection::NeedsAuth => McpConnection::NeedsAuth,
+                    mcp::McpConnection::Unreachable => McpConnection::Unreachable,
+                    mcp::McpConnection::Timeout => McpConnection::Timeout,
+                    mcp::McpConnection::Unsupported => McpConnection::Unsupported,
+                },
+                truncated: found.truncated,
+            },
+            mcp::McpToolsRead::RouteMissing => Self::RouteMissing,
+            mcp::McpToolsRead::HostOutdated => Self::HostOutdated,
+            mcp::McpToolsRead::Busy => Self::Busy,
         }
     }
 }
@@ -199,6 +285,32 @@ impl ClientCore {
             skills_read: read.skills.into(),
             plugins_read: read.plugins.into(),
         })
+    }
+
+    /// Asks `host_id` to connect to `harness`'s MCP server `server` and list its tools.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`, the read errors and `MalformedResponse`.
+    pub async fn mcp_server_tools(
+        &self,
+        host_id: String,
+        harness: String,
+        server: String,
+        plugin: Option<String>,
+        source_id: Option<String>,
+    ) -> Result<McpToolsRead, CoreError> {
+        self.sessions()
+            .mcp_server_tools(
+                &host_id,
+                &harness,
+                &server,
+                plugin.as_deref(),
+                source_id.as_deref(),
+            )
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
     }
 
     /// A skill's contents on `host_id` for `harness`.

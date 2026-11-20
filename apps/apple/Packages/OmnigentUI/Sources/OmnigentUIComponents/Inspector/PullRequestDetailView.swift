@@ -22,7 +22,9 @@ struct PullRequestDetailView: View {
       toolbar
       Divider()
       if linking, let link = actions.link {
-        PullRequestLinkField(isBusy: extras.isBusy, link: link, close: { linking = false })
+        PullRequestLinkField(
+          isBusy: extras.isBusy, link: link, close: { linking = false },
+          placeholder: extras.provider.linkPlaceholder)
         Divider()
       }
       if let error = extras.error {
@@ -41,7 +43,17 @@ struct PullRequestDetailView: View {
           if let refresh = actions.refresh { Button("Try Again", action: refresh) }
         }
       case .unavailable(let title, let message, let systemImage):
-        ContentUnavailableView(title, systemImage: systemImage, description: Text(message))
+        ContentUnavailableView {
+          Label(title, systemImage: systemImage)
+        } description: {
+          Text(Self.inlineCode(message))
+        } actions: {
+          if !extras.accountChoices.isEmpty, let setAccount = actions.setAccount {
+            PullRequestAccountPicker(
+              title: "Account", accounts: extras.accountChoices, isBusy: extras.isBusy,
+              choose: setAccount)
+          }
+        }
       case .stored(let state):
         PullRequestStoredView(state: state, open: open)
       case .ready(let state):
@@ -142,6 +154,45 @@ struct PullRequestDetailView: View {
       tab = .changes
       actions.changesOpened?()
     }
+  }
+}
+
+extension PullRequestDetailView {
+  /// The host's copy with its `backticked` commands set in the monospaced font, as the web's
+  /// `codeSpans`; plain text when it isn't valid Markdown.
+  static func inlineCode(_ text: String) -> AttributedString {
+    let options = AttributedString.MarkdownParsingOptions(
+      interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+  }
+}
+
+/// The provider accounts to read and write the PR as, the one in use selected; choosing one
+/// saves it for the session's repository.
+struct PullRequestAccountPicker: View {
+  let title: String
+  let accounts: [PullRequestAccountChoice]
+  let isBusy: Bool
+  let choose: @MainActor (String) -> Void
+
+  var body: some View {
+    Picker(
+      title,
+      selection: Binding(
+        get: { accounts.first(where: \.selected)?.login ?? "" },
+        set: { login in if !login.isEmpty { choose(login) } })
+    ) {
+      if !accounts.contains(where: \.selected) {
+        Text("Choose an account").tag("")
+      }
+      ForEach(accounts) { account in
+        Text(account.title).tag(account.login)
+      }
+    }
+    .pickerStyle(.menu)
+    .fixedSize()
+    .disabled(isBusy)
+    .accessibilityIdentifier("pr-account")
   }
 }
 

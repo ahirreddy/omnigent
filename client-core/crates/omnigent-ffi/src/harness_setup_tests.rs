@@ -89,6 +89,7 @@ fn catalog(harnesses: Vec<HarnessAvailabilityEntry>) -> HarnessSetupCatalog {
                 enabled: true,
             }]),
             login_supported: true,
+            accounts_supported: true,
         }],
     }
 }

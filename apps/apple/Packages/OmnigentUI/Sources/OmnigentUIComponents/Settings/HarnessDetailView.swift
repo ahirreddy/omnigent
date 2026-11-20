@@ -143,6 +143,8 @@ public struct HarnessDetailActions {
   public var openSkill: (@MainActor (HarnessCatalogState.Skill) -> Void)?
   /// Closes the skill's page.
   public var closeSkill: (@MainActor () -> Void)?
+  /// Probes an opened MCP server row's tools, by its id.
+  public var probeServer: (@MainActor (String) -> Void)?
 
   /// Creates the actions.
   public init(
@@ -188,7 +190,7 @@ public struct HarnessDetailView: View {
         } else {
           HarnessCatalogList(
             catalog: catalog, tab: shown, openSkill: actions.openSkill,
-            openPlugin: { openPluginID = $0.id })
+            openPlugin: { openPluginID = $0.id }, probeServer: actions.probeServer)
         }
       }
     } else {

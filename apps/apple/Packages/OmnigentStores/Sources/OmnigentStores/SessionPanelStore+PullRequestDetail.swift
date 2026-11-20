@@ -76,6 +76,8 @@ nonisolated public enum PullRequestEdit: Equatable, Sendable {
   case details
   /// Replying to or starting a review thread.
   case reviewComment
+  /// Choosing the provider account.
+  case account
 }
 
 extension SessionPanelStore {
@@ -147,7 +149,7 @@ extension SessionPanelStore {
     guard current == detailGeneration, openPullRequest == url else { return }
     if detail != result { detail = result }
     if let pullRequest = result.value?.pullRequest {
-      setLiveCondition(pullRequest.condition, for: url)
+      setLive(pullRequest, for: url)
       let moved = files == .idle || filesHead != pullRequest.headSha
       if refreshingFiles || moved {
         await reloadFiles(url: url, pullRequest: pullRequest, generation: current)
@@ -226,9 +228,17 @@ extension SessionPanelStore {
         continue
       }
       guard let pullRequest = info.pullRequest, pullRequest.url == url else { continue }
-      setLiveCondition(pullRequest.condition, for: url)
+      setLive(pullRequest, for: url)
     }
+    if !open.isEmpty, linkedHostOffline != offline { linkedHostOffline = offline }
     return offline
+  }
+
+  /// Keeps a PR's condition and checks as its host read them, for the list rows and the chip.
+  func setLive(_ pullRequest: PullRequestDetail, for url: String) {
+    setLiveCondition(pullRequest.condition, for: url)
+    let checks = pullRequest.checksSupported ? pullRequest.checks : nil
+    if liveChecks[url] != checks { liveChecks[url] = checks }  // `nil` drops unreadable checks
   }
 
   func setLiveCondition(_ condition: PullRequestCondition, for url: String) {
