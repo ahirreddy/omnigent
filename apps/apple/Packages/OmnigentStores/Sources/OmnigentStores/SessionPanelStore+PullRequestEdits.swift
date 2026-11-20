@@ -107,21 +107,43 @@ extension SessionPanelStore {
   }
 
   /// Merges the open PR at the head the panel shows; GitHub refuses when the branch moved.
-  /// - Parameter method: How to merge.
+  /// - Parameters:
+  ///   - method: How to merge.
+  ///   - account: The provider account to merge as, through the host's `merge-as` route;
+  ///     `nil` merges as the saved account.
   /// - Returns: Whether the provider accepted the merge.
   @discardableResult
-  public func mergePullRequest(_ method: MergeMethod) async -> Bool {
+  public func mergePullRequest(_ method: MergeMethod, as account: String? = nil) async -> Bool {
     guard let url = openPullRequest, let head = detail.value?.pullRequest?.headSha else {
       return false
     }
     let merged: Void? = await edit(.merge) { core, session in
-      try await core.mergePullRequest(
-        sessionId: session, prUrl: url, method: method, expectedHead: head)
+      if let account {
+        try await core.mergePullRequestAs(
+          sessionId: session, prUrl: url, method: method, expectedHead: head, account: account)
+      } else {
+        try await core.mergePullRequest(
+          sessionId: session, prUrl: url, method: method, expectedHead: head)
+      }
     }
     guard merged != nil else { return false }
     await reloadDetail()
     await reloadPullRequests()
     return true
+  }
+
+  /// Saves the provider account the host reads and writes the open PR as (the web's
+  /// account picker), and shows the PR as read with it.
+  /// - Parameter account: The login.
+  public func setAccount(_ account: String) async {
+    let url = openPullRequest
+    let info = await edit(.account) { core, session in
+      try await core.setPullRequestAccount(sessionId: session, prUrl: url, account: account)
+    }
+    guard info != nil, openPullRequest == url else { return }
+    // Merge options name the account's last-used method.
+    mergeOptions = .idle
+    await reloadDetail()
   }
 
   /// Turns off the open PR's auto-merge.

@@ -57,6 +57,10 @@ public final class SessionPanelStore {
   public internal(set) var editError: CoreError?
   /// Each linked pull request's condition as its host last read it, for the composer's chip.
   public internal(set) var liveConditions: [String: PullRequestCondition] = [:]
+  /// Each linked pull request's checks as its host last read them, where it can read them.
+  public internal(set) var liveChecks: [String: PullRequestChecks] = [:]
+  /// The last read of the linked pull requests found the session's host offline.
+  public internal(set) var linkedHostOffline = false
   /// The open pull request's inline review threads, read while the Changes tab shows.
   public internal(set) var reviewThreads: CreationLoad<ReviewThreadsPage> = .idle
   /// The lines a new review thread is being written on, and its text.

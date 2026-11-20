@@ -38,7 +38,8 @@ struct PullRequestSummaryView: View {
   @ViewBuilder private var people: some View {
     if state.showsReviewers {
       PullRequestReviewersSection(
-        reviewers: state.reviewers, editable: state.canEditReviewers, extras: extras
+        reviewers: state.reviewers, requested: state.requestedReviewers, author: state.author,
+        editable: state.canEditReviewers, extras: extras
       )
       .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -149,7 +150,13 @@ struct PullRequestMergeSection: View {
         mergeButton.disabled(true)
         Text(hint).font(.callout).foregroundStyle(.secondary)
       case .ready(let hint):
-        mergeButton.disabled(extras.isBusy || actions.merge == nil)
+        if !state.mergeAccounts.isEmpty, let setAccount = actions.setAccount {
+          // Reading a PR doesn't mean an account may merge it, so the merge picks its own.
+          PullRequestAccountPicker(
+            title: "Merge as", accounts: state.mergeAccounts, isBusy: extras.isBusy,
+            choose: setAccount)
+        }
+        mergeButton.disabled(extras.isBusy || actions.merge == nil || accountUnknown)
         if let hint { Text(hint).font(.callout).foregroundStyle(.secondary) }
       }
       if confirming, case .failed(let message) = extras.mergeMethods {
@@ -161,13 +168,29 @@ struct PullRequestMergeSection: View {
       titleVisibility: .visible
     ) {
       ForEach(methods) { method in
-        Button(method.title) { actions.merge?(method.id) }
+        Button(method.title) {
+          if let account = mergeAccount, let mergeAs = actions.mergeAs {
+            mergeAs(method.id, account)
+          } else {
+            actions.merge?(method.id)
+          }
+        }
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("\u{201C}\(state.title)\u{201D} will be merged. This can't be undone.")
+      Text(
+        "\u{201C}\(state.title)\u{201D} will be merged\(mergeAccount.map { " as \($0)" } ?? ""). "
+          + "This can't be undone.")
     }
   }
+
+  /// The account the merge runs as, when the merge picks one.
+  private var mergeAccount: String? {
+    state.mergeAccounts.isEmpty ? nil : state.mergeAccounts.first(where: \.selected)?.login
+  }
+
+  /// The merge picks an account, but none is chosen yet.
+  private var accountUnknown: Bool { !state.mergeAccounts.isEmpty && mergeAccount == nil }
 
   private var methods: [PullRequestChip] {
     if case .loaded(let methods) = extras.mergeMethods { return methods }

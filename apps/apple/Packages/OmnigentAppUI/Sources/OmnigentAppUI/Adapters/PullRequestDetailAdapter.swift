@@ -10,10 +10,13 @@ enum PullRequestDetailAdapter {
   /// - Parameters:
   ///   - panel: The session's panel store.
   ///   - canEdit: The caller can change the session (not read-only).
+  ///   - sandbox: The session's sandbox, for the offline wording.
   /// - Returns: The content.
-  static func content(_ panel: SessionPanelStore, canEdit: Bool) -> PullRequestDetailContent? {
+  static func content(
+    _ panel: SessionPanelStore, canEdit: Bool, sandbox: PullRequestSandbox = .awake
+  ) -> PullRequestDetailContent? {
     guard panel.openPullRequest != nil else { return nil }
-    if let stored = stored(panel) { return stored }
+    if let stored = stored(panel, sandbox: sandbox) { return stored }
     let content = content(detail: panel.detail, files: panel.files.value, canEdit: canEdit)
     // The tab counts the provider's list, as the web's does.
     if case .ready(var state) = content, let listed = panel.changes.value, listed.available {
@@ -95,6 +98,15 @@ enum PullRequestDetailAdapter {
     state.canEditLabels = canEdit && caps.labelEditing
     state.canEditReviewers = canEdit && caps.reviewerEditing
     state.canComment = canEdit && caps.commentPosting
+    state.author = pullRequest.author
+    state.requestedReviewers = Set(
+      (pullRequest.reviewers ?? []).filter { $0.state == .pending }.map {
+        reviewerID(login: $0.login, kind: $0.kind)
+      })
+    state.account = info.selectedAccount
+    if caps.accountSwitching, caps.mergeAsAccount, info.accounts.count > 1 {
+      state.mergeAccounts = accountChoices(info)
+    }
     return state
   }
 
@@ -186,46 +198,5 @@ enum PullRequestDetailAdapter {
     PullRequestChip(
       id: label.name, title: label.name, detail: label.description,
       color: label.color.flatMap { UInt32($0, radix: 16) })
-  }
-
-  private static func unavailable(_ info: PullRequestInfo) -> PullRequestDetailContent {
-    let provider = info.providerName ?? "the git provider"
-    switch info.availability {
-    case .notAGitRepository:
-      return .unavailable(
-        title: "Not a git repository",
-        message:
-          "This workspace isn\u{2019}t a git checkout, so there\u{2019}s no branch or PR to show.",
-        systemImage: "arrow.triangle.branch")
-    case .hostOutdated:
-      return .unavailable(
-        title: "Update your host",
-        message: "The Pull Requests tab needs the host running Omnigent 0.13.0 or later.",
-        systemImage: "arrow.down.circle")
-    case .unsupportedRemote(let host):
-      return .unavailable(
-        title: "No supported remote",
-        message: host.map {
-          "The workspace\u{2019}s remote is on \($0), which isn\u{2019}t a supported git provider."
-        }
-          ?? "This workspace\u{2019}s remote isn\u{2019}t on a supported git provider.",
-        systemImage: "server.rack")
-    case .noCli(let cli):
-      return .unavailable(
-        title: "\(cli) not found",
-        message: "Install \(cli) on the host to see this pull request and its checks.",
-        systemImage: "terminal")
-    case .repositoryUnresolved(let hint):
-      return .unavailable(
-        title: "Can\u{2019}t reach the upstream repo",
-        message: hint ?? "Sign in to \(provider) on the session\u{2019}s host, then refresh.",
-        systemImage: "key")
-    case .ready, .noPullRequest, .unavailable:
-      return .unavailable(
-        title: "Pull request unavailable",
-        message: info.warnings.first
-          ?? "The host couldn\u{2019}t read this pull request from \(provider).",
-        systemImage: "exclamationmark.circle")
-    }
   }
 }

@@ -13,10 +13,20 @@ enum PullRequestPanelSlots {
   /// - Parameters:
   ///   - panel: The session's panel store.
   ///   - canEdit: The caller can change the session; read-only viewers only browse.
+  ///   - sandbox: The session's managed sandbox, for the offline wording.
   /// - Returns: The extras.
-  static func extras(_ panel: SessionPanelStore, canEdit: Bool) -> PullRequestPanelExtras {
+  static func extras(
+    _ panel: SessionPanelStore, canEdit: Bool, sandbox: PullRequestSandbox = .awake
+  ) -> PullRequestPanelExtras {
     var extras = PullRequestPanelExtras()
-    extras.detail = PullRequestDetailAdapter.content(panel, canEdit: canEdit)
+    extras.detail = PullRequestDetailAdapter.content(panel, canEdit: canEdit, sandbox: sandbox)
+    extras.rows = PullRequestAdapter.rows(panel, sandbox: sandbox)
+    extras.provider = PullRequestAdapter.wording(panel)
+    extras.notSyncedHint = PullRequestAdapter.notSyncedHint(panel, sandbox: sandbox)
+    if canEdit {
+      extras.accountChoices = PullRequestDetailAdapter.unresolvedAccountChoices(panel.detail)
+    }
+    extras.reviewersTruncated = panel.reviewCandidates.value?.hasMore == true
     if panel.openPullRequest != nil { extras.changes = changes(panel, canEdit: canEdit) }
     extras.opensChanges = panel.opensChangesTab
     extras.labelChoices = choices(panel.repositoryLabels) {
@@ -68,6 +78,11 @@ enum PullRequestPanelSlots {
       guard let method = mergeMethod(id) else { return }
       Task { await panel.mergePullRequest(method) }
     }
+    actions.mergeAs = { id, account in
+      guard let method = mergeMethod(id) else { return }
+      Task { await panel.mergePullRequest(method, as: account) }
+    }
+    actions.setAccount = { account in Task { await panel.setAccount(account) } }
     actions.disableAutoMerge = { Task { await panel.disableAutoMerge() } }
     actions.commentProblem = { reviewCommentProblem(body: $0) }
     actions.comment = { body, done in

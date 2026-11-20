@@ -128,9 +128,10 @@ enum ReviewThreadsAdapter {
     var unplacedLocal: [PullRequestLocalCommentState] = []
     for thread in context.threads where paths.contains(thread.path) {
       guard !thread.outdated || earlierShown else { continue }
-      let state = threadState(
+      var state = threadState(
         thread, reply: context.replies[thread.id], canEdit: context.permissions.canEdit,
         caps: context.caps)
+      state.suggestionSource = suggestionSource(thread, file: context.matching ? file.diff : nil)
       if context.matching, let diff = file.diff,
         let anchor = anchor(thread, in: diff, path: file.path)
       {
@@ -198,6 +199,8 @@ enum ReviewThreadsAdapter {
   ) -> PullRequestReviewActions {
     var actions = PullRequestReviewActions()
     actions.isBusy = panel.pendingEdit != nil
+    actions.account = panel.detail.value?.selectedAccount
+    actions.providerName = panel.detail.value?.providerName ?? "GitHub"
     actions.loadOlder = { id in Task { await panel.loadOlderReviewComments(id) } }
     guard permissions.canEdit else { return actions }
     if caps.reviewThreadReplies {
