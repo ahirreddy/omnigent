@@ -17,11 +17,11 @@
 
     static func hosted(
       directory: ServerDirectory = ServerDirectory(), local: LocalSetupState? = ready,
-      spy: AuthSpy, banner: AuthBanner? = nil
+      spy: AuthSpy, banner: AuthBanner? = nil, canInstall: Bool = true
     ) -> OffscreenWindow<some View> {
       let flow = OnboardingFlowView(
         directory: directory, prefill: "", banner: banner, localSetup: local, validator: .preview,
-        actions: spy.actions(localSetup: spy.setup()))
+        actions: spy.actions(localSetup: spy.setup(canInstall: canInstall)))
       return OffscreenWindow(flow.environment(\.openURL, spy.openURL), width: 620, height: 820)
     }
   }

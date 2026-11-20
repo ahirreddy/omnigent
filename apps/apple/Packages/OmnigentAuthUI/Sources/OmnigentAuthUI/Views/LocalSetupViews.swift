@@ -179,17 +179,76 @@ struct InstallCLIView: View {
   }
 }
 
-/// "Where do you work today?": whether this Mac runs agents for the server being joined.
+/// "Where do you work today?": whether this Mac runs agents for the server being joined. Without
+/// the CLI, where the app can install it, "How do you want to join?": Just join, or Install CLI
+/// first, as the web's runner step.
 struct RunnerChoiceView: View {
   let serverUrl: String
   let directory: ServerDirectory
   let localSetup: LocalSetupState?
+  /// The app can install the CLI here.
+  var canInstall = false
   let back: () -> Void
-  let proceed: (Bool) -> Void
+  let proceed: (RunnerChoice) -> Void
 
   @State private var hostHere = true
+  @State private var installs = false
 
   var body: some View {
+    if offersInstall { joinChoice } else { runnerChoice }
+  }
+
+  /// Without the CLI: open the server as it is, or install the CLI first.
+  private var joinChoice: some View {
+    AuthCard(
+      systemImage: "desktopcomputer", title: "How do you want to join?",
+      subtitle: "Join \(serverName) and choose where its agents run."
+    ) {
+      Picker("How do you want to join?", selection: $installs) {
+        choiceLabel(
+          "Just join", detail: "Open the server without installing anything.",
+          systemImage: "arrow.right.circle"
+        ).tag(false)
+        choiceLabel(
+          "Install CLI first",
+          detail: "The server will be able to run agents on this Mac.",
+          systemImage: "laptopcomputer"
+        ).tag(true)
+      }
+      .labelsHidden()
+      #if os(macOS)
+        .pickerStyle(.radioGroup)
+      #else
+        .pickerStyle(.inline)
+      #endif
+      .accessibilityIdentifier("auth.join-choice")
+    } buttons: {
+      AuthButton(title: "Back", kind: .cancel, identifier: "auth.back", action: back)
+      AuthButton(
+        title: installs ? "Install Omnigent" : "Open Omnigent", kind: .primary,
+        identifier: "auth.join"
+      ) {
+        proceed(installs ? .installFirst : .join)
+      }
+    }
+  }
+
+  private func choiceLabel(_ title: String, detail: String, systemImage: String) -> some View {
+    Label {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+        Text(detail).font(.caption).foregroundStyle(.secondary)
+      }
+    } icon: {
+      Image(systemName: systemImage)
+    }
+  }
+
+  private var offersInstall: Bool {
+    canInstall && localSetup?.needsCLI == true
+  }
+
+  private var runnerChoice: some View {
     AuthCard(
       systemImage: "desktopcomputer", title: "Where do you work today?",
       subtitle: "Join \(serverName) and choose where its agents run."
@@ -222,7 +281,7 @@ struct RunnerChoiceView: View {
     } buttons: {
       AuthButton(title: "Back", kind: .cancel, identifier: "auth.back", action: back)
       AuthButton(title: "Join", kind: .primary, identifier: "auth.join") {
-        proceed(hostHere && canHost)
+        proceed(hostHere && canHost ? .host : .join)
       }
     }
   }
@@ -235,5 +294,48 @@ struct RunnerChoiceView: View {
     directory.managed.first { $0.url == serverUrl }.map {
       ServerText.escaped($0.displayName, limit: 80)
     } ?? ServerIdentity.hostLabel(serverUrl)
+  }
+}
+
+/// "Install CLI first": installing the CLI before joining, with Cancel while it runs (the
+/// installer keeps going, but the join doesn't wait for it), and on failure Back, Continue
+/// Anyway (join without hosting) and Retry, as the web's setup step.
+struct RunnerInstallView: View {
+  let state: LocalSetupState
+  let back: () -> Void
+  let retry: () -> Void
+  let join: () -> Void
+  let installed: () -> Void
+
+  var body: some View {
+    AuthCard(
+      systemImage: failure == nil ? "terminal" : "exclamationmark.triangle",
+      title: failure == nil ? "Installing the Omnigent CLI" : "Couldn\u{2019}t set up Omnigent",
+      subtitle: failure == nil
+        ? "Installing uv and the Omnigent CLI. This can take a few minutes."
+        : "The CLI didn\u{2019}t install, so this Mac can\u{2019}t run agents yet.",
+      isProgress: failure == nil
+    ) {
+      if let failure { AuthBannerView(.notice(ServerText.escaped(failure, limit: 400))) }
+      LogTail(lines: state.log)
+    } buttons: {
+      if failure == nil {
+        AuthButton(title: "Cancel", kind: .cancel, identifier: "auth.cancel-install", action: back)
+      } else {
+        AuthButton(title: "Back", kind: .cancel, identifier: "auth.back", action: back)
+        AuthButton(
+          title: "Continue Anyway", kind: .secondary, identifier: "auth.continue-anyway",
+          action: join)
+        AuthButton(title: "Retry", kind: .primary, identifier: "auth.retry-install", action: retry)
+      }
+    }
+    .onChange(of: state.cli, initial: true) { _, cli in
+      if cli == .found { installed() }
+    }
+  }
+
+  private var failure: String? {
+    if case .failed(let reason) = state.install { return reason }
+    return nil
   }
 }

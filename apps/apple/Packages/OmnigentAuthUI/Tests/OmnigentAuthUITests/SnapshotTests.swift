@@ -88,11 +88,12 @@
       }
     }
 
-    @Test func rendersOnboardingSteps() throws {
+    /// Every step of the flow, with the setup state it shows.
+    static var onboardingShots: [OnboardingShot] {
       let log = [
         "Starting Omnigent server on http://127.0.0.1:6767", "Applying migrations\u{2026}",
       ]
-      let steps: [OnboardingShot] = [
+      return [
         OnboardingShot(
           id: "local-intro", step: .localIntro, LocalSetupState(cli: .found, server: .stopped)),
         OnboardingShot(
@@ -113,12 +114,36 @@
         ),
         OnboardingShot(
           id: "servers", step: .servers, LocalSetupState(cli: .found, server: .stopped)),
+        OnboardingShot(
+          id: "join-choice", step: .runner(serverUrl: AuthSamples.oidcUrl),
+          LocalSetupState(cli: .missing("omnigent was not found."), server: .stopped)
+        ),
+        OnboardingShot(
+          id: "install-first", step: .runnerInstall(serverUrl: AuthSamples.oidcUrl),
+          LocalSetupState(
+            cli: .missing("omnigent was not found."), server: .stopped, log: log,
+            install: .installing)
+        ),
+        OnboardingShot(
+          id: "install-first-failed", step: .runnerInstall(serverUrl: AuthSamples.oidcUrl),
+          LocalSetupState(
+            cli: .missing("omnigent was not found."), server: .stopped, log: log,
+            install: .failed("uv could not be downloaded."))
+        ),
       ]
+    }
+
+    @Test func rendersOnboardingSteps() throws {
+      let steps = Self.onboardingShots
+      // The app can install the CLI, so joining without it offers Install CLI first.
+      var actions = AuthActions.inert
+      actions.localSetup = LocalSetupActions(
+        start: {}, recheckCLI: {}, hostAfterSignIn: { _ in }, installCLI: {})
       for shot in steps {
         let (id, step, setup) = (shot.id, shot.step, shot.setup)
         let view = AuthContainer(presentation: .sheet) {
           OnboardingFlowView(
-            step: step, directory: AuthSamples.directory, localSetup: setup, actions: .inert)
+            step: step, directory: AuthSamples.directory, localSetup: setup, actions: actions)
         }
         let name = "auth-onboarding-\(id)-mac-light"
         let image = try Self.hostRender(view, width: .mac, scheme: .light)
