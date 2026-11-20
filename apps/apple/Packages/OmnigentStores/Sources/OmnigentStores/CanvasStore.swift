@@ -23,15 +23,14 @@ public final class CanvasStore {
   public private(set) var boardOf: [String: String] = [:]
   /// The board id of each project, in the projects' order.
   public private(set) var projectBoards: [String] = []
+  /// The board, and the session beside it, a `/canvas` link asks the page to show.
+  public var requestedLink: CanvasLinkRequest?
 
   private let core: ClientCore
   private let defaults: UserDefaults
   @ObservationIgnored private var key: String?
   @ObservationIgnored private var projects: [ProjectSummary] = []
   @ObservationIgnored private var viewerID: String?
-
-  /// The most spots kept; spots of sessions no longer listed go first.
-  static let maxSavedPositions = 5_000
 
   init(core: ClientCore, defaults: UserDefaults = .standard) {
     self.core = core
@@ -83,7 +82,8 @@ public final class CanvasStore {
   }
 
   /// Places every listed card on its board and saves each spot, grid slots included, so
-  /// nothing moves on a reload. Run after the sessions, projects or viewer change.
+  /// nothing moves on a reload; spots of sessions no longer listed (deleted, or gone from
+  /// the canvas) go, as the web's. Run after the sessions, projects or viewer change.
   /// - Parameters:
   ///   - projects: The caller's projects.
   ///   - viewerID: The signed-in user.
@@ -100,9 +100,8 @@ public final class CanvasStore {
       listed.map { ($0.id, canvasIdFor(session: $0, projects: projects, viewerId: viewerID)) },
       uniquingKeysWith: { first, _ in first })
     if nextBoards != boardOf { boardOf = nextBoards }
-    let merged = saved.merging(next) { _, new in new }
-    guard merged != saved else { return }
-    saved = pruned(merged, live: Set(next.keys))
+    guard next != saved else { return }
+    saved = next
     persist()
   }
 
@@ -125,17 +124,6 @@ public final class CanvasStore {
     relayout(projects: projects, viewerID: viewerID)
   }
 
-  private func pruned(_ positions: [String: CanvasPosition], live: Set<String>)
-    -> [String: CanvasPosition]
-  {
-    guard positions.count > Self.maxSavedPositions else { return positions }
-    var kept = positions.filter { live.contains($0.key) }
-    for (id, position) in positions where kept.count < Self.maxSavedPositions {
-      kept[id] = position
-    }
-    return kept
-  }
-
   private func persist() {
     guard let key else { return }
     defaults.set(
@@ -144,4 +132,18 @@ public final class CanvasStore {
 
   private func positionsKey(_ key: String) -> String { "\(key).positions" }
   private func boardKey(_ key: String) -> String { "\(key).board" }
+}
+
+/// What a `/canvas?canvas=<board>` or `/canvas/c/<session>` link opens on the Canvas page.
+public struct CanvasLinkRequest: Equatable, Sendable {
+  /// The board; `nil` is Main.
+  public var board: String?
+  /// The session shown beside the board.
+  public var sessionID: String?
+
+  /// Creates a request.
+  public init(board: String?, sessionID: String?) {
+    self.board = board
+    self.sessionID = sessionID
+  }
 }

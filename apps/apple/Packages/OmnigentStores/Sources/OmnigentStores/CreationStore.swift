@@ -199,6 +199,19 @@ public final class CreationStore {
     attachments.removeAll { $0.id == id }
   }
 
+  /// Takes every staged file away, for a composer that keeps them while it is not shown.
+  /// - Returns: The files, in the order they were staged.
+  public func takeAttachments() -> [PendingAttachment] {
+    defer { attachments = [] }
+    return attachments
+  }
+
+  /// Stages files a composer kept, after any staged now.
+  /// - Parameter kept: The files.
+  public func restoreAttachments(_ kept: [PendingAttachment]) {
+    attachments += kept
+  }
+
   /// Creates the session with `calls`, then sends `firstMessage` to it when it is not blank.
   /// Creation is never retried: an unclear outcome becomes ``CreationPhase/uncertain(_:)``.
   /// Staged files are uploaded to the new session and sent with the first message.

@@ -19,6 +19,19 @@ public struct SessionCommandActions {
   public var nextSession: (@MainActor () -> Void)?
   /// Switch between chat and the harness terminal (Option-Command-\\).
   public var toggleViewMode: (@MainActor () -> Void)?
+  /// The session's Terminal view splits (`splittable_terminal_view_ui`), so the menu lists its
+  /// split items.
+  public var offersTerminalSplit = false
+  /// Split the focused terminal pane right with the default shell (Option-Shift-Command-\\).
+  public var splitTerminalRight: (@MainActor () -> Void)?
+  /// Split the focused terminal pane down with the default shell (Option-Command-Minus).
+  public var splitTerminalDown: (@MainActor () -> Void)?
+  /// Close the focused shell pane.
+  public var closeTerminalPane: (@MainActor () -> Void)?
+  /// Focus the next terminal pane (Option-Shift-Command-]).
+  public var nextTerminalPane: (@MainActor () -> Void)?
+  /// Focus the previous terminal pane (Option-Shift-Command-[).
+  public var previousTerminalPane: (@MainActor () -> Void)?
 
   /// Open the Changes tab in the right panel.
   public var openChanges: (@MainActor () -> Void)?
@@ -193,6 +206,9 @@ struct ConversationMenuItems: View {
     Button("Toggle Chat and Terminal") { actions?.toggleViewMode?() }
       .keyboardShortcut(AppShortcuts.toggleViewMode)
       .disabled(actions?.toggleViewMode == nil)
+    if actions?.offersTerminalSplit == true {
+      TerminalSplitMenuItems(actions: actions)
+    }
     Button("Toggle Right Panel") { actions?.toggleInspector?() }
       .keyboardShortcut(AppShortcuts.toggleInspector)
       .disabled(actions?.toggleInspector == nil)
@@ -203,5 +219,27 @@ struct ConversationMenuItems: View {
     Button("Next Session") { actions?.nextSession?() }
       .keyboardShortcut(AppShortcuts.nextSession)
       .disabled(actions?.nextSession == nil)
+  }
+}
+
+/// The Conversation menu's terminal split items, while the session's Terminal view splits.
+struct TerminalSplitMenuItems: View {
+  let actions: SessionCommandActions?
+
+  var body: some View {
+    Button("Split Terminal Right") { actions?.splitTerminalRight?() }
+      .keyboardShortcut(AppShortcuts.splitTerminalRight)
+      .disabled(actions?.splitTerminalRight == nil)
+    Button("Split Terminal Down") { actions?.splitTerminalDown?() }
+      .keyboardShortcut(AppShortcuts.splitTerminalDown)
+      .disabled(actions?.splitTerminalDown == nil)
+    Button("Close Terminal Pane\u{2026}") { actions?.closeTerminalPane?() }
+      .disabled(actions?.closeTerminalPane == nil)
+    Button("Next Terminal Pane") { actions?.nextTerminalPane?() }
+      .keyboardShortcut(AppShortcuts.nextPane)
+      .disabled(actions?.nextTerminalPane == nil)
+    Button("Previous Terminal Pane") { actions?.previousTerminalPane?() }
+      .keyboardShortcut(AppShortcuts.previousPane)
+      .disabled(actions?.previousTerminalPane == nil)
   }
 }

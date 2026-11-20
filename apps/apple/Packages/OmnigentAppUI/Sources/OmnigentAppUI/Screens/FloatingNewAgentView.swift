@@ -1,5 +1,6 @@
 #if os(macOS)
   public import OmnigentStores
+  import OmnigentUIComponents
   public import SwiftUI
 
   /// The floating New Agent panel's content (the desktop app's `/compose/floating`): the New
@@ -9,13 +10,20 @@
   public struct FloatingNewAgentView: View {
     private let connection: ConnectionStore
     private let opened: @MainActor (String) -> Void
+    private let claimsEscape: @MainActor (Bool) -> Void
 
     /// Creates the panel's content.
     /// - Parameters:
     ///   - connection: The server the session starts on.
+    ///   - claimsEscape: Told whether the composer answers Escape itself (its completion list
+    ///     is open), so the panel leaves Escape to it.
     ///   - opened: Receives the started session's id.
-    public init(connection: ConnectionStore, opened: @escaping @MainActor (String) -> Void) {
+    public init(
+      connection: ConnectionStore, claimsEscape: @escaping @MainActor (Bool) -> Void = { _ in },
+      opened: @escaping @MainActor (String) -> Void
+    ) {
       self.connection = connection
+      self.claimsEscape = claimsEscape
       self.opened = opened
     }
 
@@ -28,6 +36,7 @@
       .padding(.top, 24)
       .padding([.horizontal, .bottom], 12)
       .accessibilityIdentifier("floating-new-agent")
+      .onPreferenceChange(ComposerClaimsEscape.self) { claimed in claimsEscape(claimed) }
     }
   }
 #endif

@@ -112,6 +112,16 @@ struct ComposerKeyboard {
   /// Esc closes a `/btw` answer first, then the completions, the `/mcp` panel (clearing its
   /// draft, as the web's menu does) and a command's output (`/help`); only then does it stop the
   /// turn.
+  /// Whether Escape has something to close or stop here, so a window around the composer
+  /// leaves it the key (the floating New Agent panel).
+  var claimsEscape: Bool {
+    (state.quickAnswer != nil && actions.extras.dismissQuickAnswer != nil)
+      || (state.mcpPanel != nil && McpServersPanelState.isRequested(by: draft))
+      || !completions.items.isEmpty
+      || (state.commandNotice != nil && actions.extras.dismissCommandNotice != nil)
+      || (state.isRunning && actions.interrupt != nil && !state.isStopping)
+  }
+
   func handleEscape() -> KeyPress.Result {
     if state.quickAnswer != nil, let dismiss = actions.extras.dismissQuickAnswer {
       dismiss()

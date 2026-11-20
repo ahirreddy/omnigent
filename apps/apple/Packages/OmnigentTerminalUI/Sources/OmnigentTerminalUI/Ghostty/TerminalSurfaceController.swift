@@ -105,6 +105,8 @@ public final class TerminalSurfaceController {
   public internal(set) var pendingClipboard: PendingClipboardWrite?
   /// The last renderer error. Shown in the view; never dropped.
   public internal(set) var lastError: String?
+  /// Whether the surface's view has the keyboard, so a split view can follow the pane typed in.
+  public internal(set) var hasKeyboardFocus = false
 
   @ObservationIgnored let runtime: GhosttyRuntime
   @ObservationIgnored private(set) var surface: ghostty_surface_t?
@@ -386,12 +388,6 @@ public final class TerminalSurfaceController {
   #endif
 
   /// The view gained or lost keyboard focus.
-  func setFocused(_ focused: Bool) {
-    guard let surface = unsafe surface else { return }
-    unsafe ghostty_surface_set_focus(surface, focused)
-    if focused { connection.foreground() }
-  }
-
   func apply(config: ghostty_config_t, colorScheme: TerminalColorScheme) {
     guard let surface = unsafe surface else { return }
     unsafe ghostty_surface_update_config(surface, config)

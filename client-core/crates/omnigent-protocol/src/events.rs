@@ -173,6 +173,9 @@ pub struct SessionUsageEvent {
     /// Per-model usage; replaces the known map.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_by_model: Option<BTreeMap<String, ModelUsage>>,
+    /// The operator hides costs (`OMNIGENT_HIDE_COST`): a cost known before is dropped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_hidden: Option<bool>,
 }
 
 /// `session.model`. A `null` model clears; an absent one is no change.

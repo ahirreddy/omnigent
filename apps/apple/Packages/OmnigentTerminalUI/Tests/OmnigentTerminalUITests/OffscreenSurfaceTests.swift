@@ -236,6 +236,19 @@
       #expect(await eventually { controller.search == nil })
     }
 
+    @Test("find starts from the selected text")
+    func searchSelection() async throws {
+      let surface = try NeverShownSurface()
+      let controller = surface.controller
+      #expect(await surface.ready())
+      controller.feed(Array("needle\r\n".utf8))
+      controller.selectAll()
+      #expect(await eventually { controller.hasSelection })
+      controller.startSearch()
+      #expect(await eventually { controller.search?.needle.contains("needle") == true })
+      controller.endSearch()
+    }
+
     @Test("find takes hostile needles")
     func hostileNeedles() async throws {
       let surface = try NeverShownSurface()

@@ -213,6 +213,9 @@ public struct SessionListActions {
   public var setMuted: (@MainActor (SessionSummary, Bool) -> Void)?
   /// Whether a session is unread now, read when a command runs rather than when it is drawn.
   public var isUnread: (@MainActor (String) -> Bool)?
+  /// Whether a muted session has activity the user has not seen, which it shows no unread for;
+  /// read when its menu opens.
+  public var hasUnseenWhileMuted: (@MainActor (String) -> Bool)?
   /// Open the Share sheet.
   public var share: (@MainActor (SessionSummary) -> Void)?
   /// Why Share is unavailable on this server (sharing turned off); it then shows disabled.
@@ -257,6 +260,9 @@ public struct SessionListActions {
   public var newSession: (@MainActor () -> Void)?
   /// Open the Add nested agent composer beside a session; `nil` where the server can't add one.
   public var addNestedAgent: (@MainActor (SessionSummary) -> Void)?
+  /// Delete an Add nested agent composer's draft, by its provisional row; offered on that row
+  /// alone.
+  public var deleteNestedDraft: (@MainActor (SessionSummary) -> Void)?
   /// Retry after a load failure.
   public var retry: (@MainActor () -> Void)?
 

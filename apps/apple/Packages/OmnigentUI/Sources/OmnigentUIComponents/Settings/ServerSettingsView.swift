@@ -164,6 +164,7 @@ public struct ServerSettingsView: View {
   private func paneForm(_ pane: ServerSettingsPane?) -> some View {
     paneBody(pane)
       #if os(iOS)
+        .modifier(PushedPaneReveal())
         .navigationTitle(pane?.title ?? "Server Settings")
         .navigationBarTitleDisplayMode(.inline)
       #endif

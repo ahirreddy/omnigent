@@ -35,6 +35,9 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
   case automation(id: String)
   /// One saved workflow's page, `omnigent://host/workflows/<workflowID>`.
   case workflow(id: String)
+  /// The Canvas on a board, `omnigent://host/canvas?canvas=<boardID>`, or with a session
+  /// beside it, `omnigent://host/canvas/c/<sessionID>`; `nil` board is Main.
+  case canvas(board: String?, sessionID: String?)
   /// An extension's page, `omnigent://host/extensions/<extensionID>/<route>`.
   case extensionPage(extensionID: String, route: String)
   /// Settings, `omnigent://host/settings` or `/settings/<section>` with the web's section ids
@@ -54,6 +57,7 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
     case .page(let page): "/\(page.rawValue)"
     case .automation(let id): "/tasks/\(id)"
     case .workflow(let id): "/workflows/\(id)"
+    case .canvas(_, let sessionID): sessionID.map { "/canvas/c/\($0)" } ?? "/canvas"
     case .extensionPage(let extensionID, let route): "/extensions/\(extensionID)/\(route)"
     case .settings(let section): section.map { "/settings/\($0)" } ?? "/settings"
     case .approval(let sessionID, let elicitationID): "/approve/\(sessionID)/\(elicitationID)"
@@ -65,7 +69,7 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
     switch self {
     case .conversation(let sessionID), .message(let sessionID, _), .approval(let sessionID, _):
       sessionID
-    case .home, .register, .page, .automation, .workflow, .extensionPage, .settings: nil
+    case .home, .register, .page, .automation, .workflow, .canvas, .extensionPage, .settings: nil
     }
   }
 
@@ -165,9 +169,9 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
 
   /// `""` and `/` are home; `/c/<id>` and `/c/<id>/` are a conversation, or one of its messages
   /// with a non-empty `message`; `/register` with a non-empty `invite` is an invite; `/new`,
-  /// `/inbox`, `/tasks`, `/workflows`, `/usage` and `/canvas` are pages, `/tasks/<id>` one
-  /// automation, `/workflows/<id>` one workflow and `/extensions/<id>/<route>` an extension's
-  /// page; `/settings` with an optional section (and a harness, dropped) is Settings;
+  /// `/inbox`, `/tasks`, `/workflows`, `/usage` and `/canvas` are pages (`/canvas?canvas=<id>`
+  /// and `/canvas/c/<id>` a board and a session on it), `/tasks/<id>` one automation,
+  /// `/workflows/<id>` one workflow and `/extensions/<id>/<route>` an extension's page; `/settings` with an optional section (and a harness, dropped) is Settings;
   /// `/approve/<session>/<elicitation>` one approval request.
   private static func route(_ path: Substring, query: Substring) throws(DeepLinkError)
     -> DeepLinkRoute
@@ -184,6 +188,9 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
     if segments.count == 2, segments[0].isEmpty,
       let page = DeepLinkPage(rawValue: String(segments[1]))
     {
+      if page == .canvas, let board = queryValue("canvas", in: query), !board.isEmpty {
+        return .canvas(board: board, sessionID: nil)
+      }
       return .page(page)
     }
     if segments.count >= 2, segments.count <= 4, segments[0].isEmpty, segments[1] == "settings" {
@@ -199,15 +206,22 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
     }
     guard
       let route = segments.count == 4
-        ? fourSegmentRoute(segments) : segments.count == 3 ? item(segments, query: query) : nil,
+        ? fourSegmentRoute(segments, query: query)
+        : segments.count == 3 ? item(segments, query: query) : nil,
       segments[0].isEmpty
     else { throw .unsupportedPath(String(path)) }
     return route
   }
 
-  /// `/approve/<session>/<elicitation>` and `/extensions/<id>/<route>`.
-  private static func fourSegmentRoute(_ segments: [Substring]) -> DeepLinkRoute? {
+  /// `/approve/<session>/<elicitation>`, `/extensions/<id>/<route>` and `/canvas/c/<session>`.
+  private static func fourSegmentRoute(_ segments: [Substring], query: Substring)
+    -> DeepLinkRoute?
+  {
     switch segments[1] {
+    case "canvas":
+      guard segments[2] == "c", let sessionID = identifier(segments[3]) else { return nil }
+      let board = queryValue("canvas", in: query).flatMap { $0.isEmpty ? nil : $0 }
+      return .canvas(board: board, sessionID: sessionID)
     case "approve":
       guard let sessionID = identifier(segments[2]), let elicitationID = identifier(segments[3])
       else { return nil }

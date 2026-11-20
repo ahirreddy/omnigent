@@ -50,6 +50,36 @@ fn each_installed_harness_shows_its_credential_and_what_carries_over() {
 }
 
 #[test]
+fn plugins_are_the_active_ones_its_skills_and_mcp_servers_name() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok("/v1/hosts", hosts("online"));
+    core.transport().ok(
+        "/v1/hosts/h1/mcp-servers",
+        r#"{"mcp_servers":[{"name":"figma","harness":"claude","transport":"http",
+            "scope":"user","plugin":"design"}]}"#,
+    );
+    core.transport().ok(
+        "/v1/skills",
+        r#"{"skills":[{"name":"toolkit:lint","description":""},
+            {"name":"review","description":""}],"warnings":[]}"#,
+    );
+    // Claude's list names a disabled plugin too; the review leaves it out, as the web's.
+    core.transport().respond(
+        Some("GET"),
+        "/v1/hosts/h1/plugins",
+        None,
+        Reply::json(
+            200,
+            r#"{"plugins":[{"name":"disabled-one","marketplace":"m","enabled":false}]}"#,
+        ),
+    );
+    let review = block_on(core.import_review("h1")).unwrap();
+    let claude = &review.harnesses[0];
+    assert_eq!(claude.plugins, ["toolkit", "design"]);
+    assert_eq!(claude.skills, ["review"]);
+}
+
+#[test]
 fn an_offline_host_has_nothing_to_read_and_an_unknown_one_is_refused() {
     let core = connected(RouteTransport::local());
     core.transport().ok("/v1/hosts", hosts("offline"));

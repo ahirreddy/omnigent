@@ -165,6 +165,22 @@ fn every_preview_shape_maps() {
 }
 
 #[test]
+fn a_spreadsheet_preview_hands_its_bytes_to_the_app() {
+    assert_eq!(
+        preview(core::FilePreview::Spreadsheet {
+            format: core::SpreadsheetFormat::Parquet,
+            bytes: b"PAR1".to_vec(),
+            truncated: false,
+        }),
+        FilePreview::Spreadsheet {
+            format: SpreadsheetFormat::Parquet,
+            data: b"PAR1".to_vec(),
+            truncated: false,
+        }
+    );
+}
+
+#[test]
 fn video_types_follow_the_web() {
     assert_eq!(
         workspace_video_type(None, "rec/demo.mov".into()).as_deref(),
@@ -415,6 +431,33 @@ fn a_data_file_reads_as_a_table_in_its_own_encoding_and_edits_reparse() {
     assert_eq!((edited.total_rows, edited.total_columns), (3, 2));
     assert!(is_workspace_data_table("out/DATA.TSV".into()));
     assert_eq!(workspace_data_table(String::new(), "x.csv".into()), None);
+    assert_eq!(table.description, "windows-1252");
+    assert_eq!(edited.description, "");
+
+    let records = workspace_data_table_from_records(
+        vec![
+            vec!["id".into(), String::new()],
+            vec!["2".into(), "b".into()],
+            vec!["10".into(), "a".into()],
+        ],
+        40,
+        2,
+        "Parquet".into(),
+        false,
+    )
+    .unwrap();
+    let names: Vec<&str> = records.columns.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["id", "column 2"]);
+    assert_eq!(records.columns[0].ranks, [1, 2]);
+    assert_eq!(
+        (records.total_rows, records.description.as_str()),
+        (40, "Parquet")
+    );
+    assert!(!records.text_cut);
+    assert_eq!(
+        workspace_data_table_from_records(Vec::new(), 0, 0, String::new(), false),
+        None
+    );
 }
 
 fn notes(harness: &Harness, read: &str) {

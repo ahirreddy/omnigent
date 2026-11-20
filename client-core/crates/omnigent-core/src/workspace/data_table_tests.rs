@@ -235,12 +235,17 @@ fn a_read_data_file_becomes_a_table_in_its_own_encoding() {
     .unwrap();
     assert_eq!(latin.rows, strings(&[&["café"]]));
     assert_eq!(latin.encoding, "windows-1252");
+    assert_eq!(
+        latin.description, "windows-1252",
+        "a non-UTF-8 encoding is named"
+    );
     assert!(latin.truncated);
     let text = file_data_table(&content(FileBody::Text("\u{feff}a\n1\n".into()), false)).unwrap();
     assert_eq!(
         (text.header.as_slice(), text.encoding.as_str()),
         (&["a".to_owned()][..], UTF8)
     );
+    assert_eq!(text.description, "");
     let mut other = content(FileBody::Text("a\n1\n".into()), false);
     other.path = WorkspacePath::parse("notes.txt").unwrap();
     assert_eq!(file_data_table(&other), None);
@@ -370,4 +375,111 @@ fn ranks_share_equal_cells_and_leave_empty_ones_at_zero() {
     assert_eq!(parsed.column_ranks(0), [2, 0, 1, 2]);
     assert_eq!(parsed.column_ranks(1), [2, 1, 2, 0]);
     assert_eq!(parsed.column_ranks(9), [0, 0, 0, 0]);
+}
+
+#[test]
+fn workbooks_and_parquet_files_are_spreadsheets_by_extension() {
+    for (path, expected) in [
+        ("out/budget.xlsx", Some(SpreadsheetFormat::Xlsx)),
+        ("DATA.PARQUET", Some(SpreadsheetFormat::Parquet)),
+        ("old.xls", None),
+        (".parquet", None),
+        ("report.csv", None),
+    ] {
+        assert_eq!(spreadsheet_format(path), expected, "{path}");
+    }
+}
+
+#[test]
+fn records_become_a_table_with_labeled_names_and_inferred_types() {
+    let parsed = table_from_records(
+        strings(&[&["id", " ", "when"], &["1", "a", "2026-01-02"], &["2", "b"]]),
+        5,
+        2,
+        "Parquet",
+        false,
+    )
+    .unwrap();
+    assert_eq!(parsed.header, ["id", "column 2", "when"]);
+    assert_eq!(
+        parsed.rows,
+        strings(&[&["1", "a", "2026-01-02"], &["2", "b", ""]])
+    );
+    assert_eq!(
+        parsed.column_types,
+        [
+            DataColumnType::Number,
+            DataColumnType::Text,
+            DataColumnType::Date
+        ]
+    );
+    assert_eq!((parsed.total_rows, parsed.total_columns), (5, 3));
+    assert_eq!(parsed.description, "Parquet");
+    assert!(!parsed.text_cut);
+    assert_eq!(table_from_records(Vec::new(), 0, 0, "", false), None);
+}
+
+#[test]
+fn records_keep_a_prefix_within_the_text_budget_and_cut_long_names() {
+    let long_name = "n".repeat(DATA_TABLE_MAX_NAME_CHARS + 5);
+    let wide = "x".repeat(DATA_TABLE_MAX_CHARS);
+    let parsed = table_from_records(
+        vec![
+            vec![long_name, "b".to_owned()],
+            vec![wide.clone(), "after".to_owned()],
+            vec!["later".to_owned(), "row".to_owned()],
+        ],
+        2,
+        2,
+        "Excel workbook",
+        false,
+    )
+    .unwrap();
+    assert_eq!(parsed.header[0].chars().count(), DATA_TABLE_MAX_NAME_CHARS);
+    assert!(parsed.text_cut, "a cut name or row says so");
+    // The oversized first row is kept, cut short with an ellipsis; nothing after it is.
+    assert_eq!(parsed.rows.len(), 1);
+    let first = &parsed.rows[0];
+    assert!(first[0].ends_with('\u{2026}'));
+    assert_eq!(
+        first[0].chars().count(),
+        DATA_TABLE_MAX_CHARS - DATA_TABLE_MAX_NAME_CHARS - 1
+    );
+    assert_eq!(first[1], "");
+    // A row past the budget after a kept one ends the table there.
+    let parsed = table_from_records(
+        vec![vec!["h".to_owned()], vec!["short".to_owned()], vec![wide]],
+        2,
+        1,
+        "",
+        true,
+    )
+    .unwrap();
+    assert_eq!(parsed.rows, strings(&[&["short"]]));
+    assert!(parsed.text_cut, "a reader's own cut is kept");
+}
+
+#[test]
+fn excel_phantom_leap_day_sorts_between_february_28_and_march_1() {
+    assert_eq!(
+        infer_column_type(["1900-02-29", "1900-03-01"]),
+        DataColumnType::Date
+    );
+    assert_eq!(
+        sorted(
+            &[
+                "1900-03-01",
+                "1900-02-29 12:00:00",
+                "1900-02-28",
+                "1900-02-29"
+            ],
+            DataColumnType::Date
+        ),
+        [
+            "1900-02-28",
+            "1900-02-29",
+            "1900-02-29 12:00:00",
+            "1900-03-01"
+        ]
+    );
 }

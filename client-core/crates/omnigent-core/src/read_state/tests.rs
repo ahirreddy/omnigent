@@ -264,6 +264,11 @@ fn a_muted_session_is_never_unread_but_can_still_be_read() {
     assert!(state.is_muted("m"));
     assert!(!state.is_unread("m"), "new activity shows no dot");
     assert!(state.unread_ids().is_empty());
+    assert_eq!(
+        state.muted_unseen_ids(),
+        BTreeSet::from(["m".to_owned()]),
+        "but it can be marked read"
+    );
     assert_eq!(state.mark_unread("m"), None, "it can't be flagged unread");
     // Reading it still records the read, so unmuting doesn't light up what was seen.
     assert_eq!(
@@ -273,6 +278,10 @@ fn a_muted_session_is_never_unread_but_can_still_be_read() {
             last_seen: 170,
             unread: false
         })
+    );
+    assert!(
+        state.muted_unseen_ids().is_empty(),
+        "read, nothing is left unseen"
     );
     // Unmuted, unread activity shows again.
     state.observe(&row("m", 200, Some(server(Some(170), false))));

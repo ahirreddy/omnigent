@@ -70,26 +70,25 @@ struct CanvasLoadTests {
     #expect(!canvas.isRefreshing)
   }
 
-  @Test("Saved spots stop at the cap, and listed sessions keep theirs")
-  func capsSavedSpots() async throws {
+  @Test("Spots of sessions no longer listed go once the list is read; listed ones stay")
+  func prunesGoneSpots() async throws {
     let server = RouteServer()
     server.route("/v1/sessions", .json(singleSessionList))
     let core = try #require(try await connectedStore(server).core)
-    let suite = "canvas-cap-\(UUID().uuidString)"
+    let suite = "canvas-prune-\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     let key = "server-a"
-    var stored = [String: [Int]]()
-    for index in 0...CanvasStore.maxSavedPositions { stored["old_\(index)"] = [0, 0] }
-    defaults.set(stored, forKey: positionsKey(key))
+    defaults.set(["deleted": [480, 0], "conv_a": [960, 480]], forKey: positionsKey(key))
 
     let canvas = CanvasStore(core: core, defaults: defaults)
     canvas.bind(key: key)
+    #expect(canvas.saved["deleted"] != nil, "kept until the list is read")
     await canvas.load(viewerID: "local")
-    #expect(canvas.saved.count == CanvasStore.maxSavedPositions)
+    #expect(canvas.saved["deleted"] == nil)
     #expect(canvas.saved["conv_a"] != nil)
-    let persisted = defaults.dictionary(forKey: positionsKey(key))
-    #expect(persisted?.count == CanvasStore.maxSavedPositions)
+    let persisted = defaults.dictionary(forKey: positionsKey(key)) as? [String: [Int]]
+    #expect(persisted?.keys.sorted() == ["conv_a"])
   }
 }
 

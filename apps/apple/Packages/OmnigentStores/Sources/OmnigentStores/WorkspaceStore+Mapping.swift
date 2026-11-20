@@ -61,6 +61,16 @@ nonisolated public enum WorkspaceMapping {
     }
   }
 
+  /// `file` for the views, off the main actor: a workbook or Parquet file is read here.
+  @concurrent
+  static func file(_ file: OmnigentCoreFFI.WorkspaceFile) async
+    -> OmnigentWorkspaceUI.WorkspaceFile
+  {
+    OmnigentWorkspaceUI.WorkspaceFile(
+      path: file.path, byteCount: file.byteCount, preview: preview(file.preview),
+      dataTable: file.dataTable.map(dataTable))
+  }
+
   static func preview(_ preview: OmnigentCoreFFI.FilePreview)
     -> OmnigentWorkspaceUI.FilePreview
   {
@@ -73,6 +83,14 @@ nonisolated public enum WorkspaceMapping {
       return .pdf(data: data, truncated: truncated)
     case .model(let format, let data, let truncated):
       return .model(format: modelFormat(format), data: data, truncated: truncated)
+    case .spreadsheet(let format, let data, let truncated):
+      // The app reads the bytes; the core types and ranks each table's columns.
+      let kind: OmnigentWorkspaceUI.SpreadsheetFormat = format == .xlsx ? .xlsx : .parquet
+      return .spreadsheet(
+        format: kind,
+        preview: SpreadsheetReader.read(data, format: kind, truncated: truncated) {
+          spreadsheetTable($0)
+        })
     case .video:
       return .video
     case .binary(let reason, _):
@@ -99,7 +117,20 @@ nonisolated public enum WorkspaceMapping {
     return DataTablePreview(
       columns: columns, rows: table.rows, totalRows: Int(clamping: table.totalRows),
       totalColumns: Int(clamping: table.totalColumns), encoding: table.encoding,
-      truncated: table.truncated)
+      textCut: table.textCut, truncated: table.truncated)
+  }
+
+  /// A workbook sheet's or Parquet file's table, typed and ranked by the core.
+  static func spreadsheetTable(_ records: SpreadsheetRecords) -> DataTablePreview? {
+    workspaceDataTableFromRecords(
+      records: records.records, totalRows: UInt64(clamping: records.totalRows),
+      totalColumns: UInt64(clamping: records.totalColumns), description: records.description,
+      textCut: records.textCut
+    ).map { table in
+      var preview = dataTable(table)
+      preview.format = table.description
+      return preview
+    }
   }
 
   static func textPreview(_ text: OmnigentCoreFFI.TextPreview) -> OmnigentWorkspaceUI.TextPreview {

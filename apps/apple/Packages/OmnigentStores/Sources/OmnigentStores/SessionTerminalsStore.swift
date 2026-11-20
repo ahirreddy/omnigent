@@ -43,6 +43,21 @@ public final class SessionTerminalsStore {
     core.refreshTerminals(sessionId: sessionID)
   }
 
+  /// Reads every terminal now, an authoritative list (the events may still be refilling it).
+  /// A failure is also recorded in ``lastError``.
+  /// - Returns: The terminals, or why they could not be read.
+  public func list() async -> Result<[TerminalResource], CoreError> {
+    do {
+      let terminals = try await core.listTerminals(sessionId: sessionID)
+      lastError = nil
+      return .success(terminals)
+    } catch {
+      let failure = coreError(error)
+      lastError = failure
+      return .failure(failure)
+    }
+  }
+
   /// Reads ``declaredTerminalNames`` from the session's agent. A failure is recorded in
   /// ``lastError`` and leaves the previous names.
   public func loadDeclaredTerminalNames() async {

@@ -217,6 +217,10 @@ public final class WorkspaceBrowserModel {
   /// Opens `document` as a tab (or in its existing tab) and shows it, reading it.
   /// - Parameter document: The file or diff.
   public func open(_ document: WorkspaceDocument) async {
+    // Excel and Parquet files open only on their table: no diff or line view, as on the web.
+    let document =
+      SpreadsheetFormat.of(path: document.path) == nil
+      ? document : .file(path: document.path, line: nil)
     generation += 1
     let current = generation
     if let index = openDocuments.firstIndex(where: { $0.tabID == document.tabID }) {

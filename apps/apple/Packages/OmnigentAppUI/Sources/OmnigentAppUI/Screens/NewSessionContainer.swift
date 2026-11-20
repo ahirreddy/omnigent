@@ -28,6 +28,8 @@ struct NewSessionContainer: View {
   let openWorkflow: (@MainActor (String) -> Void)?
   /// Offers only this Mac and new sandboxes, as the floating New Agent panel does.
   let onlyThisMachine: Bool
+  /// What nested composers keep while the user is elsewhere; `nil` keeps nothing.
+  let nestedDrafts: NestedComposerDrafts?
 
   @State private var draft = ""
   @State private var form: NewSessionForm
@@ -56,8 +58,10 @@ struct NewSessionContainer: View {
     openWithNotice: (@MainActor (String, String) -> Void)? = nil,
     continueInNewSession: (@MainActor () -> Void)? = nil,
     project: ProjectSummary? = nil, isFloating: Bool = false,
-    openWorkflow: (@MainActor (String) -> Void)? = nil, onlyThisMachine: Bool = false
+    openWorkflow: (@MainActor (String) -> Void)? = nil, onlyThisMachine: Bool = false,
+    nestedDrafts: NestedComposerDrafts? = nil
   ) {
+    self.nestedDrafts = nestedDrafts
     self.openWorkflow = openWorkflow
     self.onlyThisMachine = onlyThisMachine
     self.connection = connection
@@ -91,6 +95,7 @@ struct NewSessionContainer: View {
       }
     }
     .modifier(ComposerPreferencesReader(preferences: $composerPreferences))
+    .onDisappear { nestedDrafts?.leave(form.nested?.sourceID, creation: creation) }
     .task {
       guard let creation = connection.creation() else {
         coreMissing = true
@@ -331,8 +336,10 @@ extension NewSessionContainer {
       if let project { await form.applyProject(project, creation) }
       return
     }
-    form.nested = NestedComposer(sourceID: nestedSourceID)
+    nestedDrafts?.arrive(nestedSourceID, creation: creation)
     draft = creation.composerDrafts[nestedSourceID] ?? ""
+    if await form.resumeNested(nestedSourceID, creation) { return }
+    form.nested = NestedComposer(sourceID: nestedSourceID)
     await form.loadNested(creation)
   }
 
@@ -357,7 +364,10 @@ extension NewSessionContainer {
 
   /// A created session takes the draft with it.
   private func finish(_ creation: CreationStore) {
-    if let sourceID = form.nested?.sourceID { creation.composerDrafts[sourceID] = nil }
+    if let sourceID = form.nested?.sourceID {
+      creation.composerDrafts[sourceID] = nil
+      nestedDrafts?.discard(sourceID)
+    }
     form.clearWorkflow()
     draft = ""
     launch?.clearMentions()

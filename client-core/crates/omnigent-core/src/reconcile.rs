@@ -418,6 +418,7 @@ pub fn event_state_from_snapshot(session: &SessionSnapshot) -> SessionEventState
             .copied()
             .filter(|cost| cost.is_finite() && *cost >= 0.0),
         usage_by_model: session.usage_by_model.value().cloned(),
+        cost_hidden: session.cost_hidden.value().copied(),
         todos,
         mcp_startup,
         terminal_pending: session.terminal_pending.value().copied(),

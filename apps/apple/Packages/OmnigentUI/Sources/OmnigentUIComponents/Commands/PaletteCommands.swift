@@ -132,7 +132,9 @@ private struct PalettePresentation: ViewModifier {
         }
       }
       .sheet(isPresented: $showsShortcuts) {
-        KeyboardShortcutsSheet(nestedAgents: state().offersNestedAgents)
+        let state = state()
+        KeyboardShortcutsSheet(
+          nestedAgents: state.offersNestedAgents, terminalSplit: state.offersTerminalSplit)
       }
       .onAppear { if initiallyPresented { open(.all) } }
       .onChange(of: initiallyPresented) { _, presented in if presented { open(.all) } }

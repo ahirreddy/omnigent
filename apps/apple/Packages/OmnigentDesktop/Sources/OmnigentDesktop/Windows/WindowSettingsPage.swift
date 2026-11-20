@@ -34,6 +34,9 @@ final class WindowSettingsPages {
     return nil
   }
 
+  /// The Settings page of the window `instance`.
+  func page(of instance: UUID) -> WindowSettingsPage? { pages[instance] }
+
   func register(_ page: WindowSettingsPage, for instance: UUID) {
     pages[instance] = page
     if !recency.contains(instance) { recency.append(instance) }

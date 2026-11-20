@@ -202,6 +202,13 @@ struct SessionChromeParts: ViewModifier {
       chrome.state, hasShare: chrome.extras.share != nil, tabsInTitlebar: tabsInTitlebar,
       isRegular: layoutWidth == .regular)
       + (showsViewSwitch(chrome) ? TitlebarTrailingItems.viewSwitch : 0)
+      + (showsTerminalSplit(chrome) ? TerminalSplitToolbarItems.width : 0)
+  }
+
+  /// The Terminal view shows its split actions among the trailing items.
+  private func showsTerminalSplit(_ chrome: SessionChrome) -> Bool {
+    chrome.extras.terminalSplit != nil && offersTerminal(chrome) && layoutWidth == .regular
+      && chrome.mode.wrappedValue == .terminal
   }
 
   private func toolbarItems(_ chrome: SessionChrome) -> ConversationToolbarItems {

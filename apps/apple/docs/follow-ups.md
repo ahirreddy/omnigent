@@ -153,13 +153,6 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Apps
 
-- [ ] **Muted sessions:** the menus offer no Mark as read on a muted session with unseen
-  activity (the core hides its unread, so the menu can't tell); opening it still marks it read.
-  The bulk selection's Mark as unread stays enabled when every selected row is muted (the core
-  skips them, as the web's bulk action does).
-- [ ] **Nested session drafts** (web `e3e08fbaef`): keep an Add nested agent draft's text,
-  attachments and settings after navigating away, reopened from its provisional row, and a
-  Delete draft item on that row's menu.
 - [ ] **Read state:** persist this device's read marks across relaunches; today they are kept in
   memory only.
 - [ ] **Phone supervision on a physical iPhone:** approve from the Lock Screen end to end (Face
@@ -419,20 +412,19 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   server's 1,000-row page cap the rows beyond it fall out until Load more reads them again; a
   folder's pages are dropped on a reload (the folder reads its first page again); search and the
   quick filters still match loaded sessions only (the web's tabs query the server).
-- [ ] **Canvas:** each board's pan and zoom aren't remembered within a visit (a switch refits),
-  a resize doesn't keep the view's middle, cards snap only on drop, the first load waits for every
-  page (the web paints the sidebar's rows first and stays silent on reloads), archived or nested
-  rows leave only at the next reload, deleted sessions' spots are pruned only past the cap, and
-  `/canvas?canvas=<id>` and `/canvas/c/<id>` links aren't read.
+- [ ] **Canvas:** a resize doesn't keep the view's middle, cards snap only on drop, the first
+  load waits for every page (the web paints the sidebar's rows first and stays silent on
+  reloads), and archived or nested rows leave only at the next reload. A board's remembered view
+  counts a pan by dragging the board, not one by the scroll wheel. Return and Space open a card
+  only with keyboard navigation on (System Settings), as a Mac's buttons take the focus.
 - [ ] **Toasts:** fork's "Session created [Open]" should use `TransientBanner` (fork flow).
-- [ ] **Host import review (Mac):** plugins come from Claude's plugin list (the web derives them
-  from `plugin:skill` names and MCP servers, so it leaves disabled plugins out), and only "This
-  Mac" onboarding asks for the review (the web also reviews a remote runner).
-- [ ] **Session overview:** no Files changed / Lines rows, no docked overview beside the chat
-  (it is a popover), and `cost_hidden` isn't read, so a server hiding costs shows "—".
-- [ ] **Terminal split (`splittable_terminal_view_ui`, off):** the session's Terminal view
-  doesn't split into shell panes (Split right / down with a shell, Close pane, the split tree with
-  its 25–75% dividers kept per session, ⌘⌥⇧\ and ⌘⌥-, pane cycling).
+- [ ] **Host import review (Mac):** only "This Mac" onboarding asks for the review. The web
+  also reviews a remote runner, which native onboarding doesn't offer (see Onboarding above).
+- [ ] **Session overview:** no docked overview beside the chat (it is a popover). Files changed
+  counts the Changes list as the host reports it, untracked lines not separately counted.
+- [ ] **Terminal split, left:** the web keeps showing saved shell panes while the agent's
+  terminal is down; native shows the Terminal view's stopped state over every pane. A divider
+  takes VoiceOver's adjust actions but not the arrow keys (a Mac divider isn't a key view).
 - [ ] **Settings › Archived (Mac):** retention uses a session's last change, not the server's
   `omnigent.archived_at` label (the core's session summary does not carry it), and the project
   filter covers loaded pages only (the web pages through every archived session).
@@ -563,40 +555,49 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     project's board: list rows carry no labels, so the core can't tell a shared run.
   - Left and Right on a selected project row don't collapse and expand its folder; its button
     does.
-- [ ] **Composer tints:** a leading known `/command`, skill or shell `!` and `@` mentions are
-  not tinted inside the draft, and a sent prompt's leading command is not tinted either. The
-  composer is SwiftUI's string `TextEditor`; tinting needs its `AttributedString` form with the
-  selection, mention and completion handling moved over. Shell mode itself (ring, hint,
-  refused sends) is native.
-- [ ] **Excel and Parquet previews as tables:** the web reads `.xlsx` (zip, deflate, sheet XML)
-  and Parquet (Thrift footer, pages, snappy and zstd) in the browser. The core has no zip,
-  deflate, XML, snappy or zstd decoder and stays dependency-light and wasm-clean, so these
-  open as other binary files. Needs a decoder decision (pure-Rust crates through the mirror,
-  or hand-written readers for the subset the web supports).
-- [ ] **Browser Annotate and Draw:** the desktop Browser pane's tools (pick an element and
-  describe a change; pen, rectangle, arrow and text marks with a note) and their outbox are not
-  ported. Native needs an overlay view above both the WebKit and the out-of-process Chromium
-  view, an element picker script per engine in an isolated world, a snapshot crop or
-  composite, and a persisted outbox of external sends.
+- [ ] **Composer tints, left:** a sent prompt's leading command is not tinted in the transcript
+  (the web tints it in the bubble); the SwiftUI, TextKit and CLI prompt renderers would each
+  need the session's commands. The composer's own tints are native (`TintedTextEditor`).
+- [ ] **Excel and Parquet previews, left:** a zstd, LZ4, Brotli or LZO Parquet file shows the
+  web's "compressed with …" message (the app reads uncompressed, Snappy and gzip, one codec
+  more than the web); `BIT_PACKED` levels and the `GROUP_VAR_INT` encoding are named as
+  unsupported. Find (Command-F) doesn't search the table, for CSV either.
+- [ ] **Browser Annotate and Draw** (web `63915cd179`, about 4,000 lines with its outbox):
+  the desktop Browser pane's tools (pick an element and describe a change; pen, rectangle,
+  arrow and text marks with a note) and their outbox are not ported. Plan:
+  1. Core: `design_request` parsing of a message's `[Design Mode — …]` block (the web's
+     `parseDesignRequest`: tool, prompt, subject, page URL, the attached capture), and a
+     `DesignOutbox` that keeps requests on disk per server and session, sends each as an
+     external message (`POST …/messages` with the capture as an attachment) and retries the
+     ones the server refused with doubling backoff (5 s to 5 min), as `designOutbox.ts`.
+  2. Browser (`OmnigentBrowser`): a transparent `NSView` overlay above the page view for both
+     engines (WebKit's `WKWebView`, Chromium's out-of-process view host), following its
+     bounds, zoom and visibility, taking the pointer while a tool is on and closing on
+     navigation. Annotate: an element picker run in an isolated world (`WKContentWorld` /
+     Chromium's isolated world) returning the hovered element's rect, tag, id, classes and
+     text; outline drawn by the overlay. Draw: pen, rectangle, arrow and text marks kept as
+     values (`marks.ts`), composited onto a page snapshot (`takeSnapshot` /
+     `Page.captureScreenshot`) cropped to the element or the viewport.
+  3. UI: Annotate and Draw in the browser toolbar (where the web shows them: the desktop pane,
+     flag-free), the note popover, the outbox strip ("2 requests waiting · Retry"), Escape to
+     leave a tool, and the compact transcript card below.
 - [ ] **Design-tool messages in the transcript:** a message ending in the web's
   `[Design Mode — …]` block shows as its plain Markdown; the web shows the request and its
-  subject ("p#blurb \"Hello\" on localhost:5173") as a compact card. Parse it in the core and
-  draw it in the SwiftUI, TextKit and CLI prompt renderers.
+  subject ("p#blurb \"Hello\" on localhost:5173") as a compact card. Parse it in the core (plan
+  step 1 above) and draw it in the SwiftUI, TextKit and CLI prompt renderers.
 - [ ] **Floating New Agent panel (Mac, `floating_composer`):**
   - Only package tests cover it (shortcut, chord, placement); no Mac flow drives the panel, the
     Carbon hot key or a launch behind it, and it has no renders yet.
-  - Escape hides the panel even while the composer's completion list is open.
-  - A Settings link in the panel opens the front window's Settings at its last category, not
-    the link's destination.
 - [ ] **Find:** the transcript has no find of its own (the Find menu reaches a text view's find
-  bar or a browser tab's); Command-F in a terminal doesn't take the selection.
+  bar or a browser tab's).
 - [ ] **Settings search:**
   - Rows in the General, Notifications, Local Server and Terminal panes that their own packages
     draw scroll into view but aren't marked; rows drawn by OmnigentUI are marked for two seconds.
   - Before Settings › Servers has shown, server-pane results are the panes every signed-in
     server offers; the shown server's own panes replace them once it shows.
-  - Picking a result doesn't put the keyboard in the row's control.
-  - iPhone and iPad scroll to a row only on the app's own pages, not server panes.
+  - Picking a result doesn't put the keyboard in the row's control: a row's `.focused` would
+    make every searchable row a key view, and a Mac's toggles and pickers take the focus only
+    with keyboard navigation on.
 
 ## Product decisions
 
@@ -607,6 +608,42 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Done
 
+- [x] **Sweep F, smaller gaps** (2026-11-20): a muted session with unseen activity offers Mark
+  as read (core `MutedUnseenChanged`), and bulk Mark as unread leaves muted rows out and is off
+  when all are muted; the floating panel leaves Escape to an open completion list and opens a
+  Settings link at its destination in its server's window; Command-F in a terminal searches for
+  the selection; on iPhone and iPad a search result in a server pane scrolls to its row.
+- [x] **Canvas follow-ups** (2026-11-20): each board keeps its zoom and scroll for the visit,
+  `/canvas?canvas=<id>` and `/canvas/c/<id>` links open the board and the session beside it,
+  Return and Space open a card, and spots of sessions no longer listed are dropped.
+- [x] **Import review plugins** (2026-11-20): the review lists the active plugins its skills
+  and MCP servers name, as the web's, leaving disabled ones out (core `host_inventory`).
+- [x] **Session overview rows and `cost_hidden`:** the overview shows Files changed and Lines
+  (+added −removed) while the workspace has uncommitted changes, and a session or usage event
+  with `cost_hidden` drops a cost known before, the models' too (core `hide_costs`).
+  2026-11-20.
+- [x] **Composer tints** (web `195df4a52d`, `3083b6ef2e`): the card and CLI composers tint a
+  leading known command or skill, a shell command's `!` and tagged `@` paths. The editor is
+  `TextEditor` over an `AttributedString` of its own (`TintedTextEditor`); the draft stays a
+  plain string, and only the tints are kept as attributes. 2026-11-20.
+- [x] **Nested session drafts** (web `e3e08fbaef`): an Add nested agent draft keeps its row
+  after navigating away; the row reopens it with its text, files and choices, and its menu has
+  Delete Draft. 2026-11-20.
+- [x] **Terminal split (`splittable_terminal_view_ui`).** The owner's Terminal view splits into
+  shell panes on the Mac and iPad: Split Right and Split Down in the toolbar (a menu of the
+  declared shells, the remembered one first) and the Conversation menu (⌥⇧⌘\ and ⌥⌘- with the
+  default shell), Close Pane with "Close shell?", dividers kept within 25–75%, unfocused panes
+  dimmed, ⌥⇧⌘[ / ] to cycle, and the tree kept per session on this device. Panes of shells that
+  ended leave with the list, or with a full read when the view opens. 2026-11-20.
+- [x] **Excel and Parquet previews as tables** (web `c5a6ee0c91`): `.xlsx` and `.parquet` files
+  open on the CSV table, a picker of the visible sheets for a workbook. The app reads the bytes
+  the core hands it (`FilePreview::Spreadsheet`) with no new dependency: the zip and its raw
+  deflate through the Compression framework and `XMLParser` (relationships, shared strings,
+  styles, dates, times, elapsed formats, formulas' results, UTF-16 parts, per-part and
+  per-workbook limits); Parquet's Thrift footer, v1 and v2 pages, plain, dictionary, RLE and
+  delta encodings, nested lists, structs and maps as JSON, with an in-house Snappy decoder and
+  gzip. The core types and ranks each table (`table_from_records`), so sorting matches CSV.
+  Neither format has a source, diff or line view, as on the web. 2026-11-20.
 - [x] **Workflows: the last follow-ups.** An automation's run history shows each run's tasks
   (a segment each), what its agent last wrote, its plan's Stop or Continue, the workflow it
   follows and its graph (`run-steps`). A trigger automation's Instructions tab has the Workflow

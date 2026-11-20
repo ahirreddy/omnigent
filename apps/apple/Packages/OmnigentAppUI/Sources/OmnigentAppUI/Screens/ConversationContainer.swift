@@ -59,6 +59,10 @@ struct ConversationContainer: View {
   var shareUnavailableReason: String?
   /// Opens an automation's page on its share sheet.
   var openAutomationSharing: (@MainActor (String) -> Void)?
+  /// The server splits Terminal views (`splittable_terminal_view_ui`).
+  var offersTerminalSplit = false
+  /// Where sessions' splits are kept.
+  var terminalSplits = TerminalSplitRegistry.shared
   /// Connects this Mac as a host, where the edition can; the reconnect sheet's one click.
   @Environment(\.useThisMachine) var useThisMachine
   /// The workspace the window's right panel shows, where a side chat's or sub-agent's file
@@ -69,7 +73,7 @@ struct ConversationContainer: View {
   @State private var panelRoute = ConversationPanelRoute()
   @State private var panelDefault = WorkspacePanelDefault.stored()
   #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.horizontalSizeClass) var sizeClass
   #endif
   @Environment(\.openSettingsAt) var openSettingsAt
   @State private var inspectorTab: InspectorTab = DefaultWorkspaceTab.stored().inspectorTab
@@ -82,7 +86,8 @@ struct ConversationContainer: View {
   // Not private: a test passes its own objects to watch them.
   // swiftlint:disable:next private_swiftui_state
   @State var failureList = ConversationFailures()
-  @State private var harnessSurface: TerminalSurfaceController?
+  // swiftlint:disable:next private_swiftui_state
+  @State var harnessSurface: TerminalSurfaceController?
   // swiftlint:disable:next private_swiftui_state
   @State var forkFlow = ForkFlow()
   // swiftlint:disable:next private_swiftui_state
@@ -113,11 +118,7 @@ struct ConversationContainer: View {
       extras: extras(sharing: shareStore),
       liveRows: ConversationAdapter.liveRows(conversation)
     ) {
-      ConversationHarnessTerminal(
-        surface: harnessSurface, harness: conversation.header?.settings?.harness,
-        error: terminals?.lastError
-      )
-      .modifier(TerminalPageFocus(surface: harnessSurface))
+      harnessTerminal
     }
     .modifier(MessageMediaEnvironment(fileLinks: fileLinks, conversation: conversation))
     .environment(\.taskMarkerLinks, taskMarkerLinks)
@@ -267,15 +268,6 @@ struct ConversationContainer: View {
       inspectorTab = .tasks
       panelRoute.choice = .open
     }
-  }
-
-  /// Attaches the harness TUI once ready (the store keeps it), applying the default view.
-  private func attachHarness() {
-    guard let terminals else { return }
-    if terminals.terminals.harness != .notTerminalFirst { tabRoutes?.applyDefaultView?() }
-    harnessSurface = terminals.harnessController(
-      permissionLevel: conversation.header?.permissionLevel,
-      hostID: conversation.header?.settings?.hostId)
   }
 
   /// Side questions and sub-agents open in tabs beside this chat; the "Back to the parent

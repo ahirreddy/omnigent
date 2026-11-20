@@ -76,6 +76,9 @@ pub struct ServerPages {
     /// The `floating_composer` feature: the Mac's system-wide shortcut opens a floating New
     /// Agent panel.
     pub floating_composer: bool,
+    /// The `splittable_terminal_view_ui` feature: a session's Terminal view splits into shell
+    /// panes.
+    pub splittable_terminal_view: bool,
     /// `scheduled_task_subhour`: hosts and continued sessions run schedules under an hour.
     pub automation_subhour: bool,
     /// `scheduled_task_trigger_headers`: runs drop a trigger prompt's header before dispatch.
@@ -196,6 +199,7 @@ impl ServerPages {
             import_review: feature("import_review")?,
             session_mute: flag("session_mute")?,
             floating_composer: feature("floating_composer")?,
+            splittable_terminal_view: feature("splittable_terminal_view_ui")?,
         })
     }
 }

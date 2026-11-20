@@ -9,10 +9,18 @@ nonisolated extension SidebarViewState {
     nestedDrafts[session.id].map { .nestedSession(sourceID: $0) } ?? .session(session.id)
   }
 
-  /// The actions a row's menu offers: none for a provisional row, which is no session yet.
+  /// The actions a row's menu offers: a provisional row, which is no session yet, offers only
+  /// Delete Draft, and only it does.
   @MainActor
   func rowActions(_ session: SessionSummary, _ actions: SessionListActions) -> SessionListActions {
-    nestedDrafts[session.id] == nil ? actions : SessionListActions()
+    guard nestedDrafts[session.id] != nil else {
+      var sessionActions = actions
+      sessionActions.deleteNestedDraft = nil
+      return sessionActions
+    }
+    var draftActions = SessionListActions()
+    draftActions.deleteNestedDraft = actions.deleteNestedDraft
+    return draftActions
   }
 }
 

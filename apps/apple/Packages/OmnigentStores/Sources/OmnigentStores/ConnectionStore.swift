@@ -60,6 +60,9 @@ public final class ConnectionStore {
   public internal(set) var databricksChallenge: DatabricksChallenge?
   /// Update frame types this client did not know, newest last.
   public internal(set) var unknownUpdates: [String] = []
+  /// Muted sessions with activity the user has not seen (`mutedUnseenChanged`): they show no
+  /// unread, but their menus offer Mark as read.
+  public internal(set) var mutedUnseenIDs: Set<String> = []
   /// Events applied so far.
   public internal(set) var eventsApplied = 0
   /// The session list.

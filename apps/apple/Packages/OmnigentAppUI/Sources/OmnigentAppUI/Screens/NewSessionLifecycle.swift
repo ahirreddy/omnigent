@@ -28,10 +28,8 @@ struct NewSessionLifecycle: ViewModifier {
       }
       // The server's policy can change while the composer is open.
       .onChange(of: creation.catalog) { form.enforceNestedPolicy(creation) }
-      .onDisappear {
-        form.closeNestedDraft(creation)
-        creation.composingProject = nil
-      }
+      // A nested composer's row stays, to reopen it, until it is created or deleted.
+      .onDisappear { creation.composingProject = nil }
       .onChange(of: form.project, initial: true) { _, project in
         creation.composingProject = form.nested == nil ? project : nil
       }

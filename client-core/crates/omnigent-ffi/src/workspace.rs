@@ -315,6 +315,15 @@ pub enum ModelFormat {
     Obj,
 }
 
+/// A binary data file the apps read into tables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum SpreadsheetFormat {
+    /// An Excel workbook (`.xlsx`): a table per visible sheet.
+    Xlsx,
+    /// A Parquet file: one table.
+    Parquet,
+}
+
 /// What a viewer should show for a file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum FilePreview {
@@ -344,6 +353,16 @@ pub enum FilePreview {
         /// The bytes returned.
         data: Vec<u8>,
         /// The server returned only part of it, which no model reader can open.
+        truncated: bool,
+    },
+    /// An Excel workbook or Parquet file, as the server returned it, for the app to read into
+    /// tables (built with [`workspace_data_table_from_records`]).
+    Spreadsheet {
+        /// Its format.
+        format: SpreadsheetFormat,
+        /// The bytes returned.
+        data: Vec<u8>,
+        /// The server returned only part of it, which neither format can be read from.
         truncated: bool,
     },
     /// A video, streamed with [`ClientCore::download_workspace_file`] once asked to play.
@@ -412,6 +431,13 @@ pub struct WorkspaceDataTable {
     pub total_columns: u64,
     /// How the bytes were decoded: `utf-8`, `utf-16le`, `utf-16be` or `windows-1252`.
     pub encoding: String,
+    /// The format or non-UTF-8 encoding the summary names, for example `windows-1252` or
+    /// `Parquet`; empty for UTF-8 delimited text.
+    #[uniffi(default)]
+    pub description: String,
+    /// Text past the preview's budget was cut from a column name or the first row.
+    #[uniffi(default)]
+    pub text_cut: bool,
     /// The server sent only the start of the file, so `total_rows` is a lower bound.
     pub truncated: bool,
 }
@@ -438,6 +464,8 @@ fn data_table(table: &core::DataTable) -> WorkspaceDataTable {
         total_rows: count(table.total_rows),
         total_columns: count(table.total_columns),
         encoding: table.encoding.clone(),
+        description: table.description.clone(),
+        text_cut: table.text_cut,
         truncated: table.truncated,
     }
 }
@@ -448,6 +476,28 @@ fn data_table(table: &core::DataTable) -> WorkspaceDataTable {
 pub fn workspace_data_table(text: String, path: String) -> Option<WorkspaceDataTable> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
     core::parse_data_table(text, &path, "utf-8").map(|table| data_table(&table))
+}
+
+/// The table of records the app read from a workbook sheet or a Parquet file (web
+/// `tableFromRecords`): the first record is the header. `None` without one.
+#[uniffi::export]
+#[must_use]
+pub fn workspace_data_table_from_records(
+    records: Vec<Vec<String>>,
+    total_rows: u64,
+    total_columns: u64,
+    description: String,
+    text_cut: bool,
+) -> Option<WorkspaceDataTable> {
+    let count = |count: u64| usize::try_from(count).unwrap_or(usize::MAX);
+    core::table_from_records(
+        records,
+        count(total_rows),
+        count(total_columns),
+        &description,
+        text_cut,
+    )
+    .map(|table| data_table(&table))
 }
 
 /// Whether `path` opens on a table (web `isDataTablePath`): a `.csv` or `.tsv` file.
@@ -868,6 +918,18 @@ fn preview(preview: core::FilePreview) -> FilePreview {
                 core::ModelFormat::Stl => ModelFormat::Stl,
                 core::ModelFormat::ThreeMf => ModelFormat::ThreeMf,
                 core::ModelFormat::Obj => ModelFormat::Obj,
+            },
+            data: bytes,
+            truncated,
+        },
+        core::FilePreview::Spreadsheet {
+            format,
+            bytes,
+            truncated,
+        } => FilePreview::Spreadsheet {
+            format: match format {
+                core::SpreadsheetFormat::Xlsx => SpreadsheetFormat::Xlsx,
+                core::SpreadsheetFormat::Parquet => SpreadsheetFormat::Parquet,
             },
             data: bytes,
             truncated,

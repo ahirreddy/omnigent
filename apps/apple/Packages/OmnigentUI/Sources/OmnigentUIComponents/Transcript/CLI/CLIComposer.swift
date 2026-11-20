@@ -84,10 +84,14 @@ public struct CLIComposer: View {
     self.focusRequest = focusRequest
   }
 
+  /// Whether the field's text runs as a shell command.
+  private var shellHint: ComposerShellHint? {
+    actions.extras.shellHint.map { $0(draft) } ?? state.shellHint
+  }
+
   private var rules: ComposerSendRules {
     // A refused shell command holds sending here too.
-    let shellHint = actions.extras.shellHint.map { $0(draft) } ?? state.shellHint
-    return ComposerSendRules(
+    ComposerSendRules(
       state: state.withShellHint(shellHint), draft: draft,
       canQueue: actions.extras.queueDraft != nil, layout: layout)
   }
@@ -209,12 +213,16 @@ public struct CLIComposer: View {
         .padding(inset)
         .frame(maxWidth: .infinity, alignment: .leading)
         .hidden()
-      TextEditor(text: $draft)
-        .cliFont()
-        .foregroundStyle(palette.userText.color)
-        .scrollContentBackground(.hidden)
-        .textEditorStyle(.plain)
-        .accessibilityIdentifier("composer-input")
+      TintedTextEditor(
+        text: $draft,
+        source: ComposerTokenSource(
+          commands: state.slashCommands, isShell: shellHint != nil, mentions: state.mentions)
+      )
+      .cliFont()
+      .foregroundStyle(palette.userText.color)
+      .scrollContentBackground(.hidden)
+      .textEditorStyle(.plain)
+      .accessibilityIdentifier("composer-input")
     }
     .overlay(alignment: .topLeading) {
       if draft.isEmpty {

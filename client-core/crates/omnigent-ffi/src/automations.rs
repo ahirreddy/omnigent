@@ -90,6 +90,9 @@ pub struct ServerPages {
     /// The Mac's system-wide shortcut opens a floating New Agent panel (`floating_composer`).
     #[uniffi(default)]
     pub floating_composer: bool,
+    /// A session's Terminal view splits into shell panes (`splittable_terminal_view_ui`).
+    #[uniffi(default)]
+    pub splittable_terminal_view: bool,
     /// Hosts and continued sessions run schedules under an hour (`scheduled_task_subhour`).
     #[uniffi(default)]
     pub automation_subhour: bool,
@@ -998,6 +1001,7 @@ impl ClientCore {
             session_overview: pages.session_overview,
             import_review: pages.import_review,
             floating_composer: pages.floating_composer,
+            splittable_terminal_view: pages.splittable_terminal_view,
             automation_subhour: pages.automation_subhour,
             automation_trigger_headers: pages.automation_trigger_headers,
             automation_trigger_poll_minutes: pages.automation_trigger_poll_minutes,

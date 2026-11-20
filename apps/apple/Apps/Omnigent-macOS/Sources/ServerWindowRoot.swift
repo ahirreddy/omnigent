@@ -100,7 +100,7 @@ struct ServerWindowRoot: View {
     .desktopAttention(session.connection, serverURL: id.serverURL, desktop: desktop)
     .floatingNewAgentSupport(
       session.connection, window: id.instance, registry: desktop.registry,
-      host: services.floatingNewAgent
+      host: services.floatingNewAgent, settings: settings
     )
     .menuBarSessions(
       session.connection, serverURL: isReady ? id.serverURL : nil, instance: id.instance,
@@ -250,8 +250,7 @@ struct ServerWindowRoot: View {
       session.transcriptFocus.focus(messageID, in: sessionID)
       Task { selection = await session.showLinkedSession(sessionID) }
     case .page(let page): selection = DeepLinkDestinations.selection(for: page)
-    case .automation(let id): selection = Self.automation(id, in: session)
-    case .workflow(let id): selection = Self.workflow(id, in: session)
+    case .automation, .workflow, .canvas: selection = Self.itemPage(route, in: session)
     case .extensionPage(let extensionID, let route):
       selection = .extensionPage(extensionID: extensionID, route: route)
     case .settings(let section):

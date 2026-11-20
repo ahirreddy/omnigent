@@ -101,6 +101,38 @@ fn usage_sparse_merge_replacement_and_response_context_tokens() {
 }
 
 #[test]
+fn hidden_costs_drop_a_cost_known_before_and_keep_the_tokens() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "session.usage", "total_cost_usd": 1.25,
+        "usage_by_model": {"large": {"input_tokens": 900, "total_cost_usd": 1.25}}}));
+    assert_eq!(harness.snapshot().event_state.total_cost_usd, Some(1.25));
+    harness.send(json!({"type": "session.usage", "cost_hidden": true, "context_tokens": 40}));
+    let state = &harness.snapshot().event_state;
+    assert_eq!(state.total_cost_usd, None);
+    assert_eq!(state.context_tokens, Some(40));
+    let large = state
+        .usage_by_model
+        .as_ref()
+        .and_then(|models| models.get("large"))
+        .cloned();
+    assert_eq!(large.as_ref().and_then(|usage| usage.total_cost_usd), None);
+    assert_eq!(large.and_then(|usage| usage.input_tokens), Some(900));
+
+    let mut kept = crate::reducer::SessionEventState {
+        total_cost_usd: Some(2.0),
+        ..crate::reducer::SessionEventState::default()
+    };
+    kept.merge(&crate::reducer::SessionEventState {
+        cost_hidden: Some(true),
+        ..crate::reducer::SessionEventState::default()
+    });
+    assert_eq!(
+        kept.total_cost_usd, None,
+        "a snapshot that hides costs drops the cached one"
+    );
+}
+
+#[test]
 fn the_model_in_use_is_the_one_the_session_ran_on_most() {
     let in_use = |models: Value| {
         let mut harness = Harness::new(SESSION);

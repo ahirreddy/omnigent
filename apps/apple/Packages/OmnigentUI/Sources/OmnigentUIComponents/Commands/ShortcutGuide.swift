@@ -41,9 +41,11 @@ enum ShortcutGuide {
   ///   - submitWithCommandReturn: Return inserts a newline and Command-Return sends.
   ///   - isMac: The Mac, with its menu-bar-only shortcuts.
   ///   - nestedAgents: The server can add nested agents, which have a shortcut of their own.
+  ///   - terminalSplit: The server splits Terminal views (`splittable_terminal_view_ui`).
   /// - Returns: The sheet's sections.
   static func groups(
-    submitWithCommandReturn: Bool, isMac: Bool, nestedAgents: Bool = false
+    submitWithCommandReturn: Bool, isMac: Bool, nestedAgents: Bool = false,
+    terminalSplit: Bool = false
   ) -> [ShortcutGroup] {
     [
       general(nestedAgents: nestedAgents),
@@ -68,7 +70,7 @@ enum ShortcutGuide {
             ] : [])),
       view(isMac: isMac),
       tabs,
-      panes(isMac: isMac),
+      panes(terminalSplit: terminalSplit),
       ShortcutGroup(
         title: "Inbox", note: "when the list has focus",
         rows: [
@@ -170,15 +172,22 @@ enum ShortcutGuide {
       ])
   }
 
-  private static func panes(isMac: Bool) -> ShortcutGroup {
-    let arrows = keys(AppShortcuts.focusLeftPane, AppShortcuts.focusRightPane)
-    let brackets = keys(AppShortcuts.previousPane, AppShortcuts.nextPane)
+  private static func panes(terminalSplit: Bool) -> ShortcutGroup {
+    var rows = [
+      row("Show or hide split view", AppShortcuts.toggleSplit),
+      row("Focus left / right pane", AppShortcuts.focusLeftPane, AppShortcuts.focusRightPane),
+    ]
+    if terminalSplit {
+      rows += [
+        row(
+          "Focus previous / next terminal pane", AppShortcuts.previousPane, AppShortcuts.nextPane),
+        row("Split terminal right", AppShortcuts.splitTerminalRight),
+        row("Split terminal down", AppShortcuts.splitTerminalDown),
+      ]
+    }
     return ShortcutGroup(
-      title: "Panes", note: "in split view",
-      rows: [
-        row("Show or hide split view", AppShortcuts.toggleSplit),
-        ShortcutRow("Focus left / right pane", isMac ? "\(arrows) or \(brackets)" : arrows),
-      ])
+      title: "Panes", note: terminalSplit ? "in split view and split terminals" : "in split view",
+      rows: rows)
   }
 
   private static var windows: ShortcutGroup {

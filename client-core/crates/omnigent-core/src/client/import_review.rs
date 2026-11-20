@@ -133,7 +133,8 @@ impl<T: HttpTransport> ClientCore<T> {
             .and_then(|gateways| gateways.get(harness))
             .copied()
             .unwrap_or(false);
-        let read = self.host_harness_inventory(&host.host_id, harness).await?;
+        // Active plugins only, from their skills and MCP servers, as the web's review lists them.
+        let read = self.host_inventory(&host.host_id, harness, false).await?;
         let entry = ImportReviewHarness {
             harness: harness.to_owned(),
             label: label.to_owned(),

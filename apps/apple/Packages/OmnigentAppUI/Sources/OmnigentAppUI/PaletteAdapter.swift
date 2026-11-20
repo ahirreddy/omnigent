@@ -60,6 +60,7 @@ struct PaletteAdapter: ViewModifier {
     state.showsWorkflows = connection.pages?.offered?.workflows == true
     state.showsUsage = connection.pages?.offered?.usage == true
     state.offersNestedAgents = NestedAgentGate.offered(connection)
+    state.offersTerminalSplit = connection.pages?.offered?.splittableTerminalView == true
     return state
   }
 

@@ -79,9 +79,7 @@ public final class WorkspaceStore: WorkspaceDataSource {
       try await core.readWorkspaceFile(
         sessionId: sessionID, environmentId: environmentID, path: path)
     }
-    return OmnigentWorkspaceUI.WorkspaceFile(
-      path: file.path, byteCount: file.byteCount, preview: WorkspaceMapping.preview(file.preview),
-      dataTable: file.dataTable.map(WorkspaceMapping.dataTable))
+    return await WorkspaceMapping.file(file)
   }
 
   /// The table of a data file's unsaved text, as the core parses it.

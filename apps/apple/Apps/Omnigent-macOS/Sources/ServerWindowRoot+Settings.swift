@@ -1,6 +1,7 @@
 import Foundation
 import OmnigentAppUI
 import OmnigentDesktop
+import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
 
@@ -57,5 +58,22 @@ struct WindowSettingsHost<Page: View>: ViewModifier {
       .leavesSettings(settings, onChangeOf: $selection)
       .serverWindowSettings(
         window, desktop: desktop, page: ServerWindowRoot.windowPage(settings))
+  }
+}
+
+extension ServerWindowRoot {
+  /// The page of a link to one automation, workflow or Canvas board, asked to show it.
+  static func itemPage(_ route: OmnigentDesktop.DeepLinkRoute, in session: ServerSession)
+    -> SidebarDestination?
+  {
+    switch route {
+    case .automation(let id): return automation(id, in: session)
+    case .workflow(let id): return workflow(id, in: session)
+    case .canvas(let board, let sessionID):
+      session.connection.canvas?.requestedLink = CanvasLinkRequest(
+        board: board, sessionID: sessionID)
+      return .canvas
+    default: return nil
+    }
   }
 }

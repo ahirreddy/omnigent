@@ -59,6 +59,24 @@
       #expect(spy.calls == ["unread one true", "unread two true", "exit"])
     }
 
+    @Test("Mark as unread leaves muted rows out, and is off when every row is muted")
+    func markUnreadMuted() throws {
+      var mutedOne = one
+      mutedOne.isMuted = true
+      var mutedTwo = two
+      mutedTwo.isMuted = true
+      let spy = SidebarSpy(SidebarFixture.state)
+      let mixed = OffscreenWindow(bar([mutedOne, two], spy: spy), width: 320, height: 60)
+      defer { mixed.close() }
+      try mixed.clickControl(at: 1)
+      #expect(spy.calls == ["unread two true", "exit"])
+      spy.calls = []
+      let muted = OffscreenWindow(bar([mutedOne, mutedTwo], spy: spy), width: 320, height: 60)
+      defer { muted.close() }
+      try muted.clickControl(at: 1)
+      #expect(!spy.calls.contains { $0.hasPrefix("unread") })
+    }
+
     @Test("Archive and Unarchive only show for a selection all one way")
     func archive() throws {
       let spy = SidebarSpy(SidebarFixture.state)

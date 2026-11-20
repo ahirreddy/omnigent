@@ -65,6 +65,12 @@ public struct ComposerView: View {
     actions.extras.shellHint.map { $0(draft) } ?? state.shellHint
   }
 
+  /// What the draft's tints follow.
+  private var tokens: ComposerTokenSource {
+    ComposerTokenSource(
+      commands: state.slashCommands, isShell: shellHint != nil, mentions: state.mentions)
+  }
+
   /// The touch bar at rest: one row until the user focuses it or there is something to send. A
   /// new session stays open: the agent and model are chosen before the first send.
   private var isCollapsed: Bool {
@@ -194,6 +200,7 @@ public struct ComposerView: View {
       }
     #endif
     .readingPostureFocus($isFocused, focusRequest: focusRequest)
+    .preference(key: ComposerClaimsEscape.self, value: keyboard.claimsEscape)
     .task(id: modeHUD) { await clearHUD() }
     .composerPickerRequests(state: state, actions: actions)
     .accessibilityElement(children: .contain)
@@ -211,7 +218,7 @@ public struct ComposerView: View {
       text: $draft, placeholder: rules.placeholder,
       minLines: isExpanded ? 10 : 1,
       maxLines: isExpanded ? 28 : (layout == .touch ? ComposerBarMetrics.maxLines : 8),
-      identifier: "composer-input"
+      identifier: "composer-input", tokens: tokens
     )
     .focused($isFocused)
     .locksEditor(unless: isEditable, focus: $isFocused)
@@ -352,5 +359,17 @@ extension ComposerView {
 
   private var completions: ComposerCompletions {
     .offered(draft: draft, dismissed: dismissedCompletionsDraft, state: state)
+  }
+}
+
+/// Whether a composer inside answers Escape itself (its completion list is open, or a turn can
+/// stop), for a window that otherwise closes on Escape.
+public struct ComposerClaimsEscape: PreferenceKey {
+  /// No composer claims it.
+  public static let defaultValue = false
+
+  /// Any composer that claims it.
+  public static func reduce(value: inout Bool, nextValue: () -> Bool) {
+    value = value || nextValue()
   }
 }

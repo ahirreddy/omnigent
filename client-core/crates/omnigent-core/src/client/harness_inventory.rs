@@ -596,13 +596,34 @@ impl<T: HttpTransport> ClientCore<T> {
         host_id: &str,
         harness: &str,
     ) -> Result<HostInventory, SessionError> {
+        self.host_inventory(host_id, harness, true).await
+    }
+
+    /// As [`Self::host_harness_inventory`], with the plugins read from Claude's plugin list when
+    /// `plugin_list` (Settings, which shows installed but disabled plugins too), else from the
+    /// `plugin:skill` names and the MCP servers' plugins: only the active ones, as the web's
+    /// import review shows them.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::host_harness_inventory`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn host_inventory(
+        &self,
+        host_id: &str,
+        harness: &str,
+        plugin_list: bool,
+    ) -> Result<HostInventory, SessionError> {
         let family = inventory_family(harness).ok_or_else(|| SessionError::InvalidInput {
             reason: format!("{harness} lists no MCP servers, skills or plugins."),
         })?;
         validate_identifier(host_id)?;
         let servers = self.host_mcp_servers(host_id).await;
         let skills = self.host_skills(host_id, harness, "~", None).await;
-        let plugins = if family == "claude" {
+        let plugins = if family == "claude" && plugin_list {
             self.host_plugins(host_id).await
         } else {
             Ok(None)

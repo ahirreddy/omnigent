@@ -77,6 +77,8 @@ public struct FileViewerView: View {
             selectedCommentID: $selectedCommentID, comment: { commenting = $0 }))
       case .model(let format, let data, let truncated):
         ModelPreviewView(format: format, data: data, truncated: truncated)
+      case .spreadsheet(_, let preview):
+        SpreadsheetView(preview: preview, download: downloadFile)
       case .video:
         ScrollView {
           WorkspaceVideoView(path: file.path, source: source, download: actions.download)
@@ -215,6 +217,13 @@ public struct FileViewerView: View {
     return serverNotice
   }
 
+  /// Downloads the whole file, where the host can.
+  private var downloadFile: (() -> Void)? {
+    guard let download = actions.download else { return nil }
+    let path = file.path
+    return { download(path) }
+  }
+
   private var serverNotice: String {
     "The server returned the first \(file.byteCount.formatted(.byteCount(style: .file)))."
   }
@@ -276,6 +285,8 @@ private struct FileHeader: View {
       parts.append("PDF")
     } else if case .model = file.preview {
       parts.append("3D model")
+    } else if case .spreadsheet(let format, _) = file.preview {
+      parts.append(format.title)
     } else if case .video = file.preview {
       // A video is streamed, not read, so its size is not known here.
       return "Video"

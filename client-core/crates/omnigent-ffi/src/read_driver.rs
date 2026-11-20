@@ -180,7 +180,8 @@ impl Engine {
         }
     }
 
-    /// Emits `UnreadChanged` and the badge when the unread sessions changed.
+    /// Emits `UnreadChanged` and the badge when the unread sessions changed, and
+    /// `MutedUnseenChanged` when the muted ones with unseen activity did.
     pub(crate) fn publish_unread(&mut self) {
         let unread = self.read.unread_ids();
         if unread != self.unread {
@@ -189,6 +190,13 @@ impl Engine {
                 session_ids: unread.into_iter().collect(),
             });
             self.publish_badge();
+        }
+        let muted_unseen = self.read.muted_unseen_ids();
+        if muted_unseen != self.muted_unseen {
+            self.muted_unseen.clone_from(&muted_unseen);
+            self.emit(CoreEvent::MutedUnseenChanged {
+                session_ids: muted_unseen.into_iter().collect(),
+            });
         }
     }
 }

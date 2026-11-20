@@ -118,6 +118,23 @@ extension NewSessionForm {
     }
   }
 
+  /// Reopens the composer as it was left beside `sourceID`, if this form kept one: its row
+  /// again, the server's current policy, and the choices for its host and agent, which another
+  /// composer may have replaced in the store meanwhile.
+  /// - Returns: Whether the form kept a composer for `sourceID`.
+  func resumeNested(_ sourceID: String, _ creation: CreationStore) async -> Bool {
+    guard nested?.sourceID == sourceID, nested?.source != nil else { return false }
+    showNestedDraft(creation)
+    await creation.loadCatalog()
+    if creation.catalog.value?.siblingSessions == false {
+      nested?.phase = .unavailable
+      return true
+    }
+    enforceNestedPolicy(creation)
+    await reloadChoices(creation, selection)
+    return true
+  }
+
   /// What the server's policy offers the composer for its source.
   func nestedChoices(_ creation: CreationStore) -> NestedHostChoices? {
     guard let nested, nested.source != nil, let catalog = creation.catalog.value else {
@@ -211,9 +228,4 @@ extension NewSessionForm {
     creation.nestedDraftCreated(key: nested.draftKey, sessionID: sessionID)
   }
 
-  /// The composer left: a row with no session goes too.
-  func closeNestedDraft(_ creation: CreationStore) {
-    guard let nested else { return }
-    creation.closeNestedDraft(key: nested.draftKey)
-  }
 }

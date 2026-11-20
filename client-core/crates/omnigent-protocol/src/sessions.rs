@@ -543,6 +543,9 @@ pub struct SessionSnapshot {
     /// Cumulative cost in USD.
     #[serde(default, skip_serializing_if = "Field::is_absent")]
     pub total_cost_usd: Field<f64>,
+    /// The operator hides costs (`OMNIGENT_HIDE_COST`): a cost known before is dropped.
+    #[serde(default, skip_serializing_if = "Field::is_absent")]
+    pub cost_hidden: Field<bool>,
     /// Per-model usage.
     #[serde(default, skip_serializing_if = "Field::is_absent")]
     pub usage_by_model: Field<BTreeMap<String, ModelUsage>>,

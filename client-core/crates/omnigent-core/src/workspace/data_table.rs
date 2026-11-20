@@ -1,4 +1,5 @@
-//! The read-only table preview of delimited data files (`.csv`, `.tsv`).
+//! The read-only table preview of data files: delimited text (`.csv`, `.tsv`) parsed here, and
+//! the records the apps read from Excel workbooks and Parquet files.
 //!
 //! Parsed as the web's `web/src/shell/dataTable.ts` does: the delimiter sniffed from the first
 //! records, RFC 4180 quoting, each column's type, and bounds that keep a wide or long file cheap
@@ -18,6 +19,8 @@ pub const DATA_TABLE_MAX_CHARS: usize = 2_000_000;
 pub const DATA_TABLE_MAX_COLUMNS: usize = 500;
 /// Cells the preview keeps, header and padding included, so a wide table keeps fewer rows.
 pub const DATA_TABLE_MAX_CELLS: usize = 200_000;
+/// Longest a column name is kept; 500 of them stay well within the text budget.
+pub const DATA_TABLE_MAX_NAME_CHARS: usize = 1_000;
 
 const CANDIDATE_DELIMITERS: [char; 4] = [',', ';', '\t', '|'];
 const SNIFF_RECORDS: usize = 20;
@@ -51,6 +54,11 @@ pub struct DataTable {
     pub delimiter: char,
     /// How the bytes were decoded, for example `utf-8` or `windows-1252`.
     pub encoding: String,
+    /// The format or a non-UTF-8 encoding the summary names, for example `windows-1252` or
+    /// `Parquet`; empty for UTF-8 delimited text.
+    pub description: String,
+    /// Text past the budget was cut from a column name or the first row.
+    pub text_cut: bool,
     /// The server sent only the start of the file, so `total_rows` is a lower bound.
     pub truncated: bool,
 }
@@ -93,16 +101,42 @@ impl DataTable {
     }
 }
 
-/// Whether `path` opens in the table preview.
-#[must_use]
-pub fn is_data_table_path(path: &str) -> bool {
+/// A binary data file the apps read into the table preview (web `isSpreadsheetPath`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SpreadsheetFormat {
+    /// An Excel workbook (`.xlsx`): a table per visible sheet.
+    Xlsx,
+    /// A Parquet file: one table.
+    Parquet,
+}
+
+/// The extension of `path`'s file name, when the name has one after its first character.
+fn extension(path: &str) -> Option<&str> {
     let name = path.rsplit('/').next().unwrap_or_default();
     name.rfind('.')
         .filter(|&dot| dot > 0)
         .and_then(|dot| name.get(dot + 1..))
-        .is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("csv") || extension.eq_ignore_ascii_case("tsv")
-        })
+}
+
+/// Whether `path` is delimited text that opens in the table preview, with a source view.
+#[must_use]
+pub fn is_data_table_path(path: &str) -> bool {
+    extension(path).is_some_and(|extension| {
+        extension.eq_ignore_ascii_case("csv") || extension.eq_ignore_ascii_case("tsv")
+    })
+}
+
+/// The workbook or Parquet format of `path`, which opens only as a table.
+#[must_use]
+pub fn spreadsheet_format(path: &str) -> Option<SpreadsheetFormat> {
+    let extension = extension(path)?;
+    if extension.eq_ignore_ascii_case("xlsx") {
+        Some(SpreadsheetFormat::Xlsx)
+    } else if extension.eq_ignore_ascii_case("parquet") {
+        Some(SpreadsheetFormat::Parquet)
+    } else {
+        None
+    }
 }
 
 /// A data file's bytes as text, and the encoding used: UTF-16 by its byte-order mark, else
@@ -264,8 +298,120 @@ pub fn parse_data_table(text: &str, path: &str, encoding: &str) -> Option<DataTa
         column_types,
         delimiter,
         encoding: encoding.to_owned(),
+        description: if encoding == UTF8 {
+            String::new()
+        } else {
+            encoding.to_owned()
+        },
+        text_cut: false,
         truncated: false,
     })
+}
+
+/// The table of records read from a workbook sheet or a Parquet file (web `tableFromRecords`).
+///
+/// `None` without a header row. The first record is the header: names are cut at
+/// [`DATA_TABLE_MAX_NAME_CHARS`] and blank ones labeled `column N`. One text budget covers the
+/// names and the kept rows, which stay a prefix: the first row is kept with its text cut when
+/// it alone is past the budget.
+#[must_use]
+pub fn table_from_records(
+    records: Vec<Vec<String>>,
+    total_rows: usize,
+    total_columns: usize,
+    description: &str,
+    text_cut_earlier: bool,
+) -> Option<DataTable> {
+    let mut records = records.into_iter();
+    let header = records.next()?;
+    let parsed_rows: Vec<Vec<String>> = records.collect();
+    let width = parsed_rows
+        .iter()
+        .map(Vec::len)
+        .fold(header.len(), usize::max)
+        .min(DATA_TABLE_MAX_COLUMNS);
+    let keep = (DATA_TABLE_MAX_CELLS / width.max(1))
+        .saturating_sub(1)
+        .max(1);
+    let mut budget = DATA_TABLE_MAX_CHARS;
+    let mut text_cut = text_cut_earlier;
+    let columns: Vec<String> = (0..width)
+        .map(|index| {
+            let name = header.get(index).map_or("", String::as_str);
+            let cut: String = name.chars().take(DATA_TABLE_MAX_NAME_CHARS).collect();
+            text_cut |= cut.len() < name.len();
+            // A blank name still needs a label, which counts against the budget too.
+            let label = if cut.trim().is_empty() {
+                format!("column {}", index + 1)
+            } else {
+                cut
+            };
+            budget = budget.saturating_sub(label.chars().count());
+            label
+        })
+        .collect();
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    for mut row in parsed_rows.into_iter().take(keep) {
+        row.truncate(width);
+        let length: usize = row.iter().map(|cell| cell.chars().count()).sum();
+        if length > budget {
+            if rows.is_empty() && budget > 0 {
+                rows.push(cut_to_budget(row, budget));
+                text_cut = true;
+            }
+            break;
+        }
+        budget -= length;
+        rows.push(row);
+    }
+    for row in &mut rows {
+        row.resize(width, String::new());
+    }
+    let column_types = (0..width)
+        .map(|index| {
+            infer_column_type(
+                rows.iter()
+                    .map(|row| row.get(index).map_or("", String::as_str)),
+            )
+        })
+        .collect();
+    Some(DataTable {
+        header: columns,
+        rows,
+        total_rows,
+        total_columns: total_columns.max(width),
+        column_types,
+        delimiter: ',',
+        encoding: UTF8.to_owned(),
+        description: description.to_owned(),
+        text_cut,
+        truncated: false,
+    })
+}
+
+/// `cells` fitted to `budget` characters: whole until one doesn't fit, which is cut and ends in
+/// `…`; the cells after it are left blank.
+fn cut_to_budget(cells: Vec<String>, budget: usize) -> Vec<String> {
+    let mut left = budget;
+    cells
+        .into_iter()
+        .map(|cell| {
+            let length = cell.chars().count();
+            if length <= left {
+                left -= length;
+                return cell;
+            }
+            let cut = if left > 0 {
+                let mut kept: String = cell.chars().take(left - 1).collect();
+                kept.push('\u{2026}');
+                kept
+            } else {
+                String::new()
+            };
+            left = 0;
+            cut
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -463,7 +609,7 @@ pub fn infer_column_type<'a>(values: impl IntoIterator<Item = &'a str>) -> DataC
         DataColumnType::Text
     } else if present.iter().all(|value| cell_number(value).is_some()) {
         DataColumnType::Number
-    } else if present.iter().all(|value| cell_date(value).is_some()) {
+    } else if present.iter().all(|value| date_sort_key(value).is_some()) {
         DataColumnType::Date
     } else {
         DataColumnType::Text
@@ -485,7 +631,7 @@ pub fn compare_cells(a: &str, b: &str, column_type: DataColumnType) -> Ordering 
             (Some(a), Some(b)) => compare_numbers(&a, &b),
             (a, b) => a.is_none().cmp(&b.is_none()),
         },
-        DataColumnType::Date => match (cell_date(a), cell_date(b)) {
+        DataColumnType::Date => match (date_sort_key(a), date_sort_key(b)) {
             (Some(a), Some(b)) => a.cmp(&b),
             (a, b) => a.is_none().cmp(&b.is_none()),
         },
@@ -594,6 +740,25 @@ fn compare_numbers(a: &CellNumber, b: &CellNumber) -> Ordering {
         .cmp(&b.magnitude)
         .then_with(|| a.digits.cmp(&b.digits));
     if a_sign < 0 { order.reverse() } else { order }
+}
+
+const PHANTOM_LEAP_DAY: &str = "1900-02-29";
+/// 1900-03-01, in milliseconds since the epoch.
+const MARCH_1_1900: i64 = -2_203_891_200_000;
+const DAY_MILLIS: i64 = 86_400_000;
+
+/// A date cell's sort key: its time in milliseconds, then a tie-breaker. Excel's phantom
+/// 1900-02-29 takes the last millisecond of Feb 28, its time of day breaking the tie, so it sorts
+/// after Feb 28 and before Mar 1.
+fn date_sort_key(value: &str) -> Option<(i64, i64)> {
+    let text = value.trim();
+    if let Some(rest) = text.strip_prefix(PHANTOM_LEAP_DAY) {
+        let same_time_on_march_1 = cell_date(&format!("1900-03-01{rest}"))?;
+        // Clamped so an offset can't push it past Mar 1 or before Feb 28.
+        let time_of_day = (same_time_on_march_1 - MARCH_1_1900).clamp(0, DAY_MILLIS - 1);
+        return Some((MARCH_1_1900 - 1, 1 + time_of_day));
+    }
+    cell_date(text).map(|millis| (millis, 0))
 }
 
 /// A date cell's time in milliseconds since the epoch: `YYYY-MM-DD`, optionally with a time

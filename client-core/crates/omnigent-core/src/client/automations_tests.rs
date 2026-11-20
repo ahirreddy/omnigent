@@ -460,6 +460,21 @@ fn the_floating_new_agent_panel_follows_its_feature() {
 }
 
 #[test]
+fn the_terminal_split_follows_its_feature() {
+    assert!(
+        !ServerPages::from_value(&json!({}))
+            .unwrap()
+            .splittable_terminal_view
+    );
+    let split = json!({"features": {"splittable_terminal_view_ui": true}});
+    assert!(
+        ServerPages::from_value(&split)
+            .unwrap()
+            .splittable_terminal_view
+    );
+}
+
+#[test]
 fn pages_follow_what_the_server_advertises() {
     let current = json!({"automations_enabled": true, "scheduled_task_session_modes": true,
         "features": {"usage_page": true, "canvas": true}, "archive_worktree_cleanup": true,

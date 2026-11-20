@@ -139,7 +139,8 @@ enum AttachmentLoading {
   }
 }
 
-/// A `TextEditor` that grows with its text between `minLines` and `maxLines`, then scrolls.
+/// A `TextEditor` that grows with its text between `minLines` and `maxLines`, then scrolls, with
+/// the draft's command, shell `!` and mentions tinted.
 struct GrowingTextEditor: View {
   @Binding var text: String
   let placeholder: String
@@ -148,17 +149,21 @@ struct GrowingTextEditor: View {
   /// The text view's accessibility identifier. Set on the editor alone, so the measuring copy,
   /// the placeholder and the editor's scroll view never carry it.
   let identifier: String
+  /// What the draft's tints follow.
+  let tokens: ComposerTokenSource
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @ScaledMetric private var lineHeight: CGFloat
 
   init(
-    text: Binding<String>, placeholder: String, minLines: Int, maxLines: Int, identifier: String
+    text: Binding<String>, placeholder: String, minLines: Int, maxLines: Int, identifier: String,
+    tokens: ComposerTokenSource = ComposerTokenSource()
   ) {
     _text = text
     self.placeholder = placeholder
     self.minLines = minLines
     self.maxLines = maxLines
     self.identifier = identifier
+    self.tokens = tokens
     _lineHeight = ScaledMetric(wrappedValue: Theme.Typography.editorLineHeight, relativeTo: .body)
   }
 
@@ -184,7 +189,7 @@ struct GrowingTextEditor: View {
         .padding(inset)
         .frame(maxWidth: .infinity, alignment: .leading)
         .hidden()
-      TextEditor(text: $text)
+      TintedTextEditor(text: $text, source: tokens)
         .proseStyle()
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier(identifier)

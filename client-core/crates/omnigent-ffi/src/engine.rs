@@ -270,6 +270,8 @@ pub(crate) struct Engine {
     /// Read state of every known session, and the unread sessions last reported.
     pub(crate) read: core::read_state::ReadState,
     pub(crate) unread: BTreeSet<String>,
+    /// The muted sessions with unseen activity last reported.
+    pub(crate) muted_unseen: BTreeSet<String>,
     pub(crate) list: crate::list_driver::ListWindow,
     pub(crate) demo_ticker: Option<AbortHandle>,
     /// A changed watch waits on this ([`WATCH_COALESCE_MS`]).
@@ -309,6 +311,7 @@ impl Engine {
                 attention: Attention::default(),
                 read: core::read_state::ReadState::new(),
                 unread: BTreeSet::new(),
+                muted_unseen: BTreeSet::new(),
                 list: crate::list_driver::ListWindow::default(),
                 demo_ticker: None,
                 watch_timer: None,

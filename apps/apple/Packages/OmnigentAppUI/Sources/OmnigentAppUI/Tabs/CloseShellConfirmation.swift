@@ -28,7 +28,11 @@ struct CloseShellConfirmation: ViewModifier {
   }
 
   private var message: String {
-    let name = tabs?.closingShell.flatMap { tabs?.tab($0)?.title }
+    Self.message(name: tabs?.closingShell.flatMap { tabs?.tab($0)?.title })
+  }
+
+  /// The prompt's text, naming the shell when its name is known.
+  static func message(name: String?) -> String {
     let subject = name.map { "This terminates \($0)" } ?? "This terminates the shell"
     return "\(subject) and ends any process running in it. This can\u{2019}t be undone."
   }

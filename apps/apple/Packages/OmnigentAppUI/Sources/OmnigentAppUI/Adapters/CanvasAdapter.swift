@@ -45,6 +45,11 @@ struct CanvasAdapter: View {
         projectActions: projectActions
       )
       .onAppear { canvas.bind(key: layoutKey) }
+      .onChange(of: canvas.requestedLink, initial: true) { _, request in
+        guard let request else { return }
+        canvas.requestedLink = nil
+        follow(request, canvas: canvas)
+      }
       .onDisappear { tabs?.quickViewSessionID = nil }
       .onChange(of: projectSignature, initial: true) {
         canvas.relayout(
@@ -61,6 +66,19 @@ struct CanvasAdapter: View {
           }
         }
       }
+    }
+  }
+
+  /// A `/canvas` link: its board (Main when it names none), and its session beside the board
+  /// where there is room, else opened.
+  private func follow(_ request: CanvasLinkRequest, canvas: CanvasStore) {
+    canvas.bind(key: layoutKey)
+    canvas.select(board: request.board ?? CanvasMapping.mainBoardID)
+    guard let sessionID = request.sessionID else { return }
+    if let tabs, sizeClass != .compact {
+      tabs.quickViewSessionID = sessionID
+    } else {
+      open(sessionID)
     }
   }
 

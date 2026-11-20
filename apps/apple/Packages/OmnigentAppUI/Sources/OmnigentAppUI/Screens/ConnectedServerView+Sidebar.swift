@@ -253,6 +253,7 @@ extension ConnectedServerView {
     }
     actions.deletesSourceAutomations = connection.pages?.offered?.automations == true
     actions.isUnread = { list.isUnread($0) }
+    actions.hasUnseenWhileMuted = { [connection] in connection.mutedUnseenIDs.contains($0) }
     // An older server would show the mute to every collaborator, so it is offered only where
     // the server keeps it per viewer.
     if connection.pages?.offered?.sessionMute == true {
@@ -261,6 +262,7 @@ extension ConnectedServerView {
     if NestedAgentGate.offered(connection) {
       actions.addNestedAgent = { addNestedAgent(beside: $0.id) }
     }
+    actions.deleteNestedDraft = { deleteNestedDraft(rowID: $0.id) }
     if connection.pages?.offered?.sessionNestMoves == true {
       actions.moveToNest = { summary, destination in
         moveToNest(summary.id, destination: destination?.id)
@@ -300,13 +302,6 @@ extension ConnectedServerView {
     let model = sidebarModel
     if model.display.show == .archived { setDisplay(model.display.with(show: .all)) }
     connection.sessionList.filter = OmnigentCoreFFI.SessionFilter(filter ?? .all)
-  }
-
-  /// Opens the Add nested agent composer beside `sourceID`, with its family, folder and section
-  /// open in the sidebar so its provisional row shows.
-  func addNestedAgent(beside sourceID: String) {
-    sidebarModel.collapsedFamilies = SidebarNavigationOrder.reveal(sourceID, in: sidebarState)
-    selectionBinding.wrappedValue = .nestedSession(sourceID: sourceID)
   }
 
   /// Previous and Next Session, and the pinned-session shortcuts, show the session's tabs.

@@ -41,10 +41,11 @@ extension TerminalSurfaceController {
     return unsafe ghostty_surface_has_selection(surface)
   }
 
-  /// Opens the find bar.
+  /// Opens the find bar, searching for the selected text when there is some, as Find takes the
+  /// selection elsewhere in the app.
   public func startSearch() {
     if search == nil { search = TerminalSearch(needle: "") }
-    perform("start_search")
+    perform(hasSelection ? "search_selection" : "start_search")
   }
 
   /// Searches for `needle` (empty cancels the search but keeps the bar).
@@ -91,6 +92,14 @@ extension TerminalSurfaceController {
     unsafe event.action = GHOSTTY_ACTION_RELEASE
     unsafe ghostty_surface_key(surface, event)
     return handled
+  }
+
+  /// The view took or gave up the keyboard.
+  func setFocused(_ focused: Bool) {
+    if hasKeyboardFocus != focused { hasKeyboardFocus = focused }
+    guard let surface = unsafe surface else { return }
+    unsafe ghostty_surface_set_focus(surface, focused)
+    if focused { connection.foreground() }
   }
 
   /// Gives the terminal keyboard focus (on iOS this shows the keyboard and accessory row).

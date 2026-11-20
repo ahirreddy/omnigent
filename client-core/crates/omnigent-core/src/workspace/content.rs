@@ -16,6 +16,7 @@
 use base64::Engine as _;
 use serde_json::Value;
 
+use super::data_table::{SpreadsheetFormat, spreadsheet_format};
 use super::error::WorkspaceError;
 use super::media::{ModelFormat, is_pdf_file, is_video_file, model_format};
 use super::path::WorkspacePath;
@@ -262,6 +263,16 @@ pub enum FilePreview {
         /// The server returned only part of it, which no model reader can open.
         truncated: bool,
     },
+    /// An Excel workbook or Parquet file ([`spreadsheet_format`]), as the server returned it,
+    /// for the apps to read into tables.
+    Spreadsheet {
+        /// Its format.
+        format: SpreadsheetFormat,
+        /// The bytes returned.
+        bytes: Vec<u8>,
+        /// The server returned only part of it, which neither format can be read from.
+        truncated: bool,
+    },
     /// A video ([`super::media::is_video_file`]): the player streams it with ranged downloads
     /// (`ClientCore::download_workspace_file`) once asked to play.
     Video,
@@ -312,7 +323,7 @@ impl FileContent {
     /// What a viewer should show under `limits`.
     #[must_use]
     pub fn preview(&self, limits: &PreviewLimits) -> FilePreview {
-        // The web's order: video, image, PDF, 3D model, then text or binary.
+        // The web's order: video, image, PDF, 3D model, workbook or Parquet, then text or binary.
         let content_type = self.content_type.as_deref();
         if is_video_file(self.path.as_str(), content_type) {
             return FilePreview::Video;
@@ -321,20 +332,22 @@ impl FileContent {
             matches!(&self.body, FileBody::Binary(bytes) if ImageFormat::sniff(bytes).is_some());
         if !image && is_pdf_file(self.path.as_str(), content_type) {
             return FilePreview::Pdf {
-                bytes: match &self.body {
-                    FileBody::Text(text) => text.as_bytes().to_vec(),
-                    FileBody::Binary(bytes) => bytes.clone(),
-                },
+                bytes: self.bytes(),
                 truncated: self.truncated,
             };
         }
         if !image && let Some(format) = model_format(self.path.as_str(), content_type) {
             return FilePreview::Model {
                 format,
-                bytes: match &self.body {
-                    FileBody::Text(text) => text.as_bytes().to_vec(),
-                    FileBody::Binary(bytes) => bytes.clone(),
-                },
+                bytes: self.bytes(),
+                truncated: self.truncated,
+            };
+        }
+        // A workbook or Parquet file whose bytes happen to be UTF-8 arrives as text.
+        if !image && let Some(format) = spreadsheet_format(self.path.as_str()) {
+            return FilePreview::Spreadsheet {
+                format,
+                bytes: self.bytes(),
                 truncated: self.truncated,
             };
         }
@@ -358,6 +371,14 @@ impl FileContent {
                 byte_count: self.byte_count,
             },
             FileBody::Text(text) => FilePreview::Text(self.text_preview(text, limits)),
+        }
+    }
+
+    /// The returned bytes, text re-encoded as UTF-8.
+    fn bytes(&self) -> Vec<u8> {
+        match &self.body {
+            FileBody::Text(text) => text.as_bytes().to_vec(),
+            FileBody::Binary(bytes) => bytes.clone(),
         }
     }
 

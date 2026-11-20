@@ -18,6 +18,12 @@ struct CanvasBoardSurface: View {
   /// What the scroll view shows, in the zoomed content's coordinates; empty before it lays out.
   @State private var visible: CGRect = .zero
   @State private var panStart: CGPoint?
+  /// The user moved the board by hand (zoomed or dragged) since it showed.
+  @State private var moved = false
+  /// Each board's zoom and scroll as the user left it, for this visit, as the web keeps them.
+  @State private var viewports: [String: CanvasViewport] = [:]
+  /// A board's remembered scroll, applied once its content lays out at the remembered zoom.
+  @State private var pendingScroll: CGPoint?
 
   var body: some View {
     GeometryReader { proxy in
@@ -62,7 +68,8 @@ struct CanvasBoardSurface: View {
       }
       .onAppear { if followsFit { setZoom(geometry.fitZoom(proxy.size)) } }
     }
-    .onChange(of: state.activeBoard) { followsFit = true }
+    .onChange(of: state.activeBoard) { previous, board in switchBoard(from: previous, to: board) }
+    .task(id: pendingScroll) { await restoreScroll() }
     // On the board, not the page: the tabs and header keep their own identifiers.
     .accessibilityIdentifier("canvas")
   }
@@ -101,6 +108,13 @@ struct CanvasBoardSurface: View {
       .zIndex(moving ? 1 : 0)
       .onTapGesture { select(card.id) }
       .gesture(drag(card))
+      // In the key loop only with keyboard navigation on, as a Mac's buttons, so the board's
+      // controls keep their order otherwise; Return and Space then open the card.
+      .focusable(interactions: .activate)
+      .onKeyPress(keys: [.return, .space]) { _ in
+        select(card.id)
+        return .handled
+      }
       .accessibilityElement(children: .combine)
       .accessibilityLabel("\(card.title). \(card.state.label). \(card.workspace)")
       .accessibilityAddTraits(.isButton)
@@ -125,7 +139,10 @@ struct CanvasBoardSurface: View {
                   x: max(0, start.x - value.translation.width),
                   y: max(0, start.y - value.translation.height)))
             }
-            .onEnded { _ in panStart = nil }
+            .onEnded { _ in
+              panStart = nil
+              moved = true
+            }
         )
         // Panning is a pointer gesture; VoiceOver scrolls the board itself.
         .accessibilityHidden(true)
@@ -159,6 +176,7 @@ struct CanvasBoardSurface: View {
       }
       control("Fit view", systemImage: "arrow.up.left.and.arrow.down.right") {
         followsFit = true
+        moved = false
         setZoom(geometry.fitZoom(viewport))
       }
       if let reset = actions.resetLayout {
@@ -197,6 +215,37 @@ struct CanvasBoardSurface: View {
     }
   }
 
+  /// Leaves `previous` as the user left it and shows `board` as they left it this visit, or
+  /// fitted to its cards when they hadn't moved it.
+  private func switchBoard(from previous: String, to board: String) {
+    if moved || !followsFit {
+      viewports[previous] = CanvasViewport(zoom: zoom, origin: visible.origin)
+    } else {
+      viewports[previous] = nil
+    }
+    moved = false
+    guard let kept = viewports[board] else {
+      followsFit = true
+      return
+    }
+    followsFit = false
+    moved = true
+    setZoom(kept.zoom)
+    pendingScroll = kept.origin
+  }
+
+  /// Scrolls a board shown again to where it was left, once its content has laid out.
+  private func restoreScroll() async {
+    guard let point = pendingScroll else { return }
+    do {
+      try await Task.sleep(for: .milliseconds(50))
+    } catch {
+      return
+    }
+    position.scrollTo(point: point)
+    pendingScroll = nil
+  }
+
   /// Zooms by the controls around the middle of the view, as the web's do.
   private func zoomKeepingCenter(_ value: CGFloat) {
     let before = zoom
@@ -208,6 +257,12 @@ struct CanvasBoardSurface: View {
   private func setZoom(_ value: CGFloat) {
     if zoom != value { zoom = value }
   }
+}
+
+/// A board's zoom and scroll, kept while the page shows another board.
+struct CanvasViewport: Equatable {
+  var zoom: CGFloat
+  var origin: CGPoint
 }
 
 /// The board's dot lattice, aligned to the grid cards snap to.

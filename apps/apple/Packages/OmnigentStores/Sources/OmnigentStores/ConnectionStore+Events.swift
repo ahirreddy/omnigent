@@ -212,9 +212,17 @@ extension ConnectionStore {
     }
   }
 
-  /// An entry pushed to an open session's journal goes to its Tasks tab.
+  /// An entry pushed to an open session's journal goes to its Tasks tab; the muted sessions
+  /// with unseen activity go to the list, for their menus' Mark as read.
   private func applyTasksEvent(_ event: CoreEvent) {
-    guard case .sessionJournalAppended(let id, let entry) = event else { return }
-    tasksStores[id]?.journalAppended(entry)
+    switch event {
+    case .sessionJournalAppended(let id, let entry):
+      tasksStores[id]?.journalAppended(entry)
+    case .mutedUnseenChanged(let ids):
+      let unseen = Set(ids)
+      if unseen != mutedUnseenIDs { mutedUnseenIDs = unseen }
+    default:
+      break
+    }
   }
 }
