@@ -1,6 +1,7 @@
 # Agent browser through Chrome DevTools MCP: design and plan
 
-Status: proposed, 2026-11-20. Phase 1 (shared proxy, injection, remote host directory) in progress.
+Status: accepted with the user decisions in 1.1, 2026-11-20. Phase 1 (shared proxy, injection,
+remote host directory) in progress.
 
 Agents in an Omnigent session get Google's `chrome-devtools-mcp` with every tool it ships:
 pages and tabs, navigation, snapshots, click/fill/fill_form/hover/drag/press_key/upload,
@@ -25,13 +26,23 @@ We do not reimplement its tools.
 | Scoping | The proxy presents a *virtual browser* that contains only the session's tabs. It emulates the browser-level `Target` domain, attaches to allowed pages itself, and never forwards browser-level auto-attach |
 | New pages | `Target.createTarget` becomes a real tab: an app tab in the session's tab group locally, a host tab (`tabs.create`, `created_by: agent`) remotely |
 | User control | While the user holds a tab, the proxy refuses actuating methods (`Input.*`, navigation, dialogs, uploads, emulation, close) with an error that tells the agent to wait |
-| Local browser endpoint | Opt-in CEF `remote_debugging_port` on loopback in the Web Host (setting, default on when the server enables the feature). Tab directory over an owner-only server relay. Hardening to a pipe plus app-side token gate is phase 6 |
+| Local browser endpoint | CEF `remote_debugging_port` on loopback in the Web Host, behind the setting *Let agents use this Mac's browser* (on by default). Tab directory over an owner-only server relay. Hardening to a pipe plus app-side token gate is phase 6 |
 | Remote browser endpoint | The profile host's existing loopback CDP port (`host.json` `cdp_port`); tab directory over `host.sock` |
 | Which browser | Label `omnigent.browser_target` = `auto` (default), `local` or `remote`. `auto` decides at connection time and asks once only when both are plausible. A chip in the session UI switches with one click |
 | Existing `browser_*` tools | Hidden for a session that gets DevTools MCP; kept unchanged everywhere else (web and Electron panes, flag off) |
 | Indicator | One agent state per tab for both browsers: `idle`, `active`, `user` (you're in control), `needs_you` (handoff). Badge in the tab strip and the session's tab list, banner with **Stop** and **Take over** on the page |
 | Background operation (local) | Agent-held tabs render offscreen (`WebView.rendersOffscreen`), so CEF never sees them hidden; input only through CDP `Input.*`; focus emulation per agent page session; screenshots through `Page.captureScreenshot`; page and session stream pinned while held |
 | Security | Local browser is owner-only and deny-by-default for shared sessions and viewers; profile-wide CDP methods (cookie jars, cache, downloads, extensions, WebAuthn, browser close) are refused for both browsers |
+
+### 1.1 User decisions (2026-11-20)
+
+- *Let agents use this Mac's browser* is **on by default**. Shared sessions and viewers still
+  cannot use the local browser.
+- **Stop keeps the agent's tabs open.** It takes over the tab and interrupts the turn; nothing
+  is closed.
+- **Unattended runs prefer the remote browser.** For scheduled automations and other runs with
+  nobody watching, `auto` picks the remote browser when it is usable. A hand-off can still be
+  requested.
 
 ## 2. What exists today (grounding)
 
@@ -201,8 +212,10 @@ owner)]`, `create_tab(url)`, `close_tab(target_id)`, `report_activity(target_id,
   1. Local usable = the owner's app claims `attach`, the setting is on, the session is not
      shared, and the same-machine check passes (phase 4 drops the last condition).
   2. Remote usable = the runner advertises `remote_browser` and the host starts.
-  3. Only one usable → use it. Both usable → local when the runner is on the same Mac (the user
-     is there and the agent gets the user's logins), else ask once.
+  3. Only one usable → use it. Both usable and the run is unattended (a scheduled automation,
+     or no subscriber on the session stream) → remote. Both usable otherwise → local when the
+     runner is on the same Mac (the user is there and the agent gets the user's logins), else
+     ask once.
   4. Asking is an elicitation, "Which browser should the agent use? This Mac (your logins) /
      Agent's machine (works while your Mac sleeps)"; the answer is written to the label.
 - The session header shows a chip, *Browser: This Mac* / *Browser: Agent machine*, with a menu
@@ -232,7 +245,7 @@ owner)]`, `create_tab(url)`, `close_tab(target_id)`, `report_activity(target_id,
   while `active`.
 - **Take over** sets the owner to `user`: the proxy refuses actuating methods with
   `user_in_control`. **Hand back** returns it to `agent`. **Stop** does the same as Take over
-  and also interrupts the session's current turn.
+  and also interrupts the session's current turn. It closes nothing: the agent's tabs stay open.
 - Remote tabs: the host already has owner `agent`/`user` with a 60 s grace; `tabs.agent_state`
   adds `idle`/`active`, and the Swift remote tab reads both into the same `TabItemState`.
 - Hand-off: `browser_request_human` creates an elicitation with `browser_handoff {backend,
@@ -316,6 +329,5 @@ window, or the app may be inactive. Requirements and mechanism:
   Host's own DevTools session, so `Runtime.disable` by the agent cannot break the host bridges.
 - **Mirror lag.** The pin must stay older than the cooldown; bump deliberately.
 - **Node on runners.** Managed sandboxes need Node 20.19+; the tool list shows the failure.
-- Open: default of the local setting once the feature ships (on, with the multi-user caveat, is
-  proposed); whether `Stop` should also close the agent's tabs; whether `auto` should prefer the
-  remote browser for unattended scheduled runs.
+- The earlier open questions (local setting default, what Stop closes, unattended runs) are
+  answered in 1.1.
