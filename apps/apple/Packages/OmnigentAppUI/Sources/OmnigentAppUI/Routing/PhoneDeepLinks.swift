@@ -168,6 +168,8 @@
       apply(pending.route, server: server)
     }
 
+    // One case per route: a new route fails to compile here instead of going nowhere.
+    // swiftlint:disable:next cyclomatic_complexity
     private func apply(_ route: OmnigentDeepLinks.DeepLinkRoute, server: URL?) {
       switch route {
       case .home:

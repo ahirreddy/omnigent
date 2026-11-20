@@ -5,7 +5,9 @@ import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
 
-// Clicked links to this server's web app open where the app shows them.
+// Clicked links to this server's web app open where the app shows them. The opener has one
+// case per route, so a new route fails to compile here instead of opening the browser.
+// swiftlint:disable cyclomatic_complexity
 extension ConnectedServerView {
   /// Opens links to the connected server's web app (`…/c/<id>`, `?message=`, `/settings/<x>`,
   /// `/usage`) in this window, and everything else with `fallback`.
@@ -59,3 +61,4 @@ extension ConnectedServerView {
     }
   }
 }
+// swiftlint:enable cyclomatic_complexity
