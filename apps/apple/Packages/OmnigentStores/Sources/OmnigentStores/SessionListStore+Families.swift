@@ -15,6 +15,26 @@ extension SessionListStore {
     }
   }
 
+  /// A page of sessions not archived whose title matches `query`, for the Nests picker.
+  /// - Parameters:
+  ///   - query: The search text.
+  ///   - after: The cursor of the page to read; `nil` for the first.
+  ///   - limit: The most to return.
+  /// - Returns: The matches, most recent first, and the next page's cursor.
+  /// - Throws: The core's error.
+  public func searchTitles(_ query: String, after: String?, limit: UInt32 = 20)
+    async throws(CoreError) -> SessionSearchPage
+  {
+    guard let core else {
+      throw .InvalidState(message: "Connect to a server before searching sessions.")
+    }
+    do {
+      return try await core.searchSessionTitles(query: query, after: after, limit: limit)
+    } catch {
+      throw coreError(error)
+    }
+  }
+
   /// Files `sessionIDs` into `project`, or removes them from their project, as one change of
   /// the list (the bulk bar's Move to project). A label-only project is promoted first. A nested
   /// family member moves with its representative, which must be among them

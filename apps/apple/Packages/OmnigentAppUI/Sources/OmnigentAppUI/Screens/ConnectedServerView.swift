@@ -148,6 +148,7 @@ public struct ConnectedServerView: View {
     }
     .sheet(isPresented: sidebarSharePresented) { sidebarShareSheet }
     .sheet(item: $sidebar.projectSettings) { flow in projectSettingsSheet(flow) }
+    .sheet(item: $sidebar.nestPicker) { flow in nestPickerSheet(flow) }
     .modifier(RunningWorkPrompts(view: self))
     .archiveWorktreePrompt($sidebar.archiveRequest) { request, delete, remember in
       archiveAnswered(request, delete: delete, remember: remember)

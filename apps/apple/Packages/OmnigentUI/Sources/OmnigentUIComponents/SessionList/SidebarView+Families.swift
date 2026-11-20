@@ -41,6 +41,12 @@ extension SidebarView {
 
   var dropHandler: SidebarDropHandler { SidebarDropHandler(state: state, actions: actions) }
 
+  /// A row as a drag source and target; a row that moves with its family drags only between
+  /// nests.
+  func rowDrag(_ session: SessionSummary, family: SessionRowFamily) -> SidebarRowDrag {
+    dropHandler.rowDrag(session, movesWithFamily: family.movesWithFamily(session))
+  }
+
   /// The nests `session` can join, read when its menu shows.
   func nestDestinations(for session: SessionSummary) -> @MainActor () -> [SessionSummary] {
     let state = state

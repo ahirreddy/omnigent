@@ -128,6 +128,8 @@ final class SidebarModel {
   var renameText = ""
   /// Session families collapsed under their head, for this window's life (the web's tab).
   var collapsedFamilies: Set<String> = []
+  /// The open Nests picker's search.
+  var nestPicker: NestPickerFlow?
 
   init(groupSorts: SidebarGroupSortStore = SidebarGroupSortStore()) {
     self.groupSorts = groupSorts
@@ -259,6 +261,7 @@ extension ConnectedServerView {
         moveToNest(summary.id, destination: destination?.id)
       }
       actions.canJoinNests = NestedAgentGate.offered(connection)
+      actions.searchNests = { openNestPicker(for: $0) }
     }
     // Split view holds two tabs of one session; another session goes beside it in a window
     // (Open in New Window), so the rows offer no Open in Split View.

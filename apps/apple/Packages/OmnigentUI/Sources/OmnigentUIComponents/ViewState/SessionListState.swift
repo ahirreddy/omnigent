@@ -229,6 +229,8 @@ public struct SessionListActions {
   /// A session can join another nest (the server adds nested agents); without it, a nested
   /// session can only leave its own.
   public var canJoinNests = false
+  /// Opens the Nests picker's server search for a session.
+  public var searchNests: (@MainActor (SessionSummary) -> Void)?
   /// Stop the running session.
   public var stop: (@MainActor (SessionSummary) -> Void)?
   /// Delete (after confirmation).

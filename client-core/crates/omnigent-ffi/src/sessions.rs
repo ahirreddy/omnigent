@@ -735,4 +735,36 @@ impl ClientCore {
             .map(|found| found.into_iter().map(Into::into).collect())
             .map_err(CoreError::from)
     }
+
+    /// The page after `after` (the first when `None`) of up to `limit` sessions not archived
+    /// whose title matches `query`, most recent first.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidPagination` and the read errors.
+    pub async fn search_session_titles(
+        &self,
+        query: String,
+        after: Option<String>,
+        limit: u32,
+    ) -> Result<SessionSearchPage, CoreError> {
+        let page = self
+            .sessions()
+            .search_session_page(&query, SearchScope::Title, false, after.as_deref(), limit)
+            .await
+            .map_err(CoreError::from)?;
+        Ok(SessionSearchPage {
+            sessions: page.sessions.into_iter().map(Into::into).collect(),
+            next_cursor: page.next_cursor,
+        })
+    }
+}
+
+/// One page of a session search.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct SessionSearchPage {
+    /// The matches, most recent first.
+    pub sessions: Vec<SessionSummary>,
+    /// The `after` cursor of the next page; `None` on the last.
+    pub next_cursor: Option<String>,
 }
