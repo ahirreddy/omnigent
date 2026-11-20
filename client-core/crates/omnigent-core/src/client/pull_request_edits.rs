@@ -118,6 +118,15 @@ impl MergeMethod {
     }
 }
 
+/// What a merge as a chosen account says when the server or host has no `merge-as` route.
+pub const MERGE_AS_UNSUPPORTED: &str = "This Omnigent server or host can\u{2019}t merge as a chosen \
+     account. Update them, or merge on GitHub.";
+
+/// An older server or runner has no `merge-as` route; an older host has no such operation.
+fn merge_as_unsupported(status: u16, message: &str) -> bool {
+    (status == 404 && message == "Not Found") || message.starts_with("unknown fs write op")
+}
+
 /// The merge methods the PR's repository allows.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MergeOptions {
@@ -412,16 +421,96 @@ impl<T: HttpTransport> ClientCore<T> {
         method: MergeMethod,
         expected_head: &str,
     ) -> Result<(), SessionError> {
+        self.merge_pull_request_as(session_id, pr_url, method, expected_head, None)
+            .await
+    }
+
+    /// Merges `pr_url` as [`ClientCore::merge_pull_request`] does; with `account`, through the
+    /// host's `merge-as` route, which runs the merge as that account. It is never retried as a
+    /// plain merge, which would run as whichever account is saved.
+    ///
+    /// # Errors
+    ///
+    /// As [`ClientCore::merge_pull_request`]; a server or host without `merge-as` is
+    /// [`SessionError::Rejected`] with [`MERGE_AS_UNSUPPORTED`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn merge_pull_request_as(
+        &self,
+        session_id: &str,
+        pr_url: &str,
+        method: MergeMethod,
+        expected_head: &str,
+        account: Option<&str>,
+    ) -> Result<(), SessionError> {
         if expected_head.is_empty() {
             return Err(SessionError::InvalidInput {
                 reason: "Refresh the pull request before merging it.".to_owned(),
             });
         }
-        let path = github_path(session_id, "merge")?;
-        let body = json!({
-            "pr_url": pr_url, "merge_method": method.wire(), "expected_head": expected_head,
-        });
-        let result = self.write_json("POST", &path, &body).await.map(|_| ());
+        let mut body = Map::new();
+        body.insert("pr_url".to_owned(), json!(pr_url));
+        body.insert("merge_method".to_owned(), json!(method.wire()));
+        body.insert("expected_head".to_owned(), json!(expected_head));
+        if let Some(account) = account {
+            body.insert("account".to_owned(), json!(account));
+        }
+        let route = if account.is_some() {
+            "merge-as"
+        } else {
+            "merge"
+        };
+        let body = Value::Object(body);
+        let path = github_path(session_id, route)?;
+        let result = self
+            .write_json("POST", &path, &body)
+            .await
+            .map(|_| ())
+            .map_err(|error| match error {
+                SessionError::Rejected { status, message }
+                    if account.is_some() && merge_as_unsupported(status, &message) =>
+                {
+                    SessionError::Rejected {
+                        status,
+                        message: MERGE_AS_UNSUPPORTED.to_owned(),
+                    }
+                }
+                other => other,
+            });
+        self.dispatch();
+        result
+    }
+
+    /// Saves the provider account the host reads and writes the session's PRs as, for the
+    /// repository of `pr_url` (the host's default PR when `None`); answers the info read as
+    /// that account. An empty `account` clears the saved choice.
+    ///
+    /// # Errors
+    ///
+    /// As [`ClientCore::link_pull_request`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn set_pull_request_account(
+        &self,
+        session_id: &str,
+        pr_url: Option<&str>,
+        account: &str,
+    ) -> Result<PullRequestInfo, SessionError> {
+        let path = github_path(session_id, "preferences")?;
+        let mut body = Map::new();
+        body.insert("account".to_owned(), json!(account));
+        if let Some(pr_url) = pr_url {
+            body.insert("pr_url".to_owned(), json!(pr_url));
+        }
+        let body = Value::Object(body);
+        let result = self
+            .write_json("POST", &path, &body)
+            .await
+            .and_then(|value| PullRequestInfo::from_value(&value).map_err(malformed(&path)));
         self.dispatch();
         result
     }

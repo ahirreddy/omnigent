@@ -400,6 +400,15 @@ pub enum PullRequestAvailability {
     Unavailable,
 }
 
+/// An account the provider's CLI is signed in as on the host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequestAccount {
+    /// The login.
+    pub login: String,
+    /// The CLI's active account for the host.
+    pub active: bool,
+}
+
 /// `session.github.info`: the session's linked PRs, the selected one's detail, and what the
 /// panel can do with it.
 #[derive(Debug, Clone, PartialEq)]
@@ -433,6 +442,12 @@ pub struct PullRequestInfo {
     pub pull_request: Option<PullRequestDetail>,
     /// How often readers of this info re-read it.
     pub polling: PullRequestPolling,
+    /// The accounts the provider's CLI is signed in as; empty when the host lists none.
+    pub accounts: Vec<PullRequestAccount>,
+    /// The account the host reads and writes this PR as.
+    pub selected_account: Option<String>,
+    /// What the provider calls a PR ("merge request"); `None` for GitHub's "pull request".
+    pub request_name: Option<String>,
 }
 
 /// A patch of the selected PR: the whole PR, one commit, or the changes since a commit.
@@ -745,6 +760,41 @@ fn availability(
     })
 }
 
+/// `auth.accounts`, or a host's legacy top-level `accounts`.
+fn decode_accounts(object: &Map<String, Value>) -> Result<Vec<PullRequestAccount>, String> {
+    let auth = opt_object(object, "auth")?;
+    let source = if auth.is_some_and(|auth| auth.contains_key("accounts")) {
+        auth
+    } else {
+        Some(object)
+    };
+    let Some(source) = source else {
+        return Ok(Vec::new());
+    };
+    each_object(source, "accounts")?
+        .into_iter()
+        .map(|account| {
+            Ok(PullRequestAccount {
+                login: req_str(account, "login")?,
+                active: opt_bool(account, "active")?.unwrap_or(false),
+            })
+        })
+        .collect()
+}
+
+/// `auth.selected_account`, or a host's legacy top-level `selected_account`.
+fn selected_account(object: &Map<String, Value>) -> Result<Option<String>, String> {
+    let from_auth = opt_object(object, "auth")?
+        .map(|auth| opt_str(auth, "selected_account"))
+        .transpose()?
+        .flatten();
+    Ok(match from_auth {
+        Some(login) => Some(login),
+        None => opt_str(object, "selected_account")?,
+    }
+    .filter(|login| !login.is_empty()))
+}
+
 fn strings(object: &Map<String, Value>, key: &str) -> Result<Vec<String>, String> {
     opt_array(object, key)?
         .into_iter()
@@ -809,6 +859,13 @@ impl PullRequestInfo {
             warnings: all_warnings,
             capabilities,
             pull_request,
+            accounts: decode_accounts(object)?,
+            selected_account: selected_account(object)?,
+            request_name: display
+                .map(|display| opt_str(display, "request_name"))
+                .transpose()?
+                .flatten()
+                .filter(|name| !name.trim().is_empty()),
         })
     }
 
@@ -838,6 +895,9 @@ impl PullRequestInfo {
             capabilities: PullRequestCapabilities::default(),
             pull_request: None,
             polling: PullRequestPolling::WITHOUT_INFO,
+            accounts: Vec::new(),
+            selected_account: None,
+            request_name: None,
         }
     }
 }
