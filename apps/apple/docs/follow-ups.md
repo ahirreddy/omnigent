@@ -569,6 +569,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     mark lags a page that scrolls itself by up to that long (zoom and the layer's own
     scrolling are read at once). On iPhone and iPad two fingers scroll the page but don't pinch
     it; pinching and the page's momentum after a fling aren't passed on.
+  - The touch layer's tests (`DesignToolsTouchTests`) and the iPhone and iPad renders
+    (`DesignToolsTouchRenderTests`) don't run yet: the `OmnigentBrowser` test target doesn't
+    build for iOS (Mac-only files such as `FaviconTests`, `SystemTabFailureTests` and the
+    Chromium tests' `OWLProtocol` imports, and `SystemSideEffects`, which is Mac-only). The
+    library builds for the iOS Simulator; no iOS flow drives the tools.
   - The wheel over Annotate's layer is forwarded to the page so it scrolls; whether WebKit's
     and Chromium's own tracking areas still report the pointer's hover to the page under the
     layer was not checked (clicks and keys stop at the layer).
