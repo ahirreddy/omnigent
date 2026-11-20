@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// One session on the board, as the web's `SessionCard`: the state badge, title, state, working
-/// directory and branch.
+/// directory, branch and PR. The session shown beside the board has an accent ring.
 struct CanvasCardView: View {
   let card: CanvasCard
+  var isSelected = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
@@ -15,6 +16,7 @@ struct CanvasCardView: View {
       Text(card.state.label).font(.caption).foregroundStyle(.secondary)
       detail(card.workspace, systemImage: "folder")
       if let branch = card.branch { detail(branch, systemImage: "arrow.triangle.branch") }
+      if let pullRequest = card.pullRequest { pullRequestLink(pullRequest) }
       Spacer(minLength: 0)
     }
     .padding(.horizontal, Theme.Spacing.large)
@@ -23,12 +25,34 @@ struct CanvasCardView: View {
       width: CanvasGeometry.cardWidth, height: CanvasGeometry.cardHeight, alignment: .topLeading
     )
     .cardSurface(cornerRadius: Theme.Radius.medium)
+    .overlay {
+      if isSelected {
+        RoundedRectangle(cornerRadius: Theme.Radius.medium)
+          .strokeBorder(Theme.accent, lineWidth: 2)
+      }
+    }
     .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.medium))
+  }
+
+  private func pullRequestLink(_ pullRequest: CanvasPullRequest) -> some View {
+    Link(destination: pullRequest.url) {
+      Label {
+        Text(pullRequest.text).lineLimit(1)
+      } icon: {
+        Image(systemName: "arrow.triangle.pull").accessibilityHidden(true)
+      }
+      .labelStyle(.titleAndIcon)
+    }
+    .font(.caption.weight(.medium))
+    .foregroundStyle(Theme.link)
+    .help(pullRequest.tooltip)
+    .accessibilityLabel(pullRequest.accessibilityLabel)
+    .accessibilityIdentifier("canvas-card-pull-request")
   }
 
   @ViewBuilder private var badge: some View {
     switch card.state {
-    case .needsYou: NeedsYouCapsule(requests: 1)
+    case .needsYou: NeedsYouCapsule(requests: card.requests)
     case .running: ProgressView().controlSize(.mini).accessibilityHidden(true)
     case .failed:
       Image(systemName: "exclamationmark.circle").foregroundStyle(Theme.failure)

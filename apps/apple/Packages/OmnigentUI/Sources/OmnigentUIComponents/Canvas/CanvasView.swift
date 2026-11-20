@@ -2,40 +2,73 @@ public import SwiftUI
 
 /// The Canvas (the web's `/canvas`): every top-level session as a card on a board, one board per
 /// project plus Main. Cards can be dragged and snap to the grid; the board pans, zooms and fits
-/// itself to its cards until the user zooms by hand.
+/// itself to its cards until the user zooms by hand. A card's session opens beside the board
+/// where there is room, as the web's split; "+" after the tabs makes a project.
 public struct CanvasView: View {
   private let state: CanvasViewState
   private let actions: CanvasActions
-  @State private var zoom: CGFloat = 1
-  /// The board follows its cards until the user zooms; Fit and a board switch restore that.
-  @State private var followsFit = true
-  @State private var pinchStart: CGFloat?
-  @State private var dragging: String?
-  @State private var dragOffset: CGSize = .zero
+  private let quickView: ((String) -> AnyView)?
+  private let projectActions: SidebarActions?
+  @State private var projectPrompt: ProjectPrompt?
+  @State private var projectName = ""
+  @State private var deletingProject: SessionProject?
+  /// A project made here, whose board is shown once it arrives.
+  @State private var awaitedProject: String?
 
   /// Creates the page.
-  public init(state: CanvasViewState, actions: CanvasActions) {
+  /// - Parameters:
+  ///   - state: The boards and cards.
+  ///   - actions: What the page does.
+  ///   - quickView: A session's chat, beside the board when `state.quickViewID` names one.
+  ///   - projectActions: New project, from the "+" after the tabs; `nil` hides it.
+  public init(
+    state: CanvasViewState, actions: CanvasActions, quickView: ((String) -> AnyView)? = nil,
+    projectActions: SidebarActions? = nil
+  ) {
     self.state = state
     self.actions = actions
+    self.quickView = quickView
+    self.projectActions = projectActions
   }
 
   /// The page.
   public var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      header
-      boardTabs
-      if let error = state.refreshError {
-        Label("Refresh failed: \(error)", systemImage: "exclamationmark.triangle")
-          .font(.callout).foregroundStyle(.secondary)
-          .padding(.horizontal, Theme.Spacing.gutter).padding(.bottom, Theme.Spacing.small)
-          .accessibilityIdentifier("canvas-refresh-error")
+    HStack(spacing: 0) {
+      VStack(alignment: .leading, spacing: 0) {
+        header
+        boardTabs
+        if let error = state.refreshError {
+          Label("Refresh failed: \(error)", systemImage: "exclamationmark.triangle")
+            .font(.callout).foregroundStyle(.secondary)
+            .padding(.horizontal, Theme.Spacing.gutter).padding(.bottom, Theme.Spacing.small)
+            .accessibilityIdentifier("canvas-refresh-error")
+        }
+        Divider()
+        content
       }
-      Divider()
-      content
+      if let id = state.quickViewID, let close = actions.quickView, let quickView {
+        ProjectBoardQuickView(
+          title: state.cards.first { $0.id == id }?.title ?? "Session",
+          open: { actions.open?(id) }, close: { close(nil) }, content: { quickView(id) })
+      }
     }
     .themeCanvas()
     .navigationTitle("Canvas")
-    .onChange(of: state.activeBoard) { followsFit = true }
+    .modifier(
+      ProjectDialogs(
+        prompt: $projectPrompt, name: $projectName, confirmingDelete: $deletingProject,
+        actions: dialogActions)
+    )
+    .onChange(of: state.boards) { _, boards in selectAwaitedProject(boards) }
+  }
+
+  /// A card opens its session beside the board when the page offers it, else in its place.
+  private func select(_ id: String) {
+    if let quickView = actions.quickView {
+      quickView(id)
+    } else {
+      actions.open?(id)
+    }
   }
 
   private var header: some View {
@@ -79,6 +112,16 @@ public struct CanvasView: View {
           .accessibilityAddTraits(selected ? .isSelected : [])
           .accessibilityIdentifier("canvas-board-\(board.id)")
         }
+        if projectActions?.createProject != nil {
+          Button("New project", systemImage: "plus") {
+            projectName = ""
+            projectPrompt = .create(moving: nil)
+          }
+          .labelStyle(.iconOnly)
+          .buttonStyle(.borderless)
+          .help("New project")
+          .accessibilityIdentifier("canvas-new-project")
+        }
       }
       .padding(.horizontal, Theme.Spacing.gutter).padding(.vertical, Theme.Spacing.small)
     }
@@ -100,174 +143,27 @@ public struct CanvasView: View {
       ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityLabel("Loading Canvas")
     } else {
-      surface
+      CanvasBoardSurface(state: state, actions: actions, select: select)
     }
   }
 
-  private var surface: some View {
-    GeometryReader { proxy in
-      let geometry = CanvasGeometry(cards: state.cards)
-      ScrollView([.horizontal, .vertical]) {
-        board(geometry)
-          .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-          .scaleEffect(zoom, anchor: .topLeading)
-          .frame(
-            width: geometry.size.width * zoom, height: geometry.size.height * zoom,
-            alignment: .topLeading
-          )
-          .frame(minWidth: proxy.size.width, minHeight: proxy.size.height)
-      }
-      .simultaneousGesture(
-        MagnifyGesture()
-          .onChanged { value in
-            let start = pinchStart ?? zoom
-            pinchStart = start
-            followsFit = false
-            zoom = CanvasGeometry.clamp(start * value.magnification)
-          }
-          .onEnded { _ in pinchStart = nil }
-      )
-      .overlay(alignment: .bottomLeading) { controls(geometry, viewport: proxy.size) }
-      .overlay(alignment: .bottomTrailing) { newSessionButton }
-      .overlay {
-        if state.cards.isEmpty {
-          Text(state.emptyTitle).font(.headline).foregroundStyle(.secondary)
-            .allowsHitTesting(false)
-            .accessibilityIdentifier("canvas-empty")
-        }
-      }
-      .onChange(of: FitKey(cards: cardIDs, viewport: proxy.size, follows: followsFit)) { _, key in
-        if key.follows { setZoom(geometry.fitZoom(proxy.size)) }
-      }
-      .onAppear { if followsFit { setZoom(geometry.fitZoom(proxy.size)) } }
-    }
-    // On the board, not the page: the tabs and header keep their own identifiers.
-    .accessibilityIdentifier("canvas")
-  }
-
-  /// A different card set or viewport refits; moving a card does not.
-  private struct FitKey: Equatable {
-    let cards: [String]
-    let viewport: CGSize
-    let follows: Bool
-  }
-
-  private var cardIDs: [String] { state.cards.map(\.id) }
-
-  private func board(_ geometry: CanvasGeometry) -> some View {
-    ZStack(alignment: .topLeading) {
-      if !state.cards.isEmpty { CanvasDotGrid(origin: geometry.origin) }
-      ForEach(state.cards) { card in
-        let base = geometry.offset(of: card)
-        let moving = dragging == card.id
-        CanvasCardView(card: card)
-          .offset(
-            x: base.width + (moving ? dragOffset.width : 0),
-            y: base.height + (moving ? dragOffset.height : 0)
-          )
-          .zIndex(moving ? 1 : 0)
-          .onTapGesture { actions.open?(card.id) }
-          .gesture(drag(card))
-          .accessibilityElement(children: .combine)
-          .accessibilityAddTraits(.isButton)
-          .accessibilityAction { actions.open?(card.id) }
-          .accessibilityIdentifier("canvas-card-\(card.id)")
+  /// The project actions, noting a new project's name so its board shows once it arrives.
+  private var dialogActions: SidebarActions {
+    var actions = projectActions ?? SidebarActions(sessions: SessionListActions())
+    if let create = actions.createProject {
+      actions.createProject = { name, icon, session in
+        awaitedProject = name
+        create(name, icon, session)
       }
     }
+    return actions
   }
 
-  private func drag(_ card: CanvasCard) -> some Gesture {
-    DragGesture(minimumDistance: 3)
-      .onChanged { value in
-        dragging = card.id
-        dragOffset = value.translation
-      }
-      .onEnded { value in
-        actions.move?(
-          card.id, CanvasGeometry.moved(card.left, by: value.translation.width),
-          CanvasGeometry.moved(card.top, by: value.translation.height))
-        dragging = nil
-        dragOffset = .zero
-      }
-  }
-
-  private func controls(_ geometry: CanvasGeometry, viewport: CGSize) -> some View {
-    VStack(spacing: Theme.Spacing.extraSmall) {
-      control("Zoom in", systemImage: "plus.magnifyingglass") {
-        followsFit = false
-        setZoom(CanvasGeometry.clamp(zoom * CanvasGeometry.zoomStep))
-      }
-      control("Zoom out", systemImage: "minus.magnifyingglass") {
-        followsFit = false
-        setZoom(CanvasGeometry.clamp(zoom / CanvasGeometry.zoomStep))
-      }
-      control("Fit view", systemImage: "arrow.up.left.and.arrow.down.right") {
-        followsFit = true
-        setZoom(geometry.fitZoom(viewport))
-      }
-      if let reset = actions.resetLayout {
-        control("Reset layout", systemImage: "arrow.counterclockwise") {
-          followsFit = true
-          reset()
-        }
-      }
+  private func selectAwaitedProject(_ boards: [CanvasBoard]) {
+    guard let name = awaitedProject, let board = boards.last(where: { $0.name == name }) else {
+      return
     }
-    .padding(Theme.Spacing.medium)
-  }
-
-  private func control(_ title: String, systemImage: String, action: @escaping () -> Void)
-    -> some View
-  {
-    Button(title, systemImage: systemImage, action: action)
-      .labelStyle(.iconOnly)
-      .buttonStyle(.bordered)
-      .help(title)
-      .accessibilityIdentifier(
-        "canvas-\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
-  }
-
-  @ViewBuilder private var newSessionButton: some View {
-    if let newSession = actions.newSession {
-      Button("New session", systemImage: "plus", action: newSession)
-        .labelStyle(.iconOnly)
-        .font(.title3)
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.circle)
-        .controlSize(.large)
-        .tint(Theme.accent)
-        .help("New session")
-        .padding(Theme.Spacing.large)
-        .accessibilityIdentifier("canvas-new-session")
-    }
-  }
-
-  private func setZoom(_ value: CGFloat) {
-    if zoom != value { zoom = value }
-  }
-}
-
-/// The board's dot lattice, aligned to the grid cards snap to.
-private struct CanvasDotGrid: View {
-  let origin: CGPoint
-
-  var body: some View {
-    Canvas { context, size in
-      let step = CanvasGeometry.gridStep
-      guard let (columns, rows) = CanvasGeometry.dotLattice(in: size) else { return }
-      // The first grid line at or after the content's origin.
-      let startX = (origin.x / step).rounded(.up) * step - origin.x
-      let startY = (origin.y / step).rounded(.up) * step - origin.y
-      var dots = Path()
-      for column in 0..<columns {
-        for row in 0..<rows {
-          let center = CGPoint(
-            x: startX + CGFloat(column) * step, y: startY + CGFloat(row) * step)
-          dots.addEllipse(in: CGRect(x: center.x - 1, y: center.y - 1, width: 2, height: 2))
-        }
-      }
-      context.fill(dots, with: .color(.secondary.opacity(0.3)))
-    }
-    .allowsHitTesting(false)
-    .accessibilityHidden(true)
+    awaitedProject = nil
+    actions.selectBoard?(board.id)
   }
 }

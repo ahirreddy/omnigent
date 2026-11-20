@@ -39,7 +39,7 @@ struct CanvasScreenTests {
     let calls = Calls()
     let adapter = CanvasAdapter(
       connection: connection, open: { calls.opened.append($0) },
-      newSession: { calls.newSessions += 1 })
+      newSession: { _ in calls.newSessions += 1 })
     let screen = OffscreenWindow(adapter, width: 1000, height: 700)
     return OpenPage(screen: screen, calls: calls, connection: connection)
   }
@@ -65,7 +65,7 @@ struct CanvasScreenTests {
     let canvas = try #require(connection.canvas)
     let actions = CanvasAdapter(
       connection: connection, open: { calls.opened.append($0) },
-      newSession: { calls.newSessions += 1 }
+      newSession: { _ in calls.newSessions += 1 }
     ).actions(canvas)
     actions.open?("conv_a")
     actions.newSession?()
@@ -113,7 +113,7 @@ struct CanvasScreenTests {
       .json(
         #"{"object":"list","data":[\#(sessionRow("conv_a", host: "mac", workspace: " ", updatedAt: 3))],"has_more":false}"#
       ))
-    let adapter = CanvasAdapter(connection: connection, open: { _ in }, newSession: {})
+    let adapter = CanvasAdapter(connection: connection, open: { _ in }, newSession: { _ in })
     adapter.actions(canvas).retry?()
     try await eventually("the retry") { canvas.sessions.value != nil }
     canvas.relayout(projects: [], viewerID: nil)

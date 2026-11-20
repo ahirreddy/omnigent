@@ -9,7 +9,7 @@ struct ViewStateLabelTests {
   @Test("A canvas card's state reads as itself")
   func canvasStates() {
     let labels = [CanvasCard.State.needsYou, .running, .unread, .failed, .idle].map(\.label)
-    #expect(labels == ["Needs you", "Running", "New messages", "Failed", "Idle"])
+    #expect(labels == ["Needs response", "Running", "New messages", "Failed", "Idle"])
   }
 
   @Test("A canvas starts with the words and flags it needs, and holds a card as given")

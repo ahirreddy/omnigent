@@ -126,7 +126,7 @@ pub struct SessionSummary {
 }
 
 /// The PR a session's list row names, as the server last stored it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct RowPullRequest {
     /// Its number.
     pub number: u64,
@@ -134,6 +134,18 @@ pub struct RowPullRequest {
     pub status: PullRequestStatus,
     /// When its host last fetched it, Unix seconds.
     pub checked_at: Option<i64>,
+    /// Its page.
+    #[uniffi(default = "")]
+    pub url: String,
+    /// Its title, when the server has one.
+    #[uniffi(default)]
+    pub title: Option<String>,
+    /// What its provider writes before the number: `#`, or GitLab's `!`.
+    #[uniffi(default = "#")]
+    pub number_prefix: String,
+    /// What its provider calls it, when it says.
+    #[uniffi(default)]
+    pub request_name: Option<String>,
 }
 
 impl From<omnigent_core::sessions::RowPullRequest> for RowPullRequest {
@@ -142,6 +154,10 @@ impl From<omnigent_core::sessions::RowPullRequest> for RowPullRequest {
             number: pull_request.number,
             status: pull_request.status.into(),
             checked_at: pull_request.checked_at,
+            url: pull_request.url,
+            title: pull_request.title,
+            number_prefix: pull_request.number_prefix,
+            request_name: pull_request.request_name,
         }
     }
 }
@@ -152,6 +168,10 @@ impl From<RowPullRequest> for omnigent_core::sessions::RowPullRequest {
             number: pull_request.number,
             status: pull_request.status.into(),
             checked_at: pull_request.checked_at,
+            url: pull_request.url,
+            title: pull_request.title,
+            number_prefix: pull_request.number_prefix,
+            request_name: pull_request.request_name,
         }
     }
 }
@@ -371,7 +391,7 @@ impl From<CoreSummary> for SessionSummary {
             client_create_token: summary.client_create_token,
             automation_source_id: summary.automation_source_id,
             family: summary.family.map(Into::into),
-            pull_request: summary.pull_request.map(Into::into),
+            pull_request: summary.pull_request.clone().map(Into::into),
             is_automation_run: summary.is_automation_run,
         }
     }
@@ -404,7 +424,7 @@ impl From<&SessionSummary> for CoreSummary {
             client_create_token: summary.client_create_token.clone(),
             automation_source_id: summary.automation_source_id.clone(),
             family: summary.family.clone().map(Into::into),
-            pull_request: summary.pull_request.map(Into::into),
+            pull_request: summary.pull_request.clone().map(Into::into),
             is_automation_run: summary.is_automation_run,
             ..Self::new(
                 summary.id.clone(),
