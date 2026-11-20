@@ -144,6 +144,57 @@
       #expect(unopened.find.query.isEmpty)
     }
 
+    @Test("Find takes the page's selected line as its query and searches it")
+    func findSeedsFromSelection() async throws {
+      let fixture = try TabFixture()
+      let tab = try fixture.tab
+      tab.scriptResult = .string("  needle \n")
+      await fixture.model.showFindBarSeedingSelection()
+      #expect(tab.scripts.last == BrowserTabModel.findSeedScript)
+      #expect(fixture.model.find.isVisible)
+      #expect(fixture.model.find.query == "needle")
+      #expect(fixture.model.find.selectAllRequest == 1)
+      #expect(tab.commands.last == "find needle forward false")
+
+      // Several lines, nothing, or a failed read keep the query; the failure shows on the tab.
+      for kept in [BrowserScriptValue.string("one\ntwo"), .string(""), .null] {
+        tab.scriptResult = kept
+        await fixture.model.showFindBarSeedingSelection()
+        #expect(fixture.model.find.query == "needle")
+      }
+      tab.scriptFailure = .tabNotReady
+      await fixture.model.showFindBarSeedingSelection()
+      #expect(fixture.model.lastError == .tabNotReady)
+      #expect(fixture.model.find.isVisible)
+    }
+
+    @Test("Find pressed in the bar keeps what was typed")
+    func findInBarKeepsTyping() async throws {
+      let fixture = try TabFixture()
+      let tab = try fixture.tab
+      let screen = makeBar(fixture)
+      defer { screen.close() }
+      await screen.catchUp()
+      try screen.focusField()
+      try screen.type("typed")
+      await screen.catchUp()
+      #expect(fixture.model.find.isFieldFocused)
+      tab.scriptResult = .string("selected")
+      let reads = tab.scripts.count
+      await fixture.model.showFindBarSeedingSelection()
+      #expect(tab.scripts.count == reads)
+      #expect(fixture.model.find.query == "typed")
+    }
+
+    @Test("A seed is one line of at most 1,000 characters")
+    func seedRule() {
+      #expect(BrowserFindModel.seed(fromSelection: " cat ") == "cat")
+      #expect(BrowserFindModel.seed(fromSelection: "a\nb") == nil)
+      #expect(BrowserFindModel.seed(fromSelection: "  ") == nil)
+      let long = String(repeating: "x", count: BrowserFindModel.maxSeedLength + 1)
+      #expect(BrowserFindModel.seed(fromSelection: long) == nil)
+    }
+
     @Test("asking for the bar again gets the field focused again")
     func focusRequest() async throws {
       let fixture = try TabFixture()
