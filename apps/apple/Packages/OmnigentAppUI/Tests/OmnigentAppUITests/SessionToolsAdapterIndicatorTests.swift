@@ -69,6 +69,10 @@ struct SessionToolsAdapterIndicatorTests {
     #expect(empty.backgroundTasks == 0)
     #expect(empty.goal == nil)
     #expect(empty.subagents.isEmpty)
+    #expect(!empty.agentWorking)
+    var running = screen
+    running.header.status = .running
+    #expect(SessionToolsAdapter.indicators(store, screen: running).agentWorking)
   }
 
   @Test("The sub-agent count lists the children still in play, in order; finished ones drop out")
