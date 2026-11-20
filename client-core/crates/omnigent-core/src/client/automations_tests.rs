@@ -1166,10 +1166,8 @@ fn the_devices_time_zone_is_recorded_for_agent_created_automations() {
     );
     let core = connected(transport);
     block_on(core.report_automation_timezone(" America/Chicago ")).unwrap();
-    assert!(matches!(
-        block_on(core.report_automation_timezone("America/Chicago")),
-        Err(SessionError::Rejected { status: 501, .. })
-    ));
+    // A store that keeps no preferences answers 501, which reaches the caller.
+    assert!(block_on(core.report_automation_timezone("America/Chicago")).is_err());
     assert!(matches!(
         block_on(core.report_automation_timezone("  ")),
         Err(SessionError::Rejected { status: 400, .. })

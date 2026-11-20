@@ -1437,8 +1437,8 @@ impl<T: HttpTransport> ClientCore<T> {
     ///
     /// # Errors
     ///
-    /// `Rejected` for an empty zone (no request is made) or one the server refuses (501 where
-    /// the store keeps no preference); the write errors.
+    /// `Rejected` for an empty zone (no request is made) or a zone the server refuses; the write
+    /// errors (501 where the store keeps no preference).
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
