@@ -38,6 +38,7 @@ mod custom_agents;
 pub mod databricks_session;
 mod error;
 pub mod events;
+pub mod execution_logs;
 mod export;
 mod families;
 pub mod fork;

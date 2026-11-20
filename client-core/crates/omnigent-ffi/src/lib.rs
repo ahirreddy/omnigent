@@ -47,6 +47,7 @@ pub mod decisions;
 pub mod deeplink;
 pub mod errors;
 pub mod events;
+pub mod execution_logs;
 pub mod fork;
 pub mod harness_accounts;
 pub mod harness_inventory;

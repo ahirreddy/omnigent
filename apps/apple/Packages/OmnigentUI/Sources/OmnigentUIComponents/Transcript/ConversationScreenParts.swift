@@ -18,6 +18,8 @@ public struct ConversationExtras {
   public var menuContext: SessionMenuContext
   /// Save the transcript as a file (Export); `nil` hides it.
   public var exportTranscript: (@MainActor () -> Void)?
+  /// The session's raw items (Execution Logs); `nil` hides them.
+  public var executionLogs: ExecutionLogSource?
   /// The Share sheet opened: read the current grants.
   public var shareOpened: (@MainActor () -> Void)?
   /// Shows the right panel on a tab, where the window shows the session's panel itself; `nil`
