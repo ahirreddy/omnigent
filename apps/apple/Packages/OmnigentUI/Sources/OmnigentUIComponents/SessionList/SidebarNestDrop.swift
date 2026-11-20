@@ -98,7 +98,6 @@ private struct SidebarRowDragDropModifier: ViewModifier {
   let drag: SidebarRowDrag
   let accept: @MainActor (SidebarDragItem, SidebarRowDropZone) -> Bool
   @State private var isTargeted = false
-  @State private var height: CGFloat = 0
 
   @ViewBuilder func body(content: Content) -> some View {
     let source = draggable(content)
@@ -118,19 +117,15 @@ private struct SidebarRowDragDropModifier: ViewModifier {
     }
   }
 
-  /// A row of a nest: a drop on its middle half takes the dragged session into the nest.
+  /// A row of a nest: a drop on the middle half of its title line takes the dragged session
+  /// into the nest. Measuring each row would redraw the list and cost its clicks.
   private func nestTarget(_ source: some View) -> some View {
     source
-      .onGeometryChange(for: CGFloat.self) {
-        $0.size.height
-      } action: {
-        height = $0
-      }
       .dropDestination(for: String.self) { payloads, location in
         guard let item = payloads.first.flatMap(SidebarDragItem.init(payload:)) else {
           return false
         }
-        return accept(item, SidebarRowDropZone.at(location.y, height: height))
+        return accept(item, SidebarRowDropZone.at(location.y, height: Theme.Control.sidebarRow))
       } isTargeted: {
         isTargeted = $0
       }
