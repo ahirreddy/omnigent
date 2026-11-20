@@ -212,6 +212,14 @@ nonisolated public struct PullRequestDetailViewState: Hashable, Sendable {
   public var canComment: Bool
   /// How many files changed, once the patch is read.
   public var fileCount: Int?
+  /// The PR's author, whom the provider refuses as a reviewer.
+  public var author: String?
+  /// The reviewers with a pending request, by chip id.
+  public var requestedReviewers: Set<String> = []
+  /// The provider account comments post as; `nil` when the host doesn't say.
+  public var account: String?
+  /// The accounts a merge can run as; empty when the merge can't choose one.
+  public var mergeAccounts: [PullRequestAccountChoice] = []
 
   /// Creates a detail with nothing editable.
   /// - Parameters:
@@ -314,6 +322,10 @@ public struct PullRequestPanelActions {
   public var dismissError: (@MainActor () -> Void)?
   /// The detail switched to its Changes tab as ``PullRequestPanelExtras/opensChanges`` asked.
   public var changesOpened: (@MainActor () -> Void)?
+  /// Saves the provider account the host reads and writes the PR as.
+  public var setAccount: (@MainActor (String) -> Void)?
+  /// Merges with the method of that chip id as that account.
+  public var mergeAs: (@MainActor (_ method: String, _ account: String) -> Void)?
 
   /// No actions.
   public init() {}

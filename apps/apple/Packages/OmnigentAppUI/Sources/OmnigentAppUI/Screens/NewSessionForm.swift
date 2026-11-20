@@ -87,19 +87,6 @@ final class NewSessionForm {
     if agent != selection.agentId { resetAgent(agent, in: &selection) }
   }
 
-  /// The remembered agent or else the first one ready on the host; with none ready, the agent
-  /// to set up.
-  private func defaultAgent(_ catalog: OmnigentCoreFFI.CreationCatalog) -> String {
-    let ordered = NewSessionAdapter.agents(catalog, hostID: selection.hostId).choices
-    let ready = ordered.filter { $0.unavailableReason == nil }.map(\.id)
-    let remembered = rememberedAgent(catalog)
-    if let remembered, ready.contains(remembered) { return remembered }
-    if let first = ready.first { return first }
-    if let remembered { return remembered }
-    if ordered.contains(where: { $0.id == selection.agentId }) { return selection.agentId }
-    return ordered.first?.id ?? ""
-  }
-
   /// The user picked `hostID`; an agent they didn't pick follows what is ready there.
   func chooseHost(_ hostID: String, _ creation: CreationStore) {
     hostWasChosen = true
@@ -341,5 +328,22 @@ final class NewSessionForm {
     options.name = name
     options.mcpServices = mcpChip(creation)
     return options
+  }
+}
+
+extension NewSessionForm {
+  /// The remembered agent, the deployment's default (`picker.default_agent_name`), or else the
+  /// first one ready on the host; with none ready, the agent to set up.
+  private func defaultAgent(_ catalog: OmnigentCoreFFI.CreationCatalog) -> String {
+    let ordered = NewSessionAdapter.agents(catalog, hostID: selection.hostId).choices
+    let ready = ordered.filter { $0.unavailableReason == nil }.map(\.id)
+    let remembered = rememberedAgent(catalog)
+    if let remembered, ready.contains(remembered) { return remembered }
+    let configured = catalog.agents.first { $0.name == catalog.defaultAgentName }?.id
+    if let configured, ready.contains(configured) { return configured }
+    if let first = ready.first { return first }
+    if let remembered { return remembered }
+    if ordered.contains(where: { $0.id == selection.agentId }) { return selection.agentId }
+    return ordered.first?.id ?? ""
   }
 }

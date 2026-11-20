@@ -630,6 +630,23 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
+    /// Asks `host_id` to probe its harness accounts once; `None` from a server without the
+    /// route.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` and the write errors.
+    pub async fn refresh_harness_accounts(
+        &self,
+        host_id: String,
+    ) -> Result<Option<HarnessHostSnapshot>, CoreError> {
+        self.sessions()
+            .refresh_harness_accounts(&host_id)
+            .await
+            .map(|snapshot| snapshot.map(Into::into))
+            .map_err(CoreError::from)
+    }
+
     /// `harness`'s startup command on `host_id`, or why the host does not report it.
     ///
     /// # Errors

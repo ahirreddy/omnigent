@@ -26,7 +26,8 @@ struct PullRequestsPanel: View {
           }
           if linking, let link = actions.link {
             PullRequestLinkField(
-              isBusy: extras.isBusy, link: link, close: { linking = false })
+              isBusy: extras.isBusy, link: link, close: { linking = false },
+              placeholder: extras.provider.linkPlaceholder)
             Divider()
           }
           if let error = extras.error {
@@ -108,12 +109,15 @@ struct PullRequestsPanel: View {
           Text(
             synced
               ? "Pull requests created in this session appear here. You can also link an existing PR."
-              : "The server hasn't read this session's pull requests from its host yet.")
+              : extras.notSyncedHint
+                ?? "The server hasn't read this session's pull requests from its host yet.")
         } actions: {
           if actions.link != nil, !linking { Button("Link a PR") { linking = true } }
         }
       } else {
-        PullRequestList(pullRequests: pullRequests, open: open, actions: actions)
+        PullRequestList(
+          pullRequests: pullRequests, open: open, actions: actions, rows: extras.rows,
+          providerName: extras.provider.name)
       }
     }
   }
@@ -125,6 +129,10 @@ struct PullRequestList: View {
   let pullRequests: [PullRequestSummary]
   let open: (@MainActor (URL) -> Void)?
   var actions = PullRequestPanelActions()
+  /// Each PR's live checks or offline badge, by URL.
+  var rows: [String: PullRequestRowExtras] = [:]
+  /// The provider, for "Open in GitHub".
+  var providerName = "GitHub"
 
   var body: some View {
     if pullRequests.isEmpty {
@@ -133,19 +141,35 @@ struct PullRequestList: View {
         description: Text("Pull requests created or worked on in this session appear here."))
     } else {
       List(pullRequests) { request in
-        Button {
-          if let select = actions.select {
-            select(request.url)
-          } else if let url = URL(string: request.url) {
-            open?(url)
+        HStack(alignment: .top, spacing: Theme.Spacing.extraSmall) {
+          Button {
+            if let select = actions.select {
+              select(request.url)
+            } else if let url = URL(string: request.url) {
+              open?(url)
+            }
+          } label: {
+            row(request)
           }
-        } label: {
-          row(request)
+          .buttonStyle(.plain)
+          .help(request.url)
+          .accessibilityIdentifier("pr-\(request.id)")
+          PullRequestRowBadges(extras: rows[request.url])
+          Menu {
+            menu(request)
+          } label: {
+            Image(systemName: "ellipsis.circle")
+              .accessibilityLabel("Actions for \(request.numberLabel)")
+          }
+          #if os(macOS)
+            .menuStyle(.borderlessButton)
+          #endif
+          .menuIndicator(.hidden)
+          .fixedSize()
+          .help("More actions")
+          .accessibilityIdentifier("pr-actions-\(request.id)")
         }
-        .buttonStyle(.plain)
-        .help(request.url)
         .contextMenu { menu(request) }
-        .accessibilityIdentifier("pr-\(request.id)")
       }
       .listStyle(.plain)
     }
@@ -173,13 +197,56 @@ struct PullRequestList: View {
 
   @ViewBuilder private func menu(_ request: PullRequestSummary) -> some View {
     if let url = URL(string: request.url) {
-      Button("Open in Browser", systemImage: "safari") { open?(url) }
-      Button("Copy Link", systemImage: "link") { Pasteboard.copy(request.url) }
+      Button("Open in \(providerName)", systemImage: "safari") { open?(url) }
+      Button("Copy PR Link", systemImage: "link") { Pasteboard.copy(request.url) }
     }
     if let unlink = actions.unlink {
       Divider()
-      Button("Unlink", systemImage: "minus.circle", role: .destructive) { unlink(request.url) }
+      Button("Unlink PR", systemImage: "minus.circle", role: .destructive) { unlink(request.url) }
     }
+  }
+}
+
+/// A row's failing and running checks, or why its host can't read it now, as the web's list
+/// row shows beside the title.
+struct PullRequestRowBadges: View {
+  let extras: PullRequestRowExtras?
+
+  var body: some View {
+    if let extras, !extras.isEmpty {
+      HStack(spacing: Theme.Spacing.extraSmall) {
+        if let offline = extras.offline {
+          Label(offline.title, systemImage: "moon.zzz")
+            .foregroundStyle(.secondary)
+            .help(offline.hint)
+            .accessibilityIdentifier("pr-row-offline")
+        } else if extras.checksUnavailable {
+          Text("Checks unavailable")
+            .foregroundStyle(.secondary)
+            .help("Checks can\u{2019}t be read with the signed-in account.")
+        }
+        if extras.failing > 0 {
+          count(extras.failing, "failed", symbol: "xmark.circle.fill", color: .prRed)
+        }
+        if extras.pending > 0 {
+          count(extras.pending, "pending", symbol: "circle.dotted.circle", color: .prAmber)
+        }
+      }
+      .font(.caption)
+      .labelStyle(.titleAndIcon)
+      .lineLimit(1)
+      .fixedSize()
+    }
+  }
+
+  private func count(_ value: Int, _ noun: String, symbol: String, color: ThemeColor)
+    -> some View
+  {
+    Label("\(value)", systemImage: symbol)
+      .monospacedDigit()
+      .foregroundStyle(color)
+      .help("\(value) \(noun)")
+      .accessibilityLabel("\(value) \(noun)")
   }
 }
 
@@ -223,6 +290,8 @@ struct PullRequestLinkField: View {
   let isBusy: Bool
   let link: @MainActor (String, @escaping @MainActor (Bool) -> Void) -> Void
   let close: () -> Void
+  /// The provider's example address.
+  var placeholder = "https://github.com/owner/repo/pull/123"
 
   @State private var address = ""
   @FocusState private var focused: Bool
@@ -230,7 +299,7 @@ struct PullRequestLinkField: View {
   var body: some View {
     HStack(spacing: Theme.Spacing.small) {
       TextField(
-        "Pull request URL", text: $address, prompt: Text("https://github.com/owner/repo/pull/123")
+        "Pull request URL", text: $address, prompt: Text(placeholder)
       )
       .textFieldStyle(.roundedBorder)
       .focused($focused)

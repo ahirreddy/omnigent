@@ -46,7 +46,8 @@
       let spy = PullRequestSpy()
       var extras = spy.extras
       extras.reviewerChoices = .loaded([kim, sam])
-      let section = PullRequestReviewersSection(reviewers: [sam], editable: true, extras: extras)
+      let section = PullRequestReviewersSection(
+        reviewers: [sam], requested: ["sam"], editable: true, extras: extras)
       let screen = OffscreenWindow(AnyView(section), width: 400, height: 300)
       defer { screen.close() }
       try screen.clickControl(at: 0)

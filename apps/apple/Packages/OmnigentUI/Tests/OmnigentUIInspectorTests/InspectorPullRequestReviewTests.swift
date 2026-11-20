@@ -100,9 +100,9 @@
       let shown = screen([], new: new, calls: calls)
       defer { shown.close() }
       #expect(try shown.shows("Comment on old lines 2\u{2013}4"))
-      // The field, Cancel, then Comment.
+      // Write and Preview, the field, Cancel, then Comment.
+      try shown.clickControl(at: 3)
       try shown.clickControl(at: 2)
-      try shown.clickControl(at: 1)
       #expect(calls.log == ["post new", "cancel new"])
 
       let blocked = PullRequestNewThreadState(
@@ -110,8 +110,8 @@
       let refused = screen([], new: blocked, calls: calls)
       defer { refused.close() }
       #expect(try refused.shows("A comment can be at most 65536 characters."))
-      // Comment is disabled: only the field and Cancel are listed.
-      #expect(refused.controlFrames.count == 2)
+      // Comment is disabled: only Write and Preview, the field and Cancel are listed.
+      #expect(refused.controlFrames.count == 3)
     }
   }
 #endif

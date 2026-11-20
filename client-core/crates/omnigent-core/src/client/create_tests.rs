@@ -978,13 +978,13 @@ fn a_sandbox_preview_says_how_its_catalog_stands() {
 
     let info = json!({"sandbox_provider_capabilities": {
         "modal": {"default_models": true},
-        "lakebox": {"default_models": true, "inference_models": true},
+        "gateway": {"default_models": true, "inference_models": true},
         "e2b": {"multi_repo": true},
     }});
     let capabilities = crate::creation::CreationCapabilities::from_value(&info).unwrap();
     let mut previewing = capabilities.model_preview_providers.clone();
     previewing.sort();
-    assert_eq!(previewing, ["lakebox", "modal"]);
+    assert_eq!(previewing, ["gateway", "modal"]);
     assert_eq!(capabilities.default_model_providers, ["modal"]);
     assert_eq!(capabilities.multi_repo_providers, ["e2b"]);
 }

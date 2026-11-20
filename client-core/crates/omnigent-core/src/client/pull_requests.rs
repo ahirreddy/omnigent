@@ -113,6 +113,8 @@ pub struct SessionPullRequest {
     pub state_checked_at: Option<f64>,
     /// The git provider's id; a server that predates providers serves GitHub.
     pub provider: String,
+    /// What the provider calls a PR ("merge request"), when the server says.
+    pub request_name: Option<String>,
 }
 
 impl SessionPullRequest {
@@ -135,6 +137,10 @@ impl SessionPullRequest {
             Some(display) => opt_str(display, "number_prefix")?,
             None => None,
         };
+        let request_name = match display {
+            Some(display) => opt_str(display, "request_name")?,
+            None => None,
+        };
         Ok(Self {
             url: req_str(object, "url")?,
             host: opt_str(object, "host")?.unwrap_or_default(),
@@ -149,6 +155,7 @@ impl SessionPullRequest {
             status: PullRequestStatus::of(state.as_deref(), is_draft),
             state_checked_at: opt_f64(object, "state_checked_at")?,
             provider: opt_str(object, "provider")?.unwrap_or_else(|| "github".to_owned()),
+            request_name: request_name.filter(|name| !name.trim().is_empty()),
         })
     }
 }

@@ -208,6 +208,7 @@ extension ConversationContainer {
       workspace: workspace, panel: panel, terminals: terminals, tabRoutes: tabRoutes,
       terminalNames: terminalNames, permissionLevel: conversation.header?.permissionLevel,
       canEdit: !(conversation.header?.readOnly ?? false),
+      pullRequestSandbox: .of(conversation.header),
       newSideChat: SessionToolsAdapter.sideChat(conversation, routes: routes),
       agents: AgentTreeAdapter.panel(conversation, open: routes.openSession),
       tasks: tasksSlot(report: routes.report),

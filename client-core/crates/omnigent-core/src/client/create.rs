@@ -415,7 +415,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 .into_iter()
                 .filter(|host| !host.host_id.is_empty() && seen_hosts.insert(host.host_id.clone()))
                 .collect(),
-            agents,
+            agents: capabilities.curated(agents),
             capabilities,
         })
     }

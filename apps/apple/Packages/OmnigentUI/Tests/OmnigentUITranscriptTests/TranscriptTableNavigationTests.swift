@@ -265,5 +265,19 @@
       window.run(for: TranscriptTableJump.duration)
       #expect(abs(driver.offset - midway) < 1)
     }
+
+    @Test("A letter typed in the transcript starts a message; chords and Space don't")
+    func typesIntoComposer() async throws {
+      var typed: [String] = []
+      var actions = ConversationActions()
+      actions.typeIntoComposer = { typed.append($0) }
+      let (driver, controller) = try await screen(session(), actions: actions)
+      defer { driver.screen.close() }
+      #expect(controller.scrolls(for: try key(Int(Character("h").asciiValue ?? 0))))
+      #expect(controller.scrolls(for: try key(Int(Character("I").asciiValue ?? 0), .shift)))
+      #expect(!controller.scrolls(for: try key(Int(Character("c").asciiValue ?? 0), .command)))
+      #expect(!controller.scrolls(for: try key(0x09)), "Tab moves focus")
+      #expect(typed == ["h", "I"])
+    }
   }
 #endif

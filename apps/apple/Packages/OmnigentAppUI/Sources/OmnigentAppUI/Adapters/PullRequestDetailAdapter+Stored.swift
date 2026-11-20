@@ -8,20 +8,21 @@ import UniformTypeIdentifiers
 extension PullRequestDetailAdapter {
   /// The stored PR in place of the live detail once a read found the host offline, as the
   /// web's `StoredPullRequestDetails`; `nil` while the host answers or the PR isn't stored.
-  static func stored(_ panel: SessionPanelStore) -> PullRequestDetailContent? {
-    guard let url = panel.openPullRequest, panel.detail.error?.isHostOffline == true,
+  static func stored(_ panel: SessionPanelStore, sandbox: PullRequestSandbox = .awake)
+    -> PullRequestDetailContent?
+  {
+    let asleep = sandbox != .awake && panel.detail.value?.pullRequest == nil
+    guard let url = panel.openPullRequest, panel.detail.error?.isHostOffline == true || asleep,
       let pullRequest = panel.pullRequests.value?.pullRequests.first(where: { $0.url == url })
     else { return nil }
-    return .stored(stored(pullRequest))
+    return .stored(stored(pullRequest, sandbox: sandbox))
   }
 
   /// The stored PR's title, number, repository and state, and when the host last read them.
-  static func stored(_ pullRequest: SessionPullRequest) -> PullRequestStoredViewState {
+  static func stored(_ pullRequest: SessionPullRequest, sandbox: PullRequestSandbox = .awake)
+    -> PullRequestStoredViewState
+  {
     let title = pullRequest.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let synced = pullRequest.stateCheckedAt.map { seconds in
-      let date = Date(timeIntervalSince1970: seconds)
-      return "Last sync time: \(date.formatted(date: .abbreviated, time: .shortened)). "
-    }
     let number = "\(pullRequest.numberPrefix)\(pullRequest.number)"
     return PullRequestStoredViewState(
       url: pullRequest.url,
@@ -29,7 +30,7 @@ extension PullRequestDetailAdapter {
       numberLabel: number, repository: pullRequest.repository,
       status: PullRequestAdapter.summary(pullRequest).status,
       providerName: pullRequest.providerName ?? "GitHub",
-      hint: (synced ?? "") + "To load the PR details, please reconnect the session\u{2019}s host.")
+      hint: PullRequestAdapter.storedHint(pullRequest, sandbox: sandbox))
   }
 
   /// The PR's commits and force pushes for the Comments feed.

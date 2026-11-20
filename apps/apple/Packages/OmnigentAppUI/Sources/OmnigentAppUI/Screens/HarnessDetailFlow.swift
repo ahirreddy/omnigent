@@ -61,6 +61,11 @@ struct HarnessDetailContainer: View {
       detail, startup: fix.startup["\(hostID)/\(harness)"], notice: notice)
     state.catalog = HarnessCatalogAdapter.catalog(
       setup.catalogs["\(hostID)/\(harness)"], detail: detail)
+    state.catalog = state.catalog.map {
+      HarnessCatalogAdapter.probing(
+        $0, tools: setup.mcpTools, prefix: HarnessSetupStore.mcpToolsKey(hostID, harness, ""),
+        harness: harness, host: detail.hostName)
+    }
     if let openSkill {
       let key = HarnessSetupStore.skillKey(hostID, harness, openSkill.name)
       state.skillPage = HarnessCatalogAdapter.skillPage(
@@ -86,6 +91,11 @@ struct HarnessDetailContainer: View {
       }
     }
     actions.closeSkill = { openSkill = nil }
+    let servers = setup.catalogs["\(hostID)/\(harness)"]?.value?.mcpServers ?? []
+    actions.probeServer = { id in
+      guard let server = servers.first(where: { $0.id == id }) else { return }
+      Task { await setup.loadMcpTools(server, harness: harness, hostID: hostID) }
+    }
     return actions
   }
 

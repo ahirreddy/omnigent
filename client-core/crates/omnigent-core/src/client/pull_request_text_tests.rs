@@ -215,3 +215,101 @@ fn attachments_are_checked_and_embedded_as_the_web_does() {
     };
     assert_eq!(video.markdown("clip.mp4"), "https://example.test/i");
 }
+
+#[test]
+fn accounts_and_the_providers_request_name_decode_from_auth_or_the_legacy_fields() {
+    let mut body = with_timeline();
+    body["auth"] = json!({
+        "authenticated": true,
+        "selected_account": "ann",
+        "accounts": [{"login": "ann", "active": false}, {"login": "bot", "active": true}],
+    });
+    body["provider_display"] = json!({"display_name": "GitLab", "request_name": "merge request"});
+    let decoded = info(&body);
+    let logins: Vec<_> = decoded
+        .accounts
+        .iter()
+        .map(|account| account.login.as_str())
+        .collect();
+    assert_eq!(logins, ["ann", "bot"]);
+    assert!(
+        decoded
+            .accounts
+            .iter()
+            .any(|account| account.active && account.login == "bot")
+    );
+    assert_eq!(decoded.selected_account.as_deref(), Some("ann"));
+    assert_eq!(decoded.request_name.as_deref(), Some("merge request"));
+
+    let mut legacy = with_timeline();
+    legacy["auth"] = Value::Null;
+    legacy["accounts"] = json!([{"login": "old", "active": true}]);
+    legacy["selected_account"] = json!("old");
+    let decoded = info(&legacy);
+    assert_eq!(decoded.accounts.len(), 1);
+    assert_eq!(decoded.selected_account.as_deref(), Some("old"));
+    assert_eq!(decoded.request_name, None);
+
+    let bare = info(&with_timeline());
+    assert!(bare.accounts.is_empty() && bare.selected_account.is_none());
+}
+
+#[test]
+fn merging_as_an_account_takes_the_merge_as_route_and_says_when_it_is_missing() {
+    use crate::client::pull_request_edits::{MERGE_AS_UNSUPPORTED, MergeMethod};
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "POST",
+        &format!("{INFO}/merge-as"),
+        vec![
+            Reply::json(200, "{}"),
+            Reply::json(404, r#"{"detail":"Not Found"}"#),
+            Reply::json(400, r#"{"detail":"unknown fs write op: github_merge_as"}"#),
+            Reply::json(422, r#"{"detail":"bot can't merge"}"#),
+        ],
+    );
+    let core = connected(transport);
+    let merge = |account| {
+        block_on(core.merge_pull_request_as("conv_a", PR, MergeMethod::Squash, "abc", account))
+    };
+    merge(Some("bot")).unwrap();
+    for _ in 0..2 {
+        assert!(matches!(
+            merge(Some("bot")),
+            Err(SessionError::Rejected { message, .. }) if message == MERGE_AS_UNSUPPORTED
+        ));
+    }
+    assert!(
+        matches!(
+            merge(Some("bot")),
+            Err(SessionError::Rejected { message, .. }) if message != MERGE_AS_UNSUPPORTED
+        ),
+        "a host's refusal keeps its reason"
+    );
+    let writes = core.transport().writes();
+    assert!(writes[0].url.ends_with("/merge-as"));
+    assert_eq!(
+        body_json(&writes[0]),
+        json!({"pr_url": PR, "merge_method": "squash", "expected_head": "abc", "account": "bot"})
+    );
+}
+
+#[test]
+fn choosing_an_account_saves_it_for_the_pr_and_answers_the_info_read_as_it() {
+    let transport = RouteTransport::local();
+    let mut answer = with_timeline();
+    answer["auth"]["selected_account"] = json!("bot");
+    transport.respond(
+        Some("POST"),
+        &format!("{INFO}/preferences"),
+        None,
+        Reply::json(200, answer.to_string()),
+    );
+    let core = connected(transport);
+    let info = block_on(core.set_pull_request_account("conv_a", Some(PR), "bot")).unwrap();
+    assert_eq!(info.selected_account.as_deref(), Some("bot"));
+    block_on(core.set_pull_request_account("conv_a", None, "")).unwrap();
+    let bodies: Vec<Value> = core.transport().writes().iter().map(body_json).collect();
+    assert_eq!(bodies[0], json!({"account": "bot", "pr_url": PR}));
+    assert_eq!(bodies[1], json!({"account": ""}));
+}

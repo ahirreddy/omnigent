@@ -51,6 +51,7 @@ mod intent_lanes;
 pub mod items;
 mod journal;
 pub(crate) mod json;
+pub mod mcp_tools;
 pub mod pin_order;
 pub mod policy_registry;
 pub mod project_repository;
@@ -752,6 +753,10 @@ mod pull_requests_tests;
 #[cfg(test)]
 #[path = "pull_request_detail_tests.rs"]
 mod pull_request_detail_tests;
+
+#[cfg(test)]
+#[path = "mcp_tools_tests.rs"]
+mod mcp_tools_tests;
 
 #[cfg(test)]
 #[path = "journal_tests.rs"]

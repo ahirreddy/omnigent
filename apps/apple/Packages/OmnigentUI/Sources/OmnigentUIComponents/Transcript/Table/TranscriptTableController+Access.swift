@@ -31,11 +31,25 @@
       case (NSEndFunctionKey, []):
         measureEnd()
         target = maximumOffset
-      default: return false
+      default: return typesIntoComposer(event)
       }
       // The follow rules take it as a step of the reader's wheel.
       readerScrolled()
       move(to: target)
+      return true
+    }
+
+    /// A printable key without a chord, other than Space, starts a message: the composer takes
+    /// focus and the character, as the web's `useTypeToComposer`.
+    /// - Returns: Whether the composer took it.
+    func typesIntoComposer(_ event: NSEvent) -> Bool {
+      guard let type = actions.typeIntoComposer,
+        event.modifierFlags.isDisjoint(with: [.command, .control, .option]),
+        let characters = event.characters, characters.count == 1, characters != " ",
+        let scalar = characters.unicodeScalars.first, scalar.value < 0xF700,
+        !CharacterSet.controlCharacters.contains(scalar)
+      else { return false }
+      type(characters)
       return true
     }
 

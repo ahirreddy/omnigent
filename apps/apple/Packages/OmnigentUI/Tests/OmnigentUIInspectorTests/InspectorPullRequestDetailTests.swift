@@ -264,10 +264,11 @@
       let spy = PullRequestSpy()
       let screen = comments({ $0.canComment = true }, spy: spy)
       defer { screen.close() }
-      // The Comment button can't run until there's text: only the field is listed.
-      #expect(screen.controlFrames.count == 1)
+      // The Comment button can't run until there's text: only Write and Preview and the field
+      // are listed.
+      #expect(screen.controlFrames.count == 2)
       try screen.typeIntoField("Ship it")
-      try screen.clickControl(at: 1)
+      try screen.clickControl(at: 2)
       #expect(spy.calls == ["comment Ship it"])
       spy.commentFinished?(false)
       screen.settle()
@@ -296,7 +297,7 @@
       let screen = comments({ $0.canComment = true }, spy: spy)
       defer { screen.close() }
       try screen.typeIntoField("Ship")
-      try screen.clickControl(at: 1)
+      try screen.clickControl(at: 2)
       try screen.typeIntoField(" it")
       spy.commentFinished?(true)
       screen.settle()
@@ -309,7 +310,7 @@
       let screen = comments({ $0.canComment = true }, spy: spy, isBusy: true)
       defer { screen.close() }
       try screen.typeIntoField("Ship it")
-      #expect(screen.controlFrames.count == 1)
+      #expect(screen.controlFrames.count == 2)
     }
   }
 #endif

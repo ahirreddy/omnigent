@@ -14,6 +14,9 @@ nonisolated struct PullRequestDescriptionDraft: Equatable, Sendable {
   var uploads = 0
   /// Why the last upload or save failed.
   var error: String?
+  /// Where the next attachment goes, in characters; `nil` puts it at the end. A SwiftUI text
+  /// editor that shares its selection loses typing, so the editor leaves this unset.
+  var insertion: Range<Int>?
 
   /// The placeholder an upload shows until it lands, on a line of its own.
   static func placeholder(_ name: String, _ index: Int) -> String {
@@ -24,6 +27,22 @@ nonisolated struct PullRequestDescriptionDraft: Equatable, Sendable {
   mutating func append(_ text: String) {
     if !body.isEmpty, !body.hasSuffix("\n") { body += "\n" }
     body += text
+  }
+
+  /// `text` on a line of its own in place of the selection, or at the end without one, as the
+  /// web's `insertOnOwnLine`; the next attachment goes after it.
+  mutating func insert(_ text: String) {
+    let count = body.count
+    let start = min(insertion?.lowerBound ?? count, count)
+    let end = min(max(insertion?.upperBound ?? start, start), count)
+    let from = body.index(body.startIndex, offsetBy: start)
+    let to = body.index(body.startIndex, offsetBy: end)
+    let before = start > 0 && body[body.index(before: from)] != "\n" ? "\n" : ""
+    let after = end < count && body[to] != "\n" ? "\n" : ""
+    let inserted = before + text + after
+    body.replaceSubrange(from..<to, with: inserted)
+    let caret = start + inserted.count
+    insertion = caret..<caret
   }
 }
 
@@ -130,6 +149,13 @@ struct PullRequestDescriptionSection: View {
       .disabled(extras.isBusy)
       .accessibilityLabel("Pull request description")
       .accessibilityIdentifier("pr-description-field")
+      // Images and videos dropped on the editor upload into the description, as on the web.
+      .dropDestination(for: URL.self) { files, _ in
+        let attachable = files.filter(\.isFileURL)
+        guard canAttach, !attachable.isEmpty else { return false }
+        attachable.forEach(attach)
+        return true
+      }
     case .preview:
       ScrollView {
         Group {
@@ -180,7 +206,7 @@ struct PullRequestDescriptionSection: View {
     current.uploads += 1
     let placeholder = PullRequestDescriptionDraft.placeholder(
       file.lastPathComponent, current.uploads)
-    current.append(placeholder)
+    current.insert(placeholder)
     current.uploading += 1
     draft = current
     upload(file) { outcome in

@@ -69,7 +69,7 @@ struct SidebarNestMoveTests {
     #expect(all.map(\.id) == ["lead", "coord"])
   }
 
-  // The spy and the drop handler's harness are the Mac's.
+  // The drop handler and the sidebar spy are the Mac's.
   #if os(macOS)
     @Test("A drag joins a row's nest or leaves its own; others' sessions and own nests refuse")
     func dragsBetweenNests() {
@@ -108,7 +108,9 @@ struct SidebarNestMoveTests {
       #expect(!leaveOnly.rowDrag(Self.lead, movesWithFamily: false).joinsNest)
       #expect(!leaveOnly.drop(.session("solo"), on: .nest(Self.lead)))
     }
+  #endif
 
+  #if os(macOS)
     private func sidebar(canJoin: Bool = true) -> (SidebarSpy, OffscreenWindow<SidebarHarness>) {
       let state = FamilyFixture.state([
         FamilyFixture.coordinator, FamilyFixture.implementation, Self.lead, Self.helper,

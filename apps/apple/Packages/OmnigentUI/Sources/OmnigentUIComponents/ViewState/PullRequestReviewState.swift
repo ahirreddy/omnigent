@@ -55,6 +55,8 @@ nonisolated public struct PullRequestReviewThreadState: Hashable, Sendable, Iden
   public var reply: String
   /// The patch lines it was written on, for a conversation no line holds.
   public var originalContext: String?
+  /// The lines a suggestion in the conversation replaces; `nil` when they can't be read.
+  public var suggestionSource: PullRequestSuggestionSource?
 
   /// Creates a conversation.
   /// - Parameters:
@@ -120,6 +122,10 @@ public struct PullRequestReviewActions {
   public var setNewToAgent: (@MainActor (Bool) -> Void)?
   /// A change is in flight.
   public var isBusy = false
+  /// The provider account replies post as; `nil` when the host doesn't name it.
+  public var account: String?
+  /// The provider's name, for the unnamed account.
+  public var providerName = "GitHub"
 
   /// No actions.
   public init() {}

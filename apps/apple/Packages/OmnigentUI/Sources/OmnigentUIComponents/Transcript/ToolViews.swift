@@ -203,17 +203,14 @@ struct ToolRowView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
           if let diff { DiffView(diff: diff) }
           // An edit's diff stands in for its raw arguments.
-          if let call = entry.call?.activity, found?.isInput != true {
-            DetailSectionsView(
-              sections: call.details.isEmpty && !call.summary.isEmpty
-                ? [DetailSection(id: "summary", title: "Input", text: call.summary, isCode: true)]
-                : call.details,
-              rowID: entry.call?.id ?? entry.id)
-          }
-          if let result = entry.result?.activity {
-            DetailSectionsView(sections: result.details, rowID: entry.result?.id ?? entry.id)
-          } else if entry.call != nil, !entry.isRunning {
-            Text("No output recorded.").font(.caption).foregroundStyle(.secondary)
+          let fields = found?.isInput == true ? [] : inputFields
+          if !fields.isEmpty { bodyViewPicker }
+          if !fields.isEmpty, !showsRaw {
+            ToolFieldsBody(
+              input: fields,
+              output: entry.result?.activity?.detail("output") ?? entry.result?.text)
+          } else {
+            rawSections(showsInput: found?.isInput != true)
           }
           AttachmentStrip(
             attachments: (entry.call?.attachments ?? []) + (entry.result?.attachments ?? []))
@@ -236,6 +233,46 @@ struct ToolRowView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("tool-\(entry.id)")
+  }
+
+  /// The input as labeled fields, the web's default view, when it is a JSON object.
+  private var inputFields: [ToolField] {
+    entry.call?.activity?.detail("arguments").map(ToolFieldValue.fields(json:)) ?? []
+  }
+
+  private var showsRaw: Bool { disclosure.choice("tool-raw-\(entry.id)") ?? false }
+
+  /// Fields or the exact payloads, as the web's tool card switches them.
+  private var bodyViewPicker: some View {
+    Picker(
+      "Tool call view",
+      selection: Binding(
+        get: { showsRaw }, set: { disclosure.choose($0, for: "tool-raw-\(entry.id)") })
+    ) {
+      Text("Fields").tag(false)
+      Text("Raw").tag(true)
+    }
+    .pickerStyle(.segmented)
+    .labelsHidden()
+    .controlSize(.small)
+    .fixedSize()
+    .frame(maxWidth: .infinity, alignment: .trailing)
+  }
+
+  /// The input's and result's sections as the tool reported them.
+  @ViewBuilder private func rawSections(showsInput: Bool) -> some View {
+    if let call = entry.call?.activity, showsInput {
+      DetailSectionsView(
+        sections: call.details.isEmpty && !call.summary.isEmpty
+          ? [DetailSection(id: "summary", title: "Input", text: call.summary, isCode: true)]
+          : call.details,
+        rowID: entry.call?.id ?? entry.id)
+    }
+    if let result = entry.result?.activity {
+      DetailSectionsView(sections: result.details, rowID: entry.result?.id ?? entry.id)
+    } else if entry.call != nil, !entry.isRunning {
+      Text("No output recorded.").font(.caption).foregroundStyle(.secondary)
+    }
   }
 
   private func firstLine(_ text: String) -> String {
