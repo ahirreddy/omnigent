@@ -10,6 +10,9 @@ struct PermissionChoice: Hashable {
   /// Names the scope and duration exactly ("for this session", "always").
   let label: String
   let systemImage: String
+  /// The label with a long command prefix cut to one line, for a Mac menu item; `nil` when it
+  /// is the label. The full rule stays its accessibility label and is in the confirmation.
+  var shortLabel: String?
 
   /// The widening choices `card` advertises, in the web's order. A plan review offers the modes
   /// it may switch to; a directory scope replaces the mode and "don't ask again" choices, as on
@@ -64,37 +67,6 @@ struct PermissionChoice: Hashable {
           response: .approveRemembering,
           label: "Approve and don\u{2019}t ask again for \(label) this session",
           systemImage: "checkmark.seal"))
-    }
-    return choices
-  }
-
-  /// Codex command policy and Codex or Antigravity persistence.
-  private static func commandChoices(_ permissions: PermissionOptions) -> [Self] {
-    var choices: [Self] = []
-    if let policy = permissions.execPolicyAmendment, !policy.isEmpty {
-      choices.append(
-        Self(
-          response: .approveCommandPolicy(policy: policy),
-          label:
-            "Approve and don\u{2019}t ask again for commands starting with \(policy.joined(separator: " "))",
-          systemImage: "terminal"))
-    }
-    let pattern = permissions.antigravity?.alwaysAllowPattern
-    if permissions.offersPersist(.session) {
-      choices.append(
-        Self(
-          response: .approvePersist(mode: .session),
-          label: pattern.map { "Allow commands starting with \($0) for this session" }
-            ?? "Approve this tool for this session",
-          systemImage: "clock"))
-    }
-    if permissions.offersPersist(.always) {
-      choices.append(
-        Self(
-          response: .approvePersist(mode: .always),
-          label: pattern.map { "Always allow commands starting with \($0)" }
-            ?? "Always allow this tool",
-          systemImage: "infinity"))
     }
     return choices
   }

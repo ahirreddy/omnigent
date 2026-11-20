@@ -107,6 +107,28 @@ struct DecisionPresentationTests {
       ])
   }
 
+  @Test("A long command prefix keeps its menu item on one line; the full rule stays its label")
+  func longPrefixesStayOneLine() throws {
+    let heredoc = "ssh host <<'EOF'\n  cd /srv/app && git pull --ff-only && make deploy\nEOF"
+    #expect(
+      PermissionChoice.oneLinePrefix(heredoc)
+        == "ssh host <<'EOF' cd /srv/app && git pul\u{2026}")
+    #expect(PermissionChoice.oneLinePrefix("cargo test") == "cargo test")
+    var codex = PreviewData.codexCommand
+    codex.permissions.execPolicyAmendment = heredoc.split(separator: " ").map(String.init)
+    let command = try #require(PermissionChoice.choices(for: codex).first)
+    #expect(command.label.contains("\nEOF"))
+    #expect(command.shortLabel?.contains("\n") == false)
+    #if os(macOS)
+      #expect(command.menuTitle.hasSuffix("\u{2026}"))
+    #else
+      #expect(command.menuTitle == command.label)
+    #endif
+    // A short prefix is shown whole.
+    let short = PermissionChoice.choices(for: PreviewData.antigravity)
+    #expect(short.map(\.menuTitle) == short.map(\.label))
+  }
+
   @Test("Every widening choice is confirmed; plain answers are sent")
   func wideningNeedsConfirmation() {
     for card in PreviewData.decisions {
