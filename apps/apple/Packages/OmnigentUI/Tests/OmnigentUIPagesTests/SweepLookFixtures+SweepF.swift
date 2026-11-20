@@ -125,3 +125,28 @@ extension SweepLookFixtures {
     .padding(Theme.Spacing.medium)
   }
 }
+
+extension SweepLookFixtures {
+  /// The composer over a session's Browser design requests: one on its way, one waiting for the
+  /// turn, and one the server refused, with Retry and Remove.
+  static var designOutbox: some View {
+    var state = ComposerViewState(purpose: .session)
+    state.isRunning = true
+    state.designRequests = [
+      DesignRequestRow(
+        id: UUID(), tool: .annotate, label: "Annotate button \"Buy now\"", state: .sending),
+      DesignRequestRow(
+        id: UUID(), tool: .draw, label: "Draw: Tighten the header", state: .waiting),
+      DesignRequestRow(
+        id: UUID(), tool: .annotate, label: "Annotate h1 \"Your order\"",
+        state: .failed(
+          "The session's host is offline, so this wasn't sent. Retry once it's back.",
+          canRetry: true)),
+    ]
+    var actions = ComposerActions(send: {})
+    actions.extras.designRequests = DesignRequestActions(retry: { _ in }, remove: { _ in })
+    return ComposerView(draft: .constant(""), state: state, actions: actions)
+      .frame(maxWidth: 640)
+      .padding(Theme.Spacing.medium)
+  }
+}

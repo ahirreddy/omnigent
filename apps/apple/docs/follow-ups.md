@@ -562,25 +562,29 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   web's "compressed with …" message (the app reads uncompressed, Snappy and gzip, one codec
   more than the web); `BIT_PACKED` levels and the `GROUP_VAR_INT` encoding are named as
   unsupported. Find (Command-F) doesn't search the table, for CSV either.
-- [ ] **Browser Annotate and Draw** (web `63915cd179`, about 4,000 lines with its outbox):
-  the desktop Browser pane's tools (pick an element and describe a change; pen, rectangle,
-  arrow and text marks with a note) and their outbox are not ported. Plan:
-  1. Core: the messages' builders (the web's `buildDesignModePrompt` and `buildDrawPrompt`;
-     the transcript already reads them back, `DesignRequest`), and a `DesignOutbox` that keeps
-     requests on disk per server and session, sends each as an external message
-     (`POST …/messages` with the capture as an attachment) and retries the ones the server
-     refused with doubling backoff (5 s to 5 min), as `designOutbox.ts`.
-  2. Browser (`OmnigentBrowser`): a transparent `NSView` overlay above the page view for both
-     engines (WebKit's `WKWebView`, Chromium's out-of-process view host), following its
-     bounds, zoom and visibility, taking the pointer while a tool is on and closing on
-     navigation. Annotate: an element picker run in an isolated world (`WKContentWorld` /
-     Chromium's isolated world) returning the hovered element's rect, tag, id, classes and
-     text; outline drawn by the overlay. Draw: pen, rectangle, arrow and text marks kept as
-     values (`marks.ts`), composited onto a page snapshot (`takeSnapshot` /
-     `Page.captureScreenshot`) cropped to the element or the viewport.
-  3. UI: Annotate and Draw in the browser toolbar (where the web shows them: the desktop pane,
-     flag-free), the note popover, the outbox strip ("2 requests waiting · Retry"), Escape to
-     leave a tool.
+- [ ] **Browser Annotate and Draw, left** (web `63915cd179`; the Mac tools are done, below):
+  - iPhone and iPad have neither tool: the touch top bar has no buttons for them and the
+    overlay (`BrowserDesignOverlay`, `BrowserDesignInput`) is AppKit only. A UIKit input layer
+    (pointer and pencil) and toolbar items would reuse `BrowserDesignTools` as is.
+  - On Chromium the element picker runs in the page's own world: `BrowserTab`'s
+    `evaluateIsolatedJavaScript` falls back to `evaluateJavaScript` there. The picker is built
+    from checked numbers only and its answer is validated and clamped, and the message
+    sanitizes every field, so a hostile page can only misdescribe its own element. CDP's
+    `Page.createIsolatedWorld` (a context id per document, through `callDevToolsMethod`) would
+    give Chromium WebKit's isolation.
+  - The outbox (`DesignRequestOutbox`) lives as long as its window: a request not yet sent is
+    lost when the window closes or the app quits. The web keeps them in IndexedDB per account,
+    restores them after a reload as "may have reached the agent", expires them after a day and
+    checks the signed-in account before each send; none of that is ported.
+  - Not ported from the outbox either: the 60 s "the server hasn't answered yet" note, the
+    180 s give-up on a POST that never answers (the core's transport timeout applies), and
+    matching a native terminal session's delivery receipts (pending ids) to a failed request.
+  - Draw's marks stay where they were drawn on screen when the page zooms or scrolls under
+    them (the web's are in page CSS pixels and follow its zoom); Annotate asks again on each
+    move, so its outline follows.
+  - The wheel over Annotate's layer is forwarded to the page so it scrolls; whether WebKit's
+    and Chromium's own tracking areas still report the pointer's hover to the page under the
+    layer was not checked (clicks and keys stop at the layer).
 - [ ] **Floating New Agent panel (Mac, `floating_composer`):**
   - Only package tests cover it (shortcut, chord, placement); no Mac flow drives the panel, the
     Carbon hot key or a launch behind it, and it has no renders yet.
@@ -604,6 +608,17 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Done
 
+- [x] **Browser Annotate and Draw on the Mac** (web `63915cd179`): Annotate and Draw toggles in
+  the browser toolbar and the Browser menu. Annotate outlines the element under the pointer
+  (a picker in WebKit's own content world), a click picks it and a popover asks what should
+  change; Send sends the web's design-mode message with a screenshot of the element cut from
+  the page's snapshot at its scale, or says it went without one. Draw keeps pen, rectangle,
+  arrow and text marks as values with Undo, a note and per-shape colors, and sends the page's
+  snapshot with the marks drawn on. The layer covers the page view, takes its pointer and keys
+  (Escape leaves), and closes when the page navigates. Requests go through a window's outbox
+  (`DesignRequestOutbox`): one at a time per session after its turn, outside the composer (core
+  `send_external_message`), with a failure's reason, Retry and Remove above the composer and a
+  notice on the page. 2026-11-20.
 - [x] **Design-tool messages in the transcript** (web `63915cd179`): a message ending in the
   web's `[Design Mode — …]` block (design mode, Annotate, Draw) shows its words over its
   subject ("p#blurb \"Hello\" on localhost:5173", or "Drawing on …") with the tool's symbol

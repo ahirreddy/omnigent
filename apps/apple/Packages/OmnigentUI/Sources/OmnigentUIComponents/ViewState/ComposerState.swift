@@ -221,6 +221,8 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var reviewComments: [ComposerReviewComment] = []
   /// Transcript text the draft quotes (Reply), shown as removable blocks.
   public var quotes: [ComposerQuote] = []
+  /// The Browser design tools' requests to this session not yet sent, above the field.
+  public var designRequests: [DesignRequestRow] = []
   /// The stream is not live: shown under the composer with Reconnect.
   public var connection: ComposerConnectionNotice?
   /// Replaces the placeholder while something else needs the user first (a pending request,

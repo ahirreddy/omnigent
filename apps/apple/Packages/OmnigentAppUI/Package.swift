@@ -70,6 +70,8 @@ let package = Package(
       dependencies: [
         "OmnigentAppUI",
         .product(name: "OmnigentBrowser", package: "OmnigentBrowser"),
+        .product(name: "OmnigentStores", package: "OmnigentStores"),
+        .product(name: "OmnigentUIComponents", package: "OmnigentUI"),
       ],
       swiftSettings: mainActorSwiftSettings
     ),
@@ -98,6 +100,7 @@ let package = Package(
         "OmnigentAppBrowser",
         "OmnigentAppUI",
         .product(name: "OmnigentBrowser", package: "OmnigentBrowser"),
+        .product(name: "OmnigentStores", package: "OmnigentStores"),
         .product(name: "OmnigentUIComponents", package: "OmnigentUI"),
       ],
       swiftSettings: mainActorSwiftSettings

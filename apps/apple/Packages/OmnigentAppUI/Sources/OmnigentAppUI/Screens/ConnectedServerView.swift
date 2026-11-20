@@ -266,7 +266,8 @@ public struct ConnectedServerView: View {
       shareUnavailableReason: ShareAdapter.unavailableReason(connection.pages?.offered),
       openAutomationSharing: openAutomationSharing,
       offersTerminalSplit: connection.pages?.offered?.splittableTerminalView == true,
-      linkedWorkspace: ownerID.flatMap { hostsPanel ? session.workspace(of: $0) : nil })
+      linkedWorkspace: ownerID.flatMap { hostsPanel ? session.workspace(of: $0) : nil },
+      designOutbox: session.designOutbox)
   }
 
   #if os(macOS)

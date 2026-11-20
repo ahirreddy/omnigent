@@ -53,6 +53,7 @@ struct TabRestoration: ViewModifier {
     }
     tabs.pageInUse = { [weak browser] id in browser?.isPageShown(id, outside: window) ?? false }
     browser?.attach(window: window, tabs: tabs)
+    browser?.attachDesignRequests(window: window, outbox: session.designOutbox)
     var saved: SidebarDestination?
     if let persistence {
       saved = persistence.claim(window: window, server: server)

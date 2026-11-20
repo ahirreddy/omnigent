@@ -68,6 +68,8 @@ struct ConversationContainer: View {
   /// The workspace the window's right panel shows, where a side chat's or sub-agent's file
   /// links open; `nil` opens them in the chat's own workspace.
   var linkedWorkspace: WorkspaceBrowserModel?
+  /// The window's Browser design tool requests, listed above the composer until sent.
+  var designOutbox: DesignRequestOutbox?
 
   /// The right panel once this chat shows or hides it; until then the default it opened with.
   @State private var panelRoute = ConversationPanelRoute()
@@ -220,6 +222,7 @@ struct ConversationContainer: View {
       submitWithCommandReturn: composerPreferences.submitWithCommandReturn,
       windowShowsOutage: connectionHealth.map(ConnectionIssuesBanner.showsOutage) ?? false)
     composer.prefersSteer = composerPreferences.alwaysSteer
+    composer.designRequests = DesignRequestAdapter.rows(designOutbox, in: conversation.sessionID)
     if conversation.header?.settings?.sideChatSourceId != nil {
       composer.placeholder = SideChatCopy.placeholder
     }
