@@ -101,7 +101,7 @@ struct PagesStoreTests {
     server.route(
       "/v1/info",
       .json(
-        #"{"single_user":true,"automations_enabled":true,"scheduled_task_clone":true,"scheduled_task_default_timezone":true}"#
+        #"{"single_user":true,"accounts_enabled":false,"automations_enabled":true,"features":{"usage_page":false},"scheduled_task_clone":true,"scheduled_task_default_timezone":true}"#
       ))
     server.route(
       "/v1/scheduled-tasks/t1/clone", method: "POST",
