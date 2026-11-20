@@ -57,13 +57,13 @@ struct FormDraft: Hashable {
       return numberProblem(for: field)
     case .text:
       return field.required && !field.exactText && text(for: field).isEmpty
-        ? .missing("Enter \(field.title).") : nil
+        ? .missing(Self.sentence("Enter \(field.title)")) : nil
     case .boolean:
       return field.required && booleanAnswer(for: field) == nil
-        ? .missing("Choose Yes or No for \(field.title).") : nil
+        ? .missing(Self.sentence("Choose Yes or No for \(field.title)")) : nil
     case .singleChoice, .multipleChoice:
       return field.required && value(for: field) == nil
-        ? .missing("Choose an answer for \(field.title).") : nil
+        ? .missing(Self.sentence("Choose an answer for \(field.title)")) : nil
     }
   }
 
@@ -82,9 +82,14 @@ struct FormDraft: Hashable {
     return validatorProblem
   }
 
+  /// `text` ending as a sentence: a full stop unless a question's own mark already ends it.
+  static func sentence(_ text: String) -> String {
+    text.last.map { ".?!".contains($0) } == true ? text : text + "."
+  }
+
   private func numberProblem(for field: FormField) -> FieldProblem? {
     let raw = text(for: field).trimmingCharacters(in: .whitespaces)
-    if raw.isEmpty { return field.required ? .missing("Enter \(field.title).") : nil }
+    if raw.isEmpty { return field.required ? .missing(Self.sentence("Enter \(field.title)")) : nil }
     if field.kind == .integer, Int64(raw) == nil {
       return .invalid("\(field.title) must be a whole number.")
     }

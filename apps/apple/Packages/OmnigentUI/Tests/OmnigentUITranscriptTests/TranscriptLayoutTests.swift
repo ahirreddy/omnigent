@@ -229,6 +229,13 @@ struct DecisionFormTests {
     #expect(draft.localProblem(for: fields) == "Reviewers must be a whole number.")
     draft.text["reviewers"] = "2"
     #expect(draft.localProblem(for: fields) == nil)
+    // A question's own mark ends the hint; no full stop after it.
+    let question = FormField(
+      key: "q", title: "Which platforms need the change?", detail: "", kind: .multipleChoice,
+      options: [FormOption(value: "Mac", detail: "")], allowsCustom: false)
+    #expect(
+      FormDraft().localProblem(for: [question])
+        == "Choose an answer for Which platforms need the change?")
   }
 
   @Test("builds typed values; a custom answer wins over a selection")
