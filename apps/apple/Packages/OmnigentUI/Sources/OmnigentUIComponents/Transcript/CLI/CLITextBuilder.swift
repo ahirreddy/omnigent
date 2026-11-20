@@ -290,17 +290,18 @@ nonisolated struct CLITextBuilder {
   // MARK: Prompts
 
   /// A user's prompt as ``CLIUserText`` draws it: the text as typed, quoted runs in the quote
-  /// color beside a bar, an answered question's quoted line dim, a small gap apart.
+  /// color beside a bar, an answered question's quoted line and a design subject dim, a small
+  /// gap apart.
   private mutating func prompt(_ text: String) -> CLITextNode {
     let runs = UserPrompt.runs(text)
-    if runs.count == 1, let only = runs.first, !only.isQuote {
+    if runs.count == 1, let only = runs.first, !only.isQuote, !only.isNote {
       return source(only.text, color: palette.userText, tintsMarkdown: false, indent: 0)
     }
     let gap = MessageTextMetrics.small
     var items: [CLITextStackItem] = []
     for (index, run) in runs.enumerated() {
       let node: CLITextNode
-      if run.isQuestion {
+      if run.isQuestion || run.isNote {
         node = source(run.text, color: palette.dim, tintsMarkdown: false, indent: 0)
       } else if run.isQuote {
         node = .bar(

@@ -565,11 +565,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Browser Annotate and Draw** (web `63915cd179`, about 4,000 lines with its outbox):
   the desktop Browser pane's tools (pick an element and describe a change; pen, rectangle,
   arrow and text marks with a note) and their outbox are not ported. Plan:
-  1. Core: `design_request` parsing of a message's `[Design Mode — …]` block (the web's
-     `parseDesignRequest`: tool, prompt, subject, page URL, the attached capture), and a
-     `DesignOutbox` that keeps requests on disk per server and session, sends each as an
-     external message (`POST …/messages` with the capture as an attachment) and retries the
-     ones the server refused with doubling backoff (5 s to 5 min), as `designOutbox.ts`.
+  1. Core: the messages' builders (the web's `buildDesignModePrompt` and `buildDrawPrompt`;
+     the transcript already reads them back, `DesignRequest`), and a `DesignOutbox` that keeps
+     requests on disk per server and session, sends each as an external message
+     (`POST …/messages` with the capture as an attachment) and retries the ones the server
+     refused with doubling backoff (5 s to 5 min), as `designOutbox.ts`.
   2. Browser (`OmnigentBrowser`): a transparent `NSView` overlay above the page view for both
      engines (WebKit's `WKWebView`, Chromium's out-of-process view host), following its
      bounds, zoom and visibility, taking the pointer while a tool is on and closing on
@@ -580,11 +580,7 @@ Details: [remote-browser-design.md](remote-browser-design.md).
      `Page.captureScreenshot`) cropped to the element or the viewport.
   3. UI: Annotate and Draw in the browser toolbar (where the web shows them: the desktop pane,
      flag-free), the note popover, the outbox strip ("2 requests waiting · Retry"), Escape to
-     leave a tool, and the compact transcript card below.
-- [ ] **Design-tool messages in the transcript:** a message ending in the web's
-  `[Design Mode — …]` block shows as its plain Markdown; the web shows the request and its
-  subject ("p#blurb \"Hello\" on localhost:5173") as a compact card. Parse it in the core (plan
-  step 1 above) and draw it in the SwiftUI, TextKit and CLI prompt renderers.
+     leave a tool.
 - [ ] **Floating New Agent panel (Mac, `floating_composer`):**
   - Only package tests cover it (shortcut, chord, placement); no Mac flow drives the panel, the
     Carbon hot key or a launch behind it, and it has no renders yet.
@@ -608,6 +604,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Done
 
+- [x] **Design-tool messages in the transcript** (web `63915cd179`): a message ending in the
+  web's `[Design Mode — …]` block (design mode, Annotate, Draw) shows its words over its
+  subject ("p#blurb \"Hello\" on localhost:5173", or "Drawing on …") with the tool's symbol
+  and a no-screenshot note, in the SwiftUI, TextKit and CLI prompts (`DesignRequest`); a
+  message from another session stays words. 2026-11-20.
 - [x] **Sweep F, smaller gaps** (2026-11-20): a muted session with unseen activity offers Mark
   as read (core `MutedUnseenChanged`), and bulk Mark as unread leaves muted rows out and is off
   when all are muted; the floating panel leaves Escape to an open completion list and opens a

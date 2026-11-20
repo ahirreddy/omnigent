@@ -144,9 +144,16 @@
         let title = expands ? UserPrompt.collapseTitle : UserPrompt.expandTitle(prompt.text)
         toggle = [.accessory(.promptToggle(title: title, collapses: expands))]
       }
+      // A design-tool message shows its words and what it was about; another session's stays.
+      var subject: [Entry] = []
+      if message.originSessionId == nil, var design = DesignRequest.parse(prompt.text) {
+        if fold == .collapsed { design = design.clipped(to: UserPrompt.collapseThreshold) }
+        markdown = design.request
+        subject = [.accessory(.designSubject(design))]
+      }
       let mentions: [Entry] =
         prompt.mentions.isEmpty ? [] : [.accessory(.mentions(prompt.mentions))]
-      var body = mentions + pieces(of: markdown, ramp: ramp) + toggle
+      var body = mentions + pieces(of: markdown, ramp: ramp) + subject + toggle
       if body.isEmpty, !message.text.isEmpty { body = [.empty] }
       return PromptBody(markdown: markdown, entries: body, fold: fold)
     }

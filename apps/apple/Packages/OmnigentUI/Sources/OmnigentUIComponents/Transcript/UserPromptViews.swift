@@ -48,21 +48,27 @@ nonisolated enum UserPrompt {
 }
 
 /// The text of a user bubble: mention chips above Markdown, collapsed with "Show full prompt" when long, as the web.
+/// A design-tool message shows its words and what it was about (``DesignRequestSubject``).
 struct UserPromptBody: View {
   let text: String
+  /// Reads a design-tool message as its card; a message from another session stays words.
+  var showsDesignRequest = true
   @State private var isExpanded = false
 
   var body: some View {
     let prompt = UserPrompt.parse(text)
     let collapsed = isExpanded ? nil : UserPrompt.collapsed(prompt.text)
+    let design = showsDesignRequest ? DesignRequest.parse(prompt.text) : nil
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       if !prompt.mentions.isEmpty {
         AttachedPathChips(mentions: prompt.mentions)
       }
-      if !prompt.text.isEmpty {
-        MessageMarkdown(text: collapsed.map { $0 + "\u{2026}" } ?? prompt.text, fillsWidth: false)
-          .environment(\.markdownFillsWidth, false)
-          .fixedSize(horizontal: false, vertical: true)
+      if let design {
+        let shown = collapsed == nil ? design : design.clipped(to: UserPrompt.collapseThreshold)
+        words(shown.request)
+        DesignRequestSubject(request: shown)
+      } else {
+        words(collapsed.map { $0 + "\u{2026}" } ?? prompt.text)
       }
       if collapsed != nil {
         UserPromptToggle(title: UserPrompt.expandTitle(prompt.text), collapses: false) {
@@ -71,6 +77,16 @@ struct UserPromptBody: View {
       } else if UserPrompt.collapsed(prompt.text) != nil {
         UserPromptToggle(title: UserPrompt.collapseTitle, collapses: true) { isExpanded = false }
       }
+    }
+  }
+}
+
+extension UserPromptBody {
+  @ViewBuilder fileprivate func words(_ text: String) -> some View {
+    if !text.isEmpty {
+      MessageMarkdown(text: text, fillsWidth: false)
+        .environment(\.markdownFillsWidth, false)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 }
