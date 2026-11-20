@@ -159,4 +159,22 @@ enum SweepLookFixtures {
     let output = #"{"matches":3,"files":["Retry.swift","Upload.swift"],"truncated":false}"#
     return ToolFieldsBody(input: input, output: output).padding(Theme.Spacing.medium)
   }
+
+  static var smartRouting: some View {
+    let arguments = #"""
+      {"tasks":[{"title":"Fix the login retry","agents":[{"agent":"codex"}]},
+                {"title":"Write the release notes","agents":[{"agent":"claude"}]}]}
+      """#
+    let output = #"""
+      {"recommendations":[
+        {"title":"Fix the login retry","model":"databricks-claude-opus-4","agent":"codex",
+         "rationale":"A subtle concurrency bug across three files."},
+        {"title":"Write the release notes","model":"databricks-claude-haiku-4",
+         "rationale":"Short prose from a known change list."}]}
+      """#
+    return SmartRoutingCardView(
+      plan: .read(arguments: arguments, output: output), isJudging: false, output: output
+    )
+    .padding(Theme.Spacing.medium)
+  }
 }

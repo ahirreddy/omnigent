@@ -22,6 +22,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case prUnresolved = "sweep-pr-unresolved"
   case prRemote = "sweep-pr-remote"
   case toolFields = "sweep-tool-fields"
+  case smartRouting = "sweep-smart-routing"
 
   var testDescription: String { rawValue }
 
@@ -38,7 +39,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .prList, .prListAsleep: 320
     case .prComments: 560
     case .prUnresolved, .prRemote: 420
-    case .prSummary, .prSuggestion, .toolFields: nil
+    case .prSummary, .prSuggestion, .toolFields, .smartRouting: nil
     }
   }
 
@@ -55,6 +56,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .prUnresolved: return AnyView(Fixture.unresolved)
     case .prRemote: return AnyView(Fixture.remote)
     case .toolFields: return AnyView(Fixture.toolFields)
+    case .smartRouting: return AnyView(Fixture.smartRouting)
     }
   }
 }
