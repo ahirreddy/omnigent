@@ -309,6 +309,9 @@ impl LiveReducer {
         if let Some(models) = &usage.usage_by_model {
             state.usage_by_model = Some(models.clone());
         }
+        if usage.cost_hidden == Some(true) {
+            state.hide_costs();
+        }
         changed()
     }
 

@@ -1,3 +1,4 @@
+import OmnigentWorkspaceUI
 public import SwiftUI
 
 extension EnvironmentValues {
@@ -59,6 +60,7 @@ struct SessionOverviewReading: Equatable {
 struct SessionCostChip: View {
   let state: ConversationViewState
   let costs: AgentCostSource?
+  var changes: ChangesModel?
   @Environment(\.offersSessionOverview) private var offers
   @State private var isShown = false
 
@@ -74,7 +76,7 @@ struct SessionCostChip: View {
       .accessibilityLabel("\(overview.cost ?? "Unknown cost"), session overview")
       .accessibilityIdentifier("header-session-cost")
       .popover(isPresented: $isShown) {
-        SessionOverviewView(state: state, costs: costs) { isShown = false }
+        SessionOverviewView(state: state, costs: costs, changes: changes) { isShown = false }
       }
     }
   }
@@ -85,6 +87,8 @@ struct SessionCostChip: View {
 struct SessionOverviewView: View {
   let state: ConversationViewState
   let costs: AgentCostSource?
+  /// The session's uncommitted changes; `nil` where it has no workspace.
+  var changes: ChangesModel?
   let close: () -> Void
   @State private var tags: [String: String] = [:]
   /// Why the sub-agents' costs could not be read.
@@ -107,6 +111,7 @@ struct SessionOverviewView: View {
         if let tokens = overview.tokens {
           LabeledContent("Tokens", value: SessionOverviewReading.tokens(tokens))
         }
+        SessionOverviewChangeRows(list: changes?.state.value)
       }
       if !children.isEmpty {
         Section {
@@ -128,6 +133,7 @@ struct SessionOverviewView: View {
     .frame(minWidth: 280, idealWidth: 300)
     .safeAreaInset(edge: .top, spacing: 0) { header }
     .task(id: overview.cost) { await readTags() }
+    .task { if case .idle = changes?.state { await changes?.reload() } }
     .accessibilityIdentifier("session-overview")
   }
 
@@ -151,6 +157,30 @@ struct SessionOverviewView: View {
       tagsFailure = nil
     case .failure(let failure):
       tagsFailure = failure.message
+    }
+  }
+}
+
+/// "Files changed" and "Lines" (the web's `SessionOverviewChanges`), while the workspace has
+/// uncommitted changes; Lines only when the host counted some file's lines.
+struct SessionOverviewChangeRows: View {
+  let list: ChangesList?
+
+  var body: some View {
+    if let list, !list.files.isEmpty {
+      LabeledContent("Files changed") { Text("\(list.files.count)").monospacedDigit() }
+        .accessibilityIdentifier("session-overview-files")
+      if list.files.contains(where: { $0.linesAdded != nil || $0.linesRemoved != nil }) {
+        LabeledContent("Lines") {
+          HStack(spacing: Theme.Spacing.extraSmall) {
+            Text("+\(list.totals.linesAdded)").foregroundStyle(ThemeColor.diffAdded)
+            Text("\u{2212}\(list.totals.linesRemoved)").foregroundStyle(ThemeColor.diffRemoved)
+          }
+          .monospacedDigit()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("session-overview-lines")
+      }
     }
   }
 }

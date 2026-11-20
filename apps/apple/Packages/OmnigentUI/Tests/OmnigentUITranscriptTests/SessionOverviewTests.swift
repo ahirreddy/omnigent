@@ -1,3 +1,4 @@
+import OmnigentWorkspaceUI
 import Testing
 
 @testable import OmnigentUIComponents
@@ -53,6 +54,36 @@ struct SessionOverviewTests {
       return transcriptScreen(
         SessionCostChip(state: state, costs: nil).environment(\.offersSessionOverview, offers),
         width: 200, height: 60)
+    }
+
+    @Test("Files changed and Lines show while the workspace has changes; Lines once counted")
+    func changeRows() throws {
+      let counted = ChangesList(
+        files: [
+          ChangedFile(path: "a.swift", status: .modified, linesAdded: 10, linesRemoved: 4),
+          ChangedFile(path: "b.swift", status: .created),
+        ],
+        totals: ChangeTotals(created: 1, modified: 1, linesAdded: 10, linesRemoved: 4))
+      let rows = transcriptScreen(
+        Form { SessionOverviewChangeRows(list: counted) }, width: 320, height: 160)
+      defer { rows.close() }
+      for text in ["Files changed", "2", "Lines", "+10", "\u{2212}4"] {
+        #expect(try rows.shows(text), "\(text)")
+      }
+      let uncounted = ChangesList(
+        files: [ChangedFile(path: "a.swift", status: .modified)], totals: ChangeTotals(modified: 1))
+      let plain = transcriptScreen(
+        Form { SessionOverviewChangeRows(list: uncounted) }, width: 320, height: 160)
+      defer { plain.close() }
+      #expect(try plain.shows("Files changed"))
+      #expect(try !plain.shows("Lines"))
+      let clean = transcriptScreen(
+        Form {
+          SessionOverviewChangeRows(list: ChangesList(files: [], totals: ChangeTotals()))
+          Text("Tokens")
+        }, width: 320, height: 160)
+      defer { clean.close() }
+      #expect(try !clean.shows("Files changed"))
     }
 
     @Test("the chip shows the session's cost only where the server offers the overview")

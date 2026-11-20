@@ -253,6 +253,7 @@ extension ConversationContainer {
     extras.switchHost = liveness.switchHost
     extras.executionLogs = ExecutionLogsAdapter.source(conversation)
     extras.agentCosts = AgentTreeAdapter.costSource(conversation)
+    extras.overviewChanges = workspace?.changes
     extras.tasksPreview = { [tasks, conversation, summary] in
       TasksAdapter.preview(tasks: tasks, conversation: conversation, summary: summary)
     }

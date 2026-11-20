@@ -588,6 +588,8 @@ pub struct SessionEventState {
     pub total_cost_usd: Option<f64>,
     /// Usage per model.
     pub usage_by_model: Option<BTreeMap<String, ModelUsage>>,
+    /// The operator hides costs: merging this drops any cost known before.
+    pub cost_hidden: Option<bool>,
     /// The native plan.
     pub todos: Option<Vec<Todo>>,
     /// Current viewers.
@@ -622,6 +624,17 @@ fn take_newer<T: Clone>(target: &mut Option<T>, newer: Option<&T>) {
 }
 
 impl SessionEventState {
+    /// Drops the session's cost and each model's, keeping the tokens, as the web does when the
+    /// operator hides costs.
+    pub fn hide_costs(&mut self) {
+        self.total_cost_usd = None;
+        if let Some(models) = &mut self.usage_by_model {
+            for usage in models.values_mut() {
+                usage.total_cost_usd = None;
+            }
+        }
+    }
+
     /// Replaces every field `newer` reports.
     pub fn merge(&mut self, newer: &Self) {
         take_newer(&mut self.status, newer.status.as_ref());
@@ -640,6 +653,9 @@ impl SessionEventState {
         take_newer(&mut self.context_window, newer.context_window.as_ref());
         take_newer(&mut self.total_cost_usd, newer.total_cost_usd.as_ref());
         take_newer(&mut self.usage_by_model, newer.usage_by_model.as_ref());
+        if newer.cost_hidden == Some(true) {
+            self.hide_costs();
+        }
         take_newer(&mut self.todos, newer.todos.as_ref());
         take_newer(&mut self.viewers, newer.viewers.as_ref());
         take_newer(&mut self.mcp_startup, newer.mcp_startup.as_ref());

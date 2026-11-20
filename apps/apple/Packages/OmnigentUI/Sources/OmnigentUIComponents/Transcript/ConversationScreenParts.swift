@@ -1,3 +1,4 @@
+public import OmnigentWorkspaceUI
 public import SwiftUI
 
 /// Optional pieces of the conversation screen the host supplies.
@@ -8,6 +9,8 @@ public struct ConversationExtras {
   public var switchHost: HostMoveRoute?
   /// The agents' cost tags, for the session overview's sub-agents.
   public var agentCosts: AgentCostSource?
+  /// The session's uncommitted changes, for the session overview's Files changed and Lines.
+  public var overviewChanges: ChangesModel?
   /// Files and Changes content for the right panel.
   public var slots: WorkspaceSlots
   /// The Share sheet's state and actions; `nil` hides Share.
