@@ -148,6 +148,7 @@ enum ShortcutGuide {
           or: true),
         at: 1)
       rows.append(row("Open a new browser tab", AppShortcuts.openBrowser))
+      rows.append(ShortcutRow("Exit full screen from a file", "Esc"))
     }
     return ShortcutGroup(title: "View", rows: rows)
   }

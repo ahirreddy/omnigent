@@ -79,6 +79,7 @@ struct ShortcutGuideTests {
     #expect(rows["Toggle sessions sidebar"] == "⌥⌘[ or ⌃⌘S")
     #expect(rows["Focus left / right pane"] == "⌥⌘← / ⌥⌘→ or ⌥⇧⌘[ / ⌥⇧⌘]")
     #expect(rows["Select tab 1–8 / last tab"] == "⌘1–8 / ⌘9")
+    #expect(rows["Exit full screen from a file"] == "Esc")
   }
 
   @Test("Send keys follow the send preference; touch platforms send with Command-Return")
@@ -95,6 +96,7 @@ struct ShortcutGuideTests {
     let touch = ShortcutGuide.groups(submitWithCommandReturn: false, isMac: false)
     #expect(!touch.contains { $0.title == "Windows and search" })
     #expect(!touch.flatMap(\.rows).contains { $0.title == "Open a new browser tab" })
+    #expect(!touch.flatMap(\.rows).contains { $0.title == "Exit full screen from a file" })
   }
 
   @Test("Before typing, up to five recent sessions lead the actions")
