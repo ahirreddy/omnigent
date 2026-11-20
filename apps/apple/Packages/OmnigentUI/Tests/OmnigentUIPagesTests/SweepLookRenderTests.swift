@@ -37,6 +37,9 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case brandedNewSession = "sweep-branded-new-session"
   case adminView = "sweep-admin-view"
   case mcpSwitches = "sweep-mcp-switches"
+  case extensionFailed = "sweep-extension-failed"
+  case extensionNotFound = "sweep-extension-not-found"
+  case extensionSidebar = "sweep-extension-sidebar"
 
   var testDescription: String { rawValue }
 
@@ -62,6 +65,8 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .brandedNewSession: 620
     case .adminView: 260
     case .mcpSwitches: 300
+    case .extensionFailed, .extensionNotFound: 360
+    case .extensionSidebar: 620
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
       .quickAnswer, .staleProfile:
       nil
@@ -96,6 +101,9 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .brandedNewSession: return AnyView(Fixture.brandedNewSession)
     case .adminView: return AnyView(Fixture.adminView)
     case .mcpSwitches: return AnyView(Fixture.mcpSwitches)
+    case .extensionFailed: return AnyView(Fixture.extensionPage(found: true))
+    case .extensionNotFound: return AnyView(Fixture.extensionPage(found: false))
+    case .extensionSidebar: return AnyView(Fixture.extensionSidebar)
     }
   }
 }
