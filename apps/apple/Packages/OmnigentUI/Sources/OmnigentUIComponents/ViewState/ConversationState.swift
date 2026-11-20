@@ -335,6 +335,8 @@ public struct ConversationActions {
   /// Quote text selected in the transcript in the composer ("Reply"); `nil` hides the
   /// selection popup.
   public var replyWithSelection: (@MainActor (String) -> Void)?
+  /// Typing in the transcript starts a message: the composer takes the characters and focus.
+  public var typeIntoComposer: (@MainActor (String) -> Void)?
   /// Ask about text selected in the transcript in a new side chat; `nil` hides that choice.
   public var askInSideChat: (@MainActor (String) -> Void)?
   /// Fork the whole session past a failure only a new session gets past, in another directory
