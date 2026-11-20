@@ -94,6 +94,11 @@ public struct HarnessesSettingsView: View {
       fix = connection.harnessFix(setup: store)
       await store.load()
     }
+    // The shown host probes its accounts once each time Settings shows it, never polled.
+    .task(id: store.flatMap(selectedHost)) {
+      guard let store, let host = selectedHost(store) else { return }
+      await store.refreshAccounts(hostID: host)
+    }
     .sheet(item: $target) { target in
       if let store {
         HarnessSetupContainer(store: store, target: target) { self.target = nil }

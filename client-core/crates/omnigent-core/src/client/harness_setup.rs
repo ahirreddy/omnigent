@@ -359,6 +359,37 @@ impl<T: HttpTransport> ClientCore<T> {
         result
     }
 
+    /// Asks `host_id` to probe its harness accounts once (throttled by the server), as Settings
+    /// does when it shows the host; `None` from a server without the route.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] and the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn refresh_harness_accounts(
+        &self,
+        host_id: &str,
+    ) -> Result<Option<HostSnapshot>, SessionError> {
+        let result = async {
+            validate_identifier(host_id)?;
+            let path = format!("/v1/hosts/{host_id}/harnesses/accounts/refresh");
+            let empty = Value::Object(serde_json::Map::new());
+            match self.write_json("POST", &path, &empty).await {
+                Ok(value) => snapshot(&value, &path).map(Some),
+                Err(SessionError::Rejected {
+                    status: 404 | 405, ..
+                }) => Ok(None),
+                Err(error) => Err(error),
+            }
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
     /// `harness`'s startup command on `host_id` (named `host_name`), or why the host does not
     /// report it: `404` (not reported) or `501` (an older host).
     ///

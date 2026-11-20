@@ -38,6 +38,12 @@ public struct HarnessCatalogState: Equatable, Sendable {
     public var detail: String?
     /// Turned off for Omnigent sessions.
     public var isOff: Bool
+    /// The row opens to probe its tools.
+    public var probes = false
+    /// What the opened row shows; `nil` until it's opened.
+    public var probe: HarnessMcpProbe?
+    /// The connection badge, once probed.
+    public var status: HarnessMcpStatus?
 
     /// Creates a server.
     public init(id: String, title: String, detail: String? = nil, isOff: Bool = false) {

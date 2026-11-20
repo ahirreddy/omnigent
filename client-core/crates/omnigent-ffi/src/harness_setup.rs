@@ -132,6 +132,9 @@ pub struct SetupHost {
     /// The host signs harnesses in and out from the app.
     #[uniffi(default)]
     pub login_supported: bool,
+    /// The host probes its harness accounts on request.
+    #[uniffi(default)]
+    pub accounts_supported: bool,
 }
 
 /// The setup features, the harnesses' steps and the hosts (online first).
@@ -188,6 +191,7 @@ impl From<core::SetupHost> for SetupHost {
             accounts: host.accounts.map(account_entries),
             gateway_inference: host.gateway_inference.map(gateway_entries),
             login_supported: host.login_supported,
+            accounts_supported: host.accounts_supported,
         }
     }
 }
@@ -213,6 +217,7 @@ impl From<SetupHost> for core::SetupHost {
                     .collect()
             }),
             login_supported: host.login_supported,
+            accounts_supported: host.accounts_supported,
         }
     }
 }

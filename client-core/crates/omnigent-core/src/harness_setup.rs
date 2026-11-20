@@ -243,6 +243,8 @@ pub struct SetupHost {
     pub gateway_inference: Option<BTreeMap<String, bool>>,
     /// The host signs harnesses in and out from the app (`harness_login_supported`).
     pub login_supported: bool,
+    /// The host probes its harness accounts on request (`harness_accounts_supported`).
+    pub accounts_supported: bool,
 }
 
 impl SetupHost {
@@ -262,6 +264,7 @@ impl SetupHost {
             accounts: account_map(object)?,
             gateway_inference: gateway_map(object)?,
             login_supported: opt_bool(object, "harness_login_supported")?.unwrap_or(false),
+            accounts_supported: opt_bool(object, "harness_accounts_supported")?.unwrap_or(false),
         })
     }
 

@@ -20,12 +20,14 @@ public final class HarnessSetupStore {
   /// What the last write did, for the sheet ("Codex is ready on Mac.").
   public private(set) var notice: String?
 
-  private let core: ClientCore
+  let core: ClientCore
 
   /// Each harness's MCP servers, skills and plugins, by host and harness.
   public private(set) var catalogs: [String: CreationLoad<HarnessInventoryRecord>] = [:]
   /// Skill pages read, by host, harness and skill.
   public private(set) var skillContents: [String: CreationLoad<SkillContentRecord>] = [:]
+  /// MCP servers' tools as their hosts probed them, by host, harness and server row.
+  public internal(set) var mcpTools: [String: CreationLoad<McpToolsRead>] = [:]
 
   init(core: ClientCore) {
     self.core = core
@@ -74,6 +76,19 @@ public final class HarnessSetupStore {
     } catch {
       catalog = .failed(coreError(error))
     }
+  }
+
+  /// Asks `hostID` to probe its harness accounts, where the server sets up harnesses and the
+  /// online host probes on request, as the web's Settings does each time it shows the host; the
+  /// server throttles the probe. A failure keeps the accounts as they were.
+  /// - Parameter hostID: The host Settings shows.
+  public func refreshAccounts(hostID: String) async {
+    guard let loaded = catalog.value, loaded.harnessInstall,
+      let host = loaded.hosts.first(where: { $0.hostId == hostID }), host.accountsSupported,
+      host.status == "online",
+      let snapshot = try? await core.refreshHarnessAccounts(hostId: hostID)
+    else { return }
+    apply(snapshot, hostID: hostID)
   }
 
   /// The setup sheet for `harness` on `hostID`, once the catalog loaded.
