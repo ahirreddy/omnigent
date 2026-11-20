@@ -27,6 +27,47 @@ const OCTET_STREAM: &str = "application/octet-stream";
 /// TypeScript's extension (`.ts`) maps to MPEG transport streams; such a file is not video here.
 const TRANSPORT_STREAM: &str = "video/mp2t";
 
+/// A 3D model format the viewer reads (web `ModelFormat`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModelFormat {
+    /// Stereolithography, binary or text.
+    Stl,
+    /// 3D Manufacturing Format.
+    ThreeMf,
+    /// Wavefront OBJ text.
+    Obj,
+}
+
+/// The model format each type servers report for these files stands for.
+const MODEL_TYPES: [(&str, ModelFormat); 6] = [
+    ("model/stl", ModelFormat::Stl),
+    ("application/sla", ModelFormat::Stl),
+    ("application/vnd.ms-pki.stl", ModelFormat::Stl),
+    ("model/3mf", ModelFormat::ThreeMf),
+    (
+        "application/vnd.ms-package.3dmanufacturing-3dmodel+xml",
+        ModelFormat::ThreeMf,
+    ),
+    ("model/obj", ModelFormat::Obj),
+];
+
+/// The 3D model format `path` previews as (web `getModelFormat`): a recognized type wins, else
+/// a `.stl`, `.3mf` or `.obj` name, since servers often send these as octet streams or text.
+#[must_use]
+pub fn model_format(path: &str, content_type: Option<&str>) -> Option<ModelFormat> {
+    if let Some(kind) = media_type(content_type)
+        && let Some((_, format)) = MODEL_TYPES.iter().find(|(type_, _)| *type_ == kind)
+    {
+        return Some(*format);
+    }
+    match extension(path)?.as_str() {
+        "stl" => Some(ModelFormat::Stl),
+        "3mf" => Some(ModelFormat::ThreeMf),
+        "obj" => Some(ModelFormat::Obj),
+        _ => None,
+    }
+}
+
 /// A content type's media type, lower-cased, without parameters; `None` when blank.
 fn media_type(content_type: Option<&str>) -> Option<String> {
     let essence = content_type?.split(';').next()?.trim().to_ascii_lowercase();
@@ -206,7 +247,28 @@ pub fn parse_video_chapters(text: &str) -> Vec<VideoChapter> {
 
 #[cfg(test)]
 mod tests {
-    use super::{allowed_video_type, is_pdf_file, is_video_file, parse_video_chapters};
+    use super::{
+        ModelFormat, allowed_video_type, is_pdf_file, is_video_file, model_format,
+        parse_video_chapters,
+    };
+
+    #[test]
+    fn models_preview_by_their_type_then_their_name() {
+        assert_eq!(model_format("part.STL", None), Some(ModelFormat::Stl));
+        assert_eq!(
+            model_format("a/b.3mf", Some("application/octet-stream")),
+            Some(ModelFormat::ThreeMf)
+        );
+        assert_eq!(
+            model_format("mesh.txt", Some("model/obj")),
+            Some(ModelFormat::Obj)
+        );
+        assert_eq!(
+            model_format("mesh.obj", Some("text/plain")),
+            Some(ModelFormat::Obj)
+        );
+        assert_eq!(model_format("notes.md", None), None);
+    }
 
     #[test]
     fn chapters_come_from_the_cues_of_a_webvtt_file() {

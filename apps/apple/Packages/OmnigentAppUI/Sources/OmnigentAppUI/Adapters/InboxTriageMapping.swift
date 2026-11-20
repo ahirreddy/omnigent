@@ -123,7 +123,8 @@ enum InboxTriageMapping {
         sessionTitle: session.title, preview: "\(author): \(comment.body)",
         date: Date(timeIntervalSince1970: TimeInterval(comment.createdAt)))
       item.comment = InboxComment(
-        author: author, path: comment.path, anchor: comment.anchor, body: comment.body)
+        author: author, path: comment.path, anchor: comment.anchor.map(anchorDisplayText),
+        body: comment.body)
       item.agentName = session.agentName
       return item
     }

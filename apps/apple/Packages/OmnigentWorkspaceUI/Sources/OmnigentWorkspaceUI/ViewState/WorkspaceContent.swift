@@ -179,6 +179,16 @@ nonisolated public struct TextPreview: Hashable, Sendable {
   }
 }
 
+/// A 3D model format the viewer reads (`workspace::ModelFormat`).
+nonisolated public enum ModelFormat: Hashable, Sendable {
+  /// Stereolithography.
+  case stl
+  /// 3D Manufacturing Format.
+  case threeMf
+  /// Wavefront OBJ.
+  case obj
+}
+
 /// What the viewer shows for a file (`workspace::FilePreview`).
 nonisolated public enum FilePreview: Hashable, Sendable {
   /// Text.
@@ -187,6 +197,8 @@ nonisolated public enum FilePreview: Hashable, Sendable {
   case image(format: ImageFormat, data: Data)
   /// A PDF as the server returned it; `truncated` when it is cut and cannot open.
   case pdf(data: Data, truncated: Bool)
+  /// A 3D model as the server returned it; `truncated` when it is cut and cannot open.
+  case model(format: ModelFormat, data: Data, truncated: Bool)
   /// A video, streamed once asked to play.
   case video
   /// None of these.

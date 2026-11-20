@@ -58,6 +58,7 @@ pub mod http;
 pub mod inbox;
 pub mod inbox_items;
 pub mod nested_creation;
+pub mod pdf_comments;
 pub mod policy_registry;
 pub mod project_board;
 pub mod project_driver;

@@ -53,6 +53,7 @@ pub mod items;
 mod journal;
 pub(crate) mod json;
 pub mod mcp_tools;
+pub mod pdf_comments;
 pub mod pin_order;
 pub mod policy_registry;
 pub mod project_repository;

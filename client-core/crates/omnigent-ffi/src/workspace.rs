@@ -304,6 +304,17 @@ pub struct TextPreview {
     pub server_truncated: bool,
 }
 
+/// A 3D model format the viewer reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum ModelFormat {
+    /// Stereolithography.
+    Stl,
+    /// 3D Manufacturing Format.
+    ThreeMf,
+    /// Wavefront OBJ.
+    Obj,
+}
+
 /// What a viewer should show for a file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum FilePreview {
@@ -324,6 +335,15 @@ pub enum FilePreview {
         /// The bytes returned.
         data: Vec<u8>,
         /// The server returned only part of it, which a PDF reader cannot open.
+        truncated: bool,
+    },
+    /// A 3D model, as the server returned it.
+    Model {
+        /// Its format.
+        format: ModelFormat,
+        /// The bytes returned.
+        data: Vec<u8>,
+        /// The server returned only part of it, which no model reader can open.
         truncated: bool,
     },
     /// A video, streamed with [`ClientCore::download_workspace_file`] once asked to play.
@@ -836,6 +856,19 @@ fn preview(preview: core::FilePreview) -> FilePreview {
             data: bytes,
         },
         core::FilePreview::Pdf { bytes, truncated } => FilePreview::Pdf {
+            data: bytes,
+            truncated,
+        },
+        core::FilePreview::Model {
+            format,
+            bytes,
+            truncated,
+        } => FilePreview::Model {
+            format: match format {
+                core::ModelFormat::Stl => ModelFormat::Stl,
+                core::ModelFormat::ThreeMf => ModelFormat::ThreeMf,
+                core::ModelFormat::Obj => ModelFormat::Obj,
+            },
             data: bytes,
             truncated,
         },

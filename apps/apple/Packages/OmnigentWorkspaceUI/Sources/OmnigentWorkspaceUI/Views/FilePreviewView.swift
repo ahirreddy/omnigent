@@ -92,14 +92,9 @@ struct FilePreviewView: View {
           description: Text("This file has no rows. Switch to Source to see the raw file."))
       }
     case .markdown:
-      ScrollView {
-        markdown(text)
-          .frame(maxWidth: 760, alignment: .leading)
-          .padding(20)
-          .frame(maxWidth: .infinity, alignment: .leading)
-      }
+      MarkdownPreviewPane(text: text, markdown: markdown)
     case .html:
-      HTMLPreview(html: text)
+      HTMLPreviewPane(html: text)
     case .notebook:
       switch NotebookCells.parse(text) {
       case .success(let cells):
@@ -235,9 +230,32 @@ nonisolated enum NotebookCells {
 /// opening in the default browser rather than in the preview.
 struct HTMLPreview {
   let html: String
+  /// The page zoom: 1 is 100%.
+  var zoom = 1.0
+  /// The latest find; a new id runs it.
+  var find = HTMLFindRequest()
+  /// Told whether the find matched.
+  var found: (Bool) -> Void = { _ in }
 
   @MainActor final class Coordinator: NSObject, WKNavigationDelegate {
     private var loaded: String?
+    private var lastFind = 0
+
+    /// Applies the zoom and runs a find not yet run.
+    func update(_ preview: HTMLPreview, in webView: WKWebView) {
+      load(preview.html, into: webView)
+      if webView.pageZoom != preview.zoom { webView.pageZoom = preview.zoom }
+      guard preview.find.id != lastFind else { return }
+      lastFind = preview.find.id
+      let configuration = WKFindConfiguration()
+      configuration.backwards = preview.find.backwards
+      configuration.caseSensitive = false
+      configuration.wraps = true
+      let found = preview.found
+      webView.find(preview.find.query, configuration: configuration) { result in
+        found(result.matchFound)
+      }
+    }
 
     /// Loads `html` unless it is already showing.
     func load(_ html: String, into webView: WKWebView) {
@@ -269,7 +287,7 @@ struct HTMLPreview {
     configuration.defaultWebpagePreferences.allowsContentJavaScript = false
     let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = coordinator
-    coordinator.load(html, into: webView)
+    coordinator.update(self, in: webView)
     return webView
   }
 }
@@ -278,14 +296,14 @@ struct HTMLPreview {
   extension HTMLPreview: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView { makeWebView(context.coordinator) }
     func updateNSView(_ webView: WKWebView, context: Context) {
-      context.coordinator.load(html, into: webView)
+      context.coordinator.update(self, in: webView)
     }
   }
 #else
   extension HTMLPreview: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView { makeWebView(context.coordinator) }
     func updateUIView(_ webView: WKWebView, context: Context) {
-      context.coordinator.load(html, into: webView)
+      context.coordinator.update(self, in: webView)
     }
   }
 #endif

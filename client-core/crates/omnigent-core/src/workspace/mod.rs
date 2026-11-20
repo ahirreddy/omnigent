@@ -53,8 +53,8 @@ pub use diff::{
 pub use download::{ByteRange, FileDownload};
 pub use error::WorkspaceError;
 pub use media::{
-    CHAPTERS_SUFFIX, VideoChapter, allowed_video_type, is_pdf_file, is_video_file,
-    parse_video_chapters,
+    CHAPTERS_SUFFIX, ModelFormat, VideoChapter, allowed_video_type, is_pdf_file, is_video_file,
+    model_format, parse_video_chapters,
 };
 pub use model::{
     ChangeStatus, ChangeTotals, ChangedFileEntry, ChangesList, DirectoryPage, EntryKind,

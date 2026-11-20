@@ -17,7 +17,7 @@ use base64::Engine as _;
 use serde_json::Value;
 
 use super::error::WorkspaceError;
-use super::media::{is_pdf_file, is_video_file};
+use super::media::{ModelFormat, is_pdf_file, is_video_file, model_format};
 use super::path::WorkspacePath;
 use crate::client::json::{as_object, opt_bool, opt_str, opt_u64, req_str};
 
@@ -253,6 +253,15 @@ pub enum FilePreview {
         /// The server returned only part of it, which a PDF reader cannot open.
         truncated: bool,
     },
+    /// A 3D model ([`super::media::model_format`]), as the server returned it.
+    Model {
+        /// Its format.
+        format: ModelFormat,
+        /// The bytes returned.
+        bytes: Vec<u8>,
+        /// The server returned only part of it, which no model reader can open.
+        truncated: bool,
+    },
     /// A video ([`super::media::is_video_file`]): the player streams it with ranged downloads
     /// (`ClientCore::download_workspace_file`) once asked to play.
     Video,
@@ -303,7 +312,7 @@ impl FileContent {
     /// What a viewer should show under `limits`.
     #[must_use]
     pub fn preview(&self, limits: &PreviewLimits) -> FilePreview {
-        // The web's order: video, image, PDF, then text or binary.
+        // The web's order: video, image, PDF, 3D model, then text or binary.
         let content_type = self.content_type.as_deref();
         if is_video_file(self.path.as_str(), content_type) {
             return FilePreview::Video;
@@ -312,6 +321,16 @@ impl FileContent {
             matches!(&self.body, FileBody::Binary(bytes) if ImageFormat::sniff(bytes).is_some());
         if !image && is_pdf_file(self.path.as_str(), content_type) {
             return FilePreview::Pdf {
+                bytes: match &self.body {
+                    FileBody::Text(text) => text.as_bytes().to_vec(),
+                    FileBody::Binary(bytes) => bytes.clone(),
+                },
+                truncated: self.truncated,
+            };
+        }
+        if !image && let Some(format) = model_format(self.path.as_str(), content_type) {
+            return FilePreview::Model {
+                format,
                 bytes: match &self.body {
                     FileBody::Text(text) => text.as_bytes().to_vec(),
                     FileBody::Binary(bytes) => bytes.clone(),

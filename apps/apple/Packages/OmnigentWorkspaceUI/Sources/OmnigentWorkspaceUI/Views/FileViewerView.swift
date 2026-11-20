@@ -71,7 +71,12 @@ public struct FileViewerView: View {
       case .image(let format, let data):
         ImagePreview(format: format, data: data, byteCount: file.byteCount)
       case .pdf(let data, let truncated):
-        PDFPreviewView(data: data, truncated: truncated)
+        withComments(
+          PDFPreviewView(
+            data: data, truncated: truncated, path: file.path, review: review,
+            selectedCommentID: $selectedCommentID, comment: { commenting = $0 }))
+      case .model(let format, let data, let truncated):
+        ModelPreviewView(format: format, data: data, truncated: truncated)
       case .video:
         ScrollView {
           WorkspaceVideoView(path: file.path, source: source, download: actions.download)
@@ -229,7 +234,7 @@ private struct FileHeader: View {
       symbol: FileIcons.symbol(forName: WorkspacePaths.name(of: file.path)),
       name: WorkspacePaths.name(of: file.path), path: file.path
     ) {
-      if let review, case .text = file.preview, review.canComment || !review.comments.isEmpty {
+      if let review, file.takesComments, review.canComment || !review.comments.isEmpty {
         FileCommentsToggle(openCount: review.openComments.count, isShown: $showsComments)
       }
       if let viewMode {
@@ -267,6 +272,8 @@ private struct FileHeader: View {
       parts.append(format.rawValue)
     } else if case .pdf = file.preview {
       parts.append("PDF")
+    } else if case .model = file.preview {
+      parts.append("3D model")
     } else if case .video = file.preview {
       // A video is streamed, not read, so its size is not known here.
       return "Video"
@@ -333,4 +340,15 @@ private struct Checkerboard: View {
 #Preview("Image") {
   FileViewerView(file: WorkspaceSamples.logoFile, source: SampleWorkspaceDataSource())
     .frame(width: 480, height: 360)
+}
+
+extension WorkspaceFile {
+  /// Its text, or a PDF's selected text, takes review comments.
+  var takesComments: Bool {
+    switch preview {
+    case .text: true
+    case .pdf(_, let truncated): !truncated
+    default: false
+    }
+  }
 }
