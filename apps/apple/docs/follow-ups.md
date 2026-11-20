@@ -153,10 +153,6 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Apps
 
-- [ ] **Muted sessions:** the menus offer no Mark as read on a muted session with unseen
-  activity (the core hides its unread, so the menu can't tell); opening it still marks it read.
-  The bulk selection's Mark as unread stays enabled when every selected row is muted (the core
-  skips them, as the web's bulk action does).
 - [ ] **Read state:** persist this device's read marks across relaunches; today they are kept in
   memory only.
 - [ ] **Phone supervision on a physical iPhone:** approve from the Lock Screen end to end (Face
@@ -416,15 +412,14 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   server's 1,000-row page cap the rows beyond it fall out until Load more reads them again; a
   folder's pages are dropped on a reload (the folder reads its first page again); search and the
   quick filters still match loaded sessions only (the web's tabs query the server).
-- [ ] **Canvas:** each board's pan and zoom aren't remembered within a visit (a switch refits),
-  a resize doesn't keep the view's middle, cards snap only on drop, the first load waits for every
-  page (the web paints the sidebar's rows first and stays silent on reloads), archived or nested
-  rows leave only at the next reload, deleted sessions' spots are pruned only past the cap, and
-  `/canvas?canvas=<id>` and `/canvas/c/<id>` links aren't read.
+- [ ] **Canvas:** a resize doesn't keep the view's middle, cards snap only on drop, the first
+  load waits for every page (the web paints the sidebar's rows first and stays silent on
+  reloads), and archived or nested rows leave only at the next reload. A board's remembered view
+  counts a pan by dragging the board, not one by the scroll wheel. Return and Space open a card
+  only with keyboard navigation on (System Settings), as a Mac's buttons take the focus.
 - [ ] **Toasts:** fork's "Session created [Open]" should use `TransientBanner` (fork flow).
-- [ ] **Host import review (Mac):** plugins come from Claude's plugin list (the web derives them
-  from `plugin:skill` names and MCP servers, so it leaves disabled plugins out), and only "This
-  Mac" onboarding asks for the review (the web also reviews a remote runner).
+- [ ] **Host import review (Mac):** only "This Mac" onboarding asks for the review. The web
+  also reviews a remote runner, which native onboarding doesn't offer (see Onboarding above).
 - [ ] **Session overview:** no docked overview beside the chat (it is a popover). Files changed
   counts the Changes list as the host reports it, untracked lines not separately counted.
 - [ ] **Terminal split, left:** the web keeps showing saved shell panes while the agent's
@@ -568,30 +563,42 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   deflate, XML, snappy or zstd decoder and stays dependency-light and wasm-clean, so these
   open as other binary files. Needs a decoder decision (pure-Rust crates through the mirror,
   or hand-written readers for the subset the web supports).
-- [ ] **Browser Annotate and Draw:** the desktop Browser pane's tools (pick an element and
-  describe a change; pen, rectangle, arrow and text marks with a note) and their outbox are not
-  ported. Native needs an overlay view above both the WebKit and the out-of-process Chromium
-  view, an element picker script per engine in an isolated world, a snapshot crop or
-  composite, and a persisted outbox of external sends.
+- [ ] **Browser Annotate and Draw** (web `63915cd179`, about 4,000 lines with its outbox):
+  the desktop Browser pane's tools (pick an element and describe a change; pen, rectangle,
+  arrow and text marks with a note) and their outbox are not ported. Plan:
+  1. Core: `design_request` parsing of a message's `[Design Mode — …]` block (the web's
+     `parseDesignRequest`: tool, prompt, subject, page URL, the attached capture), and a
+     `DesignOutbox` that keeps requests on disk per server and session, sends each as an
+     external message (`POST …/messages` with the capture as an attachment) and retries the
+     ones the server refused with doubling backoff (5 s to 5 min), as `designOutbox.ts`.
+  2. Browser (`OmnigentBrowser`): a transparent `NSView` overlay above the page view for both
+     engines (WebKit's `WKWebView`, Chromium's out-of-process view host), following its
+     bounds, zoom and visibility, taking the pointer while a tool is on and closing on
+     navigation. Annotate: an element picker run in an isolated world (`WKContentWorld` /
+     Chromium's isolated world) returning the hovered element's rect, tag, id, classes and
+     text; outline drawn by the overlay. Draw: pen, rectangle, arrow and text marks kept as
+     values (`marks.ts`), composited onto a page snapshot (`takeSnapshot` /
+     `Page.captureScreenshot`) cropped to the element or the viewport.
+  3. UI: Annotate and Draw in the browser toolbar (where the web shows them: the desktop pane,
+     flag-free), the note popover, the outbox strip ("2 requests waiting · Retry"), Escape to
+     leave a tool, and the compact transcript card below.
 - [ ] **Design-tool messages in the transcript:** a message ending in the web's
   `[Design Mode — …]` block shows as its plain Markdown; the web shows the request and its
-  subject ("p#blurb \"Hello\" on localhost:5173") as a compact card. Parse it in the core and
-  draw it in the SwiftUI, TextKit and CLI prompt renderers.
+  subject ("p#blurb \"Hello\" on localhost:5173") as a compact card. Parse it in the core (plan
+  step 1 above) and draw it in the SwiftUI, TextKit and CLI prompt renderers.
 - [ ] **Floating New Agent panel (Mac, `floating_composer`):**
   - Only package tests cover it (shortcut, chord, placement); no Mac flow drives the panel, the
     Carbon hot key or a launch behind it, and it has no renders yet.
-  - Escape hides the panel even while the composer's completion list is open.
-  - A Settings link in the panel opens the front window's Settings at its last category, not
-    the link's destination.
 - [ ] **Find:** the transcript has no find of its own (the Find menu reaches a text view's find
-  bar or a browser tab's); Command-F in a terminal doesn't take the selection.
+  bar or a browser tab's).
 - [ ] **Settings search:**
   - Rows in the General, Notifications, Local Server and Terminal panes that their own packages
     draw scroll into view but aren't marked; rows drawn by OmnigentUI are marked for two seconds.
   - Before Settings › Servers has shown, server-pane results are the panes every signed-in
     server offers; the shown server's own panes replace them once it shows.
-  - Picking a result doesn't put the keyboard in the row's control.
-  - iPhone and iPad scroll to a row only on the app's own pages, not server panes.
+  - Picking a result doesn't put the keyboard in the row's control: a row's `.focused` would
+    make every searchable row a key view, and a Mac's toggles and pickers take the focus only
+    with keyboard navigation on.
 
 ## Product decisions
 
@@ -602,6 +609,16 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Done
 
+- [x] **Sweep F, smaller gaps** (2026-11-20): a muted session with unseen activity offers Mark
+  as read (core `MutedUnseenChanged`), and bulk Mark as unread leaves muted rows out and is off
+  when all are muted; the floating panel leaves Escape to an open completion list and opens a
+  Settings link at its destination in its server's window; Command-F in a terminal searches for
+  the selection; on iPhone and iPad a search result in a server pane scrolls to its row.
+- [x] **Canvas follow-ups** (2026-11-20): each board keeps its zoom and scroll for the visit,
+  `/canvas?canvas=<id>` and `/canvas/c/<id>` links open the board and the session beside it,
+  Return and Space open a card, and spots of sessions no longer listed are dropped.
+- [x] **Import review plugins** (2026-11-20): the review lists the active plugins its skills
+  and MCP servers name, as the web's, leaving disabled ones out (core `host_inventory`).
 - [x] **Session overview rows and `cost_hidden`:** the overview shows Files changed and Lines
   (+added −removed) while the workspace has uncommitted changes, and a session or usage event
   with `cost_hidden` drops a cost known before, the models' too (core `hide_costs`).
