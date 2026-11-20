@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Switch Host (move a session whose host is gone to another online machine) and Resume on a
-/// Machine (start a session bound to no host), as the web's `SwitchHostDialog` and
-/// `ResumeWithDirectoryDialog`: a host, a directory on it, and for Resume an optional worktree.
+/// Switch Host (move a session whose host is gone to another online machine, or into a new
+/// sandbox) and Resume on a Machine (start a session bound to no host), as the web's
+/// `SwitchHostDialog` and `ResumeWithDirectoryDialog`: a host and a directory on it (or a
+/// sandbox and the repository it clones), and for Resume an optional worktree.
 struct HostMoveSheet: View {
   let kind: HostMoveKind
   let actions: HostMoveActions
@@ -23,6 +24,10 @@ struct HostMoveSheet: View {
   @State private var error: String?
   /// A switch released the old host and did not start on the new one.
   @State private var stranded = false
+  /// The sandbox request after the release failed, so the move isn't confirmed.
+  @State private var unconfirmed = false
+  @State private var repository = ""
+  @State private var sandboxBranch = ""
 
   private var isSwitch: Bool {
     if case .switchHost = kind { return true }
@@ -35,11 +40,24 @@ struct HostMoveSheet: View {
 
   private var resolved: String? { HostMoveRules.resolvedWorkspace(workspace, home: home) }
 
+  /// The chosen new sandbox's provider; `nil` for a host.
+  private var sandboxProvider: String? {
+    targets.first { $0.id == hostID }?.sandboxProvider
+  }
+
+  private var sandboxProblem: HostMoveRepoProblem? {
+    actions.sandboxProblem(repository, sandboxBranch)
+  }
+
   var body: some View {
     NavigationStack {
       Form {
         Section {
-          Text(description).fixedSize(horizontal: false, vertical: true)
+          Text(
+            HostMoveRules.description(
+              kind, offersSandbox: targets.contains { $0.sandboxProvider != nil })
+          )
+          .fixedSize(horizontal: false, vertical: true)
         }
         content
       }
@@ -69,19 +87,41 @@ struct HostMoveSheet: View {
         Text("Loading your machines\u{2026}").foregroundStyle(.secondary)
       }
     } else if targets.isEmpty {
-      Text(noTargets).foregroundStyle(.secondary)
+      Text(HostMoveRules.noTargets(kind)).foregroundStyle(.secondary)
         .accessibilityIdentifier(isSwitch ? "switch-host-no-targets" : "resume-dir-no-hosts")
     } else {
-      Picker("Host", selection: $hostID) {
-        ForEach(targets) { host in
+      hostPicker
+      if sandboxProvider != nil {
+        HostMoveSandboxSection(
+          repository: $repository, branch: $sandboxBranch, problem: sandboxProblem)
+      } else {
+        directorySection
+      }
+      if !isSwitch { HostMoveWorktreeSection(branch: $branch, baseBranch: $baseBranch) }
+      if let error {
+        HostMoveErrorSection(error: error, stranded: stranded, unconfirmed: unconfirmed)
+      }
+    }
+  }
+
+  /// New sandboxes first, then the hosts, as the web's list.
+  private var hostPicker: some View {
+    Picker("Host", selection: $hostID) {
+      let sandboxes = targets.filter { $0.sandboxProvider != nil }
+      if !sandboxes.isEmpty {
+        Section {
+          ForEach(sandboxes) { sandbox in
+            Label(sandbox.name, systemImage: "cloud").tag(Optional(sandbox.id))
+          }
+        }
+      }
+      Section {
+        ForEach(targets.filter { $0.sandboxProvider == nil }) { host in
           Text(host.name).tag(Optional(host.id))
         }
       }
-      .accessibilityIdentifier(isSwitch ? "switch-host-select" : "resume-dir-host-select")
-      directorySection
-      if !isSwitch { worktreeSection }
-      if let error { errorSection(error) }
     }
+    .accessibilityIdentifier(isSwitch ? "switch-host-select" : "resume-dir-host-select")
   }
 
   private var directorySection: some View {
@@ -140,47 +180,6 @@ struct HostMoveSheet: View {
     }
   }
 
-  private var worktreeSection: some View {
-    Section {
-      TextField("Branch", text: $branch, prompt: Text("feature/my-branch"))
-        .font(Theme.codeFont)
-        .autocorrectionDisabled()
-        .accessibilityIdentifier("resume-dir-branch")
-      if !branch.trimmingCharacters(in: .whitespaces).isEmpty {
-        TextField(
-          "Base branch", text: $baseBranch,
-          prompt: Text("Base branch (defaults to the current branch)")
-        )
-        .font(Theme.codeFont)
-        .autocorrectionDisabled()
-        .accessibilityIdentifier("resume-dir-base-branch")
-      }
-    } header: {
-      Label("Git worktree (optional)", systemImage: "arrow.triangle.branch")
-    } footer: {
-      Text(
-        "Creates a git worktree for a new branch in an isolated directory. Leave blank to "
-          + "start in the picked directory.")
-    }
-  }
-
-  private func errorSection(_ error: String) -> some View {
-    Section {
-      if stranded {
-        Text(
-          "The session left its old host but didn\u{2019}t start on the new one, so it isn\u{2019}t "
-            + "running anywhere. Pick a host \u{2014} including the one it came from \u{2014} and "
-            + "try again."
-        )
-        .foregroundStyle(Theme.failure)
-        Text(error).font(.callout).foregroundStyle(.secondary)
-      } else {
-        Text(error).foregroundStyle(Theme.failure)
-      }
-    }
-    .accessibilityIdentifier("host-move-error")
-  }
-
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
     ToolbarItem(placement: .cancellationAction) {
       // A move can't be called back once sent, and the spinner slides this under the pointer.
@@ -195,22 +194,11 @@ struct HostMoveSheet: View {
   private var confirmButton: some View {
     Button(isSwitch ? "Switch Host" : "Start Session") { Task { await submit() } }
       .primaryActionStyle()
-      .disabled(hostID == nil || resolved == nil || isSubmitting || targets.isEmpty)
+      .disabled(
+        hostID == nil || isSubmitting || targets.isEmpty
+          || (sandboxProvider == nil ? resolved == nil : sandboxProblem != nil)
+      )
       .accessibilityIdentifier(isSwitch ? "switch-host-button" : "resume-dir-bind-button")
-  }
-
-  private var description: String {
-    isSwitch
-      ? "Move this session to another connected machine."
-      : "This session isn\u{2019}t running on any machine. Pick one of your machines and a "
-        + "directory to continue the conversation against your files."
-  }
-
-  private var noTargets: String {
-    isSwitch
-      ? "No other hosts are online. Connect one with `omnigent host` and try again."
-      : "None of your machines are online. Start one with `omnigent host` from your terminal, "
-        + "then reopen this sheet."
   }
 
   private func loadHosts() async {
@@ -236,7 +224,8 @@ struct HostMoveSheet: View {
       workspace = ""
       edited = false
     }
-    guard let hostID else { return }
+    // A new sandbox has no folders to default to.
+    guard let hostID, sandboxProvider == nil else { return }
     Task {
       let found = await actions.home(hostID)
       guard self.hostID == hostID else { return }
@@ -246,12 +235,21 @@ struct HostMoveSheet: View {
   }
 
   private func submit() async {
-    guard let hostID, let resolved else { return }
+    guard let hostID else { return }
+    var choice: HostMoveChoice
+    if let sandboxProvider {
+      choice = HostMoveChoice(hostID: hostID, workspace: "")
+      choice.sandbox = HostMoveSandbox(
+        provider: sandboxProvider, repository: repository.trimmingCharacters(in: .whitespaces),
+        branch: sandboxBranch.trimmingCharacters(in: .whitespaces))
+    } else {
+      guard let resolved else { return }
+      choice = HostMoveChoice(hostID: hostID, workspace: resolved)
+      choice.branch = branch.trimmingCharacters(in: .whitespaces)
+      choice.baseBranch = baseBranch.trimmingCharacters(in: .whitespaces)
+    }
     isSubmitting = true
     error = nil
-    var choice = HostMoveChoice(hostID: hostID, workspace: resolved)
-    choice.branch = branch.trimmingCharacters(in: .whitespaces)
-    choice.baseBranch = baseBranch.trimmingCharacters(in: .whitespaces)
     let outcome = await actions.submit(choice)
     isSubmitting = false
     switch outcome {
@@ -261,6 +259,11 @@ struct HostMoveSheet: View {
       error = message
     case .stranded(let message):
       stranded = true
+      unconfirmed = false
+      error = message
+    case .unconfirmed(let message):
+      stranded = true
+      unconfirmed = true
       error = message
     }
   }

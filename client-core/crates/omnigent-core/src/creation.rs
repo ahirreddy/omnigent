@@ -497,6 +497,8 @@ pub struct CreationCapabilities {
     pub codex_plan_at_launch: bool,
     /// `sandbox_provider`: the default sandbox provider; `None` when the server names none.
     pub default_sandbox_provider: Option<String>,
+    /// Which sandboxes a session on a host can move into.
+    pub sandbox_moves: SandboxMoves,
     /// Providers whose `sandbox_provider_capabilities` report `multi_repo`.
     pub multi_repo_providers: Vec<String>,
     /// Providers whose sandboxes preview a model catalog (`default_models` or
@@ -549,6 +551,21 @@ impl CreationCapabilities {
         } else {
             self.sandbox_providers.iter().cloned().map(Some).collect()
         }
+    }
+
+    /// The sandbox rows Switch Host offers, as the web's: the providers that take a session
+    /// moved in (`accepts_session_move`), when the server moves sessions into sandboxes at all.
+    /// A provider the server doesn't name is left out.
+    #[must_use]
+    pub fn sandbox_move_options(&self) -> Vec<String> {
+        if !self.sandbox_moves.enabled {
+            return Vec::new();
+        }
+        self.sandbox_provider_options()
+            .into_iter()
+            .filter_map(|provider| provider.or_else(|| self.default_sandbox_provider.clone()))
+            .filter(|provider| self.sandbox_moves.providers.contains(provider))
+            .collect()
     }
 
     /// How many repositories a sandbox of `provider` (`None` for the default) clones.
@@ -658,6 +675,7 @@ impl CreationCapabilities {
             sandbox_providers,
             codex_plan_at_launch: feature("codex_plan_at_launch"),
             default_sandbox_provider,
+            sandbox_moves: SandboxMoves::from_info(object)?,
             multi_repo_providers,
             model_preview_providers,
             default_model_providers,
@@ -680,6 +698,38 @@ impl CreationCapabilities {
             automation_notice,
             restrict_to_agent_names,
             default_agent_name,
+        })
+    }
+}
+
+/// Which sandboxes a session on a host can move into (Switch Host's sandbox rows).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SandboxMoves {
+    /// `move_to_managed_sandbox`: the server moves sessions into new sandboxes.
+    pub enabled: bool,
+    /// Providers whose `sandbox_provider_capabilities` report `accepts_session_move`.
+    pub providers: Vec<String>,
+}
+
+impl SandboxMoves {
+    /// Reads them from a `/v1/info` body.
+    ///
+    /// # Errors
+    ///
+    /// A description of the first field with the wrong shape.
+    pub fn from_info(object: &Map<String, Value>) -> Result<Self, String> {
+        let providers = opt_object(object, "sandbox_provider_capabilities")?
+            .map(|providers| {
+                providers
+                    .iter()
+                    .filter(|(_, flags)| provider_flag(flags, "accepts_session_move"))
+                    .map(|(provider, _)| provider.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(Self {
+            enabled: opt_bool(object, "move_to_managed_sandbox")?.unwrap_or(false),
+            providers,
         })
     }
 }

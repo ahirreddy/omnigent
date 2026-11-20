@@ -118,6 +118,12 @@ pub struct CreationCatalog {
     /// `/v1/info.sandbox_provider`: the default sandbox provider.
     #[uniffi(default)]
     pub default_sandbox_provider: Option<String>,
+    /// `/v1/info.move_to_managed_sandbox`: a session on a host can move into a new sandbox.
+    #[uniffi(default)]
+    pub move_to_managed_sandbox: bool,
+    /// Providers that take a session moved in (`accepts_session_move`).
+    #[uniffi(default)]
+    pub session_move_providers: Vec<String>,
     /// Providers that clone several repositories.
     #[uniffi(default)]
     pub multi_repo_providers: Vec<String>,
@@ -382,6 +388,8 @@ impl From<core::CreationCatalog> for CreationCatalog {
             custom_agents_settings: catalog.capabilities.custom_agents_settings_enabled(),
             sandbox_providers: catalog.capabilities.sandbox_providers,
             default_sandbox_provider: catalog.capabilities.default_sandbox_provider,
+            move_to_managed_sandbox: catalog.capabilities.sandbox_moves.enabled,
+            session_move_providers: catalog.capabilities.sandbox_moves.providers,
             multi_repo_providers: catalog.capabilities.multi_repo_providers,
             model_preview_providers: catalog.capabilities.model_preview_providers,
             default_model_providers: catalog.capabilities.default_model_providers,
@@ -412,6 +420,10 @@ impl From<CreationCatalog> for core::CreationCatalog {
                 sandbox_providers: catalog.sandbox_providers,
                 codex_plan_at_launch: catalog.codex_plan_at_launch,
                 default_sandbox_provider: catalog.default_sandbox_provider,
+                sandbox_moves: core::SandboxMoves {
+                    enabled: catalog.move_to_managed_sandbox,
+                    providers: catalog.session_move_providers,
+                },
                 multi_repo_providers: catalog.multi_repo_providers,
                 model_preview_providers: catalog.model_preview_providers,
                 default_model_providers: catalog.default_model_providers,

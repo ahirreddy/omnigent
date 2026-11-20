@@ -58,6 +58,36 @@ extension ConversationStore {
     }
   }
 
+  /// The new sandboxes Switch Host offers: providers that take a moved session.
+  /// - Returns: The providers and their labels; none where the server moves no sessions.
+  /// - Throws: The core's read error.
+  public func sandboxMoveOptions() async throws(CoreError) -> [SandboxProviderOption] {
+    do {
+      return try await core.sandboxMoveOptions()
+    } catch {
+      throw coreError(error)
+    }
+  }
+
+  /// Moves the session into a new sandbox of `provider`, cloning `repository` at `branch`.
+  /// - Parameters:
+  ///   - provider: The provider.
+  ///   - repository: The repository URL; blank for an empty sandbox.
+  ///   - branch: The branch; blank for the default branch.
+  /// - Returns: `started`, or `unconfirmed` when the old host let go and the sandbox request
+  ///   failed.
+  /// - Throws: The core's error when nothing moved.
+  public func moveToSandbox(provider: String, repository: String, branch: String)
+    async throws(CoreError) -> SandboxMoveOutcome
+  {
+    do {
+      return try await core.moveSessionToSandbox(
+        sessionId: sessionID, provider: provider, repository: repository, branch: branch)
+    } catch {
+      throw coreError(error)
+    }
+  }
+
   /// Starts the session, bound to no host, on `hostID` in `workspace`.
   /// - Parameters:
   ///   - hostID: An online host.

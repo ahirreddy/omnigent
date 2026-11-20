@@ -239,7 +239,10 @@ impl ReplicaRouting {
         } else if let Some(host) = segment_after(path, "/v1/hosts/") {
             Some(host.to_owned())
         } else if let Some(session) = segment_after(path, "/v1/sessions/") {
-            if is_fork(path) && body_str(body, "host_type") == Some("managed") {
+            // A managed fork or a move into a sandbox goes where the new sandbox will live.
+            if (is_fork(path) && body_str(body, "host_type") == Some("managed"))
+                || is_managed_host(path)
+            {
                 body_str(body, "host_id").map(str::to_owned)
             } else {
                 let host = self.session_host(session).map(str::to_owned);
@@ -298,9 +301,18 @@ fn segment_after<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
 }
 
 fn is_fork(path: &str) -> bool {
+    session_tail(path) == Some("fork")
+}
+
+fn is_managed_host(path: &str) -> bool {
+    session_tail(path) == Some("managed-host")
+}
+
+/// The part of `/v1/sessions/{id}/<tail>` after the id.
+fn session_tail(path: &str) -> Option<&str> {
     path.strip_prefix("/v1/sessions/")
         .and_then(|rest| rest.split_once('/'))
-        .is_some_and(|(_, tail)| tail == "fork")
+        .map(|(_, tail)| tail)
 }
 
 /// A create or local import, which names its host in the body.
@@ -339,6 +351,25 @@ mod tests {
             None,
         );
         assert_eq!(addressing.host.as_deref(), Some("host_b"));
+    }
+
+    #[test]
+    fn a_move_into_a_sandbox_goes_where_the_new_sandbox_lives() {
+        let mut routing = ReplicaRouting::default();
+        routing.record("conv_a", Reported::Value("host_a"), Reported::Unsaid, None);
+        let body = serde_json::json!({"sandbox_provider": "modal", "host_id": "host_new"});
+        let moved = routing.address("POST", "/v1/sessions/conv_a/managed-host", &[], Some(&body));
+        assert_eq!(moved.host.as_deref(), Some("host_new"));
+        let unminted = serde_json::json!({"sandbox_provider": "modal"});
+        let moved = routing.address(
+            "POST",
+            "/v1/sessions/conv_a/managed-host",
+            &[],
+            Some(&unminted),
+        );
+        assert_eq!(moved.host, None);
+        let released = routing.address("PATCH", "/v1/sessions/conv_a", &[], Some(&body));
+        assert_eq!(released.host.as_deref(), Some("host_a"));
     }
 
     #[test]

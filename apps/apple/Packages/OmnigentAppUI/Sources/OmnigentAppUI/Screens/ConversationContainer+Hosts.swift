@@ -17,12 +17,16 @@ extension ConversationContainer {
     if case .hostOffline(isOwner: true) = liveness {
       actions.switchHost = HostMoveRoute(
         kind: .switchHost(currentHostID: header.settings?.hostId),
-        actions: hostMoveActions { await switchHost($0, stoppingFirst: false) })
+        actions: hostMoveActions(offersSandboxes: true) {
+          await switchHost($0, stoppingFirst: false)
+        })
       actions.reconnectThisMachine = reconnectThisMachine(header.settings?.hostId)
     } else if Self.switchesOnlineHost(header), !hasSandbox {
       actions.switchHost = HostMoveRoute(
         kind: .switchHost(currentHostID: header.settings?.hostId),
-        actions: hostMoveActions { await switchHost($0, stoppingFirst: true) })
+        actions: hostMoveActions(offersSandboxes: true) {
+          await switchHost($0, stoppingFirst: true)
+        })
     }
     if LivenessAdapter.resumesOnMachine(header) {
       let workspace = summary?.workspace
@@ -67,17 +71,24 @@ extension ConversationContainer {
     return true
   }
 
+  /// The sheets' reads; Switch Host (`offersSandboxes`) also lists the new sandboxes the
+  /// server moves sessions into (`managed_sandboxes_enabled`, `move_to_managed_sandbox`).
   private func hostMoveActions(
+    offersSandboxes: Bool = false,
     submit: @escaping @MainActor (HostMoveChoice) async -> HostMoveOutcome
   ) -> HostMoveActions {
     let conversation = conversation
     return HostMoveActions(
       loadHosts: {
         do throws(CoreError) {
-          return .success(
-            try await conversation.hosts().map {
-              HostMoveTarget(id: $0.hostId, name: $0.name, isOnline: $0.isAvailable)
-            })
+          let hosts = try await conversation.hosts().map {
+            HostMoveTarget(id: $0.hostId, name: $0.name, isOnline: $0.isAvailable)
+          }
+          guard offersSandboxes else { return .success(hosts) }
+          let sandboxes = try await conversation.sandboxMoveOptions().compactMap { option in
+            option.provider.map { HostMoveTarget.sandbox($0, name: option.label) }
+          }
+          return .success(sandboxes + hosts)
         } catch {
           return .failure(FolderBrowseError(message: error.message))
         }
@@ -99,9 +110,16 @@ extension ConversationContainer {
           return .failure(FolderBrowseError(message: error.message))
         }
       },
-      submit: submit)
+      submit: submit,
+      sandboxProblem: { repository, branch in
+        sandboxMoveProblem(repository: repository, branch: branch).map {
+          HostMoveRepoProblem(isBranch: $0.field == .branch, message: $0.message)
+        }
+      })
   }
 
+  /// Moves the session to a host, or into a new sandbox, as the web's Switch Host: stops it
+  /// where it may still run, releases it, then starts it on the target.
   private func switchHost(_ choice: HostMoveChoice, stoppingFirst: Bool) async -> HostMoveOutcome {
     if stoppingFirst {
       do throws(CoreError) {
@@ -112,6 +130,12 @@ extension ConversationContainer {
       }
     }
     do throws(CoreError) {
+      if let sandbox = choice.sandbox {
+        let moved = try await conversation.moveToSandbox(
+          provider: sandbox.provider, repository: sandbox.repository, branch: sandbox.branch)
+        if case .unconfirmed(let error) = moved { return .unconfirmed(error.message) }
+        return .moved
+      }
       let launch = try await conversation.switchHost(
         to: choice.hostID, workspace: choice.workspace)
       if case .failed(let error) = launch { return .stranded(error.message) }
