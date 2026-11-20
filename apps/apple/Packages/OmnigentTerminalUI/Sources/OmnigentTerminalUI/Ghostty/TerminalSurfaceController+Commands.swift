@@ -41,10 +41,11 @@ extension TerminalSurfaceController {
     return unsafe ghostty_surface_has_selection(surface)
   }
 
-  /// Opens the find bar.
+  /// Opens the find bar, searching for the selected text when there is some, as Find takes the
+  /// selection elsewhere in the app.
   public func startSearch() {
     if search == nil { search = TerminalSearch(needle: "") }
-    perform("start_search")
+    perform(hasSelection ? "search_selection" : "start_search")
   }
 
   /// Searches for `needle` (empty cancels the search but keeps the bar).

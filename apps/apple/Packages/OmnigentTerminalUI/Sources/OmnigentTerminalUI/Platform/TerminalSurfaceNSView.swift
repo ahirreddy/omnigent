@@ -148,11 +148,22 @@
     /// chords before AppKit turns them into menu commands or `doCommand(by:)`.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
       guard event.type == .keyDown, focused,
-        !event.modifierFlags.isDisjoint(with: [.command, .control]),
-        isBinding(event)
+        !event.modifierFlags.isDisjoint(with: [.command, .control])
       else { return false }
+      // Command-F takes the selection, which Ghostty's own binding wouldn't.
+      if Self.isFind(event) {
+        controller?.startSearch()
+        return true
+      }
+      guard isBinding(event) else { return false }
       keyDown(with: event)
       return true
+    }
+
+    /// Command-F alone.
+    static func isFind(_ event: NSEvent) -> Bool {
+      event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+        && event.charactersIgnoringModifiers?.lowercased() == "f"
     }
 
     /// Whether Ghostty's configuration binds this key, which leaves all others to the app's menus.
