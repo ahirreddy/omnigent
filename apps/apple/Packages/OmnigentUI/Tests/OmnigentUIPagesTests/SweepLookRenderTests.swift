@@ -46,6 +46,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case agentCosts = "sweep-c-agent-costs"
   case canvasQuickView = "sweep-c-canvas-quick-view"
   case importReview = "sweep-c-import-review"
+  case questionSubmitBlocked = "sweep-e-question-submit-blocked"
 
   var testDescription: String { rawValue }
 
@@ -79,7 +80,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .canvasQuickView: 420
     case .importReview: 480
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
-      .quickAnswer, .staleProfile:
+      .quickAnswer, .staleProfile, .questionSubmitBlocked:
       nil
     }
   }
@@ -121,6 +122,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .agentCosts: return AnyView(Fixture.agentCosts)
     case .canvasQuickView: return AnyView(Fixture.canvasQuickView)
     case .importReview: return AnyView(Fixture.importReview)
+    case .questionSubmitBlocked: return AnyView(Fixture.questionSubmitBlocked)
     }
   }
 }
