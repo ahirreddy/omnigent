@@ -44,6 +44,24 @@ nonisolated public enum TabStatus: Hashable, Sendable {
   }
 }
 
+/// An agent driving a browser tab, local or remote: the strip badges the tab.
+nonisolated public enum TabAgentControl: Hashable, Sendable {
+  /// The agent acted on the page in the last few seconds.
+  case active
+  /// The agent holds the page but has not acted recently.
+  case idle
+  /// The user took over; the agent waits.
+  case user
+
+  /// What VoiceOver and the tooltip say.
+  public var label: String {
+    switch self {
+    case .active, .idle: "Agent is controlling this tab"
+    case .user: "You're in control"
+    }
+  }
+}
+
 /// One tab in the strip.
 nonisolated public struct TabItemState: Identifiable, Hashable, Sendable {
   /// Stable tab id.
@@ -90,6 +108,8 @@ nonisolated public struct TabItemState: Identifiable, Hashable, Sendable {
   /// Whether a session's primary chat shows its transcript or its agent's terminal, where the
   /// tab carries that switch; `nil` for every other tab and a session with no terminal view.
   public var viewMode: SessionViewMode?
+  /// An agent driving the tab's page, local or remote.
+  public var agentControl: TabAgentControl?
 
   /// Creates a tab.
   /// - Parameters:

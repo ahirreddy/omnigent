@@ -342,6 +342,8 @@ struct TabRecord {
   std::string target_id;
   bool can_go_back = false;
   bool can_go_forward = false;
+  /// What the agent's DevTools proxy reports: "active", "idle", or empty when none holds the tab.
+  std::string agent_state;
 };
 
 /// What the first frame of a host.sock connection asks for.

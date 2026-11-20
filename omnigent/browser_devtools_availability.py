@@ -7,6 +7,7 @@ the runner then adds a per-session stdio MCP server that runs Google's
 
 from __future__ import annotations
 
+import sys
 from dataclasses import replace
 from typing import Final
 
@@ -14,9 +15,14 @@ from omnigent.spec.types import AgentSpec, MCPServerConfig
 
 BROWSER_DEVTOOLS_HEADER: Final[str] = "X-Omnigent-Browser-Devtools"
 BROWSER_DEVTOOLS_SERVER_NAME: Final[str] = "chrome_devtools"
+CHROME_DEVTOOLS_MCP_NAME: Final[str] = "chrome-devtools-mcp"
 # Published 2026-10-22: older than the dependency cooldown, so package mirrors
 # that embargo new releases already serve it.
-CHROME_DEVTOOLS_MCP_PACKAGE: Final[str] = "chrome-devtools-mcp@1.12.0"
+CHROME_DEVTOOLS_MCP_VERSION: Final[str] = "1.12.0"
+CHROME_DEVTOOLS_MCP_PACKAGE: Final[str] = (
+    f"{CHROME_DEVTOOLS_MCP_NAME}@{CHROME_DEVTOOLS_MCP_VERSION}"
+)
+_LAUNCHER_MODULE: Final[str] = "omnigent.runner.browser_devtools.mcp_launcher"
 # Performance traces can take minutes.
 BROWSER_DEVTOOLS_TOOL_TIMEOUT_S: Final[int] = 180
 # Marks the injected server, so an author's own ``chrome_devtools`` entry is told apart.
@@ -26,23 +32,18 @@ BROWSER_DEVTOOLS_MARKER_ENV: Final[str] = "OMNIGENT_BROWSER_DEVTOOLS"
 def browser_devtools_server(endpoint: str) -> MCPServerConfig:
     """The stdio MCP server that runs ``chrome-devtools-mcp`` against *endpoint*.
 
+    The runner's own interpreter starts Omnigent's launcher, which finds Node.js,
+    installs the pinned release into the data dir once, and becomes the server.
+
     :param endpoint: The session's proxy URL, e.g.
         ``"ws://127.0.0.1:52341/devtools/browser/conv_abc.1f2e"``.
-    :returns: The server config; ``npx`` resolves the package through the
-        runner's npm registry setting.
+    :returns: The server config.
     """
     return MCPServerConfig(
         name=BROWSER_DEVTOOLS_SERVER_NAME,
         transport="stdio",
-        command="npx",
-        args=[
-            "-y",
-            CHROME_DEVTOOLS_MCP_PACKAGE,
-            "--wsEndpoint",
-            endpoint,
-            "--no-usage-statistics",
-            "--no-performance-crux",
-        ],
+        command=sys.executable,
+        args=["-I", "-m", _LAUNCHER_MODULE, "--ws-endpoint", endpoint],
         env={
             BROWSER_DEVTOOLS_MARKER_ENV: "1",
             "CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS": "1",

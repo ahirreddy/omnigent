@@ -70,10 +70,9 @@ public final class WebView {
   /// Keeps the page rendering and taking input while no window shows it, for agent views that
   /// are never on screen. Hidden Chromium widgets drop input, so such views report themselves
   /// visible to the host regardless of where their hosting view is.
+  /// Turning it off returns the view to what its hosting view last reported.
   public var rendersOffscreen = false {
-    didSet {
-      if rendersOffscreen { setVisible(true) }
-    }
+    didSet { setVisible(reportedVisible) }
   }
 
   /// Input forwarding for the user and for agents.
@@ -105,6 +104,8 @@ public final class WebView {
   @ObservationIgnored var scale: Double = 2
   @ObservationIgnored var screenOrigin = CGPoint.zero
   @ObservationIgnored var isVisible = true
+  /// What the hosting view last reported, before `rendersOffscreen` overrides it.
+  @ObservationIgnored var reportedVisible = true
   @ObservationIgnored var isFocused = false
   @ObservationIgnored var createdAt = ContinuousClock.now
   @ObservationIgnored var sawFirstFrame = false
@@ -275,6 +276,7 @@ public final class WebView {
 
   /// Reports whether the view is on screen; hidden views stop rendering.
   public func setVisible(_ visible: Bool) {
+    reportedVisible = visible
     let visible = visible || rendersOffscreen
     guard visible != isVisible else { return }
     isVisible = visible

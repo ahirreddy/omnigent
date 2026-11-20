@@ -272,6 +272,15 @@
     }
   }
 
+  /// `Target.getTargetInfo`'s reply, as far as the agent's DevTools proxy needs it.
+  private struct TargetInfoReply: Decodable {
+    let targetInfo: TargetInfo
+  }
+
+  private struct TargetInfo: Decodable {
+    let targetId: String
+  }
+
   /// Agent input on Chromium: the web layer's renderer-direct path.
   final class ChromiumAgentInput: BrowserAgentInput {
     private weak var webView: WebView?
@@ -282,6 +291,27 @@
 
     var isRendererDirect: Bool { true }
     var needsHostWindow: Bool { false }
+
+    func holdForAgent(_ held: Bool) {
+      webView?.rendersOffscreen = held
+    }
+
+    func devToolsTargetID() async throws(BrowserError) -> String? {
+      guard let webView else { throw .tabClosed }
+      let json: String
+      do {
+        json = try await webView.callDevToolsMethod("Target.getTargetInfo")
+      } catch {
+        throw ChromiumBrowserTab.convert(error)
+      }
+      do {
+        return try JSONDecoder().decode(TargetInfoReply.self, from: Data(json.utf8)).targetInfo
+          .targetId
+      } catch {
+        throw .devToolsFailed(
+          method: "Target.getTargetInfo", message: "Chromium's reply has no target id.")
+      }
+    }
 
     func prepareForAgent(viewport: CGSize) {
       guard let webView else { return }

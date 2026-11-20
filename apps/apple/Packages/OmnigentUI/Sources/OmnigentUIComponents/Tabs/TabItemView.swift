@@ -188,6 +188,7 @@ struct TabItemView: View {
     if let pane = tab.pane { parts.append("\(pane.label) pane") }
     if isVisibleInOtherPane { parts.append("Shown") }
     if let status = tab.status.label { parts.append(status) }
+    if let agent = tab.agentControl { parts.append(agent.label) }
     if tab.isPinned { parts.append("Pinned") }
     if tab.isReadOnly { parts.append("Read only") }
     return parts.joined(separator: ", ")
@@ -206,6 +207,9 @@ struct TabIcon: View {
         if tab.isPinned, let color = dotColor {
           Circle().fill(color).frame(width: 6, height: 6).offset(x: 3, y: -2)
         }
+      }
+      .overlay(alignment: .topLeading) {
+        if let agent = tab.agentControl { TabAgentBadge(control: agent) }
       }
       .overlay(alignment: .bottomTrailing) {
         if let profile = tab.profileColor {

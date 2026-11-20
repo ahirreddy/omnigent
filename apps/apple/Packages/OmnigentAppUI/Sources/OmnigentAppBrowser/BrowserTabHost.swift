@@ -3,6 +3,7 @@ public import OSLog
 public import OmnigentAppUI
 public import OmnigentBrowser
 public import OmnigentStores
+import OmnigentUIComponents
 public import SwiftUI
 
 #if os(macOS)
@@ -19,7 +20,7 @@ public final class BrowserTabHost: BrowserTabHosting {
   /// The browser's profiles, history and prompts.
   public let environment: BrowserEnvironment
   private let agent: AgentBrowserController?
-  private let logger: Logger
+  let logger: Logger
   private let keyboardShortcuts: Bool
   private(set) var models: [UUID: BrowserTabModel] = [:]
   private(set) var windows: [UUID: SessionTabGroups] = [:]
@@ -27,6 +28,8 @@ public final class BrowserTabHost: BrowserTabHosting {
   var designOutboxes: [UUID: DesignRequestOutbox] = [:]
   /// Encodes a new page's state.
   var encodeState: (BrowserTabRestoreState) throws -> Data = { try JSONEncoder().encode($0) }
+  /// Each page's Chrome DevTools target id, once an agent's directory asked for it.
+  var devToolsTargets: [UUID: String] = [:]
 
   /// Creates the host.
   /// - Parameters:
@@ -114,7 +117,8 @@ public final class BrowserTabHost: BrowserTabHosting {
     return BrowserTabStatus(
       title: model.displayTitle, url: model.url, isLoading: model.isLoading,
       isAudible: model.isAudible || model.isMuted, hasError: error,
-      favicon: model.favicon?.pngData, profileColor: profileColor)
+      favicon: model.favicon?.pngData, profileColor: profileColor,
+      agentControl: model.agentControl.map(Self.badge))
   }
 
   /// See ``BrowserTabHosting``.
@@ -125,6 +129,7 @@ public final class BrowserTabHost: BrowserTabHosting {
 
   /// See ``BrowserTabHosting``.
   public func close(_ id: UUID) throws -> Data? {
+    devToolsTargets[id] = nil
     guard let model = models.removeValue(forKey: id) else { return nil }
     return try JSONEncoder().encode(closeOwned(model))
   }
@@ -197,7 +202,7 @@ public final class BrowserTabHost: BrowserTabHosting {
     return state
   }
 
-  private func restore(_ id: UUID, from state: Data?) throws -> BrowserTabModel {
+  func restore(_ id: UUID, from state: Data?) throws -> BrowserTabModel {
     guard let state else {
       // A tab saved before its page had any state: start it fresh at the new-tab page.
       let model = environment.makeTab()
@@ -210,7 +215,7 @@ public final class BrowserTabHost: BrowserTabHosting {
     return model
   }
 
-  private func encode(_ model: BrowserTabModel) -> Data? {
+  func encode(_ model: BrowserTabModel) -> Data? {
     do {
       return try encodeState(model.snapshotForRestore())
     } catch {

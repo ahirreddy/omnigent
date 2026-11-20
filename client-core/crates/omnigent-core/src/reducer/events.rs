@@ -38,6 +38,8 @@ const REASONING_CHARS: usize = 16_000;
 const REASONING_SUMMARY_CHARS: usize = 180;
 /// The event type `NativeLab` handled that the server no longer sends (D3).
 const SKILLS_EVENT: &str = "session.skills";
+/// The action-name prefix that sends a `browser.devtools_request` to the browser directory.
+const DEVTOOLS_ACTION_PREFIX: &str = "devtools.";
 
 fn changed() -> Effects {
     Effects {
@@ -136,6 +138,9 @@ impl LiveReducer {
             E::CompactionFailed(_) => self.compaction(Compaction::Failed, None),
             E::ClientTaskCancel(cancel) => self.client_task(cancel),
             E::BrowserActionRequest(request) => self.browser(request),
+            E::BrowserDevtoolsRequest(request) => {
+                Self::browser_devtools(&self.snap.header.id, request)
+            }
             E::SessionBtwSidechat(sidechat) => self.sidechat(sidechat),
             E::Unknown { event_type, .. } if event_type == SKILLS_EVENT => Effects {
                 changed: true,
@@ -669,6 +674,20 @@ impl LiveReducer {
                 args: request.args.clone(),
             }),
             ..changed()
+        }
+    }
+
+    /// The agent's browser proxy asking about the owner's browser: no transcript row. It
+    /// reaches the host as a browser action named `devtools.<op>`, claimed the same way.
+    fn browser_devtools(session_id: &str, request: &BrowserActionRequestEvent) -> Effects {
+        Effects {
+            browser_action: Some(super::live::BrowserActionRequest {
+                session_id: session_id.to_owned(),
+                action_id: request.action_id.clone(),
+                action: format!("{DEVTOOLS_ACTION_PREFIX}{}", request.action),
+                args: request.args.clone(),
+            }),
+            ..Effects::default()
         }
     }
 

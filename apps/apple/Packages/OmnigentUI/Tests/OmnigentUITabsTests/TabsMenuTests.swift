@@ -265,6 +265,19 @@
         TabItemView.accessibilityValue(TabFixture.tab("two"), isVisibleInOtherPane: false) == "Chat"
       )
     }
+
+    @Test("VoiceOver hears when an agent drives a browser tab, and when the user took over")
+    func agentControl() {
+      var tab = TabFixture.tab("page", .browser)
+      tab.agentControl = .active
+      #expect(
+        TabItemView.accessibilityValue(tab, isVisibleInOtherPane: false)
+          == "Browser, Agent is controlling this tab")
+      tab.agentControl = .user
+      #expect(
+        TabItemView.accessibilityValue(tab, isVisibleInOtherPane: false)
+          == "Browser, You're in control")
+    }
   }
 
   @Suite("Tabs: the overview menu", .serialized)

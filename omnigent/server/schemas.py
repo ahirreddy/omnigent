@@ -5572,6 +5572,32 @@ class BrowserActionRequestEvent(_SSEEventBase):
     args: dict[str, Any]
 
 
+class BrowserDevtoolsRequestEvent(_SSEEventBase):
+    """
+    Ask the session owner's Mac app about its browser for the agent's DevTools proxy.
+
+    Emitted by ``POST /v1/sessions/{id}/browser/devtools_request`` when the
+    runner's scoped CDP proxy needs the app's tab directory: its loopback
+    DevTools endpoint, the session's tabs with their CDP target ids, a new
+    agent tab, closing one, or the agent's state for a tab's badge. Only a
+    client of the session owner may claim it, through the same
+    ``/browser/action_claim`` and ``/browser/action_result`` routes as
+    :class:`BrowserActionRequestEvent`.
+
+    :param type: Always ``"browser.devtools_request"``.
+    :param action_id: Correlation id, e.g. ``"bdevtools_abc123"``.
+    :param action: The directory operation, e.g. ``"attach"``,
+        ``"tabs.list"``, ``"tabs.create"``, ``"tabs.close"``,
+        ``"tabs.agent_state"``.
+    :param args: Operation arguments, e.g. ``{"url": "about:blank"}``.
+    """
+
+    type: Literal["browser.devtools_request"]
+    action_id: str
+    action: str
+    args: dict[str, Any]
+
+
 class ElicitationResolvedEvent(_SSEEventBase):
     """
     Signal that a previously-published elicitation is no longer
@@ -6206,6 +6232,7 @@ ServerStreamEvent = Annotated[
     | ElicitationResolvedEvent
     # ── Transient (SSE-only) — embedded-browser action request ─
     | BrowserActionRequestEvent
+    | BrowserDevtoolsRequestEvent
     | UiOpenFileEvent
     # ── Transient (SSE-only) — native policy DENY signal ───────
     | PolicyDeniedEvent

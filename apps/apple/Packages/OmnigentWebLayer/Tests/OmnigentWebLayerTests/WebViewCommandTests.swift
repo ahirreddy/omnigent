@@ -67,6 +67,22 @@ struct WebViewCommandTests {
     #expect(fixture.webView.isVisible)
   }
 
+  @Test func releasingAnAgentHoldReturnsToWhatTheViewReported() {
+    let fixture = ProtocolFixture()
+    fixture.webView.rendersOffscreen = true
+    // The tab goes behind another while the agent holds it.
+    fixture.webView.setVisible(false)
+    #expect(fixture.webView.isVisible)
+    fixture.webView.rendersOffscreen = false
+    #expect(!fixture.webView.isVisible)
+    #expect(fixture.last(.viewVisibility)?.bool(.visible) == false)
+    // Shown again while held, it stays shown after the release.
+    fixture.webView.rendersOffscreen = true
+    fixture.webView.setVisible(true)
+    fixture.webView.rendersOffscreen = false
+    #expect(fixture.webView.isVisible)
+  }
+
   @Test func loadRemembersTheURLUntilTheViewExists() throws {
     let fixture = ProtocolFixture()
     let url = try #require(URL(string: "https://a.example/"))

@@ -6,8 +6,8 @@ a real ``omnigent-browser-host``. The agent must reach every DevTools tool on
 its own session's tab and never see another session's tab.
 
 Needs ``OMNIGENT_TEST_BROWSER_HOST_BIN`` (the built host launcher) and Node
-20.19+ with ``npx`` able to fetch the package (set ``npm_config_registry`` for
-a mirror)::
+20.19+ with npm able to fetch the package (``~/.npmrc`` or
+``npm_config_registry`` name the registry)::
 
     OMNIGENT_TEST_BROWSER_HOST_BIN=browser-host/build/mac/host/omnigent-browser-host \\
         uv run --no-sync pytest tests/e2e/test_chrome_devtools_mcp_browser_host_e2e.py
@@ -39,7 +39,8 @@ from tests._helpers.stdio_jsonrpc import read_json_line, write_json_line
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="browser hosts use Unix sockets")
 
-# The first call waits for npx to fetch the package.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+# The first call waits for npm to fetch the package.
 _FIRST_CALL_TIMEOUT_S = 240.0
 _CALL_TIMEOUT_S = 90.0
 
@@ -75,8 +76,9 @@ def _page_server(root: Path) -> Iterator[str]:
 class _McpClient:
     """Newline-delimited JSON-RPC to the MCP server's stdio, off the event loop."""
 
-    def __init__(self, process: subprocess.Popen[str]) -> None:
+    def __init__(self, process: subprocess.Popen[str], stderr_path: Path) -> None:
         self._process = process
+        self._stderr_path = stderr_path
         self._next_id = 1
 
     async def request(
@@ -90,9 +92,15 @@ class _McpClient:
             {"jsonrpc": "2.0", "id": request_id, "method": method, "params": dict(params)},
         )
         while True:
-            message = await asyncio.to_thread(
-                read_json_line, self._process.stdout, timeout_s=timeout_s
-            )
+            try:
+                message = await asyncio.to_thread(
+                    read_json_line, self._process.stdout, timeout_s=timeout_s
+                )
+            except (EOFError, TimeoutError) as exc:
+                stderr = self._stderr_path.read_text(errors="replace")[-4000:]
+                raise AssertionError(
+                    f"chrome_devtools stopped answering {method}:\n{stderr}"
+                ) from exc
             if message.get("id") == request_id:
                 assert "error" not in message, message
                 result = message["result"]
@@ -133,8 +141,8 @@ async def host_manager(tmp_path: Path) -> AsyncIterator[BrowserHostManager]:
     host_bin = os.environ.get("OMNIGENT_TEST_BROWSER_HOST_BIN")
     if not host_bin:
         pytest.skip("set OMNIGENT_TEST_BROWSER_HOST_BIN to the real omnigent-browser-host")
-    if shutil.which("npx") is None:
-        pytest.skip("chrome-devtools-mcp needs Node 20.19+ with npx on PATH")
+    if shutil.which("npm") is None:
+        pytest.skip("chrome-devtools-mcp needs Node 20.19+ with npm on PATH")
     # Nothing attaches a viewer, so the encoder only has to answer --version.
     encoder = tmp_path / "bin" / "x264"
     encoder.parent.mkdir()
@@ -186,16 +194,20 @@ async def test_chrome_devtools_mcp_drives_only_the_sessions_tabs(
         config = browser_devtools_server(service.endpoint_for("conv_agent"))
         assert config.command is not None
         stderr_log = (tmp_path / "chrome-devtools-mcp.log").open("w")
+        # A test venv may install another omnigent copy, so the launcher runs from this
+        # checkout: without -I, ``-m`` puts the working directory first on the path.
         process = subprocess.Popen(
-            [config.command, *config.args],
+            [config.command, *(arg for arg in config.args if arg != "-I")],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=stderr_log,
             text=True,
-            env={**os.environ, **config.env},
+            cwd=_REPO_ROOT,
+            # The launcher installs the pinned release into this test's own data dir.
+            env={**os.environ, **config.env, "OMNIGENT_DATA_DIR": str(tmp_path / "mcp-data")},
         )
         try:
-            mcp = _McpClient(process)
+            mcp = _McpClient(process, tmp_path / "chrome-devtools-mcp.log")
             await mcp.request(
                 "initialize",
                 {
@@ -269,6 +281,9 @@ async def test_chrome_devtools_mcp_drives_only_the_sessions_tabs(
             assert [tab["created_by"] for tab in agent_tabs if "opened" in str(tab["url"])] == [
                 "agent"
             ]
+            # The proxy badged the tab it clicked, filled and navigated on the host.
+            acted = [tab for tab in agent_tabs if "second" in str(tab["url"])]
+            assert [tab.get("agent_state") for tab in acted] == ["active"]
             assert [event["type"] for event in published] == ["session.resource.created"]
             personal_tabs = await host_manager.list_tabs("conv_personal")
             assert [(tab["id"], tab["url"]) for tab in personal_tabs] == [

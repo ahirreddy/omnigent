@@ -41,6 +41,8 @@ class Tab : public CefClient,
   const std::string& id() const { return id_; }
   const std::string& session_id() const { return session_id_; }
   protocol::TabRecord Record() const;
+  /// Records what the agent's DevTools proxy reports ("active", "idle", "" once released).
+  void SetAgentState(const std::string& state) { agent_state_ = state; }
   bool has_browser() const { return browser_ != nullptr; }
   bool target_known() const { return !target_id_.empty(); }
   /// Runs once the CDP target id is known (or immediately if it is).
@@ -278,6 +280,7 @@ class Tab : public CefClient,
   protocol::CursorState cursor_;
   protocol::TextInputState text_input_;
   std::string owner_ = "agent";
+  std::string agent_state_;
   uint64_t holder_ = 0;
   uint64_t grace_generation_ = 0;
   std::map<std::string, OpenDialog> dialogs_;

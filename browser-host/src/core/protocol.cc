@@ -996,6 +996,7 @@ bool ParseTabRecord(const Json& json, TabRecord* out, std::string* error) {
   out->target_id = fields.String("target_id");
   out->can_go_back = fields.Bool("can_go_back");
   out->can_go_forward = fields.Bool("can_go_forward");
+  out->agent_state = fields.OptionalString("agent_state").value_or("");
   return fields.ok();
 }
 
@@ -1013,6 +1014,9 @@ Json ToJson(const TabRecord& tab) {
   json.Set("target_id", tab.target_id);
   json.Set("can_go_back", tab.can_go_back);
   json.Set("can_go_forward", tab.can_go_forward);
+  if (!tab.agent_state.empty()) {
+    json.Set("agent_state", tab.agent_state);
+  }
   return json;
 }
 

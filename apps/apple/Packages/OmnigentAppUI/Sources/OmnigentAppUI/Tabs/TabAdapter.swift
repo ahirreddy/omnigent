@@ -76,6 +76,7 @@ enum TabAdapter {
         item.isPlayingAudio = status.isAudible
         item.favicon = status.favicon
         item.profileColor = status.profileColor
+        item.agentControl = status.agentControl
         item.status = status.hasError ? .failed : (status.isLoading ? .loading : .none)
       } else {
         item.title = tab.title ?? "Browser"
@@ -106,6 +107,7 @@ enum TabAdapter {
     let url = URL(string: navigation.url)
     item.title = pageTitle(navigation.title, url: url)
     item.link = url
+    if store.snapshot.control?.owner == .user { item.agentControl = .user }
     if store.isEnded {
       item.status = .exited
     } else if case .failed = store.snapshot.connection {

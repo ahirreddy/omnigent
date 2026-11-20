@@ -76,6 +76,12 @@ public final class BrowserTabModel: Identifiable {
   public internal(set) var omniboxFocusRequest = 0
   /// Why the page icon could not be loaded, if it could not.
   public internal(set) var faviconError: BrowserError?
+  /// What an agent driving the page over DevTools is doing; `nil` while none holds it. Set with
+  /// `setAgentControl(_:)`.
+  public internal(set) var agentControl: BrowserAgentControl?
+  /// Runs after the agent strip's Take Over, Hand Back or Stop changed `agentControl`.
+  @ObservationIgnored public var agentControlAction:
+    (@MainActor (BrowserAgentControlAction) -> Void)?
 
   @ObservationIgnored let environment: BrowserEnvironment
   /// Saved state shown until the engine tab has rebuilt it.

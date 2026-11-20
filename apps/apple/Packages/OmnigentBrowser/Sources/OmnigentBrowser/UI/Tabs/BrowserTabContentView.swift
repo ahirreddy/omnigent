@@ -50,6 +50,7 @@ public struct BrowserTabContentView: View {
           report: { model.lastError = $0 })
       }
       Divider()
+      BrowserAgentStrip(model: model)
       if model.find.isVisible {
         BrowserFindBar(model: model)
         Divider()
@@ -59,6 +60,7 @@ public struct BrowserTabContentView: View {
         #if os(macOS)
           .overlay { BrowserDesignOverlay(model: model) }
         #endif
+        .overlay { BrowserAgentActivityBorder(model: model) }
         .overlay(alignment: .bottom) {
           if let error = model.lastError {
             BrowserTabErrorBanner(error: error) { model.dismissError() }

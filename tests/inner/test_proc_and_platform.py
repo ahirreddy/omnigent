@@ -957,6 +957,21 @@ def test_cli_fallback_dirs_includes_nvm_version_bins(monkeypatch, tmp_path):
     assert order == sorted(order)
 
 
+def test_node_install_dirs_list_mise_then_nvm_versions_newest_first(monkeypatch, tmp_path):
+    """Version managers' installs work where their shims do not (no version selected)."""
+    mise = tmp_path / ".local" / "share" / "mise" / "installs" / "node"
+    nvm = tmp_path / ".nvm" / "versions" / "node"
+    for directory in (mise / "20.19.0", mise / "22.13.0", nvm / "v18.0.0"):
+        (directory / "bin").mkdir(parents=True)
+    monkeypatch.setattr(_platform.Path, "home", staticmethod(lambda: tmp_path))
+
+    assert _platform.node_install_dirs() == [
+        mise / "22.13.0" / "bin",
+        mise / "20.19.0" / "bin",
+        nvm / "v18.0.0" / "bin",
+    ]
+
+
 def test_cli_fallback_dirs_no_nvm_dir_is_safe(monkeypatch, tmp_path):
     """Absent ~/.nvm, the ladder still returns the static dirs without error."""
     monkeypatch.setattr(_platform.Path, "home", staticmethod(lambda: tmp_path))

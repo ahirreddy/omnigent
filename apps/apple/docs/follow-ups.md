@@ -61,6 +61,19 @@ Apple process" and "Recommendation and plan" (phase 1b).
   - clearing site data is coarse
   - Chrome Enterprise device-trust checks can never pass outside Google Chrome
 
+## Agent browser over Chrome DevTools
+
+Details: [agent-browser-mcp-design.md](agent-browser-mcp-design.md).
+
+- [ ] Keep a session's conversation open while an agent holds one of its tabs, so the DevTools
+  directory keeps answering after the app evicts the conversation.
+- [ ] Open Chromium's DevTools port only when the server advertises `agent_browser_devtools`,
+  not on the setting alone.
+- [ ] Tabs on the WebKit engine have no DevTools target; agent tabs fail when the user's engine
+  preference is WebKit. Open agent tabs on Chromium regardless of the preference.
+- [ ] Move the local endpoint to `--remote-debugging-pipe` behind an app-side token gate, so
+  other local users cannot reach the browser on a shared Mac.
+
 ## Remote browser
 
 Details: [remote-browser-design.md](remote-browser-design.md).

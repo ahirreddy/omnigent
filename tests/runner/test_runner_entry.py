@@ -4508,7 +4508,6 @@ async def test_runner_swaps_browser_tools_for_devtools_mcp_when_the_server_says_
     from omnigent.browser_devtools_availability import (
         BROWSER_DEVTOOLS_HEADER,
         BROWSER_DEVTOOLS_SERVER_NAME,
-        CHROME_DEVTOOLS_MCP_PACKAGE,
         has_browser_devtools,
     )
     from omnigent.runner.mcp_manager import compute_server_hash
@@ -4559,7 +4558,7 @@ async def test_runner_swaps_browser_tools_for_devtools_mcp_when_the_server_says_
     assert [browser_tools(spec) for spec in specs] == [False, False, True, True, False]
     first = next(s for s in specs[0].mcp_servers if s.name == BROWSER_DEVTOOLS_SERVER_NAME)
     second = next(s for s in specs[1].mcp_servers if s.name == BROWSER_DEVTOOLS_SERVER_NAME)
-    assert first.args[:4] == ["-y", CHROME_DEVTOOLS_MCP_PACKAGE, "--wsEndpoint", cases[0][2]]
+    assert first.args[-2:] == ["--ws-endpoint", cases[0][2]]
     # Sessions never share one chrome-devtools-mcp process.
     assert compute_server_hash(first) != compute_server_hash(second)
     # A sub-agent extracted from this resolution reaches the same session's browser.

@@ -630,7 +630,7 @@ void BrowserHost::HandleRequest(uint64_t connection, const protocol::ControlRequ
     tab->WhenTargetKnown(answer);
     PostUiDelayed(answer, kCreateResponseTimeoutMs);
   } else if (op == "tabs.navigate" || op == "tabs.close" || op == "tabs.record" ||
-             op == "tabs.record_stop" || op == "tabs.stats") {
+             op == "tabs.record_stop" || op == "tabs.stats" || op == "tabs.agent_state") {
     const std::string tab_id = args.GetString("tab_id").value_or("");
     CefRefPtr<Tab> tab = FindTab(tab_id);
     if (!tab || tab->closing()) {
@@ -644,6 +644,15 @@ void BrowserHost::HandleRequest(uint64_t connection, const protocol::ControlRequ
         return;
       }
       tab->Navigate(*url);
+      Respond(connection, request.id, protocol::ToJson(tab->Record()));
+    } else if (op == "tabs.agent_state") {
+      const std::string state = args.GetString("state").value_or("");
+      if (state != "active" && state != "idle" && state != "released") {
+        RespondError(connection, request.id, "invalid_input",
+                     "state must be active, idle or released");
+        return;
+      }
+      tab->SetAgentState(state == "released" ? "" : state);
       Respond(connection, request.id, protocol::ToJson(tab->Record()));
     } else if (op == "tabs.close") {
       tab->Close("closed");

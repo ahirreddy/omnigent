@@ -26,6 +26,7 @@ from omnigent.server._elicitation_registry import (
 )
 from omnigent.server.auth import (
     LEVEL_EDIT,
+    LEVEL_OWNER,
     AuthProvider,
 )
 from omnigent.server.routes._auth_helpers import (
@@ -46,9 +47,85 @@ from omnigent.server.routes._sessions.common import (
 )
 from omnigent.server.schemas import (
     BrowserActionRequestEvent,
+    BrowserDevtoolsRequestEvent,
 )
+from omnigent.server.session_orchestration import _shared_with_editors
 from omnigent.stores import ConversationStore
 from omnigent.stores.permission_store import PermissionStore
+
+# Directory requests for the agent's DevTools proxy: only the owner's app may claim them.
+DEVTOOLS_ACTION_PREFIX = "bdevtools_"
+DEVTOOLS_SHARED_SESSION_RESULT: dict[str, Any] = {
+    "ok": False,
+    "error": "shared_session",
+    "message": (
+        "This session is shared with people who can edit it, so agents cannot use the "
+        "owner's own browser."
+    ),
+}
+
+
+def _claim_level(action_id: str) -> int:
+    """Owner-only for DevTools directory requests (the owner's own browser), else edit."""
+    return LEVEL_OWNER if action_id.startswith(DEVTOOLS_ACTION_PREFIX) else LEVEL_EDIT
+
+
+async def _relay_to_renderer(
+    session_id: str, action_id: str, event: dict[str, Any]
+) -> dict[str, Any]:
+    """Publish *event*, give a renderer the claim grace, and await its result.
+
+    :param session_id: The session whose stream carries the event.
+    :param action_id: The event's correlation id.
+    :param event: The serialized request event.
+    :returns: The renderer's result, or the no-renderer or timeout result.
+    """
+    future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+    claimed = asyncio.Event()
+    _browser_action_registry[action_id] = future
+    _browser_action_claim_events[action_id] = claimed
+    _browser_action_owners[action_id] = session_id
+    try:
+        from omnigent.server.routes import sessions as _sessions_facade
+
+        delivered = _sessions_facade.session_stream.publish(session_id, event)
+        if delivered == 0:
+            # Fail fast: the stream has no buffer or replay, so a
+            # request delivered to zero subscribers can never be
+            # answered — return immediately
+            # instead of holding the runner's POST for the full
+            # await budget. Checked on the publish return (not a
+            # separate pre-check) so a subscriber disconnecting
+            # between check and publish can't reintroduce the wait.
+            return _BROWSER_ACTION_NO_RENDERER_RESULT
+        try:
+            await asyncio.wait_for(
+                claimed.wait(),
+                timeout=_sessions_facade._BROWSER_ACTION_CLAIM_GRACE_S,
+            )
+        except TimeoutError:
+            # ``wait_for`` can time out in the same event-loop tick that
+            # the claim handler sets the event. Honor that accepted lease
+            # so the renderer cannot execute a side effect after we report
+            # that no renderer claimed it.
+            if not claimed.is_set():
+                return _BROWSER_ACTION_NO_RENDERER_RESULT
+        done, _pending = await asyncio.wait(
+            {future},
+            timeout=_sessions_facade._BROWSER_ACTION_AWAIT_S,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if future in done and not future.cancelled():
+            return future.result()
+        # Timed out/cancelled with no renderer result (no subscribed app).
+        return _BROWSER_ACTION_TIMEOUT_RESULT
+    finally:
+        # Drop registry entries so a resolved/timed-out action leaks nothing.
+        if _browser_action_registry.get(action_id) is future:
+            _browser_action_registry.pop(action_id, None)
+        _browser_action_claim_events.pop(action_id, None)
+        _browser_action_owners.pop(action_id, None)
+        _browser_action_claims.pop(action_id, None)
 
 
 def register_browser_routes(
@@ -104,58 +181,65 @@ def register_browser_routes(
             args = {}
 
         action_id = f"baction_{secrets.token_hex(16)}"
-        future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
-        claimed = asyncio.Event()
-        _browser_action_registry[action_id] = future
-        _browser_action_claim_events[action_id] = claimed
-        _browser_action_owners[action_id] = session_id
-        try:
-            event = BrowserActionRequestEvent(
-                type="browser.action_request",
-                action_id=action_id,
-                action=action,
-                args=args,
-            )
-            from omnigent.server.routes import sessions as _sessions_facade
+        event = BrowserActionRequestEvent(
+            type="browser.action_request",
+            action_id=action_id,
+            action=action,
+            args=args,
+        )
+        return await _relay_to_renderer(session_id, action_id, event.model_dump())
 
-            delivered = _sessions_facade.session_stream.publish(session_id, event.model_dump())
-            if delivered == 0:
-                # Fail fast: the stream has no buffer or replay, so a
-                # request delivered to zero subscribers can never be
-                # answered — return immediately
-                # instead of holding the runner's POST for the full
-                # await budget. Checked on the publish return (not a
-                # separate pre-check) so a subscriber disconnecting
-                # between check and publish can't reintroduce the wait.
-                return _BROWSER_ACTION_NO_RENDERER_RESULT
-            try:
-                await asyncio.wait_for(
-                    claimed.wait(),
-                    timeout=_sessions_facade._BROWSER_ACTION_CLAIM_GRACE_S,
-                )
-            except TimeoutError:
-                # ``wait_for`` can time out in the same event-loop tick that
-                # the claim handler sets the event. Honor that accepted lease
-                # so the renderer cannot execute a side effect after we report
-                # that no renderer claimed it.
-                if not claimed.is_set():
-                    return _BROWSER_ACTION_NO_RENDERER_RESULT
-            done, _pending = await asyncio.wait(
-                {future},
-                timeout=_sessions_facade._BROWSER_ACTION_AWAIT_S,
-                return_when=asyncio.FIRST_COMPLETED,
+    @router.post(
+        "/sessions/{session_id}/browser/devtools_request",
+        # Internal agent-browser flow — hidden from the public API reference.
+        include_in_schema=False,
+        response_model=None,
+    )
+    async def browser_devtools_request(
+        request: Request,
+        session_id: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Ask the session owner's Mac app about its browser for the DevTools proxy.
+
+        Called by the runner's scoped CDP proxy, not the LLM. The request is
+        relayed like ``action_request``, but only the owner's client may claim
+        it, and a session shared with other editors never reaches the owner's
+        browser.
+
+        :param request: The inbound request, used for identity extraction.
+        :param session_id: Session/conversation identifier, e.g.
+            ``"conv_abc123"``.
+        :param body: ``{"op": <str>, "args": <dict>}``, e.g.
+            ``{"op": "tabs.create", "args": {"url": "about:blank"}}``.
+        :returns: The app's result, ``{"ok": false, "error": "shared_session"}``,
+            or the no-renderer or timeout result.
+        :raises OmnigentError: 404 if no session exists, 400 without an ``op``.
+        """
+        user_id = _get_user_id(request, auth_provider)
+        await _require_access_and_level(
+            user_id, session_id, LEVEL_EDIT, permission_store, conversation_store
+        )
+        op = body.get("op")
+        args = body.get("args")
+        if not isinstance(op, str) or not op:
+            raise OmnigentError(
+                "browser devtools_request requires a non-empty 'op'",
+                code=ErrorCode.INVALID_INPUT,
             )
-            if future in done and not future.cancelled():
-                return future.result()
-            # Timed out/cancelled with no renderer result (no subscribed app).
-            return _BROWSER_ACTION_TIMEOUT_RESULT
-        finally:
-            # Drop registry entries so a resolved/timed-out action leaks nothing.
-            if _browser_action_registry.get(action_id) is future:
-                _browser_action_registry.pop(action_id, None)
-            _browser_action_claim_events.pop(action_id, None)
-            _browser_action_owners.pop(action_id, None)
-            _browser_action_claims.pop(action_id, None)
+        if permission_store is not None and await asyncio.to_thread(
+            _shared_session, session_id, conversation_store, permission_store
+        ):
+            return DEVTOOLS_SHARED_SESSION_RESULT
+        action_id = f"{DEVTOOLS_ACTION_PREFIX}{secrets.token_hex(16)}"
+        event = BrowserDevtoolsRequestEvent(
+            type="browser.devtools_request",
+            action_id=action_id,
+            action=op,
+            args=args if isinstance(args, dict) else {},
+        )
+        return await _relay_to_renderer(session_id, action_id, event.model_dump())
 
     @router.post(
         "/sessions/{session_id}/browser/action_claim/{action_id}",
@@ -182,11 +266,12 @@ def register_browser_routes(
         :param action_id: The action to claim, e.g. ``"baction_abc123"``.
         :returns: ``{"claimed": true, "claim_token": <str>}`` to the winner,
             ``{"claimed": false}`` to losers or for an unknown/expired action.
-        :raises OmnigentError: 404 if no session exists.
+        :raises OmnigentError: 404 if no session exists; 403 when a DevTools
+            directory request is claimed by anyone but the owner.
         """
         user_id = _get_user_id(request, auth_provider)
         await _require_access_and_level(
-            user_id, session_id, LEVEL_EDIT, permission_store, conversation_store
+            user_id, session_id, _claim_level(action_id), permission_store, conversation_store
         )
         # Unknown / already-resolved action: nothing to claim.
         if _browser_action_owners.get(action_id) != session_id:
@@ -234,7 +319,7 @@ def register_browser_routes(
         """
         user_id = _get_user_id(request, auth_provider)
         await _require_access_and_level(
-            user_id, session_id, LEVEL_EDIT, permission_store, conversation_store
+            user_id, session_id, _claim_level(action_id), permission_store, conversation_store
         )
         claim_token = body.get("claim_token")
         expected = _browser_action_claims.get(action_id)
@@ -255,3 +340,17 @@ def register_browser_routes(
         result = body.get("result")
         future.set_result(result if isinstance(result, dict) else {"result": result})
         return {"resolved": True}
+
+
+def _shared_session(
+    session_id: str, conversations: ConversationStore, permissions: PermissionStore
+) -> bool:
+    """Whether anyone besides the owner can add input to *session_id*'s session tree."""
+    conversation = conversations.get_conversation(session_id)
+    if conversation is None:
+        return False
+    root_id = conversation.root_conversation_id or conversation.id
+    owner = conversations.get_session_owner(root_id, owner_only=True)
+    if owner is None:
+        return True
+    return _shared_with_editors(root_id, owner, permissions)

@@ -208,6 +208,7 @@ protocol::TabRecord Tab::Record() const {
   record.target_id = target_id_;
   record.can_go_back = nav_.can_go_back;
   record.can_go_forward = nav_.can_go_forward;
+  record.agent_state = agent_state_;
   return record;
 }
 
