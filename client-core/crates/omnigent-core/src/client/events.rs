@@ -230,6 +230,26 @@ pub(super) fn malformed_answer(error: &ResolveError) -> SessionError {
     }
 }
 
+/// An upload answered after its connection ended: it may have arrived on the old one.
+pub(super) fn upload_outlived_connection() -> UploadError {
+    UploadError::Uncertain(UploadUncertainty::Transport(TransportError::Other {
+        message: "the connection ended while the upload was in flight".into(),
+    }))
+}
+
+/// An upload's failure as the session errors read: no permission, or a session gone; a
+/// connection never made, as a read's.
+pub(super) fn upload_failure(session_id: &str, error: UploadError) -> SessionError {
+    match error {
+        UploadError::Unreachable(error) => SessionError::Transport(error),
+        UploadError::Forbidden => SessionError::ReadOnly,
+        UploadError::Rejected { status: 404 } => SessionError::SessionNotFound {
+            session_id: session_id.to_owned(),
+        },
+        other => other.into(),
+    }
+}
+
 /// What a send captured before its request went out.
 struct SendGate {
     operation: SubmissionOperation,
@@ -243,7 +263,10 @@ impl<T: HttpTransport> ClientCore<T> {
         Ok(DraftKey::new(scope, session_id))
     }
 
-    fn upload_target(&self, session_id: &str) -> Result<(UploadTarget, bool), SessionError> {
+    pub(super) fn upload_target(
+        &self,
+        session_id: &str,
+    ) -> Result<(UploadTarget, bool), SessionError> {
         let state = lock(&self.state);
         let server = state.connected.as_ref().ok_or(SessionError::NotConnected)?;
         // The confirmed connection decides, not the host: an accounts server on 127.0.0.1 has
@@ -463,32 +486,19 @@ impl<T: HttpTransport> ClientCore<T> {
         let mapped = if state.epoch == epoch {
             target.response(&file, result)
         } else {
-            Err(UploadError::Uncertain(UploadUncertainty::Transport(
-                TransportError::Other {
-                    message: "the connection ended while the upload was in flight".into(),
-                },
-            )))
+            Err(upload_outlived_connection())
         };
         state.drafts.finish_upload(&attempt, mapped.clone())?;
         if mapped == Err(UploadError::Unauthorized) {
             state.authentication_failed();
         }
-        // The server's refusal reads as the session errors: no permission, or a session gone;
-        // a connection never made, as a read's.
-        mapped.map_err(|error| match error {
-            UploadError::Unreachable(error) => SessionError::Transport(error),
-            UploadError::Forbidden => SessionError::ReadOnly,
-            UploadError::Rejected { status: 404 } => SessionError::SessionNotFound {
-                session_id: session_id.to_owned(),
-            },
-            other => other.into(),
-        })
+        mapped.map_err(|error| upload_failure(session_id, error))
     }
 
     /// The check every message and upload runs, with no request: the session's cached row, when
     /// there is one, is editable, not archived and able to execute, and the session's live
     /// stream is open and hydrated.
-    fn require_sendable(
+    pub(super) fn require_sendable(
         &self,
         session_id: &str,
         require_live_stream: bool,

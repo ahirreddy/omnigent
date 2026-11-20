@@ -43,6 +43,7 @@ pub mod events;
 pub mod execution_logs;
 mod export;
 pub mod extension_reads;
+mod external_send;
 mod families;
 pub mod fork;
 pub mod harness_inventory;
@@ -763,6 +764,10 @@ mod skills_tests;
 #[cfg(test)]
 #[path = "queue_tests.rs"]
 mod queue_tests;
+
+#[cfg(test)]
+#[path = "external_send_tests.rs"]
+mod external_send_tests;
 
 #[cfg(test)]
 #[path = "export_tests.rs"]

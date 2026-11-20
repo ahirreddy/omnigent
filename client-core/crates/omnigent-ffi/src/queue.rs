@@ -1,7 +1,7 @@
 //! What a queued message carries: the composer's files held for it, and the reply draft's
 //! quote blocks.
 
-use omnigent_core::attachments::HoldId;
+use omnigent_core::attachments::{HoldId, UploadFile};
 use omnigent_core::reply_draft as core;
 
 use crate::client::{ClientCore, DraftAttachment, MessageSent};
@@ -15,6 +15,17 @@ pub struct HeldAttachments {
     pub id: u64,
     /// The files, in the order they were added.
     pub items: Vec<DraftAttachment>,
+}
+
+/// A file a message from outside the composer carries (a design tool's screenshot).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ExternalAttachment {
+    /// The file name.
+    pub filename: String,
+    /// The declared media type, if any.
+    pub media_type: Option<String>,
+    /// The bytes.
+    pub data: Vec<u8>,
 }
 
 /// One quoted selection and the text typed before it.
@@ -88,6 +99,42 @@ pub fn reply_draft_removing(draft: ReplyDraft, index: u32) -> ReplyDraft {
 
 #[uniffi::export]
 impl ClientCore {
+    /// Sends `text` with `files` to `session_id` from outside its composer (the Browser design
+    /// tools' requests): the files upload to the session, then the message posts. The
+    /// composer's draft, files and send state are left alone; nothing is retried.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Attachment`] for a file the server will not take; [`CoreError::Session`]:
+    /// the upload and send errors (`HostOffline` and `MessageDenied` were refused; check
+    /// `delivery_uncertain`).
+    pub async fn send_external_message(
+        &self,
+        session_id: String,
+        text: String,
+        files: Vec<ExternalAttachment>,
+    ) -> Result<(), CoreError> {
+        let policy = self.sessions().attachment_policy();
+        let files = files
+            .into_iter()
+            .map(|file| {
+                UploadFile::under(
+                    &file.filename,
+                    file.media_type.as_deref(),
+                    file.data,
+                    &policy,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CoreError::from)?;
+        let boundary = self.inner.upload_boundary(0)?;
+        self.sessions()
+            .send_external_message(&session_id, &text, &files, &boundary)
+            .await
+            .map(|_| ())
+            .map_err(CoreError::from)
+    }
+
     /// Takes `session_id`'s uploaded files out of its composer to go with a queued message;
     /// `None` when it has none.
     ///
