@@ -24,6 +24,15 @@ public final class McpPanelStore {
     public let name: String
     /// Why.
     public let message: String
+
+    /// A failure.
+    /// - Parameters:
+    ///   - name: The server.
+    ///   - message: Why.
+    public init(name: String, message: String) {
+      self.name = name
+      self.message = message
+    }
   }
 
   /// The panel, once read.
