@@ -103,3 +103,50 @@ private struct FixtureTerminalPane: View {
     .background(Color(white: colorScheme == .dark ? 0.04 : 1))
   }
 }
+
+extension SweepLookFixtures {
+  /// A picked element's request and a drawing's note, each as its compact card in the bubble.
+  static var designRequests: some View {
+    let header = "\n\n---\n[Design Mode \u{2014} "
+    let element =
+      "Make the button **red** and a little larger" + header
+      + "modify this element in the browser preview]\nElement: <CheckoutButton>\n"
+      + "CSS selector: button.primary\nText: \"Buy now\"\nPage: http://localhost:5173/cart\n---"
+    let drawing =
+      "Move the heading above the image" + header
+      + "marked-up screenshot of the browser preview]\nPage: http://localhost:5173\n"
+      + "The attached screenshot shows the page with my marks drawn on it.\n---"
+    return VStack(spacing: Theme.Spacing.large) {
+      MessageRowView(
+        row: Row(id: "design-element", role: .user, text: element), decoration: MessageDecoration())
+      MessageRowView(
+        row: Row(id: "design-drawing", role: .user, text: drawing), decoration: MessageDecoration())
+    }
+    .padding(Theme.Spacing.medium)
+  }
+}
+
+extension SweepLookFixtures {
+  /// The composer over a session's Browser design requests: one on its way, one waiting for the
+  /// turn, and one the server refused, with Retry and Remove.
+  static var designOutbox: some View {
+    var state = ComposerViewState(purpose: .session)
+    state.isRunning = true
+    state.designRequests = [
+      DesignRequestRow(
+        id: UUID(), tool: .annotate, label: "Annotate button \"Buy now\"", state: .sending),
+      DesignRequestRow(
+        id: UUID(), tool: .draw, label: "Draw: Tighten the header", state: .waiting),
+      DesignRequestRow(
+        id: UUID(), tool: .annotate, label: "Annotate h1 \"Your order\"",
+        state: .failed(
+          "The session's host is offline, so this wasn't sent. Retry once it's back.",
+          canRetry: true)),
+    ]
+    var actions = ComposerActions(send: {})
+    actions.extras.designRequests = DesignRequestActions(retry: { _ in }, remove: { _ in })
+    return ComposerView(draft: .constant(""), state: state, actions: actions)
+      .frame(maxWidth: 640)
+      .padding(Theme.Spacing.medium)
+  }
+}

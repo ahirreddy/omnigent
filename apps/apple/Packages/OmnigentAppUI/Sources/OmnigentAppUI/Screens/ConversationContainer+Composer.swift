@@ -25,6 +25,7 @@ extension ConversationContainer {
         composer: conversation.composer, store: workflows.store, sharing: workflows.sharing,
         blockedReason: { TasksAdapter.blockedReason(conversation) })
     }
+    extras.designRequests = DesignRequestAdapter.actions(designOutbox)
     extras.liveness.fork = forkSession
     addHostMoves(to: &extras.liveness, sheets: livenessSheets)
     let signInOpener = signInOpener

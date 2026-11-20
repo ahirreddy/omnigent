@@ -58,6 +58,15 @@
         Button("Actual Size") { tab?.resetZoom() }
           .keyboardShortcut("0")
       }
+      if let tab, tab.offersDesignTools {
+        Divider()
+        ForEach(BrowserDesignTool.allCases, id: \.self) { tool in
+          Toggle(
+            tool.title,
+            isOn: Binding(
+              get: { tab.designTools.tool == tool }, set: { _ in tab.designTools.toggle(tool) }))
+        }
+      }
       Divider()
       Button(tab?.isMuted == true ? "Unmute Tab" : "Mute Tab") { tab?.toggleMute() }
       Button("Bookmark This Page") { tab?.toggleBookmark() }

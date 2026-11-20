@@ -136,6 +136,9 @@ public struct CLIComposer: View {
             message: attachmentError, dismiss: { self.attachmentError = nil },
             identifier: "composer-attachment-error")
         }
+        if !state.designRequests.isEmpty {
+          DesignRequestStrip(rows: state.designRequests, actions: actions.extras.designRequests)
+        }
         if !state.queue.isEmpty {
           QueueStrip(
             queue: state.queue, isRunning: state.isRunning, canSteer: state.canSteer,

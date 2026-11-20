@@ -10,6 +10,8 @@
     case mentions([UserPrompt.Mention])
     /// A long prompt's "Show full prompt" button, or "Collapse prompt" once it shows whole.
     case promptToggle(title: String, collapses: Bool)
+    /// What a design-tool message was about, under its words.
+    case designSubject(DesignRequest)
     /// "Interrupted": under an answer's text, or under a prompt's bubble.
     case interrupted
     /// A content part this app can't show: one quiet line that opens to any safe text.
@@ -52,6 +54,7 @@
         case .mentions(let mentions): AttachedPathChips(mentions: mentions)
         case .promptToggle(let title, let collapses):
           UserPromptToggle(title: title, collapses: collapses) { action?() }
+        case .designSubject(let request): DesignRequestSubject(request: request)
         case .interrupted: InterruptedLabel(rowID: rowID)
         case .unsupported(let activity): UnsupportedContentView(activity: activity, rowID: rowID)
         case .origin(let sessionID):

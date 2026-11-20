@@ -115,6 +115,13 @@ public protocol BrowserTab: AnyObject {
   /// Evaluates a script in the main frame and returns its completion value. Promises are not
   /// awaited.
   func evaluateJavaScript(_ script: String) async throws(BrowserError) -> BrowserScriptValue
+  /// Evaluates a script in the main frame in a world of its own, where the page's scripts can
+  /// neither see its globals nor change the built-ins it calls. Engines without one evaluate in
+  /// the page's world (see `evaluatesInIsolatedWorld`).
+  func evaluateIsolatedJavaScript(_ script: String) async throws(BrowserError)
+    -> BrowserScriptValue
+  /// Whether `evaluateIsolatedJavaScript` runs apart from the page's scripts.
+  var evaluatesInIsolatedWorld: Bool { get }
   /// Captures the visible page as PNG data.
   func takeSnapshotPNG() async throws(BrowserError) -> Data
   /// Highlights the next match for `text`.
@@ -158,4 +165,14 @@ public protocol BrowserTab: AnyObject {
 extension BrowserTab {
   /// Engines whose `platformView` takes typing itself need no view of their own for it.
   public var keyboardView: BrowserPlatformView { platformView }
+
+  /// Engines without an isolated world run the script in the page's.
+  public func evaluateIsolatedJavaScript(_ script: String) async throws(BrowserError)
+    -> BrowserScriptValue
+  {
+    try await evaluateJavaScript(script)
+  }
+
+  /// Engines without an isolated world share the page's.
+  public var evaluatesInIsolatedWorld: Bool { false }
 }

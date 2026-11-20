@@ -2,6 +2,7 @@ public import Foundation
 public import OSLog
 public import OmnigentAppUI
 public import OmnigentBrowser
+public import OmnigentStores
 public import SwiftUI
 
 #if os(macOS)
@@ -20,8 +21,10 @@ public final class BrowserTabHost: BrowserTabHosting {
   private let agent: AgentBrowserController?
   private let logger: Logger
   private let keyboardShortcuts: Bool
-  private var models: [UUID: BrowserTabModel] = [:]
-  private var windows: [UUID: SessionTabGroups] = [:]
+  private(set) var models: [UUID: BrowserTabModel] = [:]
+  private(set) var windows: [UUID: SessionTabGroups] = [:]
+  /// Each window's design request outbox.
+  var designOutboxes: [UUID: DesignRequestOutbox] = [:]
   /// Encodes a new page's state.
   var encodeState: (BrowserTabRestoreState) throws -> Data = { try JSONEncoder().encode($0) }
 
@@ -44,6 +47,10 @@ public final class BrowserTabHost: BrowserTabHosting {
     environment.onOpenTab = { [weak self] model, context in self?.adopt(model, context) }
     environment.onSwitchToTab = { [weak self] id in self?.switchTo(modelID: id) }
     environment.onCloseTab = { [weak self] model in self?.pageClosed(model) }
+    environment.designRequestSender = { [weak self] request, model throws(BrowserError) in
+      guard let self else { throw .designToolFailed("The browser is closing.") }
+      try self.queueDesignRequest(request, from: model)
+    }
   }
 
   /// See ``BrowserTabHosting``.
@@ -153,11 +160,18 @@ public final class BrowserTabHost: BrowserTabHosting {
   /// See ``BrowserTabHosting``.
   public func detach(window: UUID) {
     windows[window] = nil
+    designOutboxes[window] = nil
+  }
+
+  /// See ``BrowserTabHosting``.
+  public func attachDesignRequests(window: UUID, outbox: DesignRequestOutbox) {
+    designOutboxes[window] = outbox
   }
 
   /// A window closed for good: its browser pages close with it.
   /// - Parameter window: The window.
   public func windowClosed(_ window: UUID) {
+    designOutboxes[window] = nil
     guard let tabs = windows.removeValue(forKey: window) else { return }
     for tab in tabs.groups.values.flatMap(\.tabs) {
       guard case .browser(let id) = tab.content, let model = models.removeValue(forKey: id) else {
@@ -207,7 +221,7 @@ public final class BrowserTabHost: BrowserTabHosting {
     }
   }
 
-  private func pageID(of model: BrowserTabModel) -> UUID? {
+  func pageID(of model: BrowserTabModel) -> UUID? {
     models.first { $0.value === model }?.key
   }
 

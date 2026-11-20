@@ -1,4 +1,5 @@
 public import Foundation
+public import OmnigentStores
 public import SwiftUI
 
 /// What a browser tab shows in the strip.
@@ -124,6 +125,13 @@ public protocol BrowserTabHosting: AnyObject {
   /// - Parameter window: The window.
   func detach(window: UUID)
 
+  /// Connects a window's design request outbox, so Annotate and Draw on its pages send to the
+  /// session each page belongs to.
+  /// - Parameters:
+  ///   - window: The window.
+  ///   - outbox: Its outbox.
+  func attachDesignRequests(window: UUID, outbox: DesignRequestOutbox)
+
   /// Whether a live page can step through its history: back (`-1`) or forward (`1`).
   /// - Parameters:
   ///   - id: The page.
@@ -139,6 +147,9 @@ public protocol BrowserTabHosting: AnyObject {
 }
 
 extension BrowserTabHosting {
+  /// A host whose pages have no design tools.
+  public func attachDesignRequests(window: UUID, outbox: DesignRequestOutbox) {}
+
   /// A host whose pages keep no history.
   public func canStep(_ id: UUID, by offset: Int) -> Bool { false }
 

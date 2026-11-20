@@ -135,7 +135,7 @@ extension MessageRowView {
         if let reply = QuestionReplyMarkdown.text(row.questionReplies) {
           QuestionReplyBody(source: reply)
         } else if !row.text.isEmpty {
-          UserPromptBody(text: row.text)
+          UserPromptBody(text: row.text, showsDesignRequest: row.originSessionId == nil)
         }
         if let activity = row.activity {
           UnsupportedContentView(activity: activity, rowID: row.id)

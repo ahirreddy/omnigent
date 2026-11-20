@@ -53,6 +53,8 @@ public final class BrowserTabModel: Identifiable {
   public let controller: BrowserController
   /// Find-in-page state.
   public let find = BrowserFindModel()
+  /// Annotate and Draw on the page.
+  public let designTools = BrowserDesignTools()
   /// Whether the tab is pinned. The tab strip owns its meaning; it is saved with the tab.
   public var isPinned: Bool {
     didSet { bumpRevision() }
@@ -138,6 +140,7 @@ public final class BrowserTabModel: Identifiable {
   }
 
   func installHooks() {
+    installDesignTools()
     controller.prepareTab = { [weak self] tab in self?.prepare(tab) }
     controller.willReplaceTab = { [weak self] tab in
       guard let self, !self.skipSnapshotOnReplace else { return }

@@ -42,7 +42,9 @@ final class FakeTab: BrowserTab {
     if let scriptFailure { throw scriptFailure }
     return scriptResult
   }
-  func takeSnapshotPNG() throws(BrowserError) -> Data { Data() }
+  func takeSnapshotPNG() throws(BrowserError) -> Data { snapshotPNG }
+  /// What a snapshot answers.
+  var snapshotPNG = Data()
   func find(_ text: String, forward: Bool, caseSensitive: Bool) throws(BrowserError)
     -> BrowserFindResult
   {

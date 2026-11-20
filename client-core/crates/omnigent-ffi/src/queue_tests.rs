@@ -3,8 +3,10 @@
 use omnigent_core::reply_draft as core;
 use serde_json::json as value;
 
+use crate::errors::CoreError;
 use crate::queue::{
-    ReplyDraft, ReplyQuote, reply_draft_message, reply_draft_quoting, reply_draft_removing,
+    ExternalAttachment, ReplyDraft, ReplyQuote, reply_draft_message, reply_draft_quoting,
+    reply_draft_removing,
 };
 use crate::test_support::{Harness, connected, json};
 
@@ -192,4 +194,51 @@ fn a_file_not_yet_uploaded_cannot_be_held_and_an_empty_message_is_refused() {
             .await
     });
     assert!(empty.is_err());
+}
+
+#[test]
+fn an_external_message_sends_its_files_and_leaves_the_composer_alone() {
+    let mut harness = with_uploads();
+    harness
+        .core
+        .add_attachment("conv_a".into(), "mine.txt".into(), None, b"x".to_vec())
+        .unwrap();
+    let screenshot = ExternalAttachment {
+        filename: "design-element.png".into(),
+        media_type: Some("image/png".into()),
+        data: b"png".to_vec(),
+    };
+    harness
+        .call(move |core| async move {
+            core.send_external_message("conv_a".into(), "Make it red".into(), vec![screenshot])
+                .await
+        })
+        .unwrap();
+    let (line, body) = harness.last_request();
+    assert_eq!(line, "POST /v1/sessions/conv_a/events");
+    assert_eq!(
+        body["data"]["content"],
+        value!([
+            {"type": "input_image", "file_id": "file_1", "filename": "design-element.png"},
+            {"type": "input_text", "text": "Make it red"},
+        ])
+    );
+    let draft = harness.core.attachment_draft("conv_a".into()).unwrap();
+    assert_eq!(draft.items.len(), 1);
+    assert_eq!(draft.items[0].filename, "mine.txt");
+}
+
+#[test]
+fn an_external_file_the_server_will_not_take_sends_nothing() {
+    let mut harness = with_uploads();
+    let unnamed = ExternalAttachment {
+        filename: String::new(),
+        media_type: Some("image/png".into()),
+        data: b"png".to_vec(),
+    };
+    let refused = harness.call(move |core| async move {
+        core.send_external_message("conv_a".into(), "Hi".into(), vec![unnamed])
+            .await
+    });
+    assert!(matches!(refused, Err(CoreError::Attachment { .. })));
 }

@@ -7,6 +7,8 @@ nonisolated extension UserPrompt {
     let isQuote: Bool
     /// A reply's quoted question, `↪ Re: <question>`, over its answer.
     var isQuestion = false
+    /// What a design-tool message was about, `↳ <subject>`, under its words.
+    var isNote = false
   }
 
   /// The text `row`'s prompt draws from: a reply to an agent's questions as its reply's text
@@ -17,7 +19,7 @@ nonisolated extension UserPrompt {
 
   /// `text` split into plain and block-quote runs, as a reply that quotes the transcript sends
   /// it. Lines inside fenced code are never quotes. A reply's text gives each question's quoted
-  /// line and then its answer as typed.
+  /// line and then its answer as typed; a design-tool message its words, then its subject.
   static func runs(_ text: String) -> [Run] {
     let replies = QuestionReplyMarkdown.replies(in: text)
     if !replies.isEmpty {
@@ -28,6 +30,17 @@ nonisolated extension UserPrompt {
         return [Run(text: quoted, isQuote: false, isQuestion: true), answer]
       }
     }
+    if let design = DesignRequest.parse(text) {
+      let note = [design.subject] + (design.noScreenshot ? [DesignRequest.noScreenshotNote] : [])
+      let subject = Run(
+        text: "\u{21B3} " + note.joined(separator: "\n"), isQuote: false, isNote: true)
+      return (design.request.isEmpty ? [] : quoteRuns(design.request)) + [subject]
+    }
+    return quoteRuns(text)
+  }
+
+  /// `text` split into plain and block-quote runs.
+  private static func quoteRuns(_ text: String) -> [Run] {
     guard text.contains(">") else { return [Run(text: text, isQuote: false)] }
     var runs: [Run] = []
     var lines: [Substring] = []
@@ -66,7 +79,7 @@ struct CLIUserText: View {
 
   var body: some View {
     let runs = UserPrompt.runs(text)
-    if runs.count == 1, let only = runs.first, !only.isQuote {
+    if runs.count == 1, let only = runs.first, !only.isQuote, !only.isNote {
       CLISourceText(text: only.text, tintsMarkdown: false, color: \.userText)
     } else {
       VStack(alignment: .leading, spacing: Theme.Spacing.small) {
@@ -74,6 +87,9 @@ struct CLIUserText: View {
           if run.isQuestion {
             CLISourceText(text: run.text, tintsMarkdown: false, color: \.dim)
               .accessibilityIdentifier("question-reply-quote")
+          } else if run.isNote {
+            CLISourceText(text: run.text, tintsMarkdown: false, color: \.dim)
+              .accessibilityIdentifier("design-request-subject")
           } else if run.isQuote {
             CLISourceText(text: run.text, tintsMarkdown: false, color: \.quote)
               .padding(.leading, Theme.Spacing.small)

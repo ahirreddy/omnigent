@@ -61,6 +61,8 @@ nonisolated public enum BrowserError: Error, Hashable, Sendable {
   case profileInvalid(String)
   /// Printing failed.
   case printFailed(String)
+  /// A design tool (Annotate, Draw) couldn't hand its request on.
+  case designToolFailed(String)
 
   /// Whether the error only reflects a superseded or stopped navigation.
   public var isCancellation: Bool {
@@ -131,6 +133,8 @@ extension BrowserError: LocalizedError {
       message
     case .printFailed(let message):
       "Printing failed: \(message)"
+    case .designToolFailed(let message):
+      message
     }
   }
 }

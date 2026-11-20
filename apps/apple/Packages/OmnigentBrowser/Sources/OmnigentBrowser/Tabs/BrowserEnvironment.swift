@@ -42,6 +42,10 @@ public final class BrowserEnvironment {
   @ObservationIgnored public var onSwitchToTab: ((UUID) -> Void)?
   /// Closes a tab whose page called `window.close()`. Without a handler the model just closes.
   @ObservationIgnored public var onCloseTab: ((BrowserTabModel) -> Void)?
+  /// Takes a design tool's request (Annotate, Draw) from a tab, to send to the session the tab
+  /// belongs to; throws why it can't. Without one, tabs don't offer the tools.
+  @ObservationIgnored public var designRequestSender:
+    ((BrowserDesignRequest, BrowserTabModel) throws(BrowserError) -> Void)?
 
   @ObservationIgnored let faviconLoader = BrowserFaviconLoader()
   @ObservationIgnored private var historyStores: [UUID: BrowserHistoryStore] = [:]

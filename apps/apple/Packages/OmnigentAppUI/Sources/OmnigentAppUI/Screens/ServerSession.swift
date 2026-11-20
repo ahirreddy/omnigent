@@ -27,6 +27,8 @@ public final class ServerSession {
   public private(set) var sessionTasks: [String: SessionTasksStore] = [:]
   /// The window's tabs, per session, and the page it shows.
   public let tabs = SessionTabGroups()
+  /// The Browser design tools' requests on their way to this window's sessions.
+  public let designOutbox: DesignRequestOutbox
   /// The drafts of new side chats, by tab.
   let sideChatDrafts = SideChatDrafts()
   /// What Add nested agent composers keep while the user is elsewhere, by source session.
@@ -59,6 +61,7 @@ public final class ServerSession {
     remoteBrowser: (any RemoteBrowserConnecting)? = nil
   ) {
     self.connection = connection
+    designOutbox = DesignRequestOutbox(connection: connection)
     // Before the first connect, so the open folders load beside the list's first page.
     connection.sessionList.paging.setOpenFolders(SidebarNavigationOrder.expandedProjects())
     signIn = SignInController(store: connection, opener: opener)

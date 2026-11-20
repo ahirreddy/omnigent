@@ -55,6 +55,8 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case overviewChanges = "sweep-f-overview-changes"
   case spreadsheetSheets = "sweep-f-spreadsheet-sheets"
   case spreadsheetUnreadable = "sweep-f-spreadsheet-unreadable"
+  case designRequests = "sweep-f-design-requests"
+  case designOutbox = "sweep-f-design-outbox"
 
   var testDescription: String { rawValue }
 
@@ -68,7 +70,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     switch self {
     case .canvasQuickView: 960
     case .automationsSorted, .terminalSplit, .spreadsheetSheets: 760
-    case .shellComposer, .composerTints: 680
+    case .shellComposer, .composerTints, .designRequests, .designOutbox: 680
     default: 480
     }
   }
@@ -101,7 +103,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .spreadsheetUnreadable: 320
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
       .quickAnswer, .staleProfile, .questionSubmitBlocked, .shellComposer, .composerTints,
-      .overviewChanges:
+      .overviewChanges, .designRequests, .designOutbox:
       nil
     }
   }
@@ -152,6 +154,8 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .overviewChanges: return AnyView(Fixture.overviewChanges)
     case .spreadsheetSheets: return AnyView(Fixture.spreadsheetSheets)
     case .spreadsheetUnreadable: return AnyView(Fixture.spreadsheetUnreadable)
+    case .designRequests: return AnyView(Fixture.designRequests)
+    case .designOutbox: return AnyView(Fixture.designOutbox)
     }
   }
 }

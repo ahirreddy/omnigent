@@ -251,6 +251,8 @@ public struct ComposerExtraActions {
   public var deleteReviewComment: (@MainActor (String) -> Void)?
   /// Remove a quote or edit the text typed before it.
   public var quotes = ComposerQuoteActions()
+  /// Retry or remove a design tool request that wasn't sent.
+  public var designRequests: DesignRequestActions?
   /// Turn Smart Routing on or off (the model picker's toggle).
   public var setSmartRouting: (@MainActor (Bool) -> Void)?
   /// The reconnect sheet's Check Again and Fork.
