@@ -272,10 +272,10 @@ extension AutomationsAdapterTests {
     #expect(draft.trigger == nil)
     #expect(draft.prompt == "Investigate the ticket.")
     #expect(draft.systemPrompt != nil)
-    #expect(AutomationsMapping.prompt(draft, triggerPrompt: "") == legacy)
+    #expect(AutomationsMapping.prompt(draft, triggerPrompt: "", skillPrefix: "/") == legacy)
     draft.prompt = "Fix it."
     #expect(
-      AutomationsMapping.prompt(draft, triggerPrompt: "").contains(
+      AutomationsMapping.prompt(draft, triggerPrompt: "", skillPrefix: "/").contains(
         "Instructions for each session:\nFix it.\n"))
   }
 

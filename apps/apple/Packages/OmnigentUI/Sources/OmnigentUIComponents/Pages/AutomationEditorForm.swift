@@ -63,14 +63,17 @@ struct AutomationEditorForm: View {
       if editor.showsTriggerForm {
         editor.triggerOrPrompt
       } else {
-        Section(editor.promptLabel) {
-          TextField(
-            editor.promptLabel, text: editor.$draft.prompt,
-            prompt: Text(editor.promptPlaceholder), axis: .vertical
-          )
-          .lineLimit(6...12)
-          .labelsHidden()
-          .accessibilityIdentifier("automation-prompt")
+        if editor.showsWorkflowField { editor.workflowField }
+        if editor.draft.showsInstructions {
+          Section(editor.promptLabel) {
+            TextField(
+              editor.promptLabel, text: editor.$draft.prompt,
+              prompt: Text(editor.promptPlaceholder), axis: .vertical
+            )
+            .lineLimit(6...12)
+            .labelsHidden()
+            .accessibilityIdentifier("automation-prompt")
+          }
         }
       }
       Section {

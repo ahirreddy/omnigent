@@ -106,7 +106,8 @@ struct SessionRowMenu {
     }
   }
 
-  /// The nests it can join, by their representative's title, then Remove from nest.
+  /// The nests it can join, by their representative's title, a search of the server's, then
+  /// Remove from nest.
   @ViewBuilder private func nestItems(
     _ moveToNest: @escaping @MainActor (SessionSummary, SessionSummary?) -> Void
   ) -> some View {
@@ -117,6 +118,10 @@ struct SessionRowMenu {
       }
       if destinations.isEmpty {
         Text("No other nests")
+      }
+      if let searchNests = actions.searchNests {
+        Divider()
+        Button("Search Nests\u{2026}", systemImage: "magnifyingglass") { searchNests(session) }
       }
     }
     if session.family != nil {

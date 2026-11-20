@@ -254,28 +254,34 @@ extension AutomationEditorSheet {
   }
 
   private var sessionPicker: some View {
-    Picker("Session continuity", selection: $draft.continuesSession) {
+    Picker("Session continuity", selection: newForWorkflow($draft.continuesSession)) {
       Text("New session each run").tag(false)
       Text("Continue one session").tag(true)
     }
     .labelsHidden()
     .fixedSize()
+    .disabled(context.workflowNeedsNewSessions)
     .accessibilityIdentifier("automation-session-mode")
   }
 
   private var taskSessionPicker: some View {
-    Picker(
-      "Session continuity",
-      selection: Binding(
-        get: { draft.trigger?.taskSession ?? false },
-        set: { draft.trigger?.taskSession = $0 })
-    ) {
+    let shared = Binding(
+      get: { draft.trigger?.taskSession ?? false }, set: { draft.trigger?.taskSession = $0 })
+    return Picker("Session continuity", selection: newForWorkflow(shared)) {
       Text("New session for each match").tag(false)
       Text("One task session for all matches").tag(true)
     }
     .labelsHidden()
     .fixedSize()
+    .disabled(context.workflowNeedsNewSessions)
     .accessibilityIdentifier("automation-trigger-session-mode")
+  }
+
+  /// Each run of a workflow needs its own session, so the choice shows a new one, fixed.
+  private func newForWorkflow(_ shared: Binding<Bool>) -> Binding<Bool> {
+    Binding(
+      get: { shared.wrappedValue && !context.workflowNeedsNewSessions },
+      set: { shared.wrappedValue = $0 })
   }
 
   private var resetToggle: some View {

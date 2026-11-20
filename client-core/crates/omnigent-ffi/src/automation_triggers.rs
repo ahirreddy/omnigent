@@ -261,6 +261,9 @@ pub struct TriggerConfigContext {
     pub task_session_title: Option<String>,
     /// The longest message to send.
     pub message_max_chars: Option<u32>,
+    /// A match's session can start as a run of the saved workflow its instructions run.
+    #[uniffi(default)]
+    pub workflow_ids: bool,
 }
 
 impl From<TriggerConfigContext> for core::TriggerConfigContext {
@@ -270,6 +273,7 @@ impl From<TriggerConfigContext> for core::TriggerConfigContext {
             polling_interval_minutes: context.polling_interval_minutes,
             task_session_title: context.task_session_title,
             message_max_chars: context.message_max_chars,
+            workflow_ids: context.workflow_ids,
         }
     }
 }

@@ -39,6 +39,10 @@ nonisolated public enum SidebarDropTarget: Hashable, Sendable {
   case pinSlot(String)
   /// The Sessions list: out of its project.
   case sessions
+  /// A row's middle: into that session's nest.
+  case nest(SessionSummary)
+  /// The Remove from nest zone: out of its nest.
+  case leaveNest
 }
 
 /// What a session drop does (the web's `resolveSidebarDrop`).
@@ -70,6 +74,8 @@ nonisolated public enum SidebarDropAction: Hashable, Sendable {
     case .sessions:
       if project != nil, !isShared { return .ungroup(unpin: session.isPinned) }
       return session.isPinned ? .unpin : .none
+    case .nest, .leaveNest:
+      return .none
     }
   }
 }
@@ -80,7 +86,7 @@ nonisolated extension SidebarDropTarget {
     switch self {
     case .pinSlot: .pinned
     case .projectSlot(let project, _): .project(project.id)
-    case .project, .pinned, .sessions: nil
+    case .project, .pinned, .sessions, .nest, .leaveNest: nil
     }
   }
 }
@@ -127,7 +133,7 @@ struct SidebarDropHandler {
     case .pinSlot(let id) where session.isPinned: (group, targetID) = (.pinned, id)
     case .projectSlot(let project, let id) where project.sessionIds.contains(session.id):
       (group, targetID) = (.project(project.id), id)
-    case .pinSlot, .projectSlot, .project, .pinned, .sessions: return nil
+    case .pinSlot, .projectSlot, .project, .pinned, .sessions, .nest, .leaveNest: return nil
     }
     let units = SidebarSections.units(of: group, in: state)
     let moved = units.reordered(moving: session.id, onto: targetID)
@@ -156,6 +162,8 @@ struct SidebarDropHandler {
       reorder(order)
       return true
     case .session(let id):
+      if case .nest(let destination) = target { return nestDrop(id, into: destination) }
+      if target == .leaveNest { return nestDrop(id, into: nil) }
       // A nested member pins, moves and orders with its representative.
       guard let dropSession = actions.dropSession,
         let session = state.list.sessions.first(where: { $0.id == id }),

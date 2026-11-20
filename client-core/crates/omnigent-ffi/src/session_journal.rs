@@ -428,6 +428,12 @@ pub struct TasksView {
     pub updated_at: Option<i64>,
     /// "2 of 5 finished".
     pub summary: String,
+    /// How many tasks finished, done or failed, for the chat's "Tasks 3/7".
+    #[uniffi(default)]
+    pub finished: u32,
+    /// The chat's one-line preview after the count: the task waiting, running or next.
+    #[uniffi(default)]
+    pub preview: Option<String>,
     /// Counts after the summary.
     pub counts: Vec<TaskCount>,
     /// "Stopped" or "Run ended".
@@ -543,6 +549,8 @@ pub fn tasks_view(
         native: shown.native,
         updated_at: shown.updated_at,
         summary: shown.summary,
+        finished: u32::try_from(shown.finished).unwrap_or(u32::MAX),
+        preview: shown.preview,
         counts: shown
             .counts
             .into_iter()

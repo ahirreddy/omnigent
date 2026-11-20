@@ -501,6 +501,7 @@ fn an_automation_runs_a_workflow_directly_or_through_a_trigger() {
         polling_interval_minutes: None,
         task_session_title: None,
         message_max_chars: None,
+        workflow_ids: false,
     };
     let saved = encode_trigger_prompt(&config, &context);
     assert!(prompt_runs_workflow(&saved, WORKFLOW_ID));

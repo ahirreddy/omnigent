@@ -97,6 +97,9 @@ pub struct ServerPages {
     /// `workflow_sharing` on a multi-user server with workflows: a workflow can be shared, and
     /// the Workflows page lists those shared with the caller.
     pub workflow_sharing: bool,
+    /// `session_create_workflow_id` with workflows on: a trigger's workers can start as runs of
+    /// the saved workflow their instructions run.
+    pub session_create_workflow_id: bool,
 }
 
 impl ServerPages {
@@ -132,6 +135,7 @@ impl ServerPages {
         Ok(Self {
             workflows,
             workflow_sharing: workflows && flag("workflow_sharing")? && !single_user,
+            session_create_workflow_id: workflows && flag("session_create_workflow_id")?,
             automation_subhour: flag("scheduled_task_subhour")?,
             automation_trigger_headers: flag("scheduled_task_trigger_headers")?,
             automation_trigger_poll_minutes: count("automation_trigger_poll_minutes")?

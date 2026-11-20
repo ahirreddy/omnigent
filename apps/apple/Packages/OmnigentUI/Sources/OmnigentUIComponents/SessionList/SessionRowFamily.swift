@@ -187,16 +187,6 @@ struct SessionMarkAnchor: PreferenceKey {
 }
 
 extension View {
-  /// Drags `payload` from this row; `nil` makes it no drag source.
-  @ViewBuilder
-  func sidebarDraggable(_ payload: String?) -> some View {
-    if let payload {
-      draggable(payload)
-    } else {
-      self
-    }
-  }
-
   /// A nested row's connector, laid on the row from its family's leading edge (before its
   /// step): down from the row's top to its mark's midline (its middle while the title is
   /// edited), and on down when it continues. Every row has the overlay, drawn only for a

@@ -1578,6 +1578,9 @@ pub struct TriggerPromptContext {
     pub task_session_title: Option<String>,
     /// The longest message to send; 32,000 when `None`.
     pub message_max_chars: Option<u32>,
+    /// A match's session can start as a run of the saved workflow its instructions run
+    /// (`sys_session_create`'s `workflow_id`).
+    pub workflow_ids: bool,
 }
 
 /// What a saved config doesn't hold.
@@ -1591,6 +1594,9 @@ pub struct TriggerConfigContext {
     pub task_session_title: Option<String>,
     /// The longest message to send.
     pub message_max_chars: Option<u32>,
+    /// A match's session can start as a run of the saved workflow its instructions run
+    /// (`sys_session_create`'s `workflow_id`).
+    pub workflow_ids: bool,
 }
 
 /// The source-specific wording of a manager prompt.
@@ -2093,6 +2099,13 @@ pub fn render_trigger_prompt(
             }
         ),
     ];
+    // Each match's session starts as a run of the workflow, so the workflow's page lists it.
+    if !shared
+        && context.workflow_ids
+        && let Some(run) = crate::workflows::parse_saved_workflow_run(&fields.instructions)
+    {
+        create_args.push(format!("workflow_id {}", json_string(&run.id)));
+    }
     for (key, value) in [
         ("model", &context.model),
         ("reasoning_effort", &context.effort),
@@ -2362,6 +2375,7 @@ pub fn render_trigger_config_prompt(
             task_session: config.task_session,
             task_session_title: context.task_session_title.clone(),
             message_max_chars: context.message_max_chars,
+            workflow_ids: context.workflow_ids,
         },
     )
 }

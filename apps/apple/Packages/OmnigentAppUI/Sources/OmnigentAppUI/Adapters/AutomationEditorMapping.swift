@@ -27,6 +27,8 @@ enum AutomationEditorMapping {
     var replaceSchedule: (@MainActor (ScheduleChoice) -> Void)?
     /// Switches a new automation between a schedule and an integration.
     var switchTriggerType: (@MainActor (String?) -> Void)?
+    /// The caller's saved workflows, for the Workflow field.
+    var workflows: [SavedWorkflow] = []
   }
 
   /// Claude Code's version-agnostic model aliases, offered when the host lists none (the web's
@@ -86,16 +88,19 @@ enum AutomationEditorMapping {
       error: inputs.saveError ?? pages.automationCatalog.error?.message)
     placement(&context, pages: pages)
     context.overrides = overrides(
-      pages: pages, agentID: draft.agentID, hostID: draft.hostID, model: draft.model)
+      pages: pages, agentID: draft.agentID, hostID: draft.hostID,
+      inSandbox: draft.runsInSandbox, model: draft.model)
     let limits = AutomationsMapping.limits(draft, offered: offered)
     schedule(&context, offered: offered, inputs: inputs, limits: limits)
-    context.blocker = blocker(draft, isEditing: inputs.saved != nil)
+    context.blocker =
+      blocker(draft, isEditing: inputs.saved != nil) ?? sandboxBlocker(pages: pages, draft: draft)
     context.hasContinuingSession = inputs.saved?.sessionId != nil
     if let saved = inputs.saved, draft.agentID != saved.agentId {
       let name = context.agents.first { $0.id == draft.agentID }?.name ?? draft.agentID
       context.agentNote = "Future runs use \(name); past runs keep the agent they ran with"
     }
     context.costLimitProblem = costLimitProblem(text: draft.maxCost)
+    workflow(&context, pages: pages, inputs: inputs)
     mcp(&context, pages: pages, draft: draft)
     if draft.trigger != nil || draft.isTrigger {
       triggerSchedule(&context, pages: pages, inputs: inputs)
@@ -236,8 +241,10 @@ enum AutomationEditorMapping {
   static func triggerPrompt(
     pages: PagesStore, draft: AutomationDraftState, saved: Automation?, sessionLink: String
   ) -> String {
+    let draft = withWorkflowSessions(draft)
     let budget = budget(pages: pages, draft: draft, saved: saved)
-    let options = overrides(pages: pages, agentID: draft.agentID, hostID: draft.hostID)
+    let options = overrides(
+      pages: pages, agentID: draft.agentID, hostID: draft.hostID, inSandbox: draft.runsInSandbox)
     let config = AutomationTriggerMapping.config(
       draft, budget: budget, workerPermissionMode: workerPermissionMode(draft, pages: pages),
       sendsOverrides: options != nil)
@@ -246,10 +253,11 @@ enum AutomationEditorMapping {
     {
       return saved.prompt
     }
+    var context = AutomationTriggerMapping.context(draft, sessionLink: sessionLink, budget: budget)
+    // Each match's session starts as a run of the workflow its instructions run.
+    context.workflowIds = pages.offered?.sessionCreateWorkflowId == true
     return AutomationTriggerMapping.prompt(
-      config,
-      context: AutomationTriggerMapping.context(draft, sessionLink: sessionLink, budget: budget),
-      withHeader: pages.offered?.automationTriggerHeaders == true)
+      config, context: context, withHeader: pages.offered?.automationTriggerHeaders == true)
   }
 
   /// The permission a new trigger's workers start in: the automation's own, unless it skips
@@ -277,21 +285,21 @@ enum AutomationEditorMapping {
 
 /// The harness's model, effort and permission choices.
 extension AutomationEditorMapping {
-  /// The model, effort and permission choices for `agentID`'s harness, or `nil` when it takes
-  /// none (the web's `useScheduledHarnessSettings`).
-  static func overrides(pages: PagesStore, agentID: String, hostID: String, model: String = "")
-    -> AutomationOverrideOptions?
-  {
+  /// The model, effort and permission choices for `agentID`'s harness on `hostID` or a new
+  /// sandbox, or `nil` when it takes none (the web's `useScheduledHarnessSettings`).
+  static func overrides(
+    pages: PagesStore, agentID: String, hostID: String, inSandbox: Bool, model: String = ""
+  ) -> AutomationOverrideOptions? {
     guard let agent = pages.automationCatalog.value?.agents.first(where: { $0.id == agentID })
     else { return nil }
     let harness = agent.harnessId
     let offered = pages.offered
-    let takesModel = modelHarnesses.contains(harness)
-    let key = PagesStore.modelsKey(agentID: agentID, hostID: hostID)
-    let load = pages.automationModels[key]
-    let listed = (load?.value ?? []).filter { $0.hidden != true }
+    let catalog = AutomationModelCatalog.resolve(
+      pages: pages, agent: agent, hostID: hostID, inSandbox: inSandbox)
+    let takesModel = catalog.takesModel
+    let listed = catalog.listed
     var models = listed.map { AutomationOption(id: $0.value, name: $0.title) }
-    if models.isEmpty, harness == "claude-native" { models = claudeModels }
+    if models.isEmpty, catalog.offersClaudeAliases { models = claudeModels }
     // Outside Claude Code, the harness settings need a server that stores them per harness.
     let permissionsOffered =
       harness == "claude-native" || offered?.automationHarnessSettings == true
@@ -304,23 +312,24 @@ extension AutomationEditorMapping {
     guard takesModel || !permissionModes.isEmpty else { return nil }
     var options = AutomationOverrideOptions(
       models: takesModel ? models : [],
-      efforts: takesModel ? efforts(harness: harness, models: listed, picked: model) : [],
+      efforts: takesModel
+        ? efforts(harness: catalog.effortHarness, models: listed, picked: model) : [],
       permissionModes: permissionModes.map { AutomationOption(id: $0.value, name: $0.title) })
     options.takesModel = takesModel
-    if takesModel, models.isEmpty {
-      let host = pages.automationCatalog.value?.hosts.first { $0.hostId == hostID }
-      options.catalogMessage =
-        if host?.status == "offline" {
-          "Connect your host to load models."
-        } else if load == .loading {
-          "Loading models\u{2026}"
-        } else if load?.error != nil {
-          "Could not load models. Default uses the agent\u{2019}s configuration."
-        } else {
-          "No model choices are available. Default uses the agent\u{2019}s configuration."
-        }
+    if takesModel, models.isEmpty, catalog.blockedReason == nil {
+      options.catalogMessage = catalog.emptyMessage
     }
     return options
+  }
+
+  /// Why `draft`'s harness can't run on a new sandbox at all, as its model preview says.
+  static func sandboxBlocker(pages: PagesStore, draft: AutomationDraftState) -> String? {
+    guard draft.runsInSandbox,
+      let agent = pages.automationCatalog.value?.agents.first(where: { $0.id == draft.agentID })
+    else { return nil }
+    return AutomationModelCatalog.resolve(
+      pages: pages, agent: agent, hostID: draft.hostID, inSandbox: true
+    ).blockedReason
   }
 
   /// The web's `nativeEffortOptions`: Claude Code's and Pi's fixed ladders, else the efforts the
@@ -344,8 +353,10 @@ extension AutomationEditorMapping {
   }
 
   /// Whether a save of `draft` sends the model, effort and permission mode.
-  static func sendsOverrides(pages: PagesStore, agentID: String, hostID: String) -> Bool {
-    overrides(pages: pages, agentID: agentID, hostID: hostID) != nil
+  static func sendsOverrides(pages: PagesStore, draft: AutomationDraftState) -> Bool {
+    overrides(
+      pages: pages, agentID: draft.agentID, hostID: draft.hostID, inSandbox: draft.runsInSandbox)
+      != nil
   }
 
   /// Whether the agent's harness lists models for its host.

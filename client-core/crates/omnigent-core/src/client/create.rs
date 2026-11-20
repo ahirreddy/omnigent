@@ -33,6 +33,42 @@ use crate::creation::{
 };
 use crate::http::HttpTransport;
 use crate::reconcile::UNTITLED_SESSION;
+use crate::sandbox::{SandboxModelPreview, SandboxModelStatus};
+
+/// A model-options body at `path` this client cannot read.
+fn malformed(path: &str, detail: &str) -> SessionError {
+    SessionError::MalformedResponse {
+        detail: format!("{path}: {detail}"),
+    }
+}
+
+/// The usable `models` rows of a model-options body: rows with an id and, `by_value`, a value
+/// and not hidden; de-duplicated by value when `by_value`, else by id.
+fn model_rows(
+    path: &str,
+    object: &serde_json::Map<String, Value>,
+    by_value: bool,
+) -> Result<Vec<ModelChoice>, SessionError> {
+    let models = opt_array(object, "models")
+        .map_err(|detail| malformed(path, &detail))?
+        .ok_or_else(|| malformed(path, "`models` is missing"))?;
+    let mut seen = BTreeSet::new();
+    let mut result = Vec::new();
+    for model in models {
+        let choice = ModelChoice::from_value(model).map_err(|detail| malformed(path, &detail))?;
+        let usable = !choice.id.is_empty()
+            && (!by_value || (!choice.value().is_empty() && choice.hidden != Some(true)));
+        let key = if by_value {
+            choice.value().to_owned()
+        } else {
+            choice.id.clone()
+        };
+        if usable && seen.insert(key) {
+            result.push(choice);
+        }
+    }
+    Ok(result)
+}
 
 /// The largest page the catalog routes are asked for.
 const CATALOG_PAGE_LIMIT: u32 = 1000;
@@ -265,29 +301,64 @@ impl<T: HttpTransport> ClientCore<T> {
         by_value: bool,
     ) -> Result<Vec<ModelChoice>, SessionError> {
         let value = self.get_json(path, query).await?;
-        let malformed = |detail: String| SessionError::MalformedResponse {
-            detail: format!("{path}: {detail}"),
-        };
-        let object = as_object(&value, "model options").map_err(malformed)?;
-        let models = opt_array(object, "models")
-            .map_err(malformed)?
-            .ok_or_else(|| malformed("`models` is missing".into()))?;
-        let mut seen = BTreeSet::new();
-        let mut result = Vec::new();
-        for model in models {
-            let choice = ModelChoice::from_value(model).map_err(malformed)?;
-            let usable = !choice.id.is_empty()
-                && (!by_value || (!choice.value().is_empty() && choice.hidden != Some(true)));
-            let key = if by_value {
-                choice.value().to_owned()
+        let object =
+            as_object(&value, "model options").map_err(|detail| malformed(path, &detail))?;
+        model_rows(path, object, by_value)
+    }
+
+    /// What a new sandbox of `provider` offers `harness` for `agent_id` (whose own provider
+    /// settings win), before one is provisioned: the web's `useSandboxModelOptions`.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`], [`SessionError::MalformedResponse`] and the read
+    /// errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn sandbox_model_preview(
+        &self,
+        provider: &str,
+        harness: &str,
+        agent_id: &str,
+    ) -> Result<SandboxModelPreview, SessionError> {
+        let result = async {
+            validate_identifier(provider)?;
+            validate_identifier(harness)?;
+            validate_identifier(agent_id)?;
+            let path =
+                format!("/v1/sandbox-providers/{provider}/harnesses/{harness}/model-options");
+            let value = self
+                .get_json(&path, &[("agent_id", agent_id.to_owned())])
+                .await?;
+            let object =
+                as_object(&value, "model options").map_err(|detail| malformed(&path, &detail))?;
+            let models = model_rows(&path, object, true)?;
+            let wire = opt_str(object, "status").map_err(|detail| malformed(&path, &detail))?;
+            let status = SandboxModelStatus::from_wire(wire.as_deref(), !models.is_empty());
+            let configured = opt_bool(object, "configured")
+                .map_err(|detail| malformed(&path, &detail))?
+                .unwrap_or(false);
+            let error = opt_str(object, "error")
+                .map_err(|detail| malformed(&path, &detail))?
+                .map(|error| error.trim().to_owned())
+                .filter(|error| !error.is_empty());
+            let models = if status == SandboxModelStatus::Ready {
+                models
             } else {
-                choice.id.clone()
+                Vec::new()
             };
-            if usable && seen.insert(key) {
-                result.push(choice);
-            }
+            Ok(SandboxModelPreview {
+                models,
+                configured,
+                status,
+                error,
+            })
         }
-        Ok(result)
+        .await;
+        self.dispatch();
+        result
     }
 
     /// The hosts and agents a session can be created with, de-duplicated by id.

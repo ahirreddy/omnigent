@@ -461,6 +461,70 @@ pub fn paused_label_at(
     })
 }
 
+/// The chat's one-line task preview after "Tasks 3/7" (`taskPreviewText`): a task waiting for
+/// the user, else the one running, stopped or next, or how the tasks finished. `None` without
+/// tasks.
+#[must_use]
+pub fn task_preview_text(
+    progress: &[StepProgress],
+    paused: Option<PausedLabel>,
+    revision: Option<&GraphRevision>,
+) -> Option<String> {
+    if progress.is_empty() {
+        return None;
+    }
+    let failed = tally(progress, StepState::Failed);
+    let finished = if failed == 0 {
+        "All done".to_owned()
+    } else {
+        format!("Finished, {failed} failed")
+    };
+    let live_prompt = progress.iter().any(|item| {
+        item.state == StepState::NeedsInput
+            && item.status.as_ref().and_then(|status| status.status) == Some(StepStatus::Started)
+    });
+    if !live_prompt && is_plan_complete(progress, revision) {
+        return Some(finished);
+    }
+    let order = [
+        StepState::NeedsInput,
+        StepState::Running,
+        StepState::Stopped,
+        StepState::Ready,
+        StepState::Waiting,
+    ];
+    for state in order {
+        let Some(item) = progress.iter().find(|item| item.state == state) else {
+            continue;
+        };
+        let name = &item.step.name;
+        match state {
+            StepState::NeedsInput => return Some(format!("{}: {name}", super::WAITING_FOR_YOU)),
+            StepState::Running => {
+                return Some(item.active_form.clone().unwrap_or_else(|| name.clone()));
+            }
+            StepState::Stopped => return Some(format!("Stopped: {name}")),
+            StepState::Waiting => {
+                // Nothing else can run, so name the failure that holds the rest up.
+                let blocked = failed_upstream(progress);
+                let failed = blocked
+                    .get(&item.step.id)
+                    .and_then(|ids| ids.first())
+                    .and_then(|id| progress.iter().find(|candidate| &candidate.step.id == id));
+                if let Some(failed) = failed {
+                    return Some(format!("Failed: {}", failed.step.name));
+                }
+            }
+            _ => {}
+        }
+        return Some(paused.map_or_else(
+            || format!("Next: {name}"),
+            |paused| format!("{} \u{b7} Next: {name}", paused.text()),
+        ));
+    }
+    Some(finished)
+}
+
 /// The chat marker id for a journal entry: a plan task's status or a plan change.
 #[must_use]
 pub fn journal_marker_id(entry_id: &str) -> String {

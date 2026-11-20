@@ -24,6 +24,7 @@ fn context() -> TriggerPromptContext {
         task_session: false,
         task_session_title: None,
         message_max_chars: None,
+        workflow_ids: false,
     }
 }
 
@@ -33,6 +34,7 @@ fn config_context() -> TriggerConfigContext {
         polling_interval_minutes: None,
         task_session_title: None,
         message_max_chars: None,
+        workflow_ids: false,
     }
 }
 
@@ -871,6 +873,7 @@ fn renders_and_encodes_byte_for_byte_as_the_web() {
             polling_interval_minutes: number("pollingIntervalMinutes"),
             task_session_title: ctx["taskSessionTitle"].as_str().map(str::to_owned),
             message_max_chars: number("messageMaxChars"),
+            workflow_ids: ctx["workflowIdSupported"].as_bool().unwrap_or(false),
         };
         let encoded = case["encoded"].as_str().unwrap_or_default();
         let body = render_trigger_config_prompt(&config, &context);
@@ -927,4 +930,39 @@ fn every_operator_has_a_generic_label_and_header_id() {
             .collect::<Vec<_>>(),
         ["label", "author", "qualifiers"]
     );
+}
+
+#[test]
+fn a_match_starts_as_a_run_of_the_workflow_its_instructions_run() {
+    let id = "0123456789abcdef0123456789abcdef";
+    let instructions =
+        crate::workflows::saved_workflow_message("/", id, "Triage", "Only P1s.", false);
+    let workflow_fields = TriggerFields {
+        instructions,
+        ..fields()
+    };
+    let supported = TriggerPromptContext {
+        workflow_ids: true,
+        ..context()
+    };
+    let prompt = render_trigger_prompt(TriggerSource::Jira, &workflow_fields, &supported);
+    assert!(
+        prompt.contains(&format!(", workflow_id \"{id}\"")),
+        "{prompt}"
+    );
+    // Without the server's support, plain instructions or one task session, no workflow id.
+    for (fields, context) in [
+        (workflow_fields.clone(), context()),
+        (fields(), supported.clone()),
+        (
+            workflow_fields,
+            TriggerPromptContext {
+                task_session: true,
+                ..supported
+            },
+        ),
+    ] {
+        let prompt = render_trigger_prompt(TriggerSource::Jira, &fields, &context);
+        assert!(!prompt.contains("workflow_id"), "{prompt}");
+    }
 }

@@ -169,16 +169,18 @@ struct AutomationsAdapter: View {
     }
     inputs.replaceSchedule = { draft.schedule = $0 }
     inputs.switchTriggerType = { switchTriggerType(pages, to: $0) }
+    inputs.workflows = connection.workflows?.owned.value ?? []
     return AutomationEditorSheet(
       draft: $draft, context: AutomationEditorMapping.context(pages: pages, inputs: inputs),
       save: { save(pages, saved: saved) },
       cancel: { editing = nil }
     )
-    .task(id: modelsKey(pages)) {
-      guard let key = modelsKey(pages) else { return }
-      await pages.loadAutomationModels(agentID: key.agentID, hostID: key.hostID)
+    .task(id: AutomationModelSource.of(draft, pages: pages)) {
+      await AutomationModelSource.of(draft, pages: pages)?.load(pages)
     }
     .task {
+      // The Workflow field lists the caller's saved workflows.
+      if pages.offered?.workflows == true { await connection.workflows?.loadOwned() }
       if AutomationEditorMapping.showsMcpServices(pages.offered, draft: draft) {
         await pages.loadAutomationMcpServices()
       }
@@ -223,19 +225,6 @@ struct AutomationsAdapter: View {
     else { return nil }
     let target = SharingTarget(id: automation.id, continuesSession: automation.continuesSession)
     return { sharing = target }
-  }
-
-  /// The agent and host whose models the Advanced section lists, when the harness takes them.
-  private func modelsKey(_ pages: PagesStore) -> ModelsKey? {
-    guard !draft.hostID.isEmpty, !draft.runsInSandbox,
-      AutomationEditorMapping.takesModel(pages.automationCatalog.value, agentID: draft.agentID)
-    else { return nil }
-    return ModelsKey(agentID: draft.agentID, hostID: draft.hostID)
-  }
-
-  private struct ModelsKey: Hashable {
-    let agentID: String
-    let hostID: String
   }
 
   /// A session URL whose id the trigger's manager replaces with each worker's.
@@ -294,7 +283,7 @@ struct AutomationsAdapter: View {
 
   private func edit(_ pages: PagesStore, id: String) {
     guard let automation = pages.automations.value?.first(where: { $0.id == id }) else { return }
-    draft = AutomationsMapping.draft(automation)
+    draft = AutomationsMapping.draft(automation, workflows: pages.offered?.workflows == true)
     present(id: id)
   }
 
@@ -349,8 +338,7 @@ extension AutomationsAdapter {
   private func save(_ pages: PagesStore, saved: Automation?) {
     guard !isSaving else { return }
     isSaving = true
-    let sendsOverrides = AutomationEditorMapping.sendsOverrides(
-      pages: pages, agentID: draft.agentID, hostID: draft.hostID)
+    let sendsOverrides = AutomationEditorMapping.sendsOverrides(pages: pages, draft: draft)
     // A new trigger's hidden schedule follows where it runs.
     if saved == nil, draft.trigger != nil,
       AutomationsMapping.scheduleProblem(
@@ -360,15 +348,19 @@ extension AutomationsAdapter {
       draft.schedule = AutomationsMapping.triggerSchedule(
         pages.offered, continuesSession: draft.continuesSession, inSandbox: draft.runsInSandbox)
     }
+    let saving = AutomationEditorMapping.withWorkflowSessions(draft)
     let triggerPrompt =
-      draft.trigger == nil
+      saving.trigger == nil
       ? ""
       : AutomationEditorMapping.triggerPrompt(
-        pages: pages, draft: draft, saved: saved, sessionLink: sessionLink)
+        pages: pages, draft: saving, saved: saved, sessionLink: sessionLink)
+    let prompt = AutomationsMapping.prompt(
+      saving, triggerPrompt: triggerPrompt,
+      skillPrefix: AutomationEditorMapping.skillPrefix(pages, agentID: saving.agentID))
     let request = AutomationsMapping.request(
-      draft, prompt: AutomationsMapping.prompt(draft, triggerPrompt: triggerPrompt), saved: saved,
+      saving, prompt: prompt, saved: saved,
       sessionModes: pages.offered?.automationSessionModes == true, sendsOverrides: sendsOverrides,
-      sendsMcpServices: AutomationEditorMapping.showsMcpServices(pages.offered, draft: draft))
+      sendsMcpServices: AutomationEditorMapping.showsMcpServices(pages.offered, draft: saving))
     let fromSession = saved == nil && draft.sourceSessionID != nil
     Task {
       let didSave = await pages.saveAutomation(request, editing: saved)

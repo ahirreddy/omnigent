@@ -45,7 +45,34 @@ impl<T: HttpTransport> ClientCore<T> {
         scope: SearchScope,
         limit: u32,
     ) -> Result<Vec<SessionSummary>, SessionError> {
-        let result = self.search(query, scope, limit).await;
+        let result = self.search(query, scope, true, None, limit).await;
+        self.dispatch();
+        result.map(|page| page.sessions)
+    }
+
+    /// The page after `after` (the first when `None`) of up to `limit` sessions matching
+    /// `query` in `scope`, archived ones only when `include_archived`, most recent first.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidPageLimit`] and [`SessionError::InvalidPagination`] before any
+    /// request; the read errors; [`SessionError::MalformedResponse`]. A blank query returns an
+    /// empty last page without a request.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn search_session_page(
+        &self,
+        query: &str,
+        scope: SearchScope,
+        include_archived: bool,
+        after: Option<&str>,
+        limit: u32,
+    ) -> Result<SessionSearchPage, SessionError> {
+        let result = self
+            .search(query, scope, include_archived, after, limit)
+            .await;
         self.dispatch();
         result
     }
@@ -58,15 +85,17 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         query: &str,
         scope: SearchScope,
+        include_archived: bool,
+        after: Option<&str>,
         limit: u32,
-    ) -> Result<Vec<SessionSummary>, SessionError> {
+    ) -> Result<SessionSearchPage, SessionError> {
         let query = query.trim();
-        let mut parameters = page_query(None, limit)?;
+        let mut parameters = page_query(after, limit)?;
         if query.is_empty() {
-            return Ok(Vec::new());
+            return Ok(SessionSearchPage::default());
         }
         parameters.push(("sort_by", "updated_at".to_owned()));
-        parameters.push(("include_archived", "true".to_owned()));
+        parameters.push(("include_archived", include_archived.to_string()));
         parameters.push(("visibility", "all".to_owned()));
         parameters.push(("search_query", query.to_owned()));
         parameters.push(("search_scope", scope.wire().to_owned()));
@@ -79,15 +108,32 @@ impl<T: HttpTransport> ClientCore<T> {
             }
         })?;
         let state = lock(&self.state);
-        page.data
+        let sessions = page
+            .data
             .iter()
             .map(|row| {
                 SessionProjection::from_list_item(row)
                     .summary(state.summaries.get(&row.id))
                     .map_err(|detail| SessionError::MalformedResponse { detail })
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        let next_cursor = page
+            .last_id
+            .filter(|cursor| page.has_more && !cursor.is_empty());
+        Ok(SessionSearchPage {
+            sessions,
+            next_cursor,
+        })
     }
+}
+
+/// One page of a session search.
+#[derive(Debug, Clone, Default)]
+pub struct SessionSearchPage {
+    /// The matches, most recent first.
+    pub sessions: Vec<SessionSummary>,
+    /// The `after` cursor of the next page; `None` on the last.
+    pub next_cursor: Option<String>,
 }
 
 #[cfg(test)]
@@ -145,5 +191,36 @@ mod tests {
             Ok(vec![])
         );
         assert_eq!(core.transport().taken().len(), before);
+    }
+
+    #[test]
+    fn a_search_page_leaves_archived_out_when_asked_and_names_the_next_page() {
+        let transport = RouteTransport::local();
+        transport.ok(
+            "/v1/sessions",
+            r#"{"data":[{"id":"a","status":"idle","created_at":1,"title":"Lead"}],"has_more":true,"last_id":"a"}"#,
+        );
+        let core = connected(transport);
+        let page =
+            block_on(core.search_session_page("lead", SearchScope::Title, false, Some("z"), 20))
+                .unwrap();
+        assert_eq!(page.sessions.len(), 1);
+        assert_eq!(page.next_cursor.as_deref(), Some("a"));
+        let request = core
+            .transport()
+            .taken()
+            .into_iter()
+            .rfind(|request| path_of(request) == "/v1/sessions")
+            .unwrap();
+        assert_eq!(
+            query_value(&request, "include_archived").as_deref(),
+            Some("false")
+        );
+        assert_eq!(query_value(&request, "after").as_deref(), Some("z"));
+        assert_eq!(query_value(&request, "limit").as_deref(), Some("20"));
+        assert!(matches!(
+            block_on(core.search_session_page("lead", SearchScope::Title, false, Some(""), 20)),
+            Err(crate::client::SessionError::InvalidPagination)
+        ));
     }
 }

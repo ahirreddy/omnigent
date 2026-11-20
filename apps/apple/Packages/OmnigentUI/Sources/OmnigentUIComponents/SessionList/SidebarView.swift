@@ -310,7 +310,7 @@ extension SidebarView {
         ? marker(sessions.dropFirst(pages.visibleCount)) : nil, listed: layout.visible)
   }
 
-  /// A session's row; a nested member is no drag source, its family moving with its head.
+  /// A session's row; a nested member drags only between nests, its family moving with its head.
   private func row(
     _ session: SessionSummary, target: SidebarDropTarget?, family: SessionRowFamily,
     box: SidebarBoxPart? = nil
@@ -326,10 +326,9 @@ extension SidebarView {
     .sidebarSelection(
       bulk.isActive ? bulk.ids.contains(session.id) : isOpen, indent: family.indent, box: box
     )
-    .sidebarDraggable(
-      family.movesWithFamily(session) ? nil : SidebarDragItem.session(session.id).payload
-    )
-    .sidebarDropTarget { item in target.map { drop(item, on: $0) } ?? false }
+    .sidebarRowDragDrop(rowDrag(session, family: family)) { item, zone in
+      !bulk.isActive && dropHandler.rowDrop(item, on: session, zone: zone, target: target)
+    }
   }
 
   /// A row and its menu for the session as it is now.

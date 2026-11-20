@@ -106,9 +106,14 @@ struct TasksAdapterTests {
     #expect(opened.count == 1)
     // Opening a session with tasks shows the tab; one without them leaves the panel be.
     #expect(TasksAdapter.hasTasks(nil, conversation: conversation))
+    // The chat previews them in one line: none finished, the one in progress named.
+    let preview = TasksAdapter.preview(tasks: nil, conversation: conversation, summary: nil)
+    #expect(preview?.finished == 0 && preview?.total == 1)
+    #expect(preview?.text != nil)
 
     let empty = try await ConversationFixtures.store()
     #expect(!TasksAdapter.hasTasks(nil, conversation: empty))
+    #expect(TasksAdapter.preview(tasks: nil, conversation: empty, summary: nil) == nil)
     #expect(!TasksAdapter.showsTab(tasks: nil, conversation: empty))
     #expect(TasksAdapter.listedTasks(tasks: nil, conversation: empty) == .hidden)
     let content = TasksAdapter.content(
