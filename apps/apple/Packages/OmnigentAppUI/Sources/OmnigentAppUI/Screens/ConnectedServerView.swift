@@ -167,7 +167,7 @@ public struct ConnectedServerView: View {
     state.undo = sidebar.undo?.banner
     state.collapsedFamilies = sidebar.collapsedFamilies
     state = SidebarNestedDraftRows.applied(
-      to: state, drafts: connection.creationStore?.nestedDrafts ?? [], list: connection.sessionList)
+      to: state, creation: connection.creationStore, list: connection.sessionList)
     SidebarAdapter.applyOfferedPages(connection.pages?.offered, to: &state)
     state.projectRunChoices = newProjectRunChoices
     state.pagesFailure = SidebarAdapter.pagesFailure(connection)

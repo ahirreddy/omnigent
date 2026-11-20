@@ -82,6 +82,23 @@ extension LookFixtures {
       showsAdvanced: .constant(true))
   }
 
+  /// The sidebar with Gitspoke's New session page open (its own row, collapsed folder) and a
+  /// shared automation run in the "Omnigent Automation" placeholder folder.
+  static var projectFolders: some View {
+    var state = PreviewData.sidebar
+    var runs = SessionProject(
+      id: "automation-runs-placeholder", name: "Omnigent Automation", sessionIds: ["sess_a4"])
+    runs.isPlaceholder = true
+    state.projects = PreviewData.projects + [runs]
+    state.composingFolderID = "proj_gitspoke"
+    return SidebarView(
+      state: state, selection: .constant(.newSession), searchText: .constant(""),
+      actions: GalleryActions.sidebar { _ in }
+    )
+    .frame(height: 760)
+    .omnigentAppearance(.omni)
+  }
+
   /// A sandboxed automation with the provider's notice under Advanced.
   static var sandboxNotice: some View {
     var draft = AutomationUXFixtures.scheduleDraft

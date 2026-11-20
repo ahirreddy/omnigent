@@ -8,6 +8,16 @@ import SwiftUI
 /// `withNestedSessionDrafts` lays them over the sidebar: each the last member of its source's
 /// family (a standalone source gets a family of its own), until the server's row replaces it.
 enum SidebarNestedDraftRows {
+  /// `state` with the open composers' rows: the nested agent drafts, and the folder whose New
+  /// session page is open (the web's ghost row).
+  static func applied(
+    to state: SidebarViewState, creation: CreationStore?, list: SessionListStore
+  ) -> SidebarViewState {
+    var state = applied(to: state, drafts: creation?.nestedDrafts ?? [], list: list)
+    state.composingFolderID = creation?.composingProject.map { projectFolderId(project: $0) }
+    return state
+  }
+
   /// `state` with `drafts`' rows; a draft the list already shows for real, or whose source the
   /// sidebar doesn't show, adds nothing.
   static func applied(

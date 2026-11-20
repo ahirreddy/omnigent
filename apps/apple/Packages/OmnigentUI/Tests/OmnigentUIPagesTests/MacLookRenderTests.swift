@@ -50,6 +50,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case settingsAdminGeneral = "settings-admin-general"
   case sessionsDeleteAutomation = "sessions-delete-automation"
   case sessionsRecentSwitcher = "sessions-recent-switcher"
+  case sessionsProjectFolders = "sessions-project-folders"
   case shareManaged = "share-managed"
   case composerReconnectThisMac = "composer-reconnect-this-mac"
   case transcriptPresence = "transcript-presence"
@@ -127,6 +128,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
       600
     case .shareManaged, .composerReconnectThisMac: 520
     case .transcriptPresence: 240
+    case .sessionsProjectFolders: 300
     case .projectsNewFolder, .projectsNewRepository: 460
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin,
       .settingsAdminGeneral:
@@ -143,6 +145,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .composerRewind: 460
     case .tasksPlan: 620
     case .tasksStopping: 420
+    case .sessionsProjectFolders: 760
     case .automationsLegacyShare: 640
     case .automationsRunTasks, .automationsRunHighlight: 900
     case .automationsNew: 760
@@ -221,6 +224,7 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .settingsAdminGeneral: return AnyView(Fixture.settings { Fixture.adminGeneral })
     case .sessionsDeleteAutomation: return AnyView(Fixture.deleteAutomationSource)
     case .sessionsRecentSwitcher: return AnyView(Fixture.recentSwitcher)
+    case .sessionsProjectFolders: return AnyView(Fixture.projectFolders)
     case .shareManaged: return AnyView(Fixture.shareManaged)
     case .composerReconnectThisMac: return AnyView(Fixture.reconnectThisMac)
     case .transcriptPresence: return AnyView(Fixture.presence)

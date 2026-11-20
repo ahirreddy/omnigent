@@ -307,7 +307,8 @@ extension SidebarView {
       },
       folderMarker: expandedProjects.contains(project.id) ? nil : marker(sessions[...]),
       moreMarker: pages.visibleCount < sessions.count
-        ? marker(sessions.dropFirst(pages.visibleCount)) : nil, listed: layout.visible)
+        ? marker(sessions.dropFirst(pages.visibleCount)) : nil, listed: layout.visible,
+      isComposing: selection == .newSession && state.composingFolderID == project.id)
   }
   /// A session's row; a nested member drags only between nests, its family moving with its head.
   private func row(

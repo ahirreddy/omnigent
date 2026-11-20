@@ -14,7 +14,8 @@ struct SidebarNavigationRows: View {
       .neutralSidebarIcon()
       .fontWeight(.medium)
       .tag(SidebarDestination.newSession)
-      .sidebarSelection(selection == .newSession)
+      // A project's New session page draws its row in that folder instead.
+      .sidebarSelection(selection == .newSession && !state.composesInFolder)
       .accessibilityIdentifier("sidebar-new-session")
     if state.showsAutomations {
       Label("Automations", systemImage: "clock")

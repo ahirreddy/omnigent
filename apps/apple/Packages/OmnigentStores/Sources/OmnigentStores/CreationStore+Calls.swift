@@ -11,6 +11,21 @@ struct CreationCalls {
 }
 
 extension CreationStore {
+  /// The directories in `path` on `hostID` (its home when `nil`), for the folder browser.
+  /// - Parameters:
+  ///   - hostID: The host.
+  ///   - path: An absolute folder, or `nil` for the home folder.
+  /// - Returns: The listing, or why it could not be read.
+  public func directory(hostID: String, path: String?) async -> Result<
+    HostDirectoryListing, CoreError
+  > {
+    do {
+      return .success(try await core.hostDirectory(hostId: hostID, path: path))
+    } catch {
+      return .failure(coreError(error))
+    }
+  }
+
   /// The worktrees of the repository at `path` on `hostID`; empty when it isn't one.
   /// - Parameters:
   ///   - hostID: The host.

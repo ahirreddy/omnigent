@@ -196,6 +196,11 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var projects: [SessionProject]
   /// The projects a session can be filed into: every folder but a placeholder.
   public var filingProjects: [SessionProject] { projects.filter { !$0.isPlaceholder } }
+  /// A listed folder's New session page is open, so the global New session row isn't drawn
+  /// selected.
+  var composesInFolder: Bool {
+    composingFolderID.map { id in projects.contains { $0.id == id } } ?? false
+  }
   /// The Inbox count.
   public var inboxCount: Int
   /// The server offers Canvas.
@@ -230,6 +235,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var groupSorts = SessionGroupSorts()
   /// The families collapsed under their head, one opaque key per section or folder and family.
   public var collapsedFamilies: Set<String> = []
+  /// The folder whose New session page is open: it lists a "New session" row of its own.
+  public var composingFolderID: String?
   /// New project can start from a repository on these, the first the default; empty without.
   public var projectRunChoices: [ProjectRunChoice] = []
   /// The provisional rows of open Add nested agent composers, by row id: each one's source.
