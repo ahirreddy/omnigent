@@ -60,6 +60,7 @@ extension SweepLookFixtures {
       content: {
         HStack(spacing: 1) {
           ContentUnavailableView("Terminal Unavailable", systemImage: "apple.terminal")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.background)
           Text("$ git status\nOn branch main\nnothing to commit, working tree clean\n$ ")
             .font(.system(size: 12, design: .monospaced))
