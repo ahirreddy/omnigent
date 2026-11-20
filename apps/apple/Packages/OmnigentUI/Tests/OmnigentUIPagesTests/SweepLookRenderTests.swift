@@ -104,9 +104,10 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .terminalSplit: 420
     case .spreadsheetSheets: 440
     case .spreadsheetUnreadable: 320
+    case .rruleEditor: 340
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
       .quickAnswer, .staleProfile, .questionSubmitBlocked, .shellComposer, .composerTints,
-      .overviewChanges, .designRequests, .designOutbox, .rruleEditor, .floatingPanel:
+      .overviewChanges, .designRequests, .designOutbox, .floatingPanel:
       nil
     }
   }

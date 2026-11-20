@@ -58,7 +58,9 @@ struct ScheduleRuleFields: View {
   static let hint = "RFC 5545 RRULE, run in the timezone below. Set the end under Ends."
 
   var body: some View {
+    // The rule takes the row's width, as the web's text area; the switch above names it.
     TextField("RRULE string", text: text, prompt: Text(Self.example), axis: .vertical)
+      .labelsHidden()
       .font(.body.monospaced())
       .lineLimit(1...4)
       .autocorrectionDisabled()
