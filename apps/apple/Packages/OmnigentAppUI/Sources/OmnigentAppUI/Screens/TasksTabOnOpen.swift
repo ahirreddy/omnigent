@@ -1,3 +1,4 @@
+import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
@@ -41,6 +42,21 @@ extension TasksAdapter {
     guard conversation.header != nil else { return false }
     guard let journal = tasks?.journal else { return true }
     return journal != .idle && journal != .loading
+  }
+
+  /// The chat's one-line preview of the session's tasks, while it has some (web
+  /// `hasTaskPreview`).
+  static func preview(
+    tasks: SessionTasksStore?, conversation: ConversationStore,
+    summary: OmnigentCoreFFI.SessionSummary?
+  ) -> ChatTasksPreviewState? {
+    guard tasks?.journal != .loading,
+      let view = view(tasks: tasks, conversation: conversation, summary: summary),
+      !view.rows.isEmpty
+    else { return nil }
+    return ChatTasksPreviewState(
+      finished: Int(view.finished), total: view.rows.count, text: view.preview,
+      planName: view.planName)
   }
 
   /// Whether the Tasks tab lists anything: a plan, journal tasks or the agent's own list.

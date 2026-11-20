@@ -28,6 +28,10 @@ public struct ConversationExtras {
   public var togglePanel: (@MainActor () -> Void)?
   /// What the sandbox status panel's buttons ask the server for.
   public var sandbox: SandboxStatusActions
+  /// The session's tasks for the preview above the chat, read as it draws; `nil` hides it.
+  public var tasksPreview: (@MainActor () -> ChatTasksPreviewState?)?
+  /// Shows the Tasks tab, from the preview.
+  public var showTasks: (@MainActor () -> Void)?
 
   /// Creates extras.
   /// - Parameters:

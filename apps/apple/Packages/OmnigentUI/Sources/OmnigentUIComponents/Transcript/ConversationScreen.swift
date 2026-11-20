@@ -129,6 +129,11 @@ public struct ConversationScreen<Terminal: View>: View {
     }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .safeAreaInset(edge: .top, spacing: 0) {
+      if let read = extras.tasksPreview, let show = extras.showTasks, !showsTerminal {
+        ChatTasksPreviewBar(read: read, open: show)
+      }
+    }
+    .safeAreaInset(edge: .top, spacing: 0) {
       if let open = actions.openSession {
         if let sourceID = state.sideChatSourceID {
           let parent = extras.menuContext.parent

@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 use super::tasks::{
     NativeTask, PausedLabel, StepProgress, StepState, failed_upstream, finished_task_count,
     is_plan_complete, is_restart, paused_label, session_task_list, tally, task_marker_target,
+    task_preview_text,
 };
 use super::{JournalEntry, JournalEntryKind, StepStatus, plan_graph_revision, plan_workflow_id};
 use crate::markdown_preview::markdown_preview_text;
@@ -160,6 +161,10 @@ pub struct TasksView {
     pub updated_at: Option<i64>,
     /// "2 of 5 finished", "All 5 tasks done".
     pub summary: String,
+    /// How many tasks finished, done or failed, for the chat's "Tasks 3/7".
+    pub finished: usize,
+    /// The chat's one-line preview after the count: the task waiting, running or next.
+    pub preview: Option<String>,
     /// Counts after the summary: "1 waiting for you", "2 running", "1 failed".
     pub counts: Vec<(StepState, String)>,
     /// What an idle list says: "Stopped" or "Run ended".
@@ -375,8 +380,8 @@ fn header(
         .max()
         .filter(|updated| *updated > 0);
     let paused = paused_label(progress, entries, context.session_working);
-    let complete =
-        list.plan.is_some() && is_plan_complete(progress, plan_graph_revision(entries).as_ref());
+    let revision = plan_graph_revision(entries);
+    let complete = list.plan.is_some() && is_plan_complete(progress, revision.as_ref());
     let stopping = context.can_send && context.stopping && !complete;
     TasksView {
         plan_name: list
@@ -388,6 +393,8 @@ fn header(
         native: list.native,
         updated_at,
         summary,
+        finished,
+        preview: task_preview_text(progress, paused, revision.as_ref()),
         counts,
         paused: paused.map(|label| PausedLabel::text(label).to_owned()),
         can_stop: context.can_send && context.session_working && !complete && !stopping,

@@ -10,7 +10,7 @@ use super::messages::{
 };
 use super::tasks::{
     NativeTask, NativeTaskStatus, StepState, failed_upstream, is_plan_complete, paused_label,
-    session_task_list,
+    session_task_list, task_preview_text,
 };
 use super::view::{TaskAction, TaskDetail, TasksContext, list_names, tasks_view};
 use super::*;
@@ -112,6 +112,8 @@ fn the_recorded_plan_reads_as_the_web_shows_it() {
     assert_eq!(view.plan_name.as_deref(), Some("Ship the JSON flag"));
     assert!(view.from_plan && !view.native);
     assert_eq!(view.summary, "2 of 4 finished");
+    assert_eq!(view.finished, 2);
+    assert_eq!(view.preview.as_deref(), Some("Run the tests"));
     assert_eq!(
         view.counts,
         [
@@ -181,6 +183,7 @@ fn an_idle_plan_is_stopped_and_offers_to_continue() {
     );
     assert_eq!(view.rows[1].action, Some(TaskAction::Continue));
     assert_eq!(view.paused.as_deref(), Some("Stopped"));
+    assert_eq!(view.preview.as_deref(), Some("Stopped: Run the tests"));
     assert!(view.can_continue && !view.can_stop);
     // An automation run that wrote the newest entry ended.
     let mut entries = recorded();
@@ -222,6 +225,10 @@ fn a_prompt_waiting_for_the_user_holds_the_started_task() {
         (StepState::NeedsInput, "1 waiting for you".to_owned())
     );
     assert_eq!(view.paused, None);
+    assert_eq!(
+        view.preview.as_deref(),
+        Some("Waiting for you: Run the tests")
+    );
 }
 
 #[test]
@@ -277,6 +284,7 @@ fn a_plan_is_complete_when_its_final_steps_are_done_after_their_inputs() {
     assert_eq!(paused_label(&list.progress, &done, false), None);
     let view = tasks_view(&done, &[], &BTreeSet::new(), WORKING);
     assert_eq!(view.summary, "All 2 tasks done");
+    assert_eq!(view.preview.as_deref(), Some("All done"));
     assert!(!view.can_stop, "a complete plan has nothing to stop");
     // `a` started again after `b` finished, so the plan has work left.
     let reopened = [done, vec![status("s3", 3, "a", "started")]].concat();
@@ -300,6 +308,7 @@ fn a_plan_is_complete_when_its_final_steps_are_done_after_their_inputs() {
     ];
     let view = tasks_view(&failed, &[], &BTreeSet::new(), IDLE);
     assert_eq!(view.summary, "All 2 tasks finished");
+    assert_eq!(view.preview.as_deref(), Some("Finished, 1 failed"));
 }
 
 #[test]
@@ -309,6 +318,11 @@ fn failures_pass_down_through_tasks_that_have_not_started() {
                        {"id": "c", "name": "C", "depends_on": ["b"]}]);
     let entries = vec![plan("p", 0, steps), status("s1", 1, "a", "failed")];
     let list = session_task_list(&entries, &[], false, false);
+    assert_eq!(
+        task_preview_text(&list.progress, None, None).as_deref(),
+        Some("Failed: A"),
+        "nothing else can run, so the preview names the failure"
+    );
     let blocked = failed_upstream(&list.progress);
     assert_eq!(
         blocked.get("b").map(Vec::as_slice),
@@ -365,12 +379,18 @@ fn without_a_journal_the_agents_own_list_shows() {
     assert_eq!(read.marker_id.as_deref(), Some("todo-task-1-done"));
     assert_eq!(fix.marker_id, None, "its start marker is not in the chat");
     assert_eq!(fix.detail, Some(TaskDetail::Text("Fixing the bug".into())));
+    assert_eq!(view.preview.as_deref(), Some("Fixing the bug"));
     assert_eq!(fix.history, Vec::new());
     assert_eq!(write.state, StepState::Waiting);
     assert_eq!(write.detail, None);
     // An idle list with tasks left is stopped.
     let view = tasks_view(&[], &todos, &markers, IDLE);
     assert_eq!(view.paused.as_deref(), Some("Stopped"));
+    assert_eq!(
+        view.preview.as_deref(),
+        Some("Stopped: Fix the bug"),
+        "an in-progress item of an idle session is stopped"
+    );
     // A plan, even unread, never shows beside the agent's list: a failed read shows the list.
     let unread = TasksContext {
         journal_read: false,

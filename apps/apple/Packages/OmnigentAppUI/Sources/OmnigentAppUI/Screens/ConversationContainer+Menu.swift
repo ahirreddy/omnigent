@@ -247,6 +247,10 @@ extension ConversationContainer {
     var liveness = SessionLivenessActions()
     addHostMoves(to: &liveness, sheets: livenessSheets)
     extras.switchHost = liveness.switchHost
+    extras.tasksPreview = { [tasks, conversation, summary] in
+      TasksAdapter.preview(tasks: tasks, conversation: conversation, summary: summary)
+    }
+    extras.showTasks = showTasks
     if let panel = tabRoutes?.windowPanel {
       extras.showPanelTab = panel.show
       extras.togglePanel = { [route = panel.chrome.panel] in route.isShown.toggle() }
