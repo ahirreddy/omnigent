@@ -2938,6 +2938,19 @@ async def _auto_create_pi_terminal(
         pi_tools = await filter_native_relay_browser_tools(
             relay_tools, session_id=session_id, server_client=server_client
         )
+        if spec_for_tools is not None and spec_for_tools.mcp_servers and server_client is not None:
+            # The spec's MCP servers (Chrome DevTools among them), as the other relays offer.
+            from omnigent.runner.proxy_mcp_manager import ProxyMcpManager
+
+            mcp = await ProxyMcpManager(session_id, server_client).schemas_for(spec_for_tools)
+            pi_tools.extend(mcp.schemas)
+            for service, error in mcp.failures.items():
+                _logger.warning(
+                    "pi-native MCP %r unavailable: %s",
+                    service,
+                    error,
+                    extra={"session_id": session_id},
+                )
     except Exception:  # tool registration is additive
         _logger.warning(
             "Failed to build pi-native tool schemas for session %s; "

@@ -17,6 +17,7 @@ from fastapi import (
 from fastapi.responses import Response
 
 from omnigent.automations_availability import AUTOMATIONS_HEADER, USER_INBOX_HEADER
+from omnigent.browser_devtools_availability import BROWSER_DEVTOOLS_HEADER
 from omnigent.errors import SESSION_AGENT_MISSING_MESSAGE, ErrorCode, OmnigentError
 from omnigent.host.identity import MANAGED_HOST_TOKEN_HEADER
 from omnigent.mcp_selection import MCP_SELECTION_HEADER, MCP_SELECTION_PREFIX, selected_mcp_spec
@@ -94,6 +95,19 @@ from omnigent.server.schemas import (
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.artifact_store import ArtifactStore
 from omnigent.stores.permission_store import PermissionStore
+from omnigent.tools.browser_agent_tools import BROWSER_AGENT_TOOLS_LABEL
+
+
+def _browser_devtools_enabled(request: Request, labels: dict[str, str]) -> bool:
+    """Whether the session's agent gets Chrome DevTools MCP instead of ``browser_*``.
+
+    A session created by the web or Electron pane (``omnigent.browser_agent_tools``)
+    keeps the relay tools that pane serves.
+    """
+    flags = getattr(request.app.state, "feature_flags", FeatureFlags())
+    return flags.enabled(Feature.AGENT_BROWSER_DEVTOOLS) and (
+        BROWSER_AGENT_TOOLS_LABEL not in labels
+    )
 
 
 def register_agent_routes(
@@ -323,6 +337,9 @@ def register_agent_routes(
         memory_search_available = getattr(request.app.state, "memory_search_available", None)
         selection_headers[MEMORY_SEARCH_HEADER] = (
             "1" if memory_search_available is not None and memory_search_available() else "0"
+        )
+        selection_headers[BROWSER_DEVTOOLS_HEADER] = (
+            "1" if _browser_devtools_enabled(request, conv.labels) else "0"
         )
         return Response(
             content=bundle_bytes,

@@ -60,6 +60,7 @@ class Feature(StrEnum):
     MEMORY = "memory"
     QUICK_PICK_PALETTE = "quick_pick_palette"
     FLOATING_COMPOSER = "floating_composer"
+    AGENT_BROWSER_DEVTOOLS = "agent_browser_devtools"
 
 
 @dataclass(frozen=True)
@@ -333,6 +334,15 @@ FEATURE_DEFINITIONS: tuple[FeatureDefinition, ...] = (
         description="The desktop app's floating New Agent panel, opened with Shift+Cmd+Space",
         owner="web",
         review_by_release="0.27.0",
+    ),
+    FeatureDefinition(
+        feature=Feature.AGENT_BROWSER_DEVTOOLS,
+        description=(
+            "Chrome DevTools MCP for session agents, scoped to the session's tabs in the "
+            "Mac app's browser or the runner's remote browser host"
+        ),
+        owner="server",
+        review_by_release="0.30.0",
     ),
 )
 

@@ -7,6 +7,7 @@ import re
 from collections.abc import Sequence
 from typing import Any
 
+from omnigent.browser_devtools_availability import has_browser_devtools
 from omnigent.entities import (
     ConversationItem,
     FunctionCallData,
@@ -58,6 +59,19 @@ EMBEDDED_BROWSER_PRIORITY_INSTRUCTION = (
     "attached) or for non-interactive bulk fetching."
 )
 
+# The scoped Chrome DevTools MCP replaces the browser_* tools for sessions the
+# runner gives it (``omnigent.browser_devtools_availability``).
+BROWSER_DEVTOOLS_INSTRUCTION = (
+    "Browser: the chrome_devtools tools drive a real Chromium browser that the user can "
+    "watch, scoped to this session's tabs. Pages you open with new_page appear as tabs "
+    "in the user's app. Prefer these tools over your own web tooling (a built-in web "
+    "fetch/search tool, curl, or launching another browser) whenever you look at or "
+    "interact with a web page. The browser may be signed in to the user's accounts: "
+    "never ask for passwords or one-time codes in chat. If a tool refuses with "
+    "user_in_control, the user has taken over that tab; stop acting on it, wait, and "
+    "take a fresh snapshot before continuing."
+)
+
 WORKSPACE_IMAGE_INSTRUCTION = (
     "When showing an existing screenshot or raster image saved inside the session "
     "workspace, embed it in your reply as `![description](/absolute/workspace/path/image.png)` "
@@ -79,7 +93,9 @@ def _framework_instructions_for(spec: AgentSpec) -> list[str]:
     The embedded-browser priority guidance follows the ``browser_*``
     registration gate (``ToolManager._register_browser_tools``): every
     agent unless the spec sets ``tool_groups.browser: false``, in which
-    case the prompt must not steer the model toward tools it lacks.
+    case the prompt must not steer the model toward tools it lacks. A spec
+    the runner gave Chrome DevTools MCP has the group off and gets the
+    DevTools guidance instead.
 
     :param spec: The parsed AgentSpec.
     :returns: The applicable spec-level framework instructions.
@@ -90,6 +106,8 @@ def _framework_instructions_for(spec: AgentSpec) -> list[str]:
         instructions.append(SUBAGENT_WAKE_NOTICE_INSTRUCTION)
     if spec.tool_groups.browser:
         instructions.append(EMBEDDED_BROWSER_PRIORITY_INSTRUCTION)
+    elif has_browser_devtools(spec):
+        instructions.append(BROWSER_DEVTOOLS_INSTRUCTION)
     instructions.append(WORKSPACE_IMAGE_INSTRUCTION)
     return instructions
 
