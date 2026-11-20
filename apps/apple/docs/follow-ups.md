@@ -412,11 +412,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   server's 1,000-row page cap the rows beyond it fall out until Load more reads them again; a
   folder's pages are dropped on a reload (the folder reads its first page again); search and the
   quick filters still match loaded sessions only (the web's tabs query the server).
-- [ ] **Canvas:** a resize doesn't keep the view's middle, cards snap only on drop, the first
-  load waits for every page (the web paints the sidebar's rows first and stays silent on
-  reloads), and archived or nested rows leave only at the next reload. A board's remembered view
-  counts a pan by dragging the board, not one by the scroll wheel. Return and Space open a card
-  only with keyboard navigation on (System Settings), as a Mac's buttons take the focus.
+- [ ] **Canvas:** archived or nested rows leave only at the next reload. After the sidebar's
+  rows paint, the rest of the list arrives in one read (the core reads every page before it
+  answers), not page by page as the web's. Return and Space open a card only with keyboard
+  navigation on (System Settings), as a Mac's buttons take the focus.
 - [ ] **Toasts:** fork's "Session created [Open]" should use `TransientBanner` (fork flow).
 - [ ] **Host import review (Mac):** only "This Mac" onboarding asks for the review. The web
   also reviews a remote runner, which native onboarding doesn't offer (see Onboarding above).
@@ -558,10 +557,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Composer tints, left:** a sent prompt's leading command is not tinted in the transcript
   (the web tints it in the bubble); the SwiftUI, TextKit and CLI prompt renderers would each
   need the session's commands. The composer's own tints are native (`TintedTextEditor`).
-- [ ] **Excel and Parquet previews, left:** a zstd, LZ4, Brotli or LZO Parquet file shows the
-  web's "compressed with …" message (the app reads uncompressed, Snappy and gzip, one codec
-  more than the web); `BIT_PACKED` levels and the `GROUP_VAR_INT` encoding are named as
-  unsupported. Find (Command-F) doesn't search the table, for CSV either.
+- [ ] **Excel and Parquet previews, left:** a ZSTD or LZO Parquet file shows the web's
+  "compressed with …" message (Apple's Compression framework has neither; the app reads
+  uncompressed, Snappy, gzip, Brotli, LZ4 and LZ4_RAW, four codecs more than the web);
+  `BIT_PACKED` levels and the `GROUP_VAR_INT` encoding are named as unsupported. No fixture file
+  is in Brotli or LZ4, so those codecs are checked on hand-made blocks only.
 - [ ] **Browser Annotate and Draw, left** (web `63915cd179`; the Mac tools are done, below):
   - iPhone and iPad have neither tool: the touch top bar has no buttons for them and the
     overlay (`BrowserDesignOverlay`, `BrowserDesignInput`) is AppKit only. A UIKit input layer
@@ -611,6 +611,18 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] Reusing the iOS bundle ID requires a version above 0.3.2.
 
 ## Done
+
+- [x] **Canvas, sweep G** (2026-11-20): a resize keeps the middle of a view the user moved (a
+  fitted one refits), a dragged card is drawn on the grid point it lands on as it moves, a
+  first visit paints the sidebar's canvas sessions at once with the header's spinner while the
+  full list loads (their grid spots saved only once it lands, reloads silent after), and a pan
+  by the wheel, trackpad or touch counts in the board's remembered view, as a drag pan does.
+- [x] **Parquet Brotli and LZ4, and Find in tables** (2026-11-20): Brotli, LZ4_RAW and the older
+  LZ4 (Hadoop's frames, else one raw block) decode through the Compression framework. The CSV,
+  Excel and Parquet tables have a find: on a Mac the Find menu (Command-F, Command-G,
+  Shift-Command-G) opens a find bar over the table that marks the matching cells, selects and
+  scrolls to the one found now, and closes on Done or Escape; iPhone and iPad keep it as the
+  table's search field (Command-F from a keyboard).
 
 - [x] **Automation schedules as RRULE text** (web `2d0b6abbb1`): the schedule picker has a
   Visual | RRULE switch (RRULE needs `automations_v2`). RRULE starts from the visual schedule's
