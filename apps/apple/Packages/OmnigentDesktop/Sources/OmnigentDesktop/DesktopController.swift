@@ -22,6 +22,8 @@ public final class DesktopController {
   /// Runs `omnigent server` and `omnigent host` on this Mac. Inert when the build cannot spawn
   /// processes (the App Store edition).
   public let localServer: LocalServerManager
+  /// The floating New Agent panel's system-wide shortcut (Settings › General).
+  public let floatingPanelShortcut: FloatingPanelShortcut
   /// Asks whether to open a window on a local server the user just started. Defaults to
   /// `LocalServerReadyAlert.confirm`.
   public var confirmOpenLocalServer: (LocalServerEndpoint) async -> Bool = { endpoint in
@@ -73,6 +75,7 @@ public final class DesktopController {
     self.router = router
     self.notifications = notifications
     managedPreferences = ManagedPreferences(domains: managedDomains)
+    floatingPanelShortcut = FloatingPanelShortcut(defaults: defaults, reportIssue: report)
     localServerPreferences = LocalServerPreferences(defaults: defaults)
     localServer = LocalServerManager(
       capability: localServerCapability, preferences: localServerPreferences,

@@ -55,6 +55,16 @@ final class NewSessionForm {
   var nested: NestedComposer?
   /// The saved workflow the session runs or plans; `nil` for an ordinary session.
   var workflow: NewSessionWorkflow?
+  /// Machines are limited to ``allowedMachineIDs`` (the floating New Agent panel offers this
+  /// Mac alone, besides new sandboxes).
+  var limitsMachines = false
+  /// The machines offered while ``limitsMachines``.
+  var allowedMachineIDs: Set<String> = []
+
+  /// Whether the Host menu offers the machine `hostID`.
+  func offersMachine(_ hostID: String) -> Bool {
+    !limitsMachines || allowedMachineIDs.contains(hostID)
+  }
 
   /// The selected agent in `creation`'s catalog.
   func selectedAgent(_ creation: CreationStore?) -> OmnigentCoreFFI.CreationAgent? {
@@ -75,10 +85,12 @@ final class NewSessionForm {
   /// hosts change, since one can connect after the page opened with none to judge agents by.
   func applyDefaults(_ catalog: OmnigentCoreFFI.CreationCatalog) {
     defaultToSandbox(catalog)
-    let isOnline = catalog.hosts.contains { $0.hostId == selection.hostId && $0.isAvailable }
+    let hosts = catalog.hosts.filter { offersMachine($0.hostId) }
+    let isOnline = hosts.contains { $0.hostId == selection.hostId && $0.isAvailable }
     if !hostWasChosen, !isOnline {
-      let host = catalog.hosts.first(where: \.isAvailable) ?? catalog.hosts.first
-      let next = rememberedHost(catalog) ?? host?.hostId ?? selection.hostId
+      let host = hosts.first(where: \.isAvailable) ?? hosts.first
+      let remembered = rememberedHost(catalog).flatMap { offersMachine($0) ? $0 : nil }
+      let next = remembered ?? host?.hostId ?? selection.hostId
       if !selection.hostId.isEmpty, next != selection.hostId { forgetFolder() }
       selection.hostId = next
     }

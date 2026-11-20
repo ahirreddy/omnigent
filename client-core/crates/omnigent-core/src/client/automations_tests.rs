@@ -445,6 +445,21 @@ fn a_sessions_automation_already_gone_counts_as_deleted() {
 }
 
 #[test]
+fn the_floating_new_agent_panel_follows_its_feature() {
+    assert!(
+        !ServerPages::from_value(&json!({}))
+            .unwrap()
+            .floating_composer
+    );
+    let floating = json!({"features": {"floating_composer": true}});
+    assert!(
+        ServerPages::from_value(&floating)
+            .unwrap()
+            .floating_composer
+    );
+}
+
+#[test]
 fn pages_follow_what_the_server_advertises() {
     let current = json!({"automations_enabled": true, "scheduled_task_session_modes": true,
         "features": {"usage_page": true, "canvas": true}, "archive_worktree_cleanup": true,

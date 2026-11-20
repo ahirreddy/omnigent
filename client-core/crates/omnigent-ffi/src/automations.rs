@@ -87,6 +87,9 @@ pub struct ServerPages {
     /// Desktop onboarding reviews what a new host carries over (`import_review`).
     #[uniffi(default)]
     pub import_review: bool,
+    /// The Mac's system-wide shortcut opens a floating New Agent panel (`floating_composer`).
+    #[uniffi(default)]
+    pub floating_composer: bool,
     /// Hosts and continued sessions run schedules under an hour (`scheduled_task_subhour`).
     #[uniffi(default)]
     pub automation_subhour: bool,
@@ -994,6 +997,7 @@ impl ClientCore {
             project_kanban: pages.project_kanban,
             session_overview: pages.session_overview,
             import_review: pages.import_review,
+            floating_composer: pages.floating_composer,
             automation_subhour: pages.automation_subhour,
             automation_trigger_headers: pages.automation_trigger_headers,
             automation_trigger_poll_minutes: pages.automation_trigger_poll_minutes,

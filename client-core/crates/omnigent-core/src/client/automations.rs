@@ -73,6 +73,9 @@ pub struct ServerPages {
     pub session_overview: bool,
     /// The `import_review` feature: desktop onboarding reviews what a new host carries over.
     pub import_review: bool,
+    /// The `floating_composer` feature: the Mac's system-wide shortcut opens a floating New
+    /// Agent panel.
+    pub floating_composer: bool,
     /// `scheduled_task_subhour`: hosts and continued sessions run schedules under an hour.
     pub automation_subhour: bool,
     /// `scheduled_task_trigger_headers`: runs drop a trigger prompt's header before dispatch.
@@ -192,6 +195,7 @@ impl ServerPages {
             session_overview: feature("session_overview")?,
             import_review: feature("import_review")?,
             session_mute: flag("session_mute")?,
+            floating_composer: feature("floating_composer")?,
         })
     }
 }

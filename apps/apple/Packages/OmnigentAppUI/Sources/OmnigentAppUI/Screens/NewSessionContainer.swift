@@ -26,6 +26,8 @@ struct NewSessionContainer: View {
   let isFloating: Bool
   /// Opens the Workflows page on a workflow, after its planning chat starts or Cancel.
   let openWorkflow: (@MainActor (String) -> Void)?
+  /// Offers only this Mac and new sandboxes, as the floating New Agent panel does.
+  let onlyThisMachine: Bool
 
   @State private var draft = ""
   @State private var form: NewSessionForm
@@ -54,9 +56,10 @@ struct NewSessionContainer: View {
     openWithNotice: (@MainActor (String, String) -> Void)? = nil,
     continueInNewSession: (@MainActor () -> Void)? = nil,
     project: ProjectSummary? = nil, isFloating: Bool = false,
-    openWorkflow: (@MainActor (String) -> Void)? = nil
+    openWorkflow: (@MainActor (String) -> Void)? = nil, onlyThisMachine: Bool = false
   ) {
     self.openWorkflow = openWorkflow
+    self.onlyThisMachine = onlyThisMachine
     self.connection = connection
     self.open = open
     self.nestedSourceID = nestedSourceID
@@ -94,6 +97,11 @@ struct NewSessionContainer: View {
         return
       }
       self.creation = creation
+      if onlyThisMachine {
+        form.limitsMachines = true
+        form.allowedMachineIDs = Set(
+          [connection.sessionList.thisMachineHostID()].compactMap(\.self))
+      }
       customAgents = connection.customAgents()
       launch = connection.launchCompletions()
       form.sandboxes = connection.sandboxes()

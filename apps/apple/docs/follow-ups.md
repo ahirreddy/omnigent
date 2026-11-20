@@ -582,6 +582,21 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   `[Design Mode — …]` block shows as its plain Markdown; the web shows the request and its
   subject ("p#blurb \"Hello\" on localhost:5173") as a compact card. Parse it in the core and
   draw it in the SwiftUI, TextKit and CLI prompt renderers.
+- [ ] **Floating New Agent panel (Mac, `floating_composer`):**
+  - Only package tests cover it (shortcut, chord, placement); no Mac flow drives the panel, the
+    Carbon hot key or a launch behind it, and it has no renders yet.
+  - Escape hides the panel even while the composer's completion list is open.
+  - A Settings link in the panel opens the front window's Settings at its last category, not
+    the link's destination.
+- [ ] **Find:** the transcript has no find of its own (the Find menu reaches a text view's find
+  bar or a browser tab's); Command-F in a terminal doesn't take the selection.
+- [ ] **Settings search:**
+  - Rows in the General, Notifications, Local Server and Terminal panes that their own packages
+    draw scroll into view but aren't marked; rows drawn by OmnigentUI are marked for two seconds.
+  - Before Settings › Servers has shown, server-pane results are the panes every signed-in
+    server offers; the shown server's own panes replace them once it shows.
+  - Picking a result doesn't put the keyboard in the row's control.
+  - iPhone and iPad scroll to a row only on the app's own pages, not server panes.
 
 ## Product decisions
 
