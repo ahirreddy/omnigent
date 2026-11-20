@@ -9,8 +9,12 @@ public import OmnigentCoreFFI
 public final class CanvasStore {
   /// The caller's canvas sessions.
   public private(set) var sessions: CreationLoad<[SessionSummary]> = .idle
-  /// A reload is in flight with the list already on screen.
+  /// The rest of the list is loading behind the sidebar's rows on screen; once the full list is
+  /// known, reloads are silent, as the web's.
   public private(set) var isRefreshing = false
+  /// The list on screen is the sidebar's rows, until the first full read lands; their grid
+  /// spots aren't saved before then.
+  public private(set) var isPreview = false
   /// The last reload's failure, while the earlier list stays on screen.
   public private(set) var refreshError: CoreError?
   /// Saved card spots by session.
@@ -42,6 +46,7 @@ public final class CanvasStore {
   public func bind(key: String) {
     guard self.key != key else { return }
     self.key = key
+    positions = [:]
     let stored = defaults.dictionary(forKey: positionsKey(key)) as? [String: [Int]] ?? [:]
     saved = stored.compactMapValues { pair in
       pair.count == 2 ? snapCanvasPosition(x: Int64(pair[0]), y: Int64(pair[1])) : nil
@@ -49,18 +54,28 @@ public final class CanvasStore {
     activeBoard = defaults.string(forKey: boardKey(key)) ?? mainCanvasId()
   }
 
-  /// Reads the sessions; a reload keeps the list on screen until it lands.
-  /// - Parameter viewerID: The signed-in user.
-  public func load(viewerID: String?) async {
+  /// Reads the sessions, keeping the list on screen until the read lands. The first read paints
+  /// `preview` (the sidebar's rows) at once and says it is loading the rest, as the web's.
+  /// - Parameters:
+  ///   - viewerID: The signed-in user.
+  ///   - preview: Canvas sessions already listed elsewhere, newest first.
+  public func load(viewerID: String?, preview: [SessionSummary] = []) async {
     if sessions.value == nil {
-      sessions = .loading
-    } else {
-      isRefreshing = true
+      if preview.isEmpty {
+        sessions = .loading
+      } else {
+        sessions = .loaded(preview)
+        isPreview = true
+        relayout(projects: projects, viewerID: viewerID)
+      }
     }
+    if isPreview { isRefreshing = true }
     defer { if isRefreshing { isRefreshing = false } }
     do {
       let loaded = try await core.canvasSessions(viewerId: viewerID)
-      if sessions.value != loaded {
+      let wasPreview = isPreview
+      if wasPreview { isPreview = false }
+      if sessions.value != loaded || wasPreview {
         sessions = .loaded(loaded)
         relayout(projects: projects, viewerID: viewerID)
       }
@@ -81,9 +96,10 @@ public final class CanvasStore {
     if let key { defaults.set(board, forKey: boardKey(key)) }
   }
 
-  /// Places every listed card on its board and saves each spot, grid slots included, so
-  /// nothing moves on a reload; spots of sessions no longer listed (deleted, or gone from
-  /// the canvas) go, as the web's. Run after the sessions, projects or viewer change.
+  /// Places every listed card on its board and, once the full list is known, saves each spot,
+  /// grid slots included, so nothing moves on a reload; spots of sessions no longer listed
+  /// (deleted, or gone from the canvas) go, as the web's. Cards on screen keep their spots as
+  /// more of the list arrives. Run after the sessions, projects or viewer change.
   /// - Parameters:
   ///   - projects: The caller's projects.
   ///   - viewerID: The signed-in user.
@@ -93,14 +109,15 @@ public final class CanvasStore {
     let boards = projects.map { projectCanvasId(project: $0) }
     if boards != projectBoards { projectBoards = boards }
     guard let listed = sessions.value else { return }
+    let shown = saved.merging(positions) { _, onScreen in onScreen }
     let next = canvasPositions(
-      sessions: listed, projects: projects, saved: saved, viewerId: viewerID)
+      sessions: listed, projects: projects, saved: shown, viewerId: viewerID)
     if next != positions { positions = next }
     let nextBoards = Dictionary(
       listed.map { ($0.id, canvasIdFor(session: $0, projects: projects, viewerId: viewerID)) },
       uniquingKeysWith: { first, _ in first })
     if nextBoards != boardOf { boardOf = nextBoards }
-    guard next != saved else { return }
+    guard !isPreview, next != saved else { return }
     saved = next
     persist()
   }
@@ -121,6 +138,7 @@ public final class CanvasStore {
       sessions: listed, projects: projects, saved: saved, viewerId: viewerID,
       canvasId: activeBoard)
     persist()
+    positions = positions.filter { boardOf[$0.key] != activeBoard }
     relayout(projects: projects, viewerID: viewerID)
   }
 

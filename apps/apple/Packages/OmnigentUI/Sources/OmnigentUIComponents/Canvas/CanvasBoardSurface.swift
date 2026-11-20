@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The Canvas's board: the cards on a dotted grid, dragged to move and snapping on drop, with
-/// zoom, fit and reset controls. It fits itself to the cards until the user zooms by hand, draws
-/// only the cards in view, and on a Mac pans when the empty board is dragged, as the web's.
+/// The Canvas's board: the cards on a dotted grid, dragged to move and snapping to it as they
+/// go, with zoom, fit and reset controls. It fits itself to the cards until the user zooms or
+/// pans by hand (then a resize keeps the view's middle), draws only the cards in view, and on a
+/// Mac pans when the empty board is dragged, as the web's.
 struct CanvasBoardSurface: View {
   let state: CanvasViewState
   let actions: CanvasActions
@@ -39,10 +40,14 @@ struct CanvasBoardSurface: View {
           .frame(minWidth: proxy.size.width, minHeight: proxy.size.height)
       }
       .scrollPosition($position)
-      .onScrollGeometryChange(for: CGRect.self) {
-        $0.visibleRect
-      } action: { _, rect in
-        visible = rect
+      .onScrollGeometryChange(for: CanvasScroll.self) {
+        CanvasScroll(
+          offset: $0.contentOffset, content: $0.contentSize, container: $0.containerSize,
+          visible: $0.visibleRect)
+      } action: { old, new in
+        visible = new.visible
+        // A wheel, trackpad or touch pan counts in the remembered view, as a drag pan does.
+        if panStart == nil, CanvasGeometry.isUserScroll(from: old, to: new) { movedByHand() }
       }
       .simultaneousGesture(
         MagnifyGesture()
@@ -67,6 +72,7 @@ struct CanvasBoardSurface: View {
         if key.follows { setZoom(geometry.fitZoom(proxy.size)) }
       }
       .onAppear { if followsFit { setZoom(geometry.fitZoom(proxy.size)) } }
+      .onChange(of: proxy.size) { old, new in keepMiddle(from: old, to: new) }
     }
     .onChange(of: state.activeBoard) { previous, board in switchBoard(from: previous, to: board) }
     .task(id: pendingScroll) { await restoreScroll() }
@@ -141,7 +147,7 @@ struct CanvasBoardSurface: View {
             }
             .onEnded { _ in
               panStart = nil
-              moved = true
+              movedByHand()
             }
         )
         // Panning is a pointer gesture; VoiceOver scrolls the board itself.
@@ -153,7 +159,8 @@ struct CanvasBoardSurface: View {
     DragGesture(minimumDistance: 3)
       .onChanged { value in
         dragging = card.id
-        dragOffset = value.translation
+        dragOffset = CanvasGeometry.snappedOffset(
+          left: card.left, top: card.top, by: value.translation)
       }
       .onEnded { value in
         actions.move?(
@@ -246,6 +253,10 @@ struct CanvasBoardSurface: View {
     pendingScroll = nil
   }
 
+}
+
+/// The view's zoom and scroll as the user moves it.
+extension CanvasBoardSurface {
   /// Zooms by the controls around the middle of the view, as the web's do.
   private func zoomKeepingCenter(_ value: CGFloat) {
     let before = zoom
@@ -256,6 +267,18 @@ struct CanvasBoardSurface: View {
 
   private func setZoom(_ value: CGFloat) {
     if zoom != value { zoom = value }
+  }
+
+  /// The user panned the board: it keeps its view from now on, as after a zoom by hand.
+  private func movedByHand() {
+    moved = true
+    followsFit = false
+  }
+
+  /// A resize of a view the user moved keeps its middle, as the web's; a fitted one refits.
+  private func keepMiddle(from old: CGSize, to new: CGSize) {
+    guard !followsFit, old.width > 0, old.height > 0, old != new else { return }
+    position.scrollTo(point: CanvasGeometry.recentered(visible.origin, from: old, to: new))
   }
 }
 

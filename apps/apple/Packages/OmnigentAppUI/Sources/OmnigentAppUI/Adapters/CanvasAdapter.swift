@@ -58,7 +58,9 @@ struct CanvasAdapter: View {
       .task(id: "\(layoutKey)#\(connection.health.reconnections)") {
         if connection.sessionList.projects.isEmpty { await connection.sessionList.loadProjects() }
         while !Task.isCancelled {
-          await canvas.load(viewerID: connection.sessionList.viewerID)
+          await canvas.load(
+            viewerID: connection.sessionList.viewerID,
+            preview: CanvasMapping.preview(connection.sessionList))
           do {
             try await Task.sleep(for: readsAgainEvery)
           } catch {
@@ -105,7 +107,11 @@ struct CanvasAdapter: View {
         CanvasMapping.project(of: canvas.activeBoard, canvas: canvas, list: connection.sessionList))
     }
     actions.retry = {
-      Task { await canvas.load(viewerID: connection.sessionList.viewerID) }
+      Task {
+        await canvas.load(
+          viewerID: connection.sessionList.viewerID,
+          preview: CanvasMapping.preview(connection.sessionList))
+      }
     }
     return actions
   }
@@ -142,6 +148,20 @@ enum CanvasMapping {
 
   /// Main's id, read once: the core's constant.
   static let mainBoardID = mainCanvasId()
+
+  /// How many of the sidebar's rows a first visit paints before the full list, as the web's.
+  static let previewLimit = 25
+
+  /// The sidebar's canvas sessions, newest first: what a first visit paints at once.
+  static func preview(_ list: SessionListStore) -> [OmnigentCoreFFI.SessionSummary] {
+    let rows = list.sessionsByID.values.filter {
+      isCanvasSession(session: $0, viewerId: list.viewerID)
+    }
+    let newest = rows.sorted { left, right in
+      left.updatedAt != right.updatedAt ? left.updatedAt > right.updatedAt : left.id < right.id
+    }
+    return Array(newest.prefix(previewLimit))
+  }
 
   /// The project a board shows; `nil` for Main.
   static func project(of board: String, canvas: CanvasStore, list: SessionListStore)
