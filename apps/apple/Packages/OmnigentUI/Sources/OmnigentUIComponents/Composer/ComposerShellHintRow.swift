@@ -21,3 +21,20 @@ struct ComposerShellHintRow: View {
     AccessibilityNotification.Announcement(hint.text).post()
   }
 }
+
+/// The accent ring around the card while the draft is a shell command. A one-line pill is a
+/// capsule, so the ring is one too; a taller card keeps the card's corners.
+struct ComposerShellRing: View {
+  var body: some View {
+    GeometryReader { proxy in
+      if proxy.size.height <= Theme.Radius.composer * 2 {
+        Capsule().strokeBorder(Theme.accent, lineWidth: 1.5)
+      } else {
+        RoundedRectangle(cornerRadius: Theme.Radius.composer, style: .continuous)
+          .strokeBorder(Theme.accent, lineWidth: 1.5)
+      }
+    }
+    .allowsHitTesting(false)
+    .accessibilityHidden(true)
+  }
+}

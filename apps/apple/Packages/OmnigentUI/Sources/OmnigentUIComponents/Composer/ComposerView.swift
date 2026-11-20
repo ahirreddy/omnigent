@@ -145,12 +145,7 @@ public struct ComposerView: View {
       )
       .overlay {
         // A shell command rings the card in the accent, as the web's composer does.
-        if state.shellHint != nil {
-          RoundedRectangle(cornerRadius: Theme.Radius.composer, style: .continuous)
-            .strokeBorder(Theme.accent, lineWidth: 1.5)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-        }
+        if state.shellHint != nil { ComposerShellRing() }
       }
       .overlay(alignment: .top) {
         if let modeHUD {
