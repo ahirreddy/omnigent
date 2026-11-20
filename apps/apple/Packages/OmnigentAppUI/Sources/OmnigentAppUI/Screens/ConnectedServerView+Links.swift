@@ -47,6 +47,8 @@ extension ConnectedServerView {
       case .workflow(let id):
         session.connection.workflows?.requestedWorkflowID = id
         selection.wrappedValue = .workflows
+      case .extensionPage(let extensionID, let route):
+        selection.wrappedValue = .extensionPage(extensionID: extensionID, route: route)
       case .settings(let section):
         guard let openSettings else { return await fallback.open(url) }
         openSettings(DeepLinkDestinations.settings(section: section, server: settingsServer))

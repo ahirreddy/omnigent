@@ -14,6 +14,8 @@ nonisolated public enum SidebarDestination: Hashable, Sendable {
   case workflows
   /// Usage and spend.
   case usage
+  /// An extension's page, by the extension and the page's route.
+  case extensionPage(extensionID: String, route: String)
   /// A project's board, by its folder id (``SessionProject/id``).
   case project(String)
   /// A session.

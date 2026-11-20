@@ -25,6 +25,21 @@ struct WebLinkRouteTests {
         == .approval(sessionID: "conv_a", elicitationID: "elic_1"))
   }
 
+  @Test("routes an extension's page by its extension and route, as the web's routes take them")
+  func extensionPages() throws {
+    let page = route("http://127.0.0.1:6767/extensions/example.hello-page/hello")
+    #expect(page == .extensionPage(extensionID: "example.hello-page", route: "hello"))
+    #expect(page?.path == "/extensions/example.hello-page/hello")
+    #expect(page?.sessionID == nil)
+    #expect(
+      route("http://127.0.0.1:6767/extensions/example.hello-page/hello/")
+        == .extensionPage(extensionID: "example.hello-page", route: "hello"))
+    // The web's routes take an extension id with a dot and exactly one page segment.
+    #expect(route("http://127.0.0.1:6767/extensions/nodot/hello") == nil)
+    #expect(route("http://127.0.0.1:6767/extensions/example.hello-page") == nil)
+    #expect(route("http://127.0.0.1:6767/extensions/example.hello-page/a/b") == nil)
+  }
+
   @Test("leaves other origins, API paths and invites to the browser")
   func otherLinks() {
     #expect(route("http://127.0.0.1:6768/c/conv_a") == nil)

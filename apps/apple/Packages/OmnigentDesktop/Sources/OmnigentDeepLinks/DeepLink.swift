@@ -10,7 +10,7 @@ nonisolated public enum DeepLinkError: Error, Equatable, Sendable {
   /// The host or port is invalid.
   case invalidOrigin(ServerOriginError)
   /// The path is not `/`, `/c/<session>`, a page, `/tasks/<automation>`, `/settings[/<section>]`,
-  /// `/approve/<session>/<elicitation>` or an invite.
+  /// `/approve/<session>/<elicitation>`, an extension's page or an invite.
   case unsupportedPath(String)
   /// The link contains whitespace or control characters.
   case invalidCharacters
@@ -35,6 +35,8 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
   case automation(id: String)
   /// One saved workflow's page, `omnigent://host/workflows/<workflowID>`.
   case workflow(id: String)
+  /// An extension's page, `omnigent://host/extensions/<extensionID>/<route>`.
+  case extensionPage(extensionID: String, route: String)
   /// Settings, `omnigent://host/settings` or `/settings/<section>` with the web's section ids
   /// (`appearance`, `mcp`, `archived`...).
   case settings(section: String?)
@@ -52,6 +54,7 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
     case .page(let page): "/\(page.rawValue)"
     case .automation(let id): "/tasks/\(id)"
     case .workflow(let id): "/workflows/\(id)"
+    case .extensionPage(let extensionID, let route): "/extensions/\(extensionID)/\(route)"
     case .settings(let section): section.map { "/settings/\($0)" } ?? "/settings"
     case .approval(let sessionID, let elicitationID): "/approve/\(sessionID)/\(elicitationID)"
     }
@@ -62,7 +65,7 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
     switch self {
     case .conversation(let sessionID), .message(let sessionID, _), .approval(let sessionID, _):
       sessionID
-    case .home, .register, .page, .automation, .workflow, .settings: nil
+    case .home, .register, .page, .automation, .workflow, .extensionPage, .settings: nil
     }
   }
 
@@ -163,8 +166,8 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
   /// `""` and `/` are home; `/c/<id>` and `/c/<id>/` are a conversation, or one of its messages
   /// with a non-empty `message`; `/register` with a non-empty `invite` is an invite; `/new`,
   /// `/inbox`, `/tasks`, `/workflows`, `/usage` and `/canvas` are pages, `/tasks/<id>` one
-  /// automation and `/workflows/<id>` one workflow;
-  /// `/settings` with an optional section (and a harness, dropped) is Settings;
+  /// automation, `/workflows/<id>` one workflow and `/extensions/<id>/<route>` an extension's
+  /// page; `/settings` with an optional section (and a harness, dropped) is Settings;
   /// `/approve/<session>/<elicitation>` one approval request.
   private static func route(_ path: Substring, query: Substring) throws(DeepLinkError)
     -> DeepLinkRoute
@@ -196,18 +199,26 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
     }
     guard
       let route = segments.count == 4
-        ? approval(segments) : segments.count == 3 ? item(segments, query: query) : nil,
+        ? fourSegmentRoute(segments) : segments.count == 3 ? item(segments, query: query) : nil,
       segments[0].isEmpty
     else { throw .unsupportedPath(String(path)) }
     return route
   }
 
-  /// `/approve/<session>/<elicitation>`.
-  private static func approval(_ segments: [Substring]) -> DeepLinkRoute? {
-    guard segments[1] == "approve", let sessionID = identifier(segments[2]),
-      let elicitationID = identifier(segments[3])
-    else { return nil }
-    return .approval(sessionID: sessionID, elicitationID: elicitationID)
+  /// `/approve/<session>/<elicitation>` and `/extensions/<id>/<route>`.
+  private static func fourSegmentRoute(_ segments: [Substring]) -> DeepLinkRoute? {
+    switch segments[1] {
+    case "approve":
+      guard let sessionID = identifier(segments[2]), let elicitationID = identifier(segments[3])
+      else { return nil }
+      return .approval(sessionID: sessionID, elicitationID: elicitationID)
+    case "extensions":
+      guard let extensionID = identifier(segments[2]), extensionID.contains("."),
+        let route = identifier(segments[3])
+      else { return nil }
+      return .extensionPage(extensionID: extensionID, route: route)
+    default: return nil
+    }
   }
 
   /// `/tasks/<id>`, `/workflows/<id>` and `/c/<id>`, the latter with an optional `message`.

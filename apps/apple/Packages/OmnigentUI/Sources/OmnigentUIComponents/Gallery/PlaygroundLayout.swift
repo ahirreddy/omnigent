@@ -91,6 +91,9 @@ public struct PlaygroundView: View {
       WorkflowsView(state: PreviewData.workflows, actions: WorkflowsActions())
     case .usage:
       UsageView(state: PreviewData.usage, actions: UsageActions(formatCost: PreviewData.cost))
+    case .extensionPage:
+      ExtensionPageView(
+        state: PreviewData.extensionPage, channel: ExtensionFrameChannel(), actions: .inert)
     case .project:
       PreviewData.projectBoard { id in model.selection = .session(id) }
     case .session:
@@ -157,6 +160,8 @@ extension PlaygroundModel {
     case .automations: tab = TabItemState(id: "shell", kind: .automations, title: "Automations")
     case .workflows: tab = TabItemState(id: "shell", kind: .workflows, title: "Workflows")
     case .usage: tab = TabItemState(id: "shell", kind: .usage, title: "Usage")
+    case .extensionPage:
+      tab = TabItemState(id: "shell", kind: .extensionPage, title: PreviewData.extensionPage.title)
     case .project:
       tab = TabItemState(id: "shell", kind: .project, title: PreviewData.boardProject.name)
     case .newSession, .nestedSession, nil:

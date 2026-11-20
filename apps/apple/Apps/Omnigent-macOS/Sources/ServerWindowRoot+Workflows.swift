@@ -1,5 +1,7 @@
 import Foundation
 import OmnigentAppUI
+import OmnigentBrowser
+import OmnigentDesktop
 import OmnigentStores
 import OmnigentUIComponents
 
@@ -15,5 +17,20 @@ extension ServerWindowRoot {
     guard let server, let link = SceneLinkPlan.inviteLink(server: server, invite: invite)
     else { return }
     session.signIn.openInvite(link)
+  }
+
+  /// Edit > Find for a browser tab's page.
+  static func find(_ page: BrowserTabModel) -> ServerWindowActions.Find {
+    ServerWindowActions.Find(
+      show: { page.showFindBar() },
+      next: { Task { await page.findNext(forward: true) } },
+      previous: { Task { await page.findNext(forward: false) } },
+      useSelection: { Task { await page.useSelectionForFind() } })
+  }
+
+  /// View > Zoom for a browser tab's page.
+  static func zoom(_ page: BrowserTabModel) -> ServerWindowActions.Zoom {
+    ServerWindowActions.Zoom(
+      reset: { page.resetZoom() }, zoomIn: { page.zoomIn() }, zoomOut: { page.zoomOut() })
   }
 }

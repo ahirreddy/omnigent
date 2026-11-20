@@ -1,4 +1,4 @@
-public import Foundation
+import Foundation
 public import OmnigentAuthUI
 
 /// The web's sidebar "Show" choice.
@@ -114,23 +114,6 @@ nonisolated public struct SessionDisplayOptions: Hashable, Sendable, Codable {
   }
 }
 
-/// The PR a row's tooltip names, as the server last stored it.
-nonisolated public struct SessionRowPullRequest: Hashable, Sendable {
-  /// Its number.
-  public var number: UInt64
-  /// "Open", "Draft", "Merged" or "Closed"; `nil` before its host fetched it.
-  public var status: String?
-  /// When its host last fetched it.
-  public var checkedAt: Date?
-
-  /// Creates a PR.
-  public init(number: UInt64, status: String? = nil, checkedAt: Date? = nil) {
-    self.number = number
-    self.status = status
-    self.checkedAt = checkedAt
-  }
-}
-
 /// Facts the sidebar row shows that the core's `SessionSummary` does not carry yet.
 nonisolated public struct SessionRowInfo: Hashable, Sendable {
   /// The harness id, for Group by Harness and the hover tooltip.
@@ -211,6 +194,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var showsWorkflows = false
   /// The server offers Usage.
   public var showsUsage = false
+  /// The extensions' sidebar entries, between Canvas and Usage.
+  public var extensionEntries: [SidebarExtensionEntry] = []
   /// The display menu choices.
   public var display: SessionDisplayOptions
   /// A one-click quick filter (Running or Needs you), or `nil` for none.

@@ -84,6 +84,8 @@ public final class ConnectionStore {
   public let canvas: CanvasStore?
   /// Saved workflows; `nil` when the core did not start.
   public let workflows: WorkflowsStore?
+  /// The server's extensions; `nil` when the core did not start.
+  public let extensions: ExtensionsStore?
   /// Keeps composer drafts across launches; `nil` keeps them in memory only.
   public var draftArchive: ComposerDraftArchive? {
     didSet { markSavedDrafts() }
@@ -117,6 +119,7 @@ public final class ConnectionStore {
     pages = PagesStore(core: core)
     canvas = CanvasStore(core: core)
     workflows = WorkflowsStore(core: core)
+    extensions = ExtensionsStore(core: core)
     sessionList.core = core
     sessionList.eventsBeforeAnswer = { [weak self] in await self?.eventsSentSoFarApplied() }
     _ = core.subscribe(listener: relay)
@@ -131,6 +134,7 @@ public final class ConnectionStore {
     pages = nil
     canvas = nil
     workflows = nil
+    extensions = nil
     record(scope: .connection, startupError)
     phase = .failed(serverUrl: "", error: startupError)
   }

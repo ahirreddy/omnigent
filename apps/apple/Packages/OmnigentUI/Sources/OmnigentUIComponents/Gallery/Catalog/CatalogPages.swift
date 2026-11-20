@@ -221,6 +221,9 @@ private struct CatalogDetail: View {
       WorkflowsView(state: PreviewData.workflows, actions: WorkflowsActions())
     case .usage:
       UsageView(state: PreviewData.usage, actions: UsageActions(formatCost: PreviewData.cost))
+    case .extensionPage:
+      ExtensionPageView(
+        state: PreviewData.extensionPage, channel: ExtensionFrameChannel(), actions: .inert)
     case .project:
       PreviewData.projectBoard { model.selection = .session($0) }
     case .session:

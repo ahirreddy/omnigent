@@ -52,6 +52,10 @@ enum TabAdapter {
       .project:
       item.title = tab.content.kind == .newTab ? "New Tab" : tab.content.kind.label.capitalized
       item.canDuplicate = false
+    case .extensionPage(let extensionID, let route):
+      let page = session.connection.extensions?.page(extensionID: extensionID, route: route)
+      item.title = page?.1.title ?? tab.title ?? TabKind.extensionPage.label
+      item.canDuplicate = false
     case .chat, .harness, .agentBrowser, .sideChat, .sideChatSession, .subagent:
       sessionItem(&item, tab: tab, session: session)
     case .terminal(let sessionID, let terminalID):
@@ -216,7 +220,7 @@ enum TabAdapter {
       .agentBrowser:
       nil
     case .chat, .terminal, .harness, .sideChat, .sideChatSession, .subagent, .browser,
-      .remoteBrowser:
+      .remoteBrowser, .extensionPage:
       item(tab, session: session, browser: browser).title
     }
   }

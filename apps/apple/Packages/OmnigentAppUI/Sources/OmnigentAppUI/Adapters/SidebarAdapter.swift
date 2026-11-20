@@ -280,9 +280,15 @@ enum SidebarAdapter {
     return connection.isShowingSavedList ? .refreshing(refreshingText) : nil
   }
 
-  /// The sidebar rows of the pages the server offers; before any read, none, and the Shared
-  /// scope as on a multi-user server.
-  static func applyOfferedPages(_ offered: ServerPages?, to state: inout SidebarViewState) {
+  /// The sidebar rows of the pages the server offers and its extensions' entries; before any
+  /// read, none, and the Shared scope as on a multi-user server.
+  static func applyOfferedPages(_ connection: ConnectionStore, to state: inout SidebarViewState) {
+    let offered = connection.pages?.offered
+    state.extensionEntries = (connection.extensions?.navigationEntries ?? []).map {
+      SidebarExtensionEntry(
+        id: $0.navigation.id, label: $0.navigation.label, icon: $0.navigation.icon,
+        extensionID: $0.extensionId, route: $0.page.route)
+    }
     state.showsAutomations = offered?.automations == true
     state.showsWorkflows = offered?.workflows == true
     state.showsUsage = offered?.usage == true

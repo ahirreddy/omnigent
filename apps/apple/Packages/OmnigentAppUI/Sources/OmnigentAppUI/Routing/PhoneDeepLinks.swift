@@ -185,6 +185,8 @@
       case .workflow(let id):
         session?.connection.workflows?.requestedWorkflowID = id
         selection = .workflows
+      case .extensionPage(let extensionID, let route):
+        selection = .extensionPage(extensionID: extensionID, route: route)
       case .settings(let section):
         // The screen shows the scene's own server.
         openSettingsAt?(DeepLinkDestinations.settings(section: section, server: nil))

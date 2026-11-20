@@ -68,7 +68,8 @@ public struct TabsPlayground: View {
         SamplePage(tab: tab)
       case .remoteBrowser:
         if let remoteBrowser { remoteBrowser } else { SamplePage(tab: tab) }
-      case .newTab, .newSession, .inbox, .canvas, .automations, .workflows, .usage, .project:
+      case .newTab, .newSession, .inbox, .canvas, .automations, .workflows, .usage, .project,
+        .extensionPage:
         NewTabPage(
           state: TabsPlaygroundModel.newTabState,
           actions: newTabActions)

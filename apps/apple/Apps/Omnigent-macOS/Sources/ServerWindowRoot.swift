@@ -227,19 +227,6 @@ struct ServerWindowRoot: View {
     return services.browserTabs.page(pageID)
   }
 
-  private static func find(_ page: BrowserTabModel) -> ServerWindowActions.Find {
-    ServerWindowActions.Find(
-      show: { page.showFindBar() },
-      next: { Task { await page.findNext(forward: true) } },
-      previous: { Task { await page.findNext(forward: false) } },
-      useSelection: { Task { await page.useSelectionForFind() } })
-  }
-
-  private static func zoom(_ page: BrowserTabModel) -> ServerWindowActions.Zoom {
-    ServerWindowActions.Zoom(
-      reset: { page.resetZoom() }, zoomIn: { page.zoomIn() }, zoomOut: { page.zoomOut() })
-  }
-
   /// Shows a deep link's destination.
   /// - Parameters:
   ///   - route: The destination.
@@ -261,6 +248,8 @@ struct ServerWindowRoot: View {
     case .page(let page): selection = DeepLinkDestinations.selection(for: page)
     case .automation(let id): selection = Self.automation(id, in: session)
     case .workflow(let id): selection = Self.workflow(id, in: session)
+    case .extensionPage(let extensionID, let route):
+      selection = .extensionPage(extensionID: extensionID, route: route)
     case .settings(let section):
       openSettingsAt(
         DeepLinkDestinations.settings(
