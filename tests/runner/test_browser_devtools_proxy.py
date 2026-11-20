@@ -22,6 +22,7 @@ from omnigent.runner.browser_devtools.directory import (
     TabOwner,
 )
 from omnigent.runner.browser_devtools.session import ScopedCdpSession, serve_unavailable
+from tests._helpers.polling import poll_until_async
 
 _WAIT_S = 5.0
 
@@ -154,6 +155,8 @@ class _Directory:
         self.closed: list[str] = []
         self.states: list[tuple[str, AgentTabState]] = []
         self.fail_listing = False
+        self.listings = 0
+        self.failed_listings = 0
 
     @property
     def refresh_interval_s(self) -> float:
@@ -161,7 +164,9 @@ class _Directory:
 
     async def list_tabs(self) -> list[ScopedTab]:
         if self.fail_listing:
+            self.failed_listings += 1
             raise TabDirectoryError("browser host went away")
+        self.listings += 1
         return list(self.tabs)
 
     async def create_tab(self, url: str) -> ScopedTab:
@@ -418,7 +423,9 @@ async def test_user_control_holds_actuating_calls_but_not_reads() -> None:
 
         # Handing back lets the agent act again.
         stack.directory.tabs = [_session_tab("MINE", owner="agent")]
-        await asyncio.sleep(0.1)
+        # A listing already under way may predate the change; the one after it cannot.
+        seen = stack.directory.listings
+        await poll_until_async(lambda: stack.directory.listings >= seen + 2)
         again = await stack.agent.request(
             "Input.dispatchMouseEvent", {"type": "mousePressed", "x": 5, "y": 5}, session_id
         )
@@ -459,7 +466,8 @@ async def test_popups_opened_by_session_pages_join_the_session() -> None:
             _page("OTHER", "https://example.com/x", openerId="PERSONAL")
         )
         await stack.agent.wait_for_event("Target.targetCreated", targetId="POPUP")
-        await asyncio.sleep(0.1)
+        # Both reached the proxy before this round trip's answer.
+        await stack.agent.request("Target.getTargets")
 
         assert "OTHER" not in stack.agent.event_targets("Target.targetCreated")
 
@@ -534,13 +542,12 @@ async def test_agent_activity_badges_the_tab_then_goes_idle_and_is_released() ->
         session_id = attached["result"]["sessionId"]
         for _ in range(3):
             await stack.agent.request("Input.dispatchKeyEvent", {"type": "char"}, session_id)
-        await asyncio.sleep(0.05)
+        await poll_until_async(lambda: bool(stack.directory.states))
+        # Three keystrokes inside the debounce window are one report.
         assert stack.directory.states == [("MINE", "active")]
 
         now[0] += 30
-        async with asyncio.timeout(_WAIT_S):
-            while ("MINE", "idle") not in stack.directory.states:
-                await asyncio.sleep(0.01)
+        await poll_until_async(lambda: ("MINE", "idle") in stack.directory.states)
     assert stack.directory.states[-1] == ("MINE", "released")
 
 
@@ -549,7 +556,7 @@ async def test_a_directory_failure_after_connect_keeps_the_last_known_tabs() -> 
         # The first answer means the proxy finished its initial listing.
         await stack.agent.request("Target.getTargets")
         stack.directory.fail_listing = True
-        await asyncio.sleep(0.1)
+        await poll_until_async(lambda: stack.directory.failed_listings >= 1)
         listed = await stack.agent.request("Target.getTargets")
 
         assert [info["targetId"] for info in listed["result"]["targetInfos"]] == ["MINE"]
