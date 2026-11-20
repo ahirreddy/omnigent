@@ -195,7 +195,7 @@ final class SystemBrowserTab: NSObject, BrowserTab {
     return try result.get()
   }
 
-  private static func scriptError(_ error: any Error) -> BrowserError {
+  static func scriptError(_ error: any Error) -> BrowserError {
     let nsError = error as NSError
     if let message = nsError.userInfo["WKJavaScriptExceptionMessage"] as? String {
       return .scriptFailed(message: message)

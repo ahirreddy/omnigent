@@ -13,6 +13,9 @@ struct BrowserTabToolbar: View {
       BrowserForwardButton(model: model)
       BrowserReloadButton(model: model)
       BrowserOmniboxField(model: model, environment: environment)
+      if model.offersDesignTools {
+        BrowserDesignToolButtons(tools: model.designTools)
+      }
       if model.isAudible || model.isMuted {
         Button(
           model.isMuted ? "Unmute Tab" : "Mute Tab",
