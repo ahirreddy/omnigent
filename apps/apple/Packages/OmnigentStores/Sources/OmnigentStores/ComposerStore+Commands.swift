@@ -1,5 +1,5 @@
 import Foundation
-import OmnigentCoreFFI
+public import OmnigentCoreFFI
 
 /// What the composer reads from its conversation for `/context`, `/mcp` and held sends.
 struct ConversationFacts: Equatable {
@@ -15,6 +15,8 @@ struct ConversationFacts: Equatable {
   var hostOnline: Bool
   /// What the `/mcp` panel reads.
   var mcpSession = McpPanelStore.Session()
+  /// The viewer's permission level on the session; `nil` when unknown.
+  var permissionLevel: Int64?
 }
 
 /// Sending: a message, or the slash command the core recognizes in the draft.
@@ -29,6 +31,10 @@ extension ComposerStore {
   /// - Returns: What the caller still has to do.
   @discardableResult
   public func send() async -> ComposerSendOutcome {
+    // A refused shell command stays in the draft; the composer's hint says why.
+    if shellInput(permissionLevel: conversationFacts?()?.permissionLevel)?.refusal != nil {
+      return .handled
+    }
     switch slashAction() {
     case nil, .sendText:
       await deliverMessage()
@@ -56,6 +62,17 @@ extension ComposerStore {
       return runLocally(action)
     }
     return .handled
+  }
+
+  /// The draft as a shell command (a leading `!` in Claude Code and Codex native sessions), with
+  /// why sending it is refused; `nil` for any other draft.
+  /// - Parameter permissionLevel: The viewer's level on the session; `nil` when unknown.
+  /// - Returns: The shell command's state, or `nil`.
+  public func shellInput(permissionLevel: Int64?) -> ShellInput? {
+    composerShellInput(
+      text: text, harness: configuration?.harness, permissionLevel: permissionLevel,
+      mentions: !mentions.isEmpty, quotes: !quotes.isEmpty,
+      reviewComments: !reviewComments.isEmpty)
   }
 
   /// Hides ``commandNotice``.

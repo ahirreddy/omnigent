@@ -143,6 +143,15 @@ public struct ComposerView: View {
       .modifier(
         ComposerCardSurface(layout: layout, isTargeted: isDropTargeted, isFocused: isFocused)
       )
+      .overlay {
+        // A shell command rings the card in the accent, as the web's composer does.
+        if state.shellHint != nil {
+          RoundedRectangle(cornerRadius: Theme.Radius.composer, style: .continuous)
+            .strokeBorder(Theme.accent, lineWidth: 1.5)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+      }
       .overlay(alignment: .top) {
         if let modeHUD {
           ApprovalModeHUD(option: modeHUD)
@@ -152,6 +161,9 @@ public struct ComposerView: View {
         }
       }
       .animation(reduceMotion ? nil : Theme.Motion.feedback, value: modeHUD)
+      if let hint = state.shellHint {
+        ComposerShellHintRow(hint: hint)
+      }
       if layout == .card {
         ComposerFooter(
           state: state, actions: actions, isEditable: isEditable,

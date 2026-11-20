@@ -9,6 +9,38 @@ use crate::client::{ClientCore, MessageSent};
 use crate::configuration::SessionConfiguration;
 use crate::errors::CoreError;
 
+/// A draft the session would run as a shell command (a leading `!` in Claude Code and Codex
+/// native sessions).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ShellInput {
+    /// Why sending it is refused, shown as the composer's hint; `None` when it can go out.
+    pub refusal: Option<String>,
+}
+
+/// Whether `text` is a shell command in a session of `harness`, sent by a viewer at
+/// `permission_level` (`None` when unknown) with mentions, reply quotes or review comments, and
+/// why such a send is refused.
+#[must_use]
+#[uniffi::export]
+pub fn composer_shell_input(
+    text: String,
+    harness: Option<String>,
+    permission_level: Option<i64>,
+    mentions: bool,
+    quotes: bool,
+    review_comments: bool,
+) -> Option<ShellInput> {
+    let context = omnigent_core::shell_input::ShellSendContext {
+        mentions,
+        quotes,
+        review_comments,
+    };
+    omnigent_core::shell_input::shell_input(&text, harness.as_deref(), permission_level, context)
+        .map(|input| ShellInput {
+            refusal: input.refusal.map(str::to_owned),
+        })
+}
+
 /// A skill discovered on the session's host.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct Skill {

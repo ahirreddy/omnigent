@@ -26,6 +26,8 @@ struct ComposerSendRules {
     if let reason = state.availability.reason { return reason }
     // A `/btw` answer holds the composer until it is closed, as on the web.
     if state.quickAnswer != nil { return "Close the quick answer to send." }
+    // A shell command that can't go out keeps the draft; the hint under the card says why.
+    if let refusal = state.shellHint?.refusal { return refusal }
     switch state.delivery {
     case .sending:
       // A message sent while another is on its way waits in the queue behind it.

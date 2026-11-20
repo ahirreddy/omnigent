@@ -19,6 +19,20 @@ struct ComposerRulesTests {
     #expect(!session.isEditable)
   }
 
+  @Test func aRefusedShellCommandHoldsSendingAndItsHintSaysWhy() {
+    var state = ComposerViewState(purpose: .session)
+    state.shellHint = ComposerShellHint()
+    #expect(state.shellHint?.text == "Shell command")
+    let shell = ComposerSendRules(state: state, draft: "!ls", canQueue: true, layout: .card)
+    #expect(shell.blockedReason(for: .send) == nil)
+    let reason = "Shell commands can't include @mentions; remove them or drop the leading `!`."
+    state.shellHint = ComposerShellHint(refusal: reason)
+    #expect(state.shellHint?.text == reason)
+    let refused = ComposerSendRules(state: state, draft: "!ls", canQueue: true, layout: .card)
+    #expect(refused.blockedReason(for: .send) == reason)
+    #expect(refused.blockedReason(for: .queue) == reason)
+  }
+
   @Test func aQuickAnswerHoldsSendingAndTheMcpPanelTakesTheCompletions() {
     var state = ComposerViewState(purpose: .session)
     state.quickAnswer = ComposerQuickAnswer(question: "why?", answer: "because")
