@@ -78,13 +78,17 @@ public final class SessionToolsStore {
   /// - Parameters:
   ///   - text: The first message.
   ///   - harness: The session's harness, as its header reports it.
+  ///   - model: The model a forked side chat starts on; `nil` keeps the session's.
+  ///   - effort: The effort it starts on; `nil` keeps the session's.
   /// - Returns: The side chat, or that the agent was asked to fork it.
   /// - Throws: The core's error when the side chat could not be started.
-  public func startSideChat(text: String, harness: String?) async throws(CoreError)
-    -> StartedSideChat
-  {
+  public func startSideChat(
+    text: String, harness: String?, model: String? = nil, effort: String? = nil
+  ) async throws(CoreError) -> StartedSideChat {
     do {
-      return try await core.startSideChat(sessionId: sessionID, harness: harness, text: text)
+      return try await core.startSideChat(
+        sessionId: sessionID, harness: harness, text: text, modelOverride: model,
+        reasoningEffort: effort)
     } catch {
       throw coreError(error)
     }

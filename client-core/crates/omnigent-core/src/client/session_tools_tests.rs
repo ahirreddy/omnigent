@@ -59,7 +59,8 @@ fn a_side_chat_forks_on_its_first_message_and_binds_the_parents_runner() {
     let core = connected(side_chat_transport(
         &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
     ));
-    let created = block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
+    let created =
+        block_on(core.create_side_chat("conv_a", "Why?", &SideChatConfig::default())).unwrap();
     assert_eq!(created.session_id, "conv_side");
     let FirstMessage::Sent(sent) = created.first_message else {
         panic!("first message not sent");
@@ -84,12 +85,29 @@ fn a_side_chat_forks_on_its_first_message_and_binds_the_parents_runner() {
 }
 
 #[test]
+fn a_side_chat_starts_on_the_model_and_effort_chosen_for_it() {
+    let core = connected(side_chat_transport(
+        &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
+    ));
+    let config = SideChatConfig {
+        model_override: Some("gpt-5".into()),
+        reasoning_effort: Some("high".into()),
+    };
+    block_on(core.create_side_chat("conv_a", "Why?", &config)).unwrap();
+    assert_eq!(
+        body_json(&core.transport().writes()[0]),
+        json!({"title": "Side chat", "side_chat": true, "model_override": "gpt-5",
+               "reasoning_effort": "high"})
+    );
+}
+
+#[test]
 fn a_blank_first_message_creates_nothing() {
     let core = connected(side_chat_transport(
         &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
     ));
     assert_eq!(
-        block_on(core.create_side_chat("conv_a", "  \n")),
+        block_on(core.create_side_chat("conv_a", "  \n", &SideChatConfig::default())),
         Err(SessionError::EmptyMessage)
     );
     assert_eq!(core.transport().writes(), []);
@@ -107,7 +125,8 @@ fn a_failed_first_message_still_returns_the_side_chat() {
         Reply::json(500, "{}"),
     );
     let core = connected(transport);
-    let created = block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
+    let created =
+        block_on(core.create_side_chat("conv_a", "Why?", &SideChatConfig::default())).unwrap();
     assert_eq!(created.session_id, "conv_side");
     assert!(matches!(created.first_message, FirstMessage::Failed(_)));
 }
@@ -133,7 +152,8 @@ fn a_side_chats_first_message_is_checked_against_the_row_its_binding_returned() 
     );
     let core = connected(transport);
     bind(&core, row(&json!("run_1"), true));
-    let created = block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
+    let created =
+        block_on(core.create_side_chat("conv_a", "Why?", &SideChatConfig::default())).unwrap();
     assert!(matches!(created.first_message, FirstMessage::Sent(_)));
     assert_eq!(
         lines_after_connect(&core),
@@ -147,7 +167,8 @@ fn a_side_chats_first_message_is_checked_against_the_row_its_binding_returned() 
 
     // A binding the server answers as still unbound refuses the message without sending it.
     bind(&core, row(&Value::Null, false));
-    let created = block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
+    let created =
+        block_on(core.create_side_chat("conv_a", "Why?", &SideChatConfig::default())).unwrap();
     assert!(matches!(
         created.first_message,
         FirstMessage::Failed(SessionError::ExecutionUnavailable { .. })
@@ -155,7 +176,7 @@ fn a_side_chats_first_message_is_checked_against_the_row_its_binding_returned() 
     assert_eq!(lines_after_connect(&core).len(), 7);
 
     bind(&core, Reply::json(200, r#"{"id":7}"#));
-    let outcome = block_on(core.create_side_chat("conv_a", "Why?"));
+    let outcome = block_on(core.create_side_chat("conv_a", "Why?", &SideChatConfig::default()));
     assert!(
         matches!(&outcome, Err(SessionError::DeliveryUncertain { detail })
             if detail.contains("acknowledgement")),
@@ -176,7 +197,7 @@ fn a_stopped_runner_is_relaunched_and_a_lost_one_refuses() {
     );
     // The relaunch did not bring the runner back: nothing is forked.
     assert!(matches!(
-        block_on(core.create_side_chat("conv_a", "Why?")),
+        block_on(core.create_side_chat("conv_a", "Why?", &SideChatConfig::default())),
         Err(SessionError::ExecutionUnavailable { .. })
     ));
     let writes = core.transport().writes();
@@ -232,8 +253,13 @@ fn a_codex_side_chat_asks_the_parents_agent_to_fork_with_the_side_command() {
     let core = live(codex_parent());
     core.update_composer("conv_a", "A draft in the main chat")
         .unwrap();
-    let started =
-        block_on(core.start_side_chat("conv_a", Some("codex-native"), "Why is it slow?")).unwrap();
+    let started = block_on(core.start_side_chat(
+        "conv_a",
+        Some("codex-native"),
+        "Why is it slow?",
+        &SideChatConfig::default(),
+    ))
+    .unwrap();
     assert_eq!(started, StartedSideChat::AwaitingFork);
     // One message to the parent: no fork route, no read, and nothing sent to another session.
     assert_eq!(
@@ -278,7 +304,12 @@ fn a_codex_side_chat_goes_out_while_the_main_composer_has_an_unreviewed_send() {
     ));
     assert_eq!(core.is_send_blocked("conv_a"), Ok(true));
     assert_eq!(
-        block_on(core.start_side_chat("conv_a", Some("codex-native"), "Why?")),
+        block_on(core.start_side_chat(
+            "conv_a",
+            Some("codex-native"),
+            "Why?",
+            &SideChatConfig::default()
+        )),
         Ok(StartedSideChat::AwaitingFork)
     );
     assert_eq!(core.is_send_blocked("conv_a"), Ok(true));
@@ -289,14 +320,24 @@ fn a_codex_side_chat_that_cannot_be_asked_for_says_why_and_forks_nothing() {
     // Blank: no request.
     let core = live(codex_parent());
     assert_eq!(
-        block_on(core.start_side_chat("conv_a", Some("codex-native"), " \n")),
+        block_on(core.start_side_chat(
+            "conv_a",
+            Some("codex-native"),
+            " \n",
+            &SideChatConfig::default()
+        )),
         Err(SessionError::EmptyMessage)
     );
     assert_eq!(lines_after_connect(&core), Vec::<String>::new());
     // The parent's stream is not live, so its fork could never be seen: no request.
     let core = connected(codex_parent());
     assert_eq!(
-        block_on(core.start_side_chat("conv_a", Some("codex-native"), "Why?")),
+        block_on(core.start_side_chat(
+            "conv_a",
+            Some("codex-native"),
+            "Why?",
+            &SideChatConfig::default()
+        )),
         Err(SessionError::StreamNotReady)
     );
     assert_eq!(lines_after_connect(&core), Vec::<String>::new());
@@ -312,7 +353,12 @@ fn a_codex_side_chat_that_cannot_be_asked_for_says_why_and_forks_nothing() {
         ),
     );
     let core = live(transport);
-    let refused = block_on(core.start_side_chat("conv_a", Some("codex-native"), "Why?"));
+    let refused = block_on(core.start_side_chat(
+        "conv_a",
+        Some("codex-native"),
+        "Why?",
+        &SideChatConfig::default(),
+    ));
     let Err(SessionError::Rejected { message, .. }) = &refused else {
         panic!("not refused: {refused:?}");
     };
@@ -322,7 +368,12 @@ fn a_codex_side_chat_that_cannot_be_asked_for_says_why_and_forks_nothing() {
     let transport = RouteTransport::local();
     transport.respond(Some("POST"), PARENT_EVENTS, None, Reply::json(403, "{}"));
     assert_eq!(
-        block_on(live(transport).start_side_chat("conv_a", Some("codex-native"), "Why?")),
+        block_on(live(transport).start_side_chat(
+            "conv_a",
+            Some("codex-native"),
+            "Why?",
+            &SideChatConfig::default()
+        )),
         Err(SessionError::ReadOnly)
     );
     // A policy denial is the server's `denied` acknowledgement.
@@ -334,7 +385,12 @@ fn a_codex_side_chat_that_cannot_be_asked_for_says_why_and_forks_nothing() {
         Reply::json(200, r#"{"queued":false,"denied":true,"reason":"No."}"#),
     );
     assert_eq!(
-        block_on(live(transport).start_side_chat("conv_a", Some("codex-native"), "Why?")),
+        block_on(live(transport).start_side_chat(
+            "conv_a",
+            Some("codex-native"),
+            "Why?",
+            &SideChatConfig::default()
+        )),
         Err(SessionError::MessageDenied {
             reason: Some("No.".into())
         })
@@ -346,7 +402,13 @@ fn other_harnesses_start_a_side_chat_by_forking_on_the_server() {
     let core = connected(side_chat_transport(
         &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
     ));
-    let started = block_on(core.start_side_chat("conv_a", Some("claude-native"), "Why?")).unwrap();
+    let started = block_on(core.start_side_chat(
+        "conv_a",
+        Some("claude-native"),
+        "Why?",
+        &SideChatConfig::default(),
+    ))
+    .unwrap();
     let StartedSideChat::Created(created) = started else {
         panic!("not forked on the server: {started:?}");
     };
@@ -739,7 +801,7 @@ fn an_unreadable_plan_mode_acknowledgement_is_uncertain_not_failed() {
 #[test]
 fn a_side_chat_without_a_runner_binds_nothing_and_a_resumable_offline_host_relaunches() {
     let core = connected(side_chat_transport(&json!({"runner_online": true})));
-    block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
+    block_on(core.create_side_chat("conv_a", "Why?", &SideChatConfig::default())).unwrap();
     assert!(
         !core
             .transport()
@@ -759,7 +821,7 @@ fn a_side_chat_without_a_runner_binds_nothing_and_a_resumable_offline_host_relau
         None,
         Reply::json(200, r#"{"recovered":true}"#),
     );
-    assert!(block_on(core.create_side_chat("conv_a", "Why?")).is_err());
+    assert!(block_on(core.create_side_chat("conv_a", "Why?", &SideChatConfig::default())).is_err());
     assert_eq!(
         core.transport().write_bodies(),
         vec![json!({"type": "retry_session", "data": {}})]

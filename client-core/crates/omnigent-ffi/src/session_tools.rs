@@ -222,9 +222,15 @@ impl ClientCore {
         session_id: String,
         harness: Option<String>,
         text: String,
+        model_override: Option<String>,
+        reasoning_effort: Option<String>,
     ) -> Result<StartedSideChat, CoreError> {
+        let config = omnigent_core::session_tools::SideChatConfig {
+            model_override,
+            reasoning_effort,
+        };
         self.sessions()
-            .start_side_chat(&session_id, harness.as_deref(), &text)
+            .start_side_chat(&session_id, harness.as_deref(), &text, &config)
             .await
             .map(Into::into)
             .map_err(CoreError::from)
