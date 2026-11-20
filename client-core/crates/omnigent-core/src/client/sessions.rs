@@ -73,6 +73,9 @@ pub struct SessionSummary {
     /// The `omnigent.pinned` label: the Pinned section's sort key (epoch milliseconds, or a
     /// value between two neighbours after a drag), `None` when unpinned.
     pub pin_stamp: Option<String>,
+    /// The caller muted it (`omnigent.muted`): no unread, badge or notifications for them;
+    /// its pending decisions still show.
+    pub is_muted: bool,
     /// Archived.
     pub is_archived: bool,
     /// Its harness TUI is the primary view (`omnigent.ui = terminal`): a Chat/Terminal switcher.
@@ -229,6 +232,7 @@ impl SessionSummary {
             agent_name: "Omni".to_owned(),
             is_pinned: false,
             pin_stamp: None,
+            is_muted: false,
             is_archived: false,
             terminal_first: false,
             permission_level: None,
@@ -338,6 +342,10 @@ pub const PROJECT_LABEL: &str = "omni_project";
 /// The label a pin is stored under; its value is the Pinned section's sort key.
 pub const PINNED_LABEL: &str = "omnigent.pinned";
 
+/// The label the caller.s mute is stored under (the server keeps one per viewer); any value mutes
+/// and an empty one unmutes.
+pub const MUTED_LABEL: &str = "omnigent.muted";
+
 /// The label naming the session that started an independent worker.
 pub const CREATED_BY_SESSION_LABEL: &str = "omnigent.created_by_session_id";
 
@@ -370,6 +378,8 @@ pub enum SessionChange {
     /// File into a first-class project, or `None` to remove it from its project. The legacy
     /// label is cleared either way so the two representations never disagree.
     Project(Option<String>),
+    /// Mute or unmute for the caller alone (servers that report `session_mute`).
+    Muted(bool),
 }
 
 /// One page of the session list.
@@ -697,6 +707,9 @@ impl SessionProjection {
                 .and_then(|labels| labels.get(PINNED_LABEL))
                 .filter(|stamp| !stamp.is_empty())
                 .cloned(),
+            is_muted: labels
+                .and_then(|labels| labels.get(MUTED_LABEL))
+                .is_some_and(|value| !value.is_empty()),
             is_archived: self.archived.value().copied().unwrap_or(false),
             terminal_first: match &self.labels {
                 Field::Absent => previous.is_some_and(|previous| previous.terminal_first),
@@ -1159,6 +1172,12 @@ pub(super) fn edit_request(
                 "labels": {PROJECT_LABEL: ""},
             });
             (SessionPatch::Project(project_id), body)
+        }
+        SessionChange::Muted(muted) => {
+            // A viewer's own preference, like a pin: view permission is enough.
+            allowed(SessionSummary::can_pin)?;
+            let body = json!({"labels": {MUTED_LABEL: if muted { "1" } else { "" }}});
+            (SessionPatch::Muted(muted), body)
         }
     };
     Ok(EditRequest {
@@ -2194,6 +2213,30 @@ mod tests {
             );
         }
         assert_eq!(lines_after_connect(&core), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_viewer_mutes_with_the_muted_label_which_no_other_label_stands_for() {
+        let summary = |wire: Value| {
+            decode_snapshot_value(wire)
+                .unwrap()
+                .projection
+                .summary(None)
+                .unwrap()
+        };
+        let mut wire = row("conv_a");
+        wire["labels"] = json!({"omnigent.muted": "1", "omnigent.pinned": "5"});
+        let muted = summary(wire.clone());
+        assert!(muted.is_muted && muted.is_pinned);
+        wire["labels"] = json!({"omnigent.muted": ""});
+        assert!(!summary(wire).is_muted);
+        // View permission is enough, and the change is the viewer's label alone.
+        let mut viewer = muted;
+        viewer.permission_level = Some(1);
+        viewer.is_read_only = true;
+        let request = edit_request("conv_a", SessionChange::Muted(false), Some(&viewer)).unwrap();
+        assert_eq!(request.body, json!({"labels": {"omnigent.muted": ""}}));
+        assert_eq!(request.patch, SessionPatch::Muted(false));
     }
 
     #[test]

@@ -29,6 +29,8 @@ pub(super) struct Lane<'core, T: HttpTransport> {
     session_id: String,
     intent: IntentId,
     policy: WritePolicy,
+    /// How long it masks its field once the server accepts it.
+    hold: IntentTimerKind,
     /// The intent no longer needs taking back: it was accepted, replaced, or left the ledger.
     settled: bool,
 }
@@ -200,7 +202,7 @@ impl<T: HttpTransport> Lane<'_, T> {
             state.events.push(ClientEvent::IntentTimerRequested {
                 timer: IntentTimer {
                     intent: self.intent,
-                    kind: IntentTimerKind::Hold,
+                    kind: self.hold,
                 },
             });
         }
@@ -302,7 +304,17 @@ impl<T: HttpTransport> ClientCore<T> {
     pub fn intent_timer_elapsed(&self, timer: IntentTimer) {
         {
             let mut state = lock(&self.state);
+            let ended = state.intents.patch(timer.intent).cloned();
             if let Some((scope, session_id)) = state.intents.timer_elapsed(timer) {
+                // A mute that outranked disagreeing server rows: the list is read again, since a
+                // change made elsewhere meanwhile was masked.
+                let masked = timer.kind == IntentTimerKind::ReindexHold
+                    && ended
+                        .zip(state.summaries.get(&session_id))
+                        .is_some_and(|(patch, row)| !patch.agrees_with(row));
+                if masked {
+                    state.events.push(ClientEvent::InventoryInvalidated);
+                }
                 state.republish(&scope, &session_id);
             }
         }
@@ -349,6 +361,7 @@ impl<T: HttpTransport> ClientCore<T> {
         policy: WritePolicy,
     ) -> Step<'_, T> {
         let base = state.summaries.get(session_id);
+        let hold = patch.hold();
         match state.intents.begin(&scope, session_id, patch, base) {
             Begun::Recorded(intent) => Step::Send(Lane {
                 core: self,
@@ -356,6 +369,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 session_id: session_id.to_owned(),
                 intent,
                 policy,
+                hold,
                 settled: false,
             }),
             Begun::Unneeded(row) => Step::Unneeded(row),

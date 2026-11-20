@@ -138,6 +138,9 @@ pub struct ServerPages {
     /// A trigger's workers can start as runs of the saved workflow their instructions run.
     #[uniffi(default)]
     pub session_create_workflow_id: bool,
+    /// The server keeps each viewer's mute to themselves, so Mute is offered (`session_mute`).
+    #[uniffi(default)]
+    pub session_mute: bool,
 }
 
 /// Whether an automation fires.
@@ -1008,6 +1011,7 @@ impl ClientCore {
             workflows: pages.workflows,
             workflow_sharing: pages.workflow_sharing,
             session_create_workflow_id: pages.session_create_workflow_id,
+            session_mute: pages.session_mute,
         })
     }
 

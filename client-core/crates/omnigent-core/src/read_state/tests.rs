@@ -252,3 +252,33 @@ fn marking_unread_sticks_while_viewing_and_opening_clears_it() {
     );
     assert!(!state.is_unread("a"));
 }
+
+#[test]
+fn a_muted_session_is_never_unread_but_can_still_be_read() {
+    let mut state = ReadState::new();
+    let muted = |updated_at, read| SessionSummary {
+        is_muted: true,
+        ..row("m", updated_at, Some(read))
+    };
+    state.observe(&muted(160, server(Some(100), false)));
+    assert!(state.is_muted("m"));
+    assert!(!state.is_unread("m"), "new activity shows no dot");
+    assert!(state.unread_ids().is_empty());
+    assert_eq!(state.mark_unread("m"), None, "it can't be flagged unread");
+    // Reading it still records the read, so unmuting doesn't light up what was seen.
+    assert_eq!(
+        state.mark_seen("m", 170, SeenReason::Opened),
+        Some(ReadMark {
+            session_id: "m".into(),
+            last_seen: 170,
+            unread: false
+        })
+    );
+    // Unmuted, unread activity shows again.
+    state.observe(&row("m", 200, Some(server(Some(170), false))));
+    assert!(!state.is_muted("m"));
+    assert!(state.is_unread("m"));
+    // Muting an explicitly unread session hides it too.
+    state.observe(&muted(200, server(Some(170), true)));
+    assert!(!state.is_unread("m"));
+}

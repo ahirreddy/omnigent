@@ -2296,6 +2296,46 @@ fn an_elicitation_notifies_at_once_and_the_badge_follows() {
     )));
 }
 
+#[test]
+fn a_muted_session_never_notifies_or_counts_toward_the_badge() {
+    let mut harness = connected();
+    let (sink, _) = live_socket(&mut harness);
+    harness.core.set_notifications_allowed(true);
+    harness.pump();
+    let mut row = session_row("muted", "running", 2);
+    row["labels"] = serde_json::json!({"omnigent.muted": "1"});
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "changed", "items": [row.clone()]}),
+    );
+    harness.events.take();
+    row["pending_elicitations_count"] = serde_json::json!(1);
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "changed", "items": [row.clone()]}),
+    );
+    row["status"] = serde_json::json!("idle");
+    row["pending_elicitations_count"] = serde_json::json!(0);
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "changed", "items": [row]}),
+    );
+    harness.advance(10_000);
+    let events = harness.events.take();
+    assert!(
+        !events.iter().any(|event| matches!(
+            event,
+            CoreEvent::Notification { .. }
+                | CoreEvent::BadgeChanged { .. }
+                | CoreEvent::UnreadChanged { .. }
+        )),
+        "{events:#?}"
+    );
+}
+
 /// The demo has no stream: an open session reports a live link, or its composer waits on
 /// "Connecting…" forever. A disconnect stops it and a reconnect brings it back.
 #[test]

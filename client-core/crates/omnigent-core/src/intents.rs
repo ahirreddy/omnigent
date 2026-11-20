@@ -25,6 +25,10 @@ pub const INTENT_HOLD_MS: u64 = 12_000;
 /// How long an intent whose write was lost with the link waits for the link to return.
 pub const UNCLEAR_INTENT_LIMIT_MS: u64 = 30_000;
 
+/// How long an accepted mute outranks every server row: list reads can come from a search index
+/// that catches up after the write (the web's reindex window).
+pub const REINDEX_HOLD_MS: u64 = 60_000;
+
 /// Identifies one intent. Ids are unique within one ledger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IntentId(u64);
@@ -51,11 +55,23 @@ pub enum SessionPatch {
     Project(Option<String>),
     /// The row leaves the list (deleted, or left by the caller).
     Removed,
+    /// Muted or unmuted for the caller.
+    Muted(bool),
 }
 
 impl SessionPatch {
     fn same_field(&self, other: &Self) -> bool {
         discriminant(self) == discriminant(other)
+    }
+
+    /// The hold after the server accepts it. A mute outranks every server row for the whole
+    /// reindex window, agreeing or not, since a lagging read can follow an agreeing one.
+    #[must_use]
+    pub const fn hold(&self) -> IntentTimerKind {
+        match self {
+            Self::Muted(_) => IntentTimerKind::ReindexHold,
+            _ => IntentTimerKind::Hold,
+        }
     }
 
     /// Writes the change onto `row`. [`Self::Removed`] changes no field: a removed row is
@@ -84,6 +100,7 @@ impl SessionPatch {
                 row.project_label = None;
             }
             Self::Removed => {}
+            Self::Muted(muted) => row.is_muted = *muted,
         }
     }
 
@@ -101,6 +118,7 @@ impl SessionPatch {
                 row.project_id == *project_id && row.project_label.is_none()
             }
             Self::Removed => false,
+            Self::Muted(muted) => row.is_muted == *muted,
         }
     }
 }
@@ -165,6 +183,8 @@ pub enum Begun {
 pub enum IntentTimerKind {
     /// The hold after an accepted write.
     Hold,
+    /// The hold after an accepted mute, through the list's reindex window.
+    ReindexHold,
     /// The wait for the link to return after a lost write.
     Unclear,
 }
@@ -184,6 +204,7 @@ impl IntentTimer {
     pub const fn delay_ms(self) -> u64 {
         match self.kind {
             IntentTimerKind::Hold => INTENT_HOLD_MS,
+            IntentTimerKind::ReindexHold => REINDEX_HOLD_MS,
             IntentTimerKind::Unclear => UNCLEAR_INTENT_LIMIT_MS,
         }
     }
@@ -437,12 +458,17 @@ impl IntentLedger {
         true
     }
 
-    /// A server row for the session arrived: held intents it agrees with are done.
+    /// A server row for the session arrived: held intents it agrees with are done, except those
+    /// held through the reindex window.
     pub fn settle(&mut self, scope: &str, row: &SessionSummary) {
         let Some(lane) = self.lane_mut(scope, &row.id) else {
             return;
         };
-        lane.retain(|intent| intent.is_active() || !intent.patch.agrees_with(row));
+        lane.retain(|intent| {
+            intent.is_active()
+                || intent.patch.hold() == IntentTimerKind::ReindexHold
+                || !intent.patch.agrees_with(row)
+        });
         self.prune();
     }
 
@@ -470,7 +496,7 @@ impl IntentLedger {
     /// session whose row may show differently now.
     pub fn timer_elapsed(&mut self, timer: IntentTimer) -> Option<(String, String)> {
         let waits_in = match timer.kind {
-            IntentTimerKind::Hold => IntentState::Held,
+            IntentTimerKind::Hold | IntentTimerKind::ReindexHold => IntentState::Held,
             IntentTimerKind::Unclear => IntentState::Unclear,
         };
         let (scope, session_id) = self.lanes.iter().find_map(|(scope, sessions)| {
@@ -494,6 +520,17 @@ impl IntentLedger {
         }
         self.prune();
         Some((scope, session_id))
+    }
+
+    /// The change `intent` makes, while it is in the ledger.
+    #[must_use]
+    pub fn patch(&self, intent: IntentId) -> Option<&SessionPatch> {
+        self.lanes
+            .values()
+            .flat_map(BTreeMap::values)
+            .flatten()
+            .find(|entry| entry.id == intent)
+            .map(|entry| &entry.patch)
     }
 
     /// `base` with the session's intents applied in order, whether or not one removes it. The

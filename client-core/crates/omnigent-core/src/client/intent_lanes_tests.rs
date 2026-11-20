@@ -870,3 +870,79 @@ fn a_pin_move_builds_on_the_order_the_list_shows() {
         ]
     );
 }
+
+/// `conv_a` as the server sends it to a viewer, muted for them or not.
+fn muted(is_muted: bool) -> String {
+    let labels = if is_muted {
+        json!({"omnigent.muted": "1"})
+    } else {
+        json!({})
+    };
+    json!({"id": "conv_a", "title": "Old", "status": "idle", "created_at": 1,
+        "permission_level": 1, "labels": labels})
+    .to_string()
+}
+
+fn shown_muted(core: &ClientCore<RouteTransport>) -> bool {
+    core.shown_summaries(&["conv_a".to_owned()])[0].is_muted
+}
+
+fn list_reread(recorder: &Recorder) -> bool {
+    recorder
+        .take()
+        .iter()
+        .any(|event| matches!(event, ClientEvent::InventoryInvalidated))
+}
+
+#[test]
+fn a_mute_outranks_every_server_row_through_the_reindex_window() {
+    let transport = RouteTransport::local();
+    transport.respond(Some("PATCH"), PATH, None, ok(muted(true)));
+    let core = connected(transport);
+    // View permission is enough: a mute is the viewer's own.
+    cache_row(&core, &muted(false));
+    let recorder = record(&core);
+
+    let saved = block_on(core.edit_session("conv_a", SessionChange::Muted(true))).unwrap();
+    assert!(saved.is_muted);
+    assert_eq!(
+        core.transport().write_bodies(),
+        vec![json!({"labels": {"omnigent.muted": "1"}})]
+    );
+    let hold = requested_timer(&recorder);
+    assert_eq!(hold.kind, IntentTimerKind::ReindexHold);
+    assert_eq!(hold.delay_ms(), 60_000);
+    recorder.take();
+
+    // An agreeing row does not end the hold: a lagging index read can still follow it.
+    cache_row(&core, &muted(true));
+    cache_row(&core, &muted(false));
+    assert!(shown_muted(&core));
+    assert!(!nothing_pending(&core));
+
+    // The window ends with the server's row disagreeing: the list is read again to settle it.
+    core.intent_timer_elapsed(hold);
+    assert!(list_reread(&recorder));
+    assert!(nothing_pending(&core));
+}
+
+#[test]
+fn a_mute_the_server_rows_agreed_with_ends_quietly() {
+    let transport = RouteTransport::local();
+    transport.respond(Some("PATCH"), PATH, None, ok(muted(false)));
+    let core = connected(transport);
+    cache_row(&core, &muted(true));
+    let recorder = record(&core);
+
+    let saved = block_on(core.edit_session("conv_a", SessionChange::Muted(false))).unwrap();
+    assert!(!saved.is_muted);
+    assert_eq!(
+        core.transport().write_bodies(),
+        vec![json!({"labels": {"omnigent.muted": ""}})]
+    );
+    let hold = requested_timer(&recorder);
+    recorder.take();
+    core.intent_timer_elapsed(hold);
+    assert!(!list_reread(&recorder));
+    assert!(!shown_muted(&core));
+}

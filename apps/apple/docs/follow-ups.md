@@ -153,6 +153,13 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Apps
 
+- [ ] **Muted sessions:** the menus offer no Mark as read on a muted session with unseen
+  activity (the core hides its unread, so the menu can't tell); opening it still marks it read.
+  The bulk selection's Mark as unread stays enabled when every selected row is muted (the core
+  skips them, as the web's bulk action does).
+- [ ] **Nested session drafts** (web `e3e08fbaef`): keep an Add nested agent draft's text,
+  attachments and settings after navigating away, reopened from its provisional row, and a
+  Delete draft item on that row's menu.
 - [ ] **Read state:** persist this device's read marks across relaunches; today they are kept in
   memory only.
 - [ ] **Phone supervision on a physical iPhone:** approve from the Lock Screen end to end (Face

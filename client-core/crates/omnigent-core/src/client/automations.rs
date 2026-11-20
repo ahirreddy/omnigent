@@ -112,6 +112,8 @@ pub struct ServerPages {
     /// `session_create_workflow_id` with workflows on: a trigger's workers can start as runs of
     /// the saved workflow their instructions run.
     pub session_create_workflow_id: bool,
+    /// `session_mute`: the server keeps each viewer's mute to themselves, so Mute is offered.
+    pub session_mute: bool,
 }
 
 impl ServerPages {
@@ -189,6 +191,7 @@ impl ServerPages {
             project_kanban: feature("project_kanban")?,
             session_overview: feature("session_overview")?,
             import_review: feature("import_review")?,
+            session_mute: flag("session_mute")?,
         })
     }
 }

@@ -187,6 +187,7 @@
             spy: spy, session: summary(.idle), info: SessionRowInfo(isDisconnected: true))
         ),
         ("draft", RowHost(spy: spy, session: summary(.idle), info: SessionRowInfo(hasDraft: true))),
+        ("muted", RowHost(spy: spy, session: muted(summary(.idle)))),
         ("no time", RowHost(spy: spy, session: summary(.idle), details: [])),
         (
           "shared",
@@ -216,6 +217,30 @@
       }
       // A running spinner animates, so it only has to draw.
       _ = try image(RowHost(spy: spy, session: summary(.working)))
+    }
+
+    private func muted(_ session: SessionSummary) -> SessionSummary {
+      var session = session
+      session.isMuted = true
+      return session
+    }
+
+    @Test("a muted row dims and shows a muted bell; work and drafts come first")
+    func mutedRow() throws {
+      let spy = spy
+      let quiet = OffscreenWindow(RowHost(spy: spy, session: muted(session)))
+      defer { quiet.close() }
+      #expect(try quiet.words(of: "session-row-s").joined().contains("Muted"))
+      let images = try [
+        RowHost(spy: spy, session: muted(session)),
+        RowHost(spy: spy, session: muted(session), info: SessionRowInfo(hasDraft: true)),
+      ].map { row in
+        let rendered = try RenderSupport.render(
+          row, width: 280, height: 32, scheme: .light, layout: .regular)
+        return try #require(rendered.image.representation(using: .png, properties: [:]))
+      }
+      // A draft's pencil takes the bell's place.
+      #expect(images[0] != images[1])
     }
 
     @Test("Return saves an in-place rename, trimmed; empty, unchanged or long titles don't")

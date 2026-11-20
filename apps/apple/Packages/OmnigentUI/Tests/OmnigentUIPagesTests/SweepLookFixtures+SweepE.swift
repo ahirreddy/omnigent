@@ -42,4 +42,28 @@ extension SweepLookFixtures {
     draft.selected = [fields[0].key: ["The database"], fields[2].key: ["A banner"]]
     return LookFixtures.card(card, draft: draft)
   }
+
+  /// Sidebar rows beside a muted one: its title dims and a bell stands in for its age.
+  static var mutedRows: some View {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    func row(_ id: String, _ title: String, muted: Bool, unread: Bool = false) -> some View {
+      var session = SessionSummary(
+        id: id, title: title, updatedAt: 1_800_000_000 - 600,
+        attention: unread ? .unread : .idle)
+      session.isMuted = muted
+      let menu = SessionRowMenu(
+        session: session, isUnread: unread, isShared: false, pinLimitReached: false,
+        projects: [], actions: SessionListActions(), rename: {}, confirmDelete: {},
+        confirmLeave: {}, confirmStop: {})
+      return SessionRow(
+        session: session, info: SessionRowInfo(), isUnread: unread, attention: 0,
+        details: [.updated], now: now, menu: menu)
+    }
+    return List {
+      row("a", "Fix the flaky upload test", muted: false, unread: true)
+      row("b", "Nightly dependency bumps", muted: true)
+      row("c", "Draft the release notes", muted: false)
+    }
+    .listStyle(.sidebar)
+  }
 }

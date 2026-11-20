@@ -154,7 +154,7 @@ struct SessionListRefreshingBar: View {
     func body(content: Content) -> some View {
       content
         .swipeActions(edge: .leading) {
-          if let setUnread = menu.actions.setUnread {
+          if let setUnread = menu.actions.setUnread, isUnread || !session.isMuted {
             Button(
               isUnread ? "Read" : "Unread",
               systemImage: isUnread ? "envelope.open" : "envelope.badge"

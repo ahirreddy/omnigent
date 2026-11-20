@@ -357,6 +357,37 @@ fn a_server_row_that_agrees_ends_the_hold() {
 }
 
 #[test]
+fn a_mute_is_held_through_the_reindex_window_whatever_rows_arrive() {
+    let mut ledger = IntentLedger::new();
+    let mute = SessionPatch::Muted(true);
+    let mut muted = row("a");
+    mute.apply(&mut muted);
+    assert!(muted.is_muted && mute.agrees_with(&muted) && !mute.agrees_with(&row("a")));
+    assert_eq!(mute.hold(), IntentTimerKind::ReindexHold);
+    assert_eq!(title("New").hold(), IntentTimerKind::Hold);
+
+    let id = in_flight(&mut ledger, mute.clone());
+    assert_eq!(ledger.patch(id), Some(&mute));
+    assert!(ledger.confirm(SCOPE, "a", id, &muted));
+    // An agreeing row, then one from a lagging index: the mute still shows.
+    ledger.settle(SCOPE, &muted);
+    ledger.settle(SCOPE, &row("a"));
+    assert!(ledger.project(SCOPE, &row("a")).unwrap().is_muted);
+
+    let hold = IntentTimer {
+        intent: id,
+        kind: IntentTimerKind::ReindexHold,
+    };
+    assert_eq!(hold.delay_ms(), REINDEX_HOLD_MS);
+    assert_eq!(
+        ledger.timer_elapsed(hold),
+        Some((SCOPE.to_owned(), "a".to_owned()))
+    );
+    assert!(ledger.is_empty());
+    assert_eq!(ledger.patch(id), None);
+}
+
+#[test]
 fn a_removed_session_takes_its_intents_and_tells_the_waiting_callers() {
     let mut ledger = IntentLedger::new();
     let sent = in_flight(&mut ledger, title("New"));

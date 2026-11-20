@@ -58,8 +58,11 @@ struct SessionRowMenu {
     if offersPin, session.isPinned || !pinLimitReached {
       Button(session.isPinned ? "Unpin" : "Pin") { togglePin() }
     }
-    if let setUnread = actions.setUnread {
+    if let setUnread = actions.setUnread, isUnread || !session.isMuted {
       Button(isUnread ? "Mark as read" : "Mark as unread") { setUnread(session, !isUnread) }
+    }
+    if let setMuted = actions.setMuted {
+      Button(session.isMuted ? "Unmute" : "Mute") { setMuted(session, !session.isMuted) }
     }
     if let setArchived = actions.setArchived, session.canArchive {
       Button(session.isArchived ? "Unarchive" : "Archive") {
@@ -169,7 +172,16 @@ struct SessionRowMenu {
     if actions.rename != nil, session.canRename {
       Button("Rename\u{2026}", systemImage: "pencil", action: rename)
     }
-    if let setUnread = actions.setUnread {
+    if let setMuted = actions.setMuted {
+      Button(
+        session.isMuted ? "Unmute" : "Mute",
+        systemImage: session.isMuted ? "bell" : "bell.slash"
+      ) {
+        setMuted(session, !session.isMuted)
+      }
+    }
+    // A muted session shows no unread, so it is never flagged unread.
+    if let setUnread = actions.setUnread, isUnread || !session.isMuted {
       Button(
         isUnread ? "Mark as read" : "Mark as unread",
         systemImage: isUnread ? "envelope.open" : "envelope.badge"

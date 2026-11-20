@@ -58,6 +58,27 @@
         ])
     }
 
+    @Test("Mute shows where the server keeps it per viewer; a muted row unmutes and isn't flagged")
+    func mute() throws {
+      var state = SidebarFixture.state
+      state.list.sessions[1].isMuted = true
+      let spy = SidebarSpy(state)
+      spy.offersMute = true
+      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 700)
+      defer { screen.close() }
+      let menu = try #require(try screen.menu(ofRow: SidebarFixture.betaRow))
+      #expect(menu.item(named: "Unmute") != nil)
+      #expect(menu.item(named: "Mark as unread") == nil)
+      try screen.choose("Unmute", in: menu)
+      try choose("Mute", row: SidebarFixture.gammaRow, screen)
+      #expect(spy.calls == ["mute beta false", "mute gamma true"])
+      // Without the server's per-viewer mute, no row offers it.
+      let (_, plain) = sidebar()
+      defer { plain.close() }
+      let other = try #require(try plain.menu(ofRow: SidebarFixture.betaRow))
+      #expect(other.item(named: "Mute") == nil && other.item(named: "Unmute") == nil)
+    }
+
     @Test("Copy Link and Copy Session ID land on the clipboard, not the person's")
     func copies() throws {
       let (_, screen) = sidebar()

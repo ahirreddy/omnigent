@@ -85,6 +85,7 @@ struct SessionRow: View {
           Text(session.title)
             .lineLimit(1)
             .fontWeight(isUnread ? .semibold : .regular)
+            .foregroundStyle(session.isMuted ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
             .anchorPreference(key: SessionMarkAnchor.self, value: .bounds) { $0 }
         }
         if let line = detailLine {
@@ -210,6 +211,13 @@ struct SessionRow: View {
         .foregroundStyle(.secondary)
         .help("Draft")
         .accessibilityLabel("Draft")
+    } else if session.isMuted {
+      Image(systemName: "bell.slash")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .help("Muted")
+        .accessibilityLabel("Muted")
+        .accessibilityIdentifier("session-row-muted-\(session.id)")
     } else if details.contains(.updated) {
       // A quiet row is not drawn again, so its age follows the clock by itself.
       TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -244,6 +252,7 @@ struct SessionRow: View {
     }
     if info.isDisconnected { parts.append(info.disconnectedLabel) }
     if session.isPinned { parts.append("Pinned") }
+    if session.isMuted { parts.append("Muted") }
     if info.isShared { parts.append("Shared") }
     parts.append("updated \(RelativeTime.short(session.updatedDate, now: now ?? Date())) ago")
     return parts.joined(separator: ", ")

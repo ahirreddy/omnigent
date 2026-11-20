@@ -416,6 +416,7 @@ fn server_pages_map_each_flag_to_its_own_field() {
         workflows: false,
         workflow_sharing: false,
         session_create_workflow_id: false,
+        session_mute: false,
     };
     assert_eq!(read(&mut harness, r#"{"single_user":true}"#), none);
     for (body, expected) in [
