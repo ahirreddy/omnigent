@@ -37,17 +37,19 @@ extension ProjectFolderPages {
     let selectedIndex = selectedID.flatMap { id in sessions.firstIndex { $0.id == id } }
     let visible = ProjectFolderPaging.visibleCount(
       count: sessions.count, shown: shown, selectedIndex: selectedIndex)
-    let loadPage = load.map { load in { load(project) } }
+    // A placeholder holds loaded rows only; the server has no project to page.
+    let loadPage = project.isPlaceholder ? nil : load.map { load in { load(project) } }
     self.init(
       visibleCount: visible, hasMore: paging.projectsWithMore.contains(project.id),
       isLoading: paging.loadingProjects.contains(project.id),
-      isLoaded: paging.loadedProjects.contains(project.id),
+      isLoaded: project.isPlaceholder || paging.loadedProjects.contains(project.id),
       showMore: {
         let next = visible + ProjectFolderPaging.pageSize
         setShown(next)
         if next > sessions.count { loadPage?() }
       },
-      load: loadPage, offersBoard: boards, isBoardShown: selection == .project(project.id),
+      load: loadPage, offersBoard: boards && !project.isPlaceholder,
+      isBoardShown: selection == .project(project.id),
       showsAll: shown == ProjectFolderPaging.all,
       setShowsAll: { isOn in
         ProjectShowAll.set(project.id, isOn)
@@ -113,7 +115,7 @@ struct ProjectFolder<Row: View>: View {
         Text(project.name).lineLimit(1)
       }
       Spacer(minLength: 4)
-      if isHovered {
+      if isHovered, !project.isPlaceholder {
         hoverButtons
       } else {
         folderMarker
@@ -128,13 +130,11 @@ struct ProjectFolder<Row: View>: View {
         isBoardShown: pages.isBoardShown, box: isExpanded ? .top : .single, toggle: toggle)
     )
     .onHover { isHovered = $0 }
-    .contextMenu { folderMenu.items }
-    .draggable(SidebarDragItem.project(project.id).payload)
-    .sidebarDropTarget(drop)
+    .modifier(ProjectFolderChrome(project: project, menu: folderMenu, drop: drop))
     // One element for the folder, around its name, hover buttons and expand button.
     .accessibilityElement(children: .contain)
     .accessibilityActions {
-      if let newSession = menu.actions.newSessionInProject {
+      if let newSession = menu.actions.newSessionInProject, !project.isPlaceholder {
         Button("New session in project") { newSession(project) }
       }
     }
@@ -248,6 +248,24 @@ struct ProjectFolder<Row: View>: View {
     .labelStyle(.iconOnly)
     .buttonStyle(.borderless)
     .foregroundStyle(.secondary)
+  }
+}
+
+/// A folder's menu, drag and drop; a placeholder takes none.
+private struct ProjectFolderChrome: ViewModifier {
+  let project: SessionProject
+  let menu: ProjectMenu
+  let drop: (SidebarDragItem) -> Bool
+
+  func body(content: Content) -> some View {
+    if project.isPlaceholder {
+      content
+    } else {
+      content
+        .contextMenu { menu.items }
+        .draggable(SidebarDragItem.project(project.id).payload)
+        .sidebarDropTarget(drop)
+    }
   }
 }
 

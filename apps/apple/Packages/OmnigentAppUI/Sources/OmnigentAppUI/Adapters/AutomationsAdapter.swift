@@ -20,6 +20,7 @@ struct AutomationsAdapter: View {
   @State private var draft = AutomationDraftState()
   @State private var isSaving = false
   @State private var saveError: String?
+  @State private var worktreeCheck = AutomationWorktreeCheck.unavailable
   @State private var detailID: String?
   @State private var sharing: SharingTarget?
   /// The web's toasts: "Automation created", "Run triggered…".
@@ -39,43 +40,6 @@ struct AutomationsAdapter: View {
   private struct SharingTarget: Identifiable {
     let id: String
     let continuesSession: Bool
-  }
-
-  /// Opens a new automation from a session row, where the server starts runs from a copy of
-  /// a session; `nil` hides the menu item.
-  /// - Parameters:
-  ///   - connection: The server.
-  ///   - show: Shows the Automations page.
-  /// - Returns: The row action.
-  @MainActor
-  static func createFromSession(
-    _ connection: ConnectionStore, show: @escaping @MainActor () -> Void
-  )
-    -> (@MainActor (OmnigentUIComponents.SessionSummary) -> Void)?
-  {
-    guard let pages = connection.pages, let offered = pages.offered, offered.automations,
-      offered.automationSourceSessions
-    else { return nil }
-    let list = connection.sessionList
-    return { summary in
-      let session = list.sessionsByID[summary.id]
-      let configuration = session?.configuration
-      pages.requestAutomation(
-        from: AutomationSource(
-          sessionID: summary.id, title: summary.title, agentID: configuration?.agentId,
-          hostID: configuration?.hostId,
-          workspace: session.map(\.workspace).flatMap { $0.isEmpty ? nil : $0 },
-          model: configuration?.modelOverride, effort: configuration?.effort))
-      show()
-    }
-  }
-
-  /// Whether a session can be an automation's source (web `canCreateAutomationFromSession`):
-  /// a listed session with an agent that no automation runs from yet. Side chats are never
-  /// listed, and the menus leave out shared and archived sessions.
-  static func offersAutomation(from session: OmnigentCoreFFI.SessionSummary?) -> Bool {
-    guard let session, session.automationSourceId == nil else { return false }
-    return session.configuration?.agentId?.isEmpty == false
   }
 
   var body: some View {
@@ -101,6 +65,11 @@ struct AutomationsAdapter: View {
           guard let requested else { return }
           pages.requestedAutomationID = nil
           detailID = requested
+          // A session's managed-sharing notice opens the automation's share sheet too.
+          if pages.requestedAutomationShare, let automation = automation(pages, id: requested) {
+            shareAction(pages, automation: automation)?()
+          }
+          pages.requestedAutomationShare = false
         }
     } else {
       ContentUnavailableView("Automations are unavailable", systemImage: "clock")
@@ -165,6 +134,7 @@ struct AutomationsAdapter: View {
     var inputs = AutomationEditorMapping.Inputs(
       draft: draft, saved: saved, sessionLink: sessionLink, isSaving: isSaving,
       saveError: saveError)
+    inputs.worktreeCheck = worktreeCheck
     inputs.switchTriggerEvent = { event in
       if let trigger = draft.trigger {
         draft.trigger = AutomationTriggerMapping.switched(trigger, toEvent: event)
@@ -173,6 +143,7 @@ struct AutomationsAdapter: View {
     inputs.replaceSchedule = { draft.schedule = $0 }
     inputs.switchTriggerType = { switchTriggerType(pages, to: $0) }
     inputs.workflows = connection.workflows?.owned.value ?? []
+    inputs.browseFolders = AutomationsMapping.folderBrowser(connection.creation())
     return AutomationEditorSheet(
       draft: $draft, context: AutomationEditorMapping.context(pages: pages, inputs: inputs),
       save: { save(pages, saved: saved) },
@@ -180,6 +151,14 @@ struct AutomationsAdapter: View {
     )
     .task(id: AutomationModelSource.of(draft, pages: pages)) {
       await AutomationModelSource.of(draft, pages: pages)?.load(pages)
+    }
+    .task(id: AutomationsMapping.worktreeQuery(draft, pages: pages)) {
+      let query = AutomationsMapping.worktreeQuery(draft, pages: pages)
+      worktreeCheck = .checking
+      // Waits out typing in the Workspace field.
+      guard (try? await Task.sleep(for: .milliseconds(400))) != nil else { return }
+      worktreeCheck = await AutomationsMapping.worktreeCheck(
+        query, creation: connection.creation())
     }
     .task {
       // The Workflow field lists the caller's saved workflows.
@@ -325,6 +304,10 @@ extension AutomationsAdapter {
   private func present(id: String) {
     saveError = nil
     typeDrafts = [:]
+    // A new automation files into "Omnigent Automation", as the web's.
+    if id.isEmpty {
+      draft = AutomationsMapping.withDefaultProject(draft, offered: connection.pages?.offered)
+    }
     editing = Editing(id: id)
   }
 
@@ -366,6 +349,7 @@ extension AutomationsAdapter {
       sendsMcpServices: AutomationEditorMapping.showsMcpServices(pages.offered, draft: saving))
     let fromSession = saved == nil && draft.sourceSessionID != nil
     Task {
+      guard let request = await filed(request, draft: saving, pages: pages) else { return }
       let didSave = await pages.saveAutomation(request, editing: saved)
       isSaving = false
       if didSave {
@@ -386,5 +370,21 @@ extension AutomationsAdapter {
         pages.dismissAutomationError()
       }
     }
+  }
+
+  /// `request` filed into the project the draft names; when it can be neither found nor made,
+  /// the sheet says so and nothing saves.
+  private func filed(
+    _ request: OmnigentCoreFFI.AutomationDraft, draft: AutomationDraftState, pages: PagesStore
+  ) async -> OmnigentCoreFFI.AutomationDraft? {
+    let list = connection.sessionList
+    if let filed = await AutomationsMapping.withProject(
+      request, draft: draft, pages: pages, list: list)
+    {
+      return filed
+    }
+    isSaving = false
+    saveError = "Couldn\u{2019}t create the project \u{201C}\(draft.projectName ?? "")\u{201D}."
+    return nil
   }
 }

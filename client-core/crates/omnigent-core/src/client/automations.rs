@@ -237,6 +237,8 @@ pub struct Automation {
     pub host_id: Option<String>,
     /// The pinned folder on that host; `None` is the host's home.
     pub workspace: Option<String>,
+    /// The ref each run's random worktree branches from (`HEAD`); `None` runs in the folder.
+    pub base_branch: Option<String>,
     /// Each run starts in a new managed sandbox (`execution_target` `managed_sandbox`).
     pub runs_in_sandbox: bool,
     /// The project every run's session is filed into.
@@ -291,6 +293,8 @@ pub struct AutomationDraft {
     pub host_id: Option<String>,
     /// The pinned folder on the host; `None` or blank is the host's home.
     pub workspace: Option<String>,
+    /// Start in a random worktree branched from this ref (`HEAD`); `None` runs in the folder.
+    pub base_branch: Option<String>,
     /// Run each time in a new managed sandbox instead of on a host.
     pub runs_in_sandbox: bool,
     /// The project to file sessions into; `None` for none.
@@ -689,6 +693,7 @@ fn automation_from(value: &Value) -> Result<Automation, String> {
         session_id: opt_str(object, "session_id")?,
         host_id: opt_str(object, "host_id")?,
         workspace: opt_str(object, "workspace")?,
+        base_branch: opt_str(object, "base_branch")?,
         runs_in_sandbox: opt_str(object, "execution_target")?.as_deref() == Some(MANAGED_SANDBOX),
         project_id: opt_str(object, "project_id")?,
     })
@@ -780,6 +785,11 @@ fn draft_body(draft: &AutomationDraft, saved: Option<&Automation>) -> Result<Val
     }
     if let Some(workspace) = workspace {
         body.insert("workspace".into(), json!(workspace));
+    }
+    // A worktree needs a repository folder on a host; an edit sends a change, `null` clearing it.
+    let base_branch = filled(draft.base_branch.as_ref()).filter(|_| workspace.is_some());
+    if base_branch != saved.and_then(|saved| saved.base_branch.as_deref()) {
+        body.insert("base_branch".into(), json!(base_branch));
     }
     match saved {
         None => create_fields(draft, &mut body),
@@ -1246,7 +1256,35 @@ impl<T: HttpTransport> ClientCore<T> {
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     pub async fn run_automation(&self, id: &str) -> Result<(), SessionError> {
-        let result = self.automation_write("POST", id, "/run").await;
+        self.start_automation_run(id).await.map(|_| ())
+    }
+
+    /// Starts a run now and returns its id (`run_id`), which the history then highlights;
+    /// `None` from servers that don't say.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::run_automation`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn start_automation_run(&self, id: &str) -> Result<Option<String>, SessionError> {
+        let result = async {
+            validate_identifier(id)?;
+            let path = format!("/v1/scheduled-tasks/{id}/run");
+            let response = self.write(self.prepare("POST", &path, &[], None)?).await?;
+            // An empty or unreadable acknowledgement still started the run.
+            Ok(serde_json::from_slice::<Value>(&response.body)
+                .ok()
+                .and_then(|body| {
+                    body.get("run_id")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                })
+                .filter(|run| !run.is_empty()))
+        }
+        .await;
         self.dispatch();
         result
     }

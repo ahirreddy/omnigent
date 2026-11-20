@@ -160,6 +160,9 @@ pub struct CreationCatalog {
     /// services.
     #[uniffi(default)]
     pub mcp_registry: bool,
+    /// What an automation running in the default provider's sandboxes should know.
+    #[uniffi(default)]
+    pub automation_sandbox_notice: Option<String>,
 }
 
 /// A new sandbox for a session.
@@ -384,6 +387,7 @@ impl From<core::CreationCatalog> for CreationCatalog {
             sibling_sessions: catalog.capabilities.sibling_sessions,
             sibling_session_destinations: Some(catalog.capabilities.sibling_destinations.into()),
             mcp_registry: catalog.capabilities.mcp_registry,
+            automation_sandbox_notice: catalog.capabilities.automation_notice,
         }
     }
 }
@@ -414,6 +418,7 @@ impl From<CreationCatalog> for core::CreationCatalog {
                     .map(Into::into)
                     .unwrap_or_default(),
                 mcp_registry: catalog.mcp_registry,
+                automation_notice: catalog.automation_sandbox_notice,
             },
         }
     }

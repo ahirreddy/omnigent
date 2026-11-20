@@ -25,8 +25,8 @@ extension LookFixtures {
   }
 
   /// The run history: a working run with its tasks and Stop, a finished one that says what its
-  /// agent last wrote, and one whose task failed.
-  static var automationRunTasks: some View {
+  /// agent last wrote, and one whose task failed. `highlighted` is the run Run now just started.
+  static func automationRunTasks(highlighted: String? = nil) -> some View {
     var state = AutomationUXFixtures.detail
     let started = now.addingTimeInterval(-900)
     var working = AutomationRunRow(id: "r1", indicator: .inFlight, timestamp: "Today, 9:00 AM")
@@ -52,7 +52,11 @@ extension LookFixtures {
       label: "Failed", text: "CI is down, so the checks never ran", isFailure: true)
     failed.tasks = runTasks(
       id: "p3", states: [.done, .failed, .waiting], control: .play, started: started)
-    state.runs = [working, finished, failed]
+    state.runs = [working, finished, failed].map { row in
+      var row = row
+      row.isHighlighted = row.id == highlighted
+      return row
+    }
     var actions = AutomationUXFixtures.detailActions
     actions.runTasks.openSession = { _ in }
     actions.runTasks.openTask = { _, _ in }

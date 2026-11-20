@@ -169,6 +169,8 @@ nonisolated public struct AutomationRunRow: Hashable, Sendable, Identifiable {
   public var statusText: AutomationRunStatusText?
   /// Its plan's tasks, control and graph; `nil` when it wrote no plan.
   public var tasks: WorkflowRunRowState?
+  /// Run now just started it, so it lights up briefly.
+  public var isHighlighted = false
 
   /// Creates a row.
   public init(id: String, indicator: Indicator, timestamp: String) {

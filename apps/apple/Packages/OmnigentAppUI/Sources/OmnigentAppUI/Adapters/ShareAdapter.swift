@@ -73,6 +73,8 @@ enum ShareAdapter {
       state.isReadOnlySharing = true
     }
     state.blockedReason = blockedReason
+    state.managedBy = store.managedBy.map { $0.name.isEmpty ? "Automation" : $0.name }
+    state.workspaceFiles = store.workspaceFiles?.enabled ?? false
     return state
   }
 
@@ -89,10 +91,14 @@ enum ShareAdapter {
   static func level(_ role: ShareGrant.Role) -> UInt8 { role == .edit ? 2 : 1 }
 
   /// The sheet's actions.
-  /// - Parameter store: The session's sharing.
+  /// - Parameters:
+  ///   - store: The session's sharing.
+  ///   - openAutomation: Opens an automation's page on its share sheet.
   /// - Returns: The actions.
-  static func actions(_ store: ShareStore) -> ShareActions {
-    ShareActions(
+  static func actions(
+    _ store: ShareStore, openAutomation: (@MainActor (String) -> Void)? = nil
+  ) -> ShareActions {
+    var actions = ShareActions(
       setGeneralAccess: { access in
         let level: UInt8? =
           switch access {
@@ -111,5 +117,13 @@ enum ShareAdapter {
       removeGrant: { grant in
         Task { await store.revoke(grant.principal) }
       })
+    if let openAutomation, let id = store.managedBy?.id {
+      actions.openManagingAutomation = { openAutomation(id) }
+    }
+    // As the web: the files toggle shows only for a session with a working directory.
+    if store.workspaceFiles?.workspace != nil {
+      actions.setWorkspaceFiles = { enabled in Task { await store.setWorkspaceFiles(enabled) } }
+    }
+    return actions
   }
 }

@@ -89,6 +89,18 @@ struct AutomationRunTasksTests {
     #expect(!row.needsApproval)
   }
 
+  @Test("The run Run now started lights up alone")
+  func highlight() {
+    var state = AutomationDetailState(
+      id: "t1", name: "Nightly", isPaused: false, scheduleText: "", prompt: "", agent: "",
+      host: "")
+    state.runs = ["r1", "r2"].map { AutomationRunRow(id: $0, indicator: .queued, timestamp: "") }
+    let lit = AutomationDetailMapping.highlighting("r2", in: state)
+    #expect(lit.runs.map(\.isHighlighted) == [false, true])
+    #expect(
+      AutomationDetailMapping.highlighting(nil, in: state).runs.allSatisfy { !$0.isHighlighted })
+  }
+
   @Test("An older server's plan without an entry id shows its tasks but no control")
   func noPlanID() {
     let row = row(run(), steps: steps(isCurrent: true, planID: nil), working: false)

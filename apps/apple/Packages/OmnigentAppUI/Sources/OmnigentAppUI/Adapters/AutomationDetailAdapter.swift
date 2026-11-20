@@ -21,16 +21,19 @@ struct AutomationDetailAdapter: View {
   /// Opens a saved workflow's page.
   var openWorkflow: (@MainActor (String) -> Void)?
   var readsRunsEvery: Duration = .seconds(30)
+  /// The run Run now started, lit up once it lists.
+  @State private var highlighted: String?
   @Environment(\.openURL) private var openURL
 
   var body: some View {
     TimelineView(.periodic(from: .now, by: 60)) { context in
+      let state = AutomationDetailMapping.state(
+        automation, pages: pages, now: context.date, calendar: .current,
+        tasks: connection.map(runTasksContext))
       AutomationDetailView(
-        state: AutomationDetailMapping.state(
-          automation, pages: pages, now: context.date, calendar: .current,
-          tasks: connection.map(runTasksContext)),
-        actions: actions)
+        state: AutomationDetailMapping.highlighting(highlighted, in: state), actions: actions)
     }
+    .task(id: pages.startedRuns[automation.id]) { await awaitStartedRun() }
     .task(id: automation.id) {
       while !Task.isCancelled {
         await reloadRuns()
@@ -41,6 +44,30 @@ struct AutomationDetailAdapter: View {
         }
       }
     }
+  }
+
+  /// Reads the runs every few seconds until the run Run now started lists, then lights it.
+  private func awaitStartedRun() async {
+    guard let runID = pages.startedRuns[automation.id] else { return }
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: AutomationDetailMapping.startedRunWait)
+    do {
+      while clock.now < deadline {
+        await reloadRuns()
+        let runs = pages.automationRuns[automation.id]?.value ?? []
+        if runs.contains(where: { $0.id == runID }) {
+          pages.startedRuns[automation.id] = nil
+          highlighted = runID
+          try await Task.sleep(for: AutomationDetailMapping.highlightTime)
+          if highlighted == runID { highlighted = nil }
+          return
+        }
+        try await Task.sleep(for: AutomationDetailMapping.startedRunPoll)
+      }
+    } catch {
+      return  // The page closed.
+    }
+    pages.startedRuns[automation.id] = nil
   }
 
   var actions: AutomationDetailActions {

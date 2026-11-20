@@ -42,7 +42,7 @@ extension TitlebarTrailingItems {
     #if os(macOS)
       if state.sandbox != nil { items += 1 }
     #endif
-    return items
+    return items + presence(state, isRegular: isRegular)
   }
 
   /// The Chat / Terminal switch leading the trailing items (82 points and the gap beside it),

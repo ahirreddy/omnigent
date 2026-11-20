@@ -245,6 +245,7 @@ struct AutomationScheduleRows: View {
           get: { draft.schedule ?? ScheduleChoice() }, set: { draft.schedule = $0 }),
         anchoredScheduling: context.anchoredScheduling, minuteRange: context.minuteRange,
         offersMinutes: context.offersMinutes, showsEnding: false)
+      AutomationTimeZonePicker(timezone: $draft.timezone)
     }
   }
 }

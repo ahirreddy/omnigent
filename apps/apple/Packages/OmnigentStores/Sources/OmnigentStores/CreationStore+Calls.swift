@@ -11,6 +11,19 @@ struct CreationCalls {
 }
 
 extension CreationStore {
+  /// The worktrees of the repository at `path` on `hostID`; empty when it isn't one.
+  /// - Parameters:
+  ///   - hostID: The host.
+  ///   - path: An absolute folder.
+  /// - Returns: The worktrees, or why they could not be read.
+  public func worktrees(hostID: String, path: String) async -> Result<[HostWorktree], CoreError> {
+    do {
+      return .success(try await core.hostWorktrees(hostId: hostID, path: path))
+    } catch {
+      return .failure(coreError(error))
+    }
+  }
+
   /// Leaves `text` in a created session's composer instead of sending it, as a planning chat's
   /// prompt waits there for the user (web `sideChatDrafts`).
   public func leaveDraft(_ text: String, inSession sessionID: String) {

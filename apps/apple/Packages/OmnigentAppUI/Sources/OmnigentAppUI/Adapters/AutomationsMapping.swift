@@ -115,9 +115,11 @@ enum AutomationsMapping {
       continuesSession: automation.continuesSession)
     draft.hostID = automation.hostId ?? ""
     draft.workspace = automation.workspace ?? ""
+    draft.baseBranch = automation.baseBranch
     draft.runsInSandbox = automation.runsInSandbox
     draft.projectID = automation.projectId ?? ""
     draft.maxCost = automation.maxCostUsd ?? ""
+    draft.timezone = automation.timezone.isEmpty ? draft.timezone : automation.timezone
     draft.mcpServices = automation.mcpServices
     draft.sourceSessionID = automation.sourceSessionId
     draft.isTrigger = automation.isTrigger
@@ -180,9 +182,10 @@ enum AutomationsMapping {
     return AutomationDraft(
       name: draft.name, prompt: prompt,
       rrule: draft.schedule.map { buildScheduleRrule(model: model($0)) } ?? saved?.rrule ?? "",
-      agentId: draft.agentID, timezone: saved?.timezone ?? TimeZone.current.identifier,
+      agentId: draft.agentID, timezone: draft.timezone,
       continuesSession: sessionModes ? draft.continuesSession : nil,
       hostId: filled(draft.hostID), workspace: filled(draft.workspace),
+      baseBranch: draft.baseBranch,
       runsInSandbox: draft.runsInSandbox, projectId: filled(draft.projectID),
       sendsOverrides: sendsOverrides, modelOverride: filled(draft.model),
       reasoningEffort: filled(draft.effort), permissionMode: filled(draft.permissionMode),

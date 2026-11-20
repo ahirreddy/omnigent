@@ -178,11 +178,11 @@ struct BulkActionBar: View {
   }
 
   @ViewBuilder private var moveMenu: some View {
-    if let move = actions.moveMany, !owned.isEmpty, !state.projects.isEmpty {
+    if let move = actions.moveMany, !owned.isEmpty, !state.filingProjects.isEmpty {
       // Only a representative moves its family, so a nested member needs it selected too.
       let canMove = actions.canMoveTogether(owned)
       Menu {
-        ForEach(state.projects) { project in
+        ForEach(state.filingProjects) { project in
           Button(project.name) {
             move(owned, project)
             exit()

@@ -265,6 +265,7 @@ public struct ConnectedServerView: View {
       makeShareStore: { connection.share(sessionID: id) },
       offersShare: source == nil && ShareAdapter.offered(connection.pages?.offered),
       shareUnavailableReason: ShareAdapter.unavailableReason(connection.pages?.offered),
+      openAutomationSharing: openAutomationSharing,
       linkedWorkspace: ownerID.flatMap { hostsPanel ? session.workspace(of: $0) : nil })
   }
 

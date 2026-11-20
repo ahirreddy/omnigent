@@ -69,6 +69,7 @@ fn saved(id: &str, name: &str, state: AutomationState, next_run_at: Option<i64>)
         session_id: Some("s".into()),
         host_id: Some("h".into()),
         workspace: Some("/w".into()),
+        base_branch: None,
         runs_in_sandbox: true,
         project_id: Some("pr".into()),
         is_trigger: true,
@@ -91,6 +92,7 @@ fn draft() -> AutomationDraft {
         continues_session: Some(true),
         host_id: Some("h1".into()),
         workspace: Some(" /src ".into()),
+        base_branch: Some("HEAD".into()),
         runs_in_sandbox: false,
         project_id: Some("p1".into()),
         sends_overrides: true,
@@ -563,7 +565,8 @@ fn automations_are_listed_created_edited_paused_run_and_deleted() {
             json!({"name": "Standup", "prompt": "Summarize",
                    "rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0", "agent_id": "a1",
                    "timezone": "UTC", "session_mode": "continue", "host_id": "h1",
-                   "workspace": "/src", "project_id": "p1", "model_override": "opus",
+                   "workspace": "/src", "base_branch": "HEAD", "project_id": "p1",
+                   "model_override": "opus",
                    "reasoning_effort": "high", "permission_mode": "plan",
                    "max_cost_usd": 4.0, "mcp_services": ["github"]})
         )

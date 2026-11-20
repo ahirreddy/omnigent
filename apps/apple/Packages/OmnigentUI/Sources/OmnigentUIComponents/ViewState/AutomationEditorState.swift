@@ -18,10 +18,15 @@ nonisolated public struct AutomationDraftState: Hashable, Sendable {
   public var hostID = ""
   /// The pinned folder on that host; empty is its home.
   public var workspace = ""
+  /// The ref each run's random worktree branches from (`HEAD`); `nil` runs in the folder.
+  public var baseBranch: String?
   /// Run each time in a new sandbox instead of on a host.
   public var runsInSandbox = false
   /// The project's id.
   public var projectID = ""
+  /// A project chosen by name, made on save unless one has that name: "Omnigent Automation"
+  /// for a new automation, as the web's default, or one named under New Project.
+  public var projectName: String?
   /// The model; empty is the agent's.
   public var model = ""
   /// The reasoning effort; empty is the agent's.
@@ -40,6 +45,8 @@ nonisolated public struct AutomationDraftState: Hashable, Sendable {
   public var isTrigger = false
   /// The cost limit per run in USD as typed; empty is no limit.
   public var maxCost = ""
+  /// The IANA time zone its schedule runs in: this device's for a new one.
+  public var timezone = TimeZone.current.identifier
   /// The MCP services every run starts with.
   public var mcpServices: [String] = []
   /// Create it from this session: each run starts from a copy of it.
@@ -155,6 +162,13 @@ public struct AutomationEditorContext {
   public var hosts: [AutomationOption] = []
   /// The sandbox option's label ("New Sandbox"); `nil` when the server has no sandboxes.
   public var sandboxLabel: String?
+  /// What the sandbox provider says about automations in its sandboxes, as it wrote it.
+  public var sandboxNotice: String?
+  /// Whether the pinned folder is a Git repository, for Random worktree.
+  public var worktreeCheck = AutomationWorktreeCheck.unavailable
+  /// Lists the pinned host's folders for the Workspace row's Browse; `nil` hides it.
+  public var browseWorkspace:
+    (@MainActor (String?) async -> Result<FolderListing, FolderBrowseError>)?
   /// The server can file an automation's sessions into a project.
   public var supportsProjects = false
   /// Projects to file sessions into.
@@ -220,5 +234,30 @@ public struct AutomationEditorContext {
     self.isEditing = isEditing
     self.isSaving = isSaving
     self.error = error
+  }
+}
+
+/// Whether the pinned folder is a Git repository, which Random worktree needs (the web's
+/// `useHostWorktrees` read).
+nonisolated public enum AutomationWorktreeCheck: Hashable, Sendable {
+  /// The folder is a repository.
+  case repository
+  /// The folder isn't one.
+  case notRepository
+  /// The host is offline.
+  case hostOffline
+  /// The read is in flight.
+  case checking
+  /// The read failed.
+  case unavailable
+
+  /// Why Random worktree can't be used here, as the web says it.
+  public var status: String {
+    switch self {
+    case .repository, .notRepository: "The selected directory is not a Git repository."
+    case .hostOffline: "Connect your host to verify this directory."
+    case .checking: "Checking whether this directory is a Git repository."
+    case .unavailable: "Repository verification is unavailable."
+    }
   }
 }

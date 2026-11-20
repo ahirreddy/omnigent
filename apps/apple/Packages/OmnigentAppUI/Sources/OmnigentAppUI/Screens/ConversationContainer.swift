@@ -57,6 +57,10 @@ struct ConversationContainer: View {
   var offersShare = true
   /// Why Share shows disabled (sharing turned off on this server).
   var shareUnavailableReason: String?
+  /// Opens an automation's page on its share sheet.
+  var openAutomationSharing: (@MainActor (String) -> Void)?
+  /// Connects this Mac as a host, where the edition can; the reconnect sheet's one click.
+  @Environment(\.useThisMachine) var useThisMachine
   /// The workspace the window's right panel shows, where a side chat's or sub-agent's file
   /// links open; `nil` opens them in the chat's own workspace.
   var linkedWorkspace: WorkspaceBrowserModel?

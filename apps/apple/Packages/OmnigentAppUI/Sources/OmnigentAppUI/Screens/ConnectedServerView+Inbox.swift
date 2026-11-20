@@ -15,4 +15,10 @@ extension ConnectedServerView {
     connection.pages?.requestedAutomationID = automationID
     selectionBinding.wrappedValue = .automations
   }
+
+  /// Opens an automation's page on its share sheet, as a session's managed-sharing notice does.
+  func openAutomationSharing(_ automationID: String) {
+    connection.pages?.requestedAutomationShare = true
+    openAutomation(automationID)
+  }
 }

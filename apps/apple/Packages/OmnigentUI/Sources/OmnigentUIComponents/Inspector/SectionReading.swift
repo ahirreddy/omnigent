@@ -76,8 +76,11 @@ nonisolated enum SectionReading {
     let name: String
     let isIdle: Bool
 
+    /// As the web's: an email's local part, split on `.`, `_`, `-` and `+` ("alice.smith@x" is
+    /// "AS", "bob@x" is "B"); a name splits on spaces.
     var initials: String {
-      let parts = name.split(whereSeparator: { $0 == " " || $0 == "." || $0 == "@" || $0 == "_" })
+      let local = name.split(separator: "@").first.map(String.init) ?? name
+      let parts = local.split(whereSeparator: { " ._-+".contains($0) })
       return parts.prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
     }
   }

@@ -184,6 +184,9 @@ pub struct Automation {
     /// The pinned folder; `None` is the host's home.
     #[uniffi(default)]
     pub workspace: Option<String>,
+    /// The ref each run's random worktree branches from (`HEAD`); `None` runs in the folder.
+    #[uniffi(default)]
+    pub base_branch: Option<String>,
     /// Each run starts in a new managed sandbox.
     #[uniffi(default)]
     pub runs_in_sandbox: bool,
@@ -420,6 +423,9 @@ pub struct AutomationDraft {
     /// The pinned folder on the host; `None` or blank is its home.
     #[uniffi(default)]
     pub workspace: Option<String>,
+    /// Start in a random worktree branched from this ref (`HEAD`); `None` runs in the folder.
+    #[uniffi(default)]
+    pub base_branch: Option<String>,
     /// Run each time in a new managed sandbox.
     #[uniffi(default)]
     pub runs_in_sandbox: bool,
@@ -672,6 +678,7 @@ macro_rules! automation_record {
             session_id: $source.session_id,
             host_id: $source.host_id,
             workspace: $source.workspace,
+            base_branch: $source.base_branch,
             runs_in_sandbox: $source.runs_in_sandbox,
             project_id: $source.project_id,
             is_trigger: $source.is_trigger,
@@ -718,6 +725,7 @@ impl From<AutomationDraft> for core::AutomationDraft {
             continues_session: draft.continues_session,
             host_id: draft.host_id,
             workspace: draft.workspace,
+            base_branch: draft.base_branch,
             runs_in_sandbox: draft.runs_in_sandbox,
             project_id: draft.project_id,
             sends_overrides: draft.sends_overrides,
@@ -1100,6 +1108,19 @@ impl ClientCore {
     pub async fn run_automation(&self, id: String) -> Result<(), CoreError> {
         self.sessions()
             .run_automation(&id)
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// Starts a run now and returns its id, which the history highlights; `nil` from servers
+    /// that don't say.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: as [`Self::run_automation`].
+    pub async fn start_automation_run(&self, id: String) -> Result<Option<String>, CoreError> {
+        self.sessions()
+            .start_automation_run(&id)
             .await
             .map_err(CoreError::from)
     }

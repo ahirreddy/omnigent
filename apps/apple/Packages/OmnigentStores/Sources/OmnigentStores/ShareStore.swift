@@ -10,6 +10,12 @@ public final class ShareStore {
   public let sessionID: String
   /// The grants, the owner's included.
   public private(set) var grants: CreationLoad<[SessionGrant]> = .idle
+  /// The automation whose runs replace the grants with its own list, when one does.
+  public private(set) var managedBy: ManagingAutomation?
+  /// Whether read access includes the session's files, and its folder; `nil` until read.
+  public private(set) var workspaceFiles: WorkspaceSharing?
+  /// Why ``workspaceFiles`` could not be read.
+  public private(set) var workspaceFilesError: CoreError?
   /// A change is in flight.
   public private(set) var isSaving = false
   /// The last change's failure.
@@ -34,13 +40,31 @@ public final class ShareStore {
     grants.value?.first { $0.userId == publicGrantee() }?.level
   }
 
-  /// Reads the grants.
+  /// Reads the grants, the automation that keeps them, and whether read access includes the
+  /// session's files.
   public func load() async {
     grants = .loading
     do {
-      grants = .loaded(try await core.sessionGrants(sessionId: sessionID))
+      let permissions = try await core.sessionPermissions(sessionId: sessionID)
+      grants = .loaded(permissions.grants)
+      managedBy = permissions.managedBy
     } catch {
       grants = .failed(coreError(error))
+    }
+    do {
+      workspaceFiles = try await core.workspaceSharing(sessionId: sessionID)
+      workspaceFilesError = nil
+    } catch {
+      // The sheet works without it: the files toggle stays hidden.
+      workspaceFilesError = coreError(error)
+    }
+  }
+
+  /// Lets people with read access browse the session's files, or stops it.
+  /// - Parameter enabled: Whether read access includes the files.
+  public func setWorkspaceFiles(_ enabled: Bool) async {
+    await change { core in
+      workspaceFiles = try await core.setWorkspaceSharing(sessionId: sessionID, enabled: enabled)
     }
   }
 

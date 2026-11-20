@@ -65,7 +65,8 @@ nonisolated public enum SidebarDropAction: Hashable, Sendable {
   ) -> Self {
     switch target {
     case .project(let destination), .projectSlot(let destination, _):
-      if isShared || (destination.id == project?.id && !session.isPinned) { return .none }
+      let isSame = destination.id == project?.id && !session.isPinned
+      if isShared || destination.isPlaceholder || isSame { return .none }
       return .move(to: destination, unpin: session.isPinned)
     case .pinned:
       return session.isPinned || !session.canPin || session.isArchived ? .none : .pin(slotOf: nil)

@@ -50,6 +50,7 @@ fn catalog() -> CreationCatalog {
         sibling_sessions: false,
         sibling_session_destinations: None,
         mcp_registry: false,
+        automation_sandbox_notice: None,
     }
 }
 

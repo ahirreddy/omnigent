@@ -194,6 +194,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var rowInfo: [String: SessionRowInfo]
   /// Projects.
   public var projects: [SessionProject]
+  /// The projects a session can be filed into: every folder but a placeholder.
+  public var filingProjects: [SessionProject] { projects.filter { !$0.isPlaceholder } }
   /// The Inbox count.
   public var inboxCount: Int
   /// The server offers Canvas.

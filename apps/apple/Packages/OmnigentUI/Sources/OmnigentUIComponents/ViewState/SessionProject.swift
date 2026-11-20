@@ -12,6 +12,9 @@ nonisolated public struct SessionProject: Hashable, Sendable, Identifiable {
   public var projectID: String?
   /// An emoji icon, shown instead of the folder.
   public var icon: String?
+  /// It stands in for a project the viewer doesn't have yet, to hold other users' automation
+  /// runs: it has no menu, board, drag or drop.
+  public var isPlaceholder = false
 
   /// Creates a project.
   /// - Parameters:

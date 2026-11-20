@@ -49,6 +49,12 @@ struct AutomationRunRowView: View {
       RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
         .fill(isHovered && open != nil ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
     )
+    // A run Run now just started lights up, then fades, as the web's highlight.
+    .background(
+      RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
+        .fill(Theme.warning.opacity(run.isHighlighted ? 0.18 : 0))
+        .animation(.easeOut(duration: 1.2), value: run.isHighlighted)
+    )
     .onHover { isHovered = $0 }
   }
 

@@ -293,7 +293,7 @@ extension SidebarView {
         }),
       pages: pages,
       menu: ProjectMenu(
-        project: project, projects: state.projects,
+        project: project, projects: state.filingProjects,
         sort: state.sort(of: .project(project.id)), actions: actions,
         rename: {
           projectName = project.name
@@ -346,7 +346,7 @@ extension SidebarView {
     let menu = SessionRowMenu(
       session: session, isUnread: row.isUnread, isShared: row.info.isShared,
       pinLimitReached: state.pinnedCount >= state.pinLimit,
-      projects: state.projects, actions: sessionActions,
+      projects: state.filingProjects, actions: sessionActions,
       rename: {
         renameText = session.title
         renaming = session

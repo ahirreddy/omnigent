@@ -93,6 +93,9 @@ struct ReconnectSessionSheet: View {
         Section {
           Text(notice.message).fixedSize(horizontal: false, vertical: true)
         }
+        if let reconnect = actions.reconnectThisMachine {
+          ReconnectThisMachineSection(reconnect: reconnect, checkAgain: actions.checkAgain)
+        }
         if let command = notice.command {
           Section("Command") {
             Text(command)

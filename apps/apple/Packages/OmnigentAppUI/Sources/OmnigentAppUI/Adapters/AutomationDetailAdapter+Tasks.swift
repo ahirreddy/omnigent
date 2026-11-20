@@ -106,6 +106,31 @@ extension AutomationDetailMapping {
   }
 }
 
+/// The run Run now started: read the runs until it lists, then light it up briefly (the web's
+/// `pendingRunHighlightRef`).
+extension AutomationDetailMapping {
+  /// How often the runs are read while a started run hasn't listed.
+  static let startedRunPoll: Duration = .seconds(4)
+  /// How long the page waits for a started run to list.
+  static let startedRunWait: Duration = .seconds(120)
+  /// How long a started run stays lit.
+  static let highlightTime: Duration = .seconds(3)
+
+  /// `state` with run `id` lit.
+  static func highlighting(_ id: String?, in state: AutomationDetailState)
+    -> AutomationDetailState
+  {
+    guard let id else { return state }
+    var lit = state
+    lit.runs = state.runs.map { row in
+      var row = row
+      row.isHighlighted = row.id == id
+      return row
+    }
+    return lit
+  }
+}
+
 /// The run plans' actions on an automation's page.
 extension AutomationDetailAdapter {
   /// What a run's tasks do: open a task or the workflow, stop or continue the plan, act on a

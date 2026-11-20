@@ -60,6 +60,8 @@ public final class PagesStore {
   public internal(set) var isLoadingMoreSharedAutomations = false
   /// The PRs each run created or worked on, by automation and then run.
   public internal(set) var automationRunPullRequests: [String: [String: RunPullRequests]] = [:]
+  /// The run Run now last started, by automation, for its history to highlight.
+  public var startedRuns: [String: String] = [:]
   /// The plan each run follows, by automation and then run.
   public internal(set) var automationRunSteps: [String: [String: AutomationRunSteps]] = [:]
   /// Who each automation is shared with, by automation.
@@ -96,6 +98,8 @@ public final class PagesStore {
   public let feeds: InboxFeedsStore
   /// The automation the Automations page should open, as the Inbox's Open automation asks.
   public var requestedAutomationID: String?
+  /// The requested automation opens on its share sheet (a session's managed-sharing notice).
+  public var requestedAutomationShare = false
 
   let core: ClientCore
   private let defaults: UserDefaults
@@ -223,7 +227,9 @@ public final class PagesStore {
   /// Starts a run of `id` now.
   @discardableResult
   public func runAutomation(_ id: String) async -> Bool {
-    await writeAutomation(id) { core in try await core.runAutomation(id: id) }
+    await writeAutomation(id) { core in
+      startedRuns[id] = try await core.startAutomationRun(id: id)
+    }
   }
 
   /// Deletes `id`; its sessions stay.

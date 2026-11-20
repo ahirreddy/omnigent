@@ -40,6 +40,11 @@
       #expect(resolve(plain, isShared: true, on: .project(work)) == .none)
       // A pin filed here is pulled out of Pinned so it shows in the folder.
       #expect(resolve(pinned, in: work, on: .project(work)) == .move(to: work, unpin: true))
+      // The shared runs' placeholder isn't a project to file into.
+      var placeholder = SessionProject(id: "runs", name: "Omnigent Automation", sessionIds: ["r"])
+      placeholder.isPlaceholder = true
+      #expect(resolve(plain, on: .project(placeholder)) == .none)
+      #expect(resolve(plain, on: .projectSlot(placeholder, "r")) == .none)
     }
 
     @Test("Onto Pinned: pins unless it's pinned, can't pin, or is archived")

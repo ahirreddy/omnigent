@@ -50,6 +50,9 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case settingsAdminGeneral = "settings-admin-general"
   case sessionsDeleteAutomation = "sessions-delete-automation"
   case sessionsRecentSwitcher = "sessions-recent-switcher"
+  case shareManaged = "share-managed"
+  case composerReconnectThisMac = "composer-reconnect-this-mac"
+  case transcriptPresence = "transcript-presence"
   case tasksPlan = "tasks-plan"
   case tasksStopping = "tasks-stopping"
   case tasksHistory = "tasks-history"
@@ -59,6 +62,9 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
   case automationsRunTasks = "automations-run-tasks"
   case automationsTriggerWorkflow = "automations-trigger-workflow"
   case automationsExamples = "automations-examples"
+  case automationsRunHighlight = "automations-run-highlight"
+  case automationsNewDefaults = "automations-new-defaults"
+  case automationsSandboxNotice = "automations-sandbox-notice"
   case viewersPDF = "viewers-pdf"
   case viewersVideo = "viewers-video"
   /// Recording links in a reply: a workspace recording and a remote one.
@@ -112,8 +118,14 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .composerRewind, .tasksPlan, .tasksStopping, .prFileHeader: 480
     case .tasksHistory: 420
     case .sessionsDeleteAutomation: 460
-    case .automationsLegacyShare, .automationsRunTasks, .automationsExamples: 900
-    case .automationsNew, .automationsTriggerWorkflow: 600
+    case .automationsLegacyShare, .automationsRunTasks, .automationsExamples,
+      .automationsRunHighlight:
+      900
+    case .automationsNew, .automationsTriggerWorkflow, .automationsNewDefaults,
+      .automationsSandboxNotice:
+      600
+    case .shareManaged, .composerReconnectThisMac: 520
+    case .transcriptPresence: 240
     case .projectsNewFolder, .projectsNewRepository: 460
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin,
       .settingsAdminGeneral:
@@ -131,8 +143,11 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .tasksPlan: 620
     case .tasksStopping: 420
     case .automationsLegacyShare: 640
-    case .automationsRunTasks: 900
+    case .automationsRunTasks, .automationsRunHighlight: 900
     case .automationsNew: 760
+    case .automationsNewDefaults, .automationsSandboxNotice: 1_640
+    case .shareManaged: 760
+    case .composerReconnectThisMac: 820
     case .projectsNewFolder, .projectsNewRepository: 440
     case .settingsAgents, .settingsSessions, .settingsHarness, .settingsPlugin: 560
     case .viewersPDF: 520
@@ -205,12 +220,20 @@ enum LookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .settingsAdminGeneral: return AnyView(Fixture.settings { Fixture.adminGeneral })
     case .sessionsDeleteAutomation: return AnyView(Fixture.deleteAutomationSource)
     case .sessionsRecentSwitcher: return AnyView(Fixture.recentSwitcher)
+    case .shareManaged: return AnyView(Fixture.shareManaged)
+    case .composerReconnectThisMac: return AnyView(Fixture.reconnectThisMac)
+    case .transcriptPresence: return AnyView(Fixture.presence)
     case .tasksPlan: return AnyView(Fixture.tasks)
     case .tasksStopping: return AnyView(Fixture.tasksStopping)
     case .tasksHistory: return AnyView(Fixture.taskHistory)
     case .automationsLegacyShare: return AnyView(Fixture.legacyShareDetail)
     case .automationsNew: return AnyView(Fixture.newAutomation)
-    case .automationsRunTasks: return AnyView(Fixture.automationRunTasks)
+    case .automationsRunTasks: return AnyView(Fixture.automationRunTasks())
+    case .automationsRunHighlight: return AnyView(Fixture.automationRunTasks(highlighted: "r1"))
+    case .automationsNewDefaults:
+      return AnyView(Fixture.newAutomationDefaults.omnigentAppearance(.omni))
+    case .automationsSandboxNotice:
+      return AnyView(Fixture.sandboxNotice.omnigentAppearance(.omni))
     case .automationsExamples:
       return AnyView(AutomationExamplesView(back: {}, done: {}).omnigentAppearance(.omni))
     case .automationsTriggerWorkflow: return AnyView(Fixture.triggerWorkflow)
