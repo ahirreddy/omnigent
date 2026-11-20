@@ -192,6 +192,17 @@
       let noHost = pane(.sandboxOffline, resumes: false)
       defer { noHost.close() }
       #expect(noHost.controlFrames.isEmpty)
+
+      // A split whose shells still run keeps its panes under the state, as the web's.
+      let kept = transcriptScreen(
+        TerminalPane(
+          status: .harnessNotRunning, keepsPanes: true, resume: { log.add("kept") },
+          content: { Text("The shells") }))
+      defer { kept.close() }
+      #expect(try kept.shows("The shells"))
+      #expect(try kept.shows("The harness is not running."))
+      try kept.clickControl(at: 0)
+      #expect(log.entries == ["resume", "kept"])
     }
 
     @Test("The agent info popover lists only what the agent has")

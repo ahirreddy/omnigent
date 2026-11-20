@@ -170,6 +170,7 @@ extension ConversationContainer {
       owner: summary?.owner, viewer: viewer, grants: loadedGrants)
     state.sandbox = SandboxAdapter.state(conversation, environment: hostEnvironment)
     if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
+    state.terminalKeepsPanes = keptTerminalSplit(isRegularWidth: isRegularWidth) != nil
     state.agentInfo = conversation.agentInfo.map {
       OmnigentUIComponents.AgentInfo(name: $0.name, tools: $0.tools, policies: $0.policies)
     }

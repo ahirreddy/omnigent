@@ -13,7 +13,8 @@ extension ConversationContainer {
     ConversationHarnessTerminal(
       surface: harnessSurface, harness: conversation.header?.settings?.harness,
       error: terminals?.lastError, terminals: terminals,
-      split: terminalSplitPanes(isRegularWidth: isRegularWidth),
+      split: terminalSplitPanes(isRegularWidth: isRegularWidth)
+        ?? keptTerminalSplit(isRegularWidth: isRegularWidth),
       attachShell: { [terminals, conversation] id in
         terminals?.controller(
           for: id, permissionLevel: conversation.header?.permissionLevel,
@@ -54,6 +55,22 @@ extension ConversationContainer {
       case .ready = terminals.terminals.harness
     else { return nil }
     return terminalSplits.panes(of: conversation.sessionID)
+  }
+
+  /// The split kept on screen while the agent's terminal is down, as the web keeps its saved
+  /// panes: one whose shell the session still lists. Its agent pane says it's unavailable.
+  /// - Parameter isRegularWidth: The window is wide enough for panes (always on a Mac).
+  /// - Returns: The split, or `nil` to show the stopped state alone.
+  func keptTerminalSplit(isRegularWidth: Bool) -> TerminalSplitPanes? {
+    guard offersTerminalSplit, isRegularWidth, let terminals, isSessionOwner else { return nil }
+    switch terminals.terminals.harness {
+    case .notTerminalFirst, .ready: return nil
+    case .startingUp, .unavailable: break
+    }
+    let panes = terminalSplits.panes(of: conversation.sessionID)
+    let listed = Set(terminals.terminals.rows.map(\.terminal.id))
+    let shells = panes.state?.layout.keys.compactMap(\.shellID) ?? []
+    return shells.contains(where: listed.contains) ? panes : nil
   }
 
   /// The toolbar's and menus' split actions; `nil` where the split isn't offered or the agent
