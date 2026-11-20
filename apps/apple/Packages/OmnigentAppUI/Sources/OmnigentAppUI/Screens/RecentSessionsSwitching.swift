@@ -12,7 +12,7 @@ import SwiftUI
 struct RecentSessionsSwitching: ViewModifier {
   let connection: ConnectionStore
   /// The open session.
-  let active: String?
+  let active: @MainActor () -> String?
   let open: @MainActor (String) -> Void
   @State private var state: RecentSessionsSwitcherState?
   #if os(macOS)
@@ -64,7 +64,7 @@ struct RecentSessionsSwitching: ViewModifier {
   private func step(_ offset: Int) {
     if state == nil {
       state = RecentSessionsSwitcherState(
-        rows: Self.rows(connection.sessionList), active: active, offset: offset)
+        rows: Self.rows(connection.sessionList), active: active(), offset: offset)
     } else {
       state?.step(by: offset)
     }
@@ -73,7 +73,7 @@ struct RecentSessionsSwitching: ViewModifier {
   private func commit() {
     let target = state?.selectedID
     state = nil
-    if let target, target != active { open(target) }
+    if let target, target != active() { open(target) }
   }
 
   #if os(macOS)

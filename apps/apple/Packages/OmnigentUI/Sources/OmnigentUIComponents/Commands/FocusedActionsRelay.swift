@@ -136,7 +136,7 @@ extension TabCommandActions: FocusedActions {
         selectPreviousTab != nil, togglePinned != nil, duplicateTab != nil,
         moveTabToNewWindow != nil, showAllTabs != nil, openBrowser != nil,
         toggleTerminal != nil, toggleSplit != nil, focusPane != nil, moveTabToOtherPane != nil,
-        newShell != nil,
+        newShell != nil, goBack != nil, goForward != nil,
       ], count: count, supportsSplit: supportsSplit, isSplit: isSplit)
   }
 
@@ -166,6 +166,8 @@ extension TabCommandActions: FocusedActions {
     }
     copy.moveTabToOtherPane = Self.forward(moveTabToOtherPane, \.moveTabToOtherPane, to: latest)
     copy.newShell = Self.forward(newShell, \.newShell, to: latest)
+    copy.goBack = Self.forward(goBack, \.goBack, to: latest)
+    copy.goForward = Self.forward(goForward, \.goForward, to: latest)
     return copy
   }
 }

@@ -328,8 +328,11 @@ extension ConnectedServerView {
 
   /// Control-Tab's recent-sessions switcher, opening its choice in place.
   var recentSessionsSwitching: RecentSessionsSwitching {
-    RecentSessionsSwitching(
-      connection: connection, active: session.tabs.currentSessionID, open: showInPlace)
+    // The open session is read when Control-Tab is pressed, so a page change doesn't render
+    // the window again.
+    let tabs = session.tabs
+    return RecentSessionsSwitching(
+      connection: connection, active: { tabs.currentSessionID }, open: showInPlace)
   }
 
   /// Control-Command-digit: the session at `index` among the sidebar's rows on screen.

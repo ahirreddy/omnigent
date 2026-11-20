@@ -34,8 +34,9 @@ public final class SessionTabGroups {
   public private(set) var groups: [String: TabStore] = [:]
   /// Sessions in the order they were last shown, the most recent first.
   public private(set) var recentSessions: [String] = []
-  /// The pages Back and Forward step through.
-  public private(set) var history = PageHistory()
+  /// The pages Back and Forward step through. It changes only with ``page``, which views
+  /// already observe.
+  @ObservationIgnored public private(set) var history = PageHistory()
   /// The session a project board's quick view shows beside its lanes; it stays open meanwhile.
   public var quickViewSessionID: String?
   /// Tabs in the order they were last shown, across sessions, the most recent first.

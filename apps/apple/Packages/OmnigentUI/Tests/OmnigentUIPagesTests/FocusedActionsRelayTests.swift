@@ -80,6 +80,8 @@ struct FocusedActionsRelayTests {
         newTab: { calls.append("new") }, closeTab: { calls.append("close") },
         selectTab: { calls.append("select \($0)") }, count: count)
       actions.focusPane = { calls.append("pane \($0)") }
+      actions.goBack = { calls.append("back") }
+      actions.goForward = { calls.append("forward") }
       return actions
     }
     _ = relay.publish(actions(count: 2))
@@ -89,10 +91,17 @@ struct FocusedActionsRelayTests {
     published.closeTab?()
     published.selectTab(3)
     published.focusPane?(.trailing)
-    #expect(calls == ["new", "close", "select 3", "pane trailing"])
+    published.goBack?()
+    published.goForward?()
+    #expect(calls == ["new", "close", "select 3", "pane trailing", "back", "forward"])
+    // Back becoming available republishes the menus.
+    var noBack = actions(count: 2)
+    noBack.goBack = nil
+    _ = relay.publish(noBack)
+    #expect(relay.publications == 2)
 
     _ = relay.publish(actions(count: 3))
-    #expect(relay.publications == 2)
+    #expect(relay.publications == 3)
   }
 
   @Test("palette commands keep one value across updates")
