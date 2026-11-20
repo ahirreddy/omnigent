@@ -254,6 +254,9 @@ extension ConversationScreen {
       actions.toggleUnread = { setUnread(summary, !(isUnread?(summary.id) ?? false)) }
     }
     actions.addNestedAgent = chrome.addNestedAgentCommand
+    if offersTerminal {
+      extras.terminalSplit?.addCommands(to: &actions, isShown: showsTerminal)
+    }
     if let summary = state.summary { addRowCommands(to: &actions, summary: summary) }
     return actions
   }

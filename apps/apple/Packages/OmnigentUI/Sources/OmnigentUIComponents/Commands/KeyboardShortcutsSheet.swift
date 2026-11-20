@@ -6,20 +6,30 @@ public struct KeyboardShortcutsSheet: View {
   @Environment(\.dismiss) private var dismiss
   @State private var submitWithCommandReturn = ComposerPreferences.commandReturnSends
   private let nestedAgents: Bool
+  private let terminalSplit: Bool
+  #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+  #endif
 
   /// Creates shortcut help.
-  /// - Parameter nestedAgents: The server can add nested agents, so their shortcut is listed.
-  public init(nestedAgents: Bool = false) {
+  /// - Parameters:
+  ///   - nestedAgents: The server can add nested agents, so their shortcut is listed.
+  ///   - terminalSplit: The server splits Terminal views, so their shortcuts are listed where
+  ///     the split shows (not at compact width).
+  public init(nestedAgents: Bool = false, terminalSplit: Bool = false) {
     self.nestedAgents = nestedAgents
+    self.terminalSplit = terminalSplit
   }
 
   private var groups: [ShortcutGroup] {
     #if os(macOS)
       ShortcutGuide.groups(
-        submitWithCommandReturn: submitWithCommandReturn, isMac: true, nestedAgents: nestedAgents)
+        submitWithCommandReturn: submitWithCommandReturn, isMac: true, nestedAgents: nestedAgents,
+        terminalSplit: terminalSplit)
     #else
       ShortcutGuide.groups(
-        submitWithCommandReturn: submitWithCommandReturn, isMac: false, nestedAgents: nestedAgents)
+        submitWithCommandReturn: submitWithCommandReturn, isMac: false, nestedAgents: nestedAgents,
+        terminalSplit: terminalSplit && sizeClass == .regular)
     #endif
   }
 

@@ -28,7 +28,8 @@ struct ShortcutGuideTests {
       AppShortcuts.focusComposer, AppShortcuts.jumpToLatest, AppShortcuts.previousMessage,
       AppShortcuts.nextMessage, AppShortcuts.dictate, AppShortcuts.expandEditor,
       AppShortcuts.chooseModel, AppShortcuts.cycleModel, AppShortcuts.cycleEffort,
-      AppShortcuts.toggleViewMode, AppShortcuts.toggleInspector, AppShortcuts.rightPanel,
+      AppShortcuts.toggleViewMode, AppShortcuts.splitTerminalRight,
+      AppShortcuts.splitTerminalDown, AppShortcuts.toggleInspector, AppShortcuts.rightPanel,
       AppShortcuts.toggleSidebar, AppShortcuts.toggleSidebarAlias, AppShortcuts.searchWorkspace,
       AppShortcuts.newTab, AppShortcuts.closeTab, AppShortcuts.reopenClosedTab,
       AppShortcuts.nextTab, AppShortcuts.previousTab, AppShortcuts.recentSessions,
@@ -77,9 +78,23 @@ struct ShortcutGuideTests {
     #expect(rows["Cycle reasoning effort"] == "⌃⌥E")
     #expect(rows["Open a new shell"] == "⌥⌘T")
     #expect(rows["Toggle sessions sidebar"] == "⌥⌘[ or ⌃⌘S")
-    #expect(rows["Focus left / right pane"] == "⌥⌘← / ⌥⌘→ or ⌥⇧⌘[ / ⌥⇧⌘]")
+    #expect(rows["Focus left / right pane"] == "⌥⌘← / ⌥⌘→")
+    #expect(rows["Split terminal right"] == nil)
     #expect(rows["Select tab 1–8 / last tab"] == "⌘1–8 / ⌘9")
     #expect(rows["Exit full screen from a file"] == "Esc")
+  }
+
+  @Test("A server that splits Terminal views lists the split and pane keys, as the web does")
+  func terminalSplitKeys() {
+    let groups = ShortcutGuide.groups(
+      submitWithCommandReturn: false, isMac: true, terminalSplit: true)
+    let panes = groups.first { $0.title == "Panes" }
+    let rows = Dictionary(
+      (panes?.rows ?? []).map { ($0.title, $0.keys) }, uniquingKeysWith: { first, _ in first })
+    #expect(panes?.note == "in split view and split terminals")
+    #expect(rows["Focus previous / next terminal pane"] == "⌥⇧⌘[ / ⌥⇧⌘]")
+    #expect(rows["Split terminal right"] == "⌥⇧⌘\\")
+    #expect(rows["Split terminal down"] == "⌥⌘-")
   }
 
   @Test("Send keys follow the send preference; touch platforms send with Command-Return")

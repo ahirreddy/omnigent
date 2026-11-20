@@ -36,6 +36,9 @@ public struct ConversationExtras {
   public var tasksPreview: (@MainActor () -> ChatTasksPreviewState?)?
   /// Shows the Tasks tab, from the preview.
   public var showTasks: (@MainActor () -> Void)?
+  /// The Terminal view's split actions, for its owner where the server splits it; `nil` hides
+  /// them.
+  public var terminalSplit: TerminalSplitControls?
 
   /// Creates extras.
   /// - Parameters:

@@ -93,6 +93,14 @@ extension TerminalSurfaceController {
     return handled
   }
 
+  /// The view took or gave up the keyboard.
+  func setFocused(_ focused: Bool) {
+    if hasKeyboardFocus != focused { hasKeyboardFocus = focused }
+    guard let surface = unsafe surface else { return }
+    unsafe ghostty_surface_set_focus(surface, focused)
+    if focused { connection.foreground() }
+  }
+
   /// Gives the terminal keyboard focus (on iOS this shows the keyboard and accessory row).
   public func focus() {
     #if os(macOS)

@@ -114,6 +114,7 @@ struct SessionSurface {
       },
       shareOpened: { Task { await kept.shareStore?.load() } })
     extras.agentCosts = AgentTreeAdapter.costSource(conversation)
+    extras.terminalSplit = chat.terminalSplitControls(isRegularWidth: true, report: report)
     return extras
   }
 

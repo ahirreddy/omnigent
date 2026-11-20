@@ -116,6 +116,8 @@ nonisolated public struct PaletteViewState: Hashable, Sendable {
   public var showsUsage = false
   /// The server can add nested agents, so the shortcut guide lists Option-Command-A.
   public var offersNestedAgents = false
+  /// The server splits Terminal views, so the shortcut guide lists the split keys.
+  public var offersTerminalSplit = false
 
   /// Creates palette data without loading or searching over the network.
   public init(

@@ -80,6 +80,11 @@ public enum AppShortcuts {
 
   /// Chat and the harness terminal.
   public static let toggleViewMode = KeyboardShortcut("\\", modifiers: [.command, .option])
+  /// Split the focused terminal pane right with the default shell: Option-Shift-Command-\\
+  /// (Shift turns \\ into |).
+  public static let splitTerminalRight = KeyboardShortcut("|", modifiers: [.command, .option])
+  /// Split the focused terminal pane down with the default shell.
+  public static let splitTerminalDown = KeyboardShortcut("-", modifiers: [.command, .option])
   /// The right panel, from the menu bar.
   public static let toggleInspector = KeyboardShortcut("i", modifiers: [.command, .option])
   /// The right panel, from the session header (the web's workspace sidebar key).
@@ -126,10 +131,10 @@ public enum AppShortcuts {
   /// Focus the right pane.
   public static let focusRightPane = KeyboardShortcut(
     .rightArrow, modifiers: [.command, .option])
-  /// Focus the previous pane, with the web's key.
-  public static let previousPane = KeyboardShortcut("[", modifiers: [.command, .option, .shift])
-  /// Focus the next pane, with the web's key.
-  public static let nextPane = KeyboardShortcut("]", modifiers: [.command, .option, .shift])
+  /// Focus the previous pane of a split Terminal view, with the web's Option-Shift-Command-[.
+  public static let previousPane = KeyboardShortcut("{", modifiers: [.command, .option])
+  /// Focus the next pane of a split Terminal view, with the web's Option-Shift-Command-].
+  public static let nextPane = KeyboardShortcut("}", modifiers: [.command, .option])
 
   /// The tab at a position, 0-based; 8 is the last tab.
   /// - Parameter index: The position.
@@ -178,7 +183,7 @@ public enum AppShortcuts {
   }
 
   /// Keys bound by their shifted character, which the menu bar shows as Shift and the key.
-  private static let shiftedKeys: [Character: String] = ["{": "[", "}": "]"]
+  private static let shiftedKeys: [Character: String] = ["{": "[", "}": "]", "|": "\\"]
 
   /// The key's name or glyph.
   /// - Parameter key: The key.

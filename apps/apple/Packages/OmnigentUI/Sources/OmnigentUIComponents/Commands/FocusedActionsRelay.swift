@@ -74,6 +74,8 @@ extension SessionCommandActions: FocusedActions {
       toggleViewMode != nil, openChanges != nil, rename != nil, chooseModel != nil,
       cycleModel != nil, cycleEffort != nil, approveOwnsCommandReturn, addNestedAgent != nil,
       toggleUnread != nil, togglePin != nil, archive != nil, fork != nil,
+      offersTerminalSplit, splitTerminalRight != nil, splitTerminalDown != nil,
+      closeTerminalPane != nil, nextTerminalPane != nil, previousTerminalPane != nil,
     ]
   }
 
@@ -100,6 +102,13 @@ extension SessionCommandActions: FocusedActions {
     copy.cycleModel = Self.forward(cycleModel, \.cycleModel, to: latest)
     copy.cycleEffort = Self.forward(cycleEffort, \.cycleEffort, to: latest)
     copy.addNestedAgent = Self.forward(addNestedAgent, \.addNestedAgent, to: latest)
+    copy.offersTerminalSplit = offersTerminalSplit
+    copy.splitTerminalRight = Self.forward(splitTerminalRight, \.splitTerminalRight, to: latest)
+    copy.splitTerminalDown = Self.forward(splitTerminalDown, \.splitTerminalDown, to: latest)
+    copy.closeTerminalPane = Self.forward(closeTerminalPane, \.closeTerminalPane, to: latest)
+    copy.nextTerminalPane = Self.forward(nextTerminalPane, \.nextTerminalPane, to: latest)
+    copy.previousTerminalPane = Self.forward(
+      previousTerminalPane, \.previousTerminalPane, to: latest)
     copy.approveOwnsCommandReturn = approveOwnsCommandReturn
     return copy
   }

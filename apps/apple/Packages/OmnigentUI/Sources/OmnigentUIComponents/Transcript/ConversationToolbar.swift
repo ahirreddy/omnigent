@@ -33,6 +33,12 @@ struct ConversationToolbarItems {
   let showsInfo: Binding<Bool>
   let showShare: () -> Void
   let titleMenu: AnyView
+
+  /// The split actions, while the Terminal view shows at regular width.
+  var terminalSplit: TerminalSplitControls? {
+    guard offersTerminal, isRegular, mode.wrappedValue == .terminal else { return nil }
+    return extras.terminalSplit
+  }
 }
 
 /// The shown conversation's toolbar items, for the tab host to place.
@@ -57,6 +63,9 @@ struct ConversationToolbar: ToolbarContent {
       ToolbarItem(placement: items.tabsInTitlebar ? .primaryAction : .principal) {
         ViewModePicker(mode: items.mode, status: items.state.terminal)
       }
+    }
+    if let split = items.terminalSplit {
+      ToolbarItemGroup(placement: .primaryAction) { TerminalSplitToolbarItems(controls: split) }
     }
     ToolbarItemGroup(placement: .primaryAction) {
       let state = items.state
