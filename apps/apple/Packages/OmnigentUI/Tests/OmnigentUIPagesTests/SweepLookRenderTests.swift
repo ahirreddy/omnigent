@@ -50,6 +50,9 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case mutedRows = "sweep-e-muted-rows"
   case shellComposer = "sweep-e-shell-composer"
   case automationsSorted = "sweep-e-automations-sorted"
+  case terminalSplit = "sweep-f-terminal-split"
+  case composerTints = "sweep-f-composer-tints"
+  case overviewChanges = "sweep-f-overview-changes"
 
   var testDescription: String { rawValue }
 
@@ -62,8 +65,8 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   var macWidth: CGFloat {
     switch self {
     case .canvasQuickView: 960
-    case .automationsSorted: 760
-    case .shellComposer: 680
+    case .automationsSorted, .terminalSplit: 760
+    case .shellComposer, .composerTints: 680
     default: 480
     }
   }
@@ -91,8 +94,10 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .importReview: 480
     case .mutedRows: 160
     case .automationsSorted: 640
+    case .terminalSplit: 420
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
-      .quickAnswer, .staleProfile, .questionSubmitBlocked, .shellComposer:
+      .quickAnswer, .staleProfile, .questionSubmitBlocked, .shellComposer, .composerTints,
+      .overviewChanges:
       nil
     }
   }
@@ -138,6 +143,9 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .mutedRows: return AnyView(Fixture.mutedRows)
     case .shellComposer: return AnyView(Fixture.shellComposer)
     case .automationsSorted: return AnyView(Fixture.automationsSorted)
+    case .terminalSplit: return AnyView(Fixture.terminalSplit)
+    case .composerTints: return AnyView(Fixture.composerTints)
+    case .overviewChanges: return AnyView(Fixture.overviewChanges)
     }
   }
 }

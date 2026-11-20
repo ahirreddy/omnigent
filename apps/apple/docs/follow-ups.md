@@ -157,9 +157,6 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   activity (the core hides its unread, so the menu can't tell); opening it still marks it read.
   The bulk selection's Mark as unread stays enabled when every selected row is muted (the core
   skips them, as the web's bulk action does).
-- [ ] **Nested session drafts** (web `e3e08fbaef`): keep an Add nested agent draft's text,
-  attachments and settings after navigating away, reopened from its provisional row, and a
-  Delete draft item on that row's menu.
 - [ ] **Read state:** persist this device's read marks across relaunches; today they are kept in
   memory only.
 - [ ] **Phone supervision on a physical iPhone:** approve from the Lock Screen end to end (Face
@@ -428,11 +425,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Host import review (Mac):** plugins come from Claude's plugin list (the web derives them
   from `plugin:skill` names and MCP servers, so it leaves disabled plugins out), and only "This
   Mac" onboarding asks for the review (the web also reviews a remote runner).
-- [ ] **Session overview:** no Files changed / Lines rows, no docked overview beside the chat
-  (it is a popover), and `cost_hidden` isn't read, so a server hiding costs shows "—".
-- [ ] **Terminal split (`splittable_terminal_view_ui`, off):** the session's Terminal view
-  doesn't split into shell panes (Split right / down with a shell, Close pane, the split tree with
-  its 25–75% dividers kept per session, ⌘⌥⇧\ and ⌘⌥-, pane cycling).
+- [ ] **Session overview:** no docked overview beside the chat (it is a popover). Files changed
+  counts the Changes list as the host reports it, untracked lines not separately counted.
+- [ ] **Terminal split, left:** the web keeps showing saved shell panes while the agent's
+  terminal is down; native shows the Terminal view's stopped state over every pane. A divider
+  takes VoiceOver's adjust actions but not the arrow keys (a Mac divider isn't a key view).
 - [ ] **Settings › Archived (Mac):** retention uses a session's last change, not the server's
   `omnigent.archived_at` label (the core's session summary does not carry it), and the project
   filter covers loaded pages only (the web pages through every archived session).
@@ -563,11 +560,9 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     project's board: list rows carry no labels, so the core can't tell a shared run.
   - Left and Right on a selected project row don't collapse and expand its folder; its button
     does.
-- [ ] **Composer tints:** a leading known `/command`, skill or shell `!` and `@` mentions are
-  not tinted inside the draft, and a sent prompt's leading command is not tinted either. The
-  composer is SwiftUI's string `TextEditor`; tinting needs its `AttributedString` form with the
-  selection, mention and completion handling moved over. Shell mode itself (ring, hint,
-  refused sends) is native.
+- [ ] **Composer tints, left:** a sent prompt's leading command is not tinted in the transcript
+  (the web tints it in the bubble); the SwiftUI, TextKit and CLI prompt renderers would each
+  need the session's commands. The composer's own tints are native (`TintedTextEditor`).
 - [ ] **Excel and Parquet previews as tables:** the web reads `.xlsx` (zip, deflate, sheet XML)
   and Parquet (Thrift footer, pages, snappy and zstd) in the browser. The core has no zip,
   deflate, XML, snappy or zstd decoder and stays dependency-light and wasm-clean, so these
@@ -607,6 +602,23 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Done
 
+- [x] **Session overview rows and `cost_hidden`:** the overview shows Files changed and Lines
+  (+added −removed) while the workspace has uncommitted changes, and a session or usage event
+  with `cost_hidden` drops a cost known before, the models' too (core `hide_costs`).
+  2026-11-20.
+- [x] **Composer tints** (web `195df4a52d`, `3083b6ef2e`): the card and CLI composers tint a
+  leading known command or skill, a shell command's `!` and tagged `@` paths. The editor is
+  `TextEditor` over an `AttributedString` of its own (`TintedTextEditor`); the draft stays a
+  plain string, and only the tints are kept as attributes. 2026-11-20.
+- [x] **Nested session drafts** (web `e3e08fbaef`): an Add nested agent draft keeps its row
+  after navigating away; the row reopens it with its text, files and choices, and its menu has
+  Delete Draft. 2026-11-20.
+- [x] **Terminal split (`splittable_terminal_view_ui`).** The owner's Terminal view splits into
+  shell panes on the Mac and iPad: Split Right and Split Down in the toolbar (a menu of the
+  declared shells, the remembered one first) and the Conversation menu (⌥⇧⌘\ and ⌥⌘- with the
+  default shell), Close Pane with "Close shell?", dividers kept within 25–75%, unfocused panes
+  dimmed, ⌥⇧⌘[ / ] to cycle, and the tree kept per session on this device. Panes of shells that
+  ended leave with the list, or with a full read when the view opens. 2026-11-20.
 - [x] **Workflows: the last follow-ups.** An automation's run history shows each run's tasks
   (a segment each), what its agent last wrote, its plan's Stop or Continue, the workflow it
   follows and its graph (`run-steps`). A trigger automation's Instructions tab has the Workflow
