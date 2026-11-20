@@ -32,6 +32,7 @@
 )]
 
 pub mod accounts;
+pub mod agent_costs;
 pub mod agent_tree;
 pub mod approval;
 pub mod attention;

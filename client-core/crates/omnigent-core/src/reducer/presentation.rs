@@ -340,6 +340,7 @@ fn usage_section(state: &SessionEventState, result: &mut Vec<EventSection>) {
             details.push(detail("model_in_use", "Model in use", model));
         }
     }
+    overview_details(state, &mut details);
     if details.is_empty() {
         return;
     }
@@ -348,6 +349,49 @@ fn usage_section(state: &SessionEventState, result: &mut Vec<EventSection>) {
         |tokens| format!("{tokens} context tokens"),
     );
     result.push(EventSection::new("usage", "Usage", summary).with_details(details));
+}
+
+/// The session overview's rows, as the web's `SessionOverview`: the session's cost, each
+/// model's cost (`model<TAB>cost`, most expensive first, unpriced last with no cost), and the
+/// tokens of every model when each reports a total.
+fn overview_details(state: &SessionEventState, details: &mut Vec<DetailSection>) {
+    if let Some(cost) = state.total_cost_usd {
+        details.push(detail("overview_cost", "Session cost", &dollars(cost)));
+    }
+    let Some(models) = state
+        .usage_by_model
+        .as_ref()
+        .filter(|models| !models.is_empty())
+    else {
+        return;
+    };
+    let mut ranked: Vec<(&String, &ModelUsage)> = models.iter().collect();
+    ranked.sort_by(|(_, left), (_, right)| {
+        right
+            .total_cost_usd
+            .unwrap_or(-1.0)
+            .total_cmp(&left.total_cost_usd.unwrap_or(-1.0))
+    });
+    let lines: Vec<String> = ranked
+        .iter()
+        .map(|(model, usage)| {
+            format!(
+                "{model}\t{}",
+                usage.total_cost_usd.map(dollars).unwrap_or_default()
+            )
+        })
+        .collect();
+    details.push(detail(
+        "overview_models",
+        "Cost by model",
+        &lines.join("\n"),
+    ));
+    let tokens = models.values().try_fold(0_u64, |sum, usage| {
+        usage.total_tokens.map(|tokens| sum.saturating_add(tokens))
+    });
+    if let Some(tokens) = tokens {
+        details.push(detail("overview_tokens", "Tokens", &tokens.to_string()));
+    }
 }
 
 /// The model the session has run on most, by tokens: what to call its model when neither the

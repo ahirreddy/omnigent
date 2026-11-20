@@ -25,6 +25,7 @@
     reason = "each operation applies its state changes under one guard so they land atomically"
 )]
 
+pub mod agent_costs;
 pub mod agent_info;
 pub mod agent_tree;
 mod attachment_previews;

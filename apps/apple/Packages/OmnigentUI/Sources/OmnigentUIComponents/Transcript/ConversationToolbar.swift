@@ -85,6 +85,8 @@ struct ConversationToolbar: ToolbarContent {
           .help(state.shareUnavailableReason ?? "Share this session")
           .accessibilityIdentifier("header-share")
       }
+      // The web hides its cost chip on narrow screens.
+      if items.isRegular { SessionCostChip(state: state, costs: items.extras.agentCosts) }
       Button {
         items.showsInspector.wrappedValue.toggle()
       } label: {

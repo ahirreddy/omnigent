@@ -175,6 +175,7 @@ private struct AgentTreeRow: View {
               .lineLimit(1)
               .help("Smart routing picked \(model)")
           }
+          if let cost = node.costLabel { AgentCostTag(label: cost) }
         }
         if let line = node.preview {
           Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1)

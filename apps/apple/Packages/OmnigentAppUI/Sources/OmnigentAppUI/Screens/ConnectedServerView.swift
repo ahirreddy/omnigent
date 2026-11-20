@@ -118,6 +118,7 @@ public struct ConnectedServerView: View {
     .modifier(groupSortPruning)
     .copyConfirmations()
     .environment(\.transcriptFocus, session.transcriptFocus)
+    .environment(\.offersSessionOverview, connection.pages?.offered?.sessionOverview == true)
     .modifier(TabCommandsPublishing(tabs: tabs, relay: tabCommandRelay))
     .modifier(TabRestoration(session: session, context: tabContext) { restore($0) })
     .modifier(SessionTabsLifecycle(session: session))

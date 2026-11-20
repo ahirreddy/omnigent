@@ -74,6 +74,10 @@ pub struct ServerPages {
     /// A project opens its sessions board (`project_kanban`).
     #[uniffi(default)]
     pub project_kanban: bool,
+    /// A cost chip opens the session's overview, and agents show their costs
+    /// (`session_overview`).
+    #[uniffi(default)]
+    pub session_overview: bool,
     /// Hosts and continued sessions run schedules under an hour (`scheduled_task_subhour`).
     #[uniffi(default)]
     pub automation_subhour: bool,
@@ -905,6 +909,7 @@ impl ClientCore {
             public_edit: pages.public_edit,
             project_repository_creation: pages.project_repository_creation,
             project_kanban: pages.project_kanban,
+            session_overview: pages.session_overview,
             automation_subhour: pages.automation_subhour,
             automation_trigger_headers: pages.automation_trigger_headers,
             automation_trigger_poll_minutes: pages.automation_trigger_poll_minutes,

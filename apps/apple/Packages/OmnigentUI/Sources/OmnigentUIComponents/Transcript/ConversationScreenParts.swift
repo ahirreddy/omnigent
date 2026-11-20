@@ -6,6 +6,8 @@ public struct ConversationExtras {
   public var sessionActions: SessionListActions
   /// The title menu's Switch Host: move the session to another machine; `nil` hides it.
   public var switchHost: HostMoveRoute?
+  /// The agents' cost tags, for the session overview's sub-agents.
+  public var agentCosts: AgentCostSource?
   /// Files and Changes content for the right panel.
   public var slots: WorkspaceSlots
   /// The Share sheet's state and actions; `nil` hides Share.

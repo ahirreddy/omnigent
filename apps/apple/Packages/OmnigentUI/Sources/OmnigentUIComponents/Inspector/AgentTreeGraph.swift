@@ -63,6 +63,7 @@ struct AgentTreeGraph: View {
             .accessibilityHidden(true)
           Text(node.name).font(.callout.weight(.medium)).lineLimit(1)
           Spacer(minLength: 0)
+          if let cost = node.costLabel { AgentCostTag(label: cost) }
           AgentStatusTile(activity: node.activity).scaleEffect(0.8)
         }
         if let preview = node.preview {
