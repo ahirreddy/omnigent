@@ -147,8 +147,14 @@ fn a_side_chat_forks_binds_and_sends_its_first_message() {
         .route_method("PATCH", "/v1/sessions/conv_side", reply(200, side));
     let started = harness
         .call(|core| async move {
-            core.start_side_chat("conv_a".into(), Some("claude-native".into()), "Why?".into())
-                .await
+            core.start_side_chat(
+                "conv_a".into(),
+                Some("claude-native".into()),
+                "Why?".into(),
+                None,
+                None,
+            )
+            .await
         })
         .unwrap();
     let StartedSideChat::Created {
@@ -177,8 +183,14 @@ fn a_codex_side_chat_is_asked_of_the_parents_agent() {
     harness.writable_session("conv_a");
     let started = harness
         .call(|core| async move {
-            core.start_side_chat("conv_a".into(), Some("codex-native".into()), "Why?".into())
-                .await
+            core.start_side_chat(
+                "conv_a".into(),
+                Some("codex-native".into()),
+                "Why?".into(),
+                None,
+                None,
+            )
+            .await
         })
         .unwrap();
     assert_eq!(started, StartedSideChat::AwaitingFork);

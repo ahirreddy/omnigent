@@ -57,6 +57,31 @@ struct SideChatAsked: View {
   }
 }
 
+/// The model and effort a new side chat starts on, chosen in its composer before the first
+/// message (web `SideChatSettings` on a pending tab).
+public struct PendingSideChatSettings {
+  /// The menus, from the session it forks, with the choice made here.
+  public var configuration: ComposerConfiguration
+  /// Choose a model (`nil` keeps the session's).
+  public var selectModel: @MainActor (String?) -> Void
+  /// Choose an effort (`nil` keeps the session's).
+  public var selectEffort: @MainActor (String?) -> Void
+
+  /// Creates the settings.
+  /// - Parameters:
+  ///   - configuration: The menus.
+  ///   - selectModel: Choose a model.
+  ///   - selectEffort: Choose an effort.
+  public init(
+    configuration: ComposerConfiguration, selectModel: @escaping @MainActor (String?) -> Void,
+    selectEffort: @escaping @MainActor (String?) -> Void
+  ) {
+    self.configuration = configuration
+    self.selectModel = selectModel
+    self.selectEffort = selectEffort
+  }
+}
+
 /// A new side chat before its first message: no session exists yet, so it has only a draft. The
 /// first send creates the side chat (web pending side-chat tab).
 public struct PendingSideChatView: View {
@@ -69,6 +94,7 @@ public struct PendingSideChatView: View {
   private let send: @MainActor () -> Void
   private let dismissFailure: @MainActor () -> Void
   private let openParent: @MainActor (String) -> Void
+  private let settings: PendingSideChatSettings?
 
   /// Creates the view.
   /// - Parameters:
@@ -82,11 +108,12 @@ public struct PendingSideChatView: View {
   ///   - send: Creates the side chat with the draft as its first message.
   ///   - dismissFailure: Hides the failure.
   ///   - openParent: Shows the parent's chat.
+  ///   - settings: The model and effort it starts on; `nil` where the agent forks it itself.
   public init(
     draft: Binding<String>, parent: CreatingSession, isStarting: Bool, failure: String?,
     asked: String? = nil, isLate: Bool = false,
     send: @escaping @MainActor () -> Void, dismissFailure: @escaping @MainActor () -> Void,
-    openParent: @escaping @MainActor (String) -> Void
+    openParent: @escaping @MainActor (String) -> Void, settings: PendingSideChatSettings? = nil
   ) {
     _draft = draft
     self.parent = parent
@@ -97,6 +124,7 @@ public struct PendingSideChatView: View {
     self.send = send
     self.dismissFailure = dismissFailure
     self.openParent = openParent
+    self.settings = settings
   }
 
   /// The page.
@@ -112,7 +140,9 @@ public struct PendingSideChatView: View {
     .safeAreaBar(edge: .bottom, spacing: 0) {
       TranscriptComposer(
         draft: ComposerDraft($draft), state: composerState,
-        actions: ComposerActions(send: send, dismissDeliveryError: dismissFailure),
+        actions: ComposerActions(
+          send: send, selectModel: settings?.selectModel, selectEffort: settings?.selectEffort,
+          dismissDeliveryError: dismissFailure),
         focusRequest: 1, hasTextChanged: { _ in })
     }
     .safeAreaInset(edge: .top, spacing: 0) {
@@ -127,7 +157,9 @@ public struct PendingSideChatView: View {
   private var composerState: ComposerViewState {
     let delivery: DeliveryState =
       if isStarting { .sending } else if let failure { .failed(message: failure) } else { .idle }
-    return ComposerViewState(
+    var state = ComposerViewState(
       delivery: delivery, acceptsAttachments: false, placeholder: SideChatCopy.placeholder)
+    state.configuration = settings?.configuration
+    return state
   }
 }

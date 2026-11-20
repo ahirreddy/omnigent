@@ -109,9 +109,18 @@ struct ComposerKeyboard {
     return .ignored
   }
 
-  /// Esc closes the completions first, then a command's output (`/help`); only then does it
-  /// stop the turn.
+  /// Esc closes a `/btw` answer first, then the completions, the `/mcp` panel (clearing its
+  /// draft, as the web's menu does) and a command's output (`/help`); only then does it stop the
+  /// turn.
   func handleEscape() -> KeyPress.Result {
+    if state.quickAnswer != nil, let dismiss = actions.extras.dismissQuickAnswer {
+      dismiss()
+      return .handled
+    }
+    if state.mcpPanel != nil, McpServersPanelState.isRequested(by: draft) {
+      draft = ""
+      return .handled
+    }
     if !completions.items.isEmpty {
       dismissedCompletionsDraft = draft
       return .handled

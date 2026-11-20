@@ -145,7 +145,7 @@ struct ComposerSendTests {
     let composer = live.composer
     composer.conversationFacts = {
       ConversationFacts(
-        tokensUsed: nil, contextWindow: nil, items: 0, mcpServers: [], agentLoaded: false,
+        tokensUsed: nil, contextWindow: nil, items: 0,
         isRunning: true, hostOnline: true)
     }
     composer.text = "hello"

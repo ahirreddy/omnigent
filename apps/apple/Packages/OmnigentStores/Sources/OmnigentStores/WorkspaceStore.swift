@@ -282,12 +282,14 @@ public final class WorkspaceStore: WorkspaceDataSource {
     let comments = try await call { try await core.sessionComments(sessionId: sessionID) }
     let viewer = viewerID()
     return fileCommentLines(comments: comments, path: path, text: text).map { line in
-      OmnigentWorkspaceUI.FileCommentLine(
+      var comment = OmnigentWorkspaceUI.FileCommentLine(
         id: line.comment.id, line: line.line, body: line.comment.body,
-        anchor: line.comment.anchor, author: line.comment.author,
+        anchor: line.comment.anchor.map(anchorDisplayText), author: line.comment.author,
         createdAt: Date(timeIntervalSince1970: TimeInterval(line.comment.createdAt)),
         isOpen: line.comment.isOpen,
         canModify: line.comment.author == nil || line.comment.author == viewer)
+      comment.pdfMark = Self.pdfMark(line.comment.anchor)
+      return comment
     }
   }
 
@@ -330,10 +332,13 @@ public final class WorkspaceStore: WorkspaceDataSource {
   ///   - span: The commented range.
   /// - Throws: The failure to show.
   public func addComment(_ body: String, on span: FileTextSpan) async throws(WorkspaceFailure) {
+    // A PDF's selection is stored as the web stores it: its page, lines and text.
+    let pdf = Self.pdfAnchor(span)
     _ = try await call {
       try await core.addSessionComment(
-        sessionId: sessionID, path: span.path, body: body, startIndex: span.start,
-        endIndex: span.end, anchor: span.text)
+        sessionId: sessionID, path: span.path, body: body,
+        startIndex: pdf?.startIndex ?? span.start, endIndex: pdf?.endIndex ?? span.end,
+        anchor: pdf?.anchorContent ?? span.text)
     }
   }
 

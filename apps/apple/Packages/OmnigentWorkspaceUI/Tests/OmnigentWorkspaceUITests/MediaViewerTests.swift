@@ -1,4 +1,6 @@
+import CoreGraphics
 import Foundation
+import SceneKit
 import Testing
 
 @testable import OmnigentWorkspaceUI
@@ -25,6 +27,52 @@ struct MediaViewerTests {
     #expect(PDFPreviewView.pageCount(1) == "1 page")
     #expect(PDFPreviewView.pageCount(12) == "12 pages")
     #expect(PDFPreviewView.pageCount(0).isEmpty)
+  }
+
+  @Test("STL and OBJ models read into a scene, an STL with a plain material")
+  func modelScenes() throws {
+    #expect(ModelPreviewView.canRead(.stl) && ModelPreviewView.canRead(.obj))
+    let obj = "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"
+    #expect(ModelPreviewView.scene(Data(obj.utf8), format: .obj) != nil)
+    #expect(ModelPreviewView.scene(Data("not a model".utf8), format: .obj) == nil)
+    let scene = try #require(ModelPreviewView.scene(Self.binarySTL, format: .stl))
+    let meshes = ModelPreviewView.meshes(in: scene)
+    #expect(!meshes.isEmpty)
+    #expect(meshes.first?.geometry?.materials.first?.lightingModel == .physicallyBased)
+  }
+
+  /// One triangle as binary STL: an 80-byte header, the count, then the facet.
+  private static var binarySTL: Data {
+    func bytes(_ word: UInt32) -> [UInt8] {
+      [0, 8, 16, 24].map { UInt8(truncatingIfNeeded: word >> UInt32($0)) }
+    }
+    var data = Data(count: 80)
+    data.append(contentsOf: bytes(1))
+    let floats: [Float32] = [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0]
+    for value in floats { data.append(contentsOf: bytes(value.bitPattern)) }
+    data.append(contentsOf: [0, 0])
+    return data
+  }
+
+  @Test("the HTML preview zooms through the browser's presets and stops at both ends")
+  func htmlZoomSteps() {
+    #expect(HTMLPreviewZoom.zoomedIn(1) == 1.1)
+    #expect(HTMLPreviewZoom.zoomedOut(1) == 0.9)
+    #expect(HTMLPreviewZoom.zoomedIn(1.05) == 1.1, "an off-preset zoom steps to the next preset")
+    #expect(HTMLPreviewZoom.zoomedIn(5) == 5)
+    #expect(HTMLPreviewZoom.zoomedOut(0.25) == 0.25)
+  }
+
+  @Test("a PDF selection is kept as fractions of its page from the top left, as the web keeps it")
+  func pdfCommentGeometry() throws {
+    let box = CGRect(x: 0, y: 0, width: 600, height: 800)
+    let line = CGRect(x: 60, y: 600, width: 300, height: 20)
+    let fraction = try #require(PDFCommentCoordinator.fraction(line, in: box))
+    #expect(fraction == CGRect(x: 0.1, y: 0.225, width: 0.5, height: 0.025))
+    #expect(PDFCommentCoordinator.pageRect(fraction, in: box) == line)
+    #expect(PDFCommentCoordinator.fraction(.zero, in: box) == nil)
+    let span = FileTextSpan.pdf("Total", mark: PdfMark(page: 3, rects: [fraction]), path: "a.pdf")
+    #expect(span.linesTitle == "page 3")
   }
 
   @Test("chapter times read m:ss of whole seconds")

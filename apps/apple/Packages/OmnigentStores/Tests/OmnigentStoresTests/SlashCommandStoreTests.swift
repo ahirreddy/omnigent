@@ -86,7 +86,8 @@ struct SlashCommandStoreTests {
     #expect(composer.text == "/context")
     composer.text = "/mcp"
     #expect(await composer.send() == .handled)
-    #expect(composer.commandNotice?.contains("MCP servers") == true)
+    #expect(composer.commandNotice == nil, "the panel shows the servers")
+    #expect(composer.text == "/mcp", "and stays open")
     composer.text = "/mcp all"
     #expect(await composer.send() == .handled)
     #expect(composer.commandNotice == "Usage: /mcp")

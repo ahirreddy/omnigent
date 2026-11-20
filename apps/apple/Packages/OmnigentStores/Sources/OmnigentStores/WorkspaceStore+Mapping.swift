@@ -51,6 +51,16 @@ nonisolated public enum WorkspaceMapping {
     }
   }
 
+  static func modelFormat(_ format: OmnigentCoreFFI.ModelFormat)
+    -> OmnigentWorkspaceUI.ModelFormat
+  {
+    switch format {
+    case .stl: .stl
+    case .threeMf: .threeMf
+    case .obj: .obj
+    }
+  }
+
   static func preview(_ preview: OmnigentCoreFFI.FilePreview)
     -> OmnigentWorkspaceUI.FilePreview
   {
@@ -61,6 +71,8 @@ nonisolated public enum WorkspaceMapping {
       return .image(format: imageFormat(format), data: data)
     case .pdf(let data, let truncated):
       return .pdf(data: data, truncated: truncated)
+    case .model(let format, let data, let truncated):
+      return .model(format: modelFormat(format), data: data, truncated: truncated)
     case .video:
       return .video
     case .binary(let reason, _):

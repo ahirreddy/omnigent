@@ -27,6 +27,16 @@ extension ConversationContainer {
     }
     extras.liveness.fork = forkSession
     addHostMoves(to: &extras.liveness, sheets: livenessSheets)
+    let signInOpener = signInOpener
+    let serverURL = server?.baseUrl
+    var openSettings: (@MainActor (ServerSettingsPane) -> Void)?
+    if let openSettingsAt {
+      openSettings = { pane in openSettingsAt(.server(url: serverURL, pane: pane)) }
+    }
+    extras.dismissQuickAnswer = ComposerAdapter.dismissQuickAnswer(conversation)
+    extras.mcp = ComposerAdapter.mcpActions(
+      conversation.composer.mcp, signIn: { url in Task { _ = await signInOpener.open(url) } },
+      openSettings: openSettings)
     return extras
   }
 

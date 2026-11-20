@@ -159,4 +159,60 @@ enum SweepLookFixtures {
     let output = #"{"matches":3,"files":["Retry.swift","Upload.swift"],"truncated":false}"#
     return ToolFieldsBody(input: input, output: output).padding(Theme.Spacing.medium)
   }
+
+  static var smartRouting: some View {
+    let arguments = #"""
+      {"tasks":[{"title":"Fix the login retry","agents":[{"agent":"codex"}]},
+                {"title":"Write the release notes","agents":[{"agent":"claude"}]}]}
+      """#
+    let output = #"""
+      {"recommendations":[
+        {"title":"Fix the login retry","model":"databricks-claude-opus-4","agent":"codex",
+         "rationale":"A subtle concurrency bug across three files."},
+        {"title":"Write the release notes","model":"databricks-claude-haiku-4",
+         "rationale":"Short prose from a known change list."}]}
+      """#
+    return SmartRoutingCardView(
+      plan: .read(arguments: arguments, output: output), isJudging: false, output: output
+    )
+    .padding(Theme.Spacing.medium)
+  }
+
+  static var mcpPanel: some View {
+    var docs = McpServersPanelState.Row(
+      id: "docs", name: "docs", detail: "kit plugin \u{00B7} mcp.example.com", symbol: .failed)
+    docs.account = "Account: Connected"
+    docs.live = "In this session: Failed: the server exited"
+    docs.liveTone = .failure
+    docs.action = .reconnect(name: "plugin:kit:docs", isReconnecting: false, isEnabled: true)
+    var search = McpServersPanelState.Row(
+      id: "search", name: "search", detail: "Searches the team wiki", symbol: .needsSignIn)
+    search.account = "Sign-in required"
+    search.accountTone = .warning
+    search.action = URL(string: "https://omnigent.example.com/settings/mcp").map { .signIn($0) }
+    var vault = McpServersPanelState.Row(id: "vault", name: "vault", symbol: .needsSignIn)
+    vault.account = "Sign-in required"
+    vault.accountTone = .warning
+    vault.action = .signInFromSettings
+    var files = McpServersPanelState.Row(id: "files", name: "files", symbol: .connected)
+    files.live = "In this session: Connected"
+    let state = McpServersPanelState(rows: [docs, search, vault, files])
+    return McpServersPanel(
+      state: state, actions: McpServersPanelActions(perform: { _ in }, openSettings: {})
+    )
+    .frame(maxWidth: 480)
+    .padding(Theme.Spacing.medium)
+  }
+
+  static var quickAnswer: some View {
+    QuickAnswerView(
+      answer: ComposerQuickAnswer(
+        question: "Which test covers the retry delay?",
+        answer: "`UploadRetryTests.testBackoffDoubles` checks the 1, 2 and 4 second waits.",
+        isTruncated: true),
+      dismiss: {}
+    )
+    .frame(maxWidth: 480)
+    .padding(Theme.Spacing.medium)
+  }
 }

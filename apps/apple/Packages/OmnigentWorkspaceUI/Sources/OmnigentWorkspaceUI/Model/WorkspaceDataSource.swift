@@ -163,7 +163,7 @@ extension WorkspaceDataSource {
       return WorkspaceFileContents(path: file.path, data: Data(text.text.utf8))
     case .image(_, let data):
       return WorkspaceFileContents(path: file.path, data: data)
-    case .text, .binary, .pdf, .video:
+    case .text, .binary, .pdf, .model, .video:
       throw WorkspaceFailure(
         .unavailable, message: "\(WorkspacePaths.name(of: path)) cannot be exported from here.")
     }

@@ -17,6 +17,10 @@ final class SideChatDrafts {
     var asked: String?
     /// The agent has taken longer than ``ForkedSideChats/patience`` to report the fork.
     var isLate = false
+    /// The model it starts on; `nil` keeps the session's.
+    var model: String?
+    /// The effort it starts on; `nil` keeps the session's.
+    var effort: String?
 
     /// The side chat did not start: the message is back in the field, with the reason.
     mutating func giveBack(_ reason: String) {
@@ -78,7 +82,10 @@ struct PendingSideChatTab: View {
       isLate: draft.isLate,
       send: { Self.start(session: session, tabID: tabID, parentID: parentID, fail: fail) },
       dismissFailure: { drafts.update(tabID) { $0.failure = nil } },
-      openParent: { session.tabs.showChat($0) })
+      openParent: { session.tabs.showChat($0) },
+      settings: session.connection.openConversation(parentID).flatMap { parent in
+        Self.settings(parent: parent, draft: draft) { change in drafts.update(tabID, change) }
+      })
   }
 
   /// Sends the tab's draft as the side chat's first message, then shows the side chat in the
@@ -111,10 +118,12 @@ struct PendingSideChatTab: View {
     }
     // The fork is reported with nothing to pair it on, so the tab queues before the request.
     let wait = asksAgent ? awaitFork(of: parent, session: session, tabID: tabID) : nil
+    let choice = drafts.draft(tabID)
     Task {
       let started: StartedSideChat
       do throws(CoreError) {
-        started = try await parent.tools.startSideChat(text: text, harness: harness)
+        started = try await parent.tools.startSideChat(
+          text: text, harness: harness, model: choice.model, effort: choice.effort)
       } catch {
         if let wait { session.forkedSideChats.cancel(wait, of: parentID) }
         drafts.update(tabID) {

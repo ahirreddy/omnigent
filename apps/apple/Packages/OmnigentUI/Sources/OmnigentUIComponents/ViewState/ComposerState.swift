@@ -174,6 +174,11 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var offersUnsentMessage = false
   /// The output of a local command (`/help`, a usage line), shown above the card.
   public var commandNotice: String?
+  /// The `/mcp` panel, shown in place of the completions while the draft is `/mcp`; `nil` where
+  /// the session has none (a side chat).
+  public var mcpPanel: McpServersPanelState?
+  /// A `/btw` answer over the composer, which holds sending until it is closed.
+  public var quickAnswer: ComposerQuickAnswer?
   /// Why the `/` menu may be incomplete (skill discovery failed or is partial).
   public var slashCommandsNote: String?
   /// Why the `@` menu has no results (the workspace search failed); shown while a mention is

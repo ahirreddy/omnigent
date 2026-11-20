@@ -226,6 +226,35 @@ fn pdfs_and_videos_preview_as_the_web_shows_them() {
             ..
         }
     ));
+    // A model arrives as bytes or, for ASCII OBJ, as text; both preview as the model.
+    let stl = file(
+        "parts/bracket.stl",
+        None,
+        FileBody::Binary(vec![0, 1]),
+        false,
+    );
+    assert_eq!(
+        stl.preview(&limits),
+        FilePreview::Model {
+            format: ModelFormat::Stl,
+            bytes: vec![0, 1],
+            truncated: false
+        }
+    );
+    let obj = file(
+        "mesh.obj",
+        Some("text/plain"),
+        FileBody::Text("v 0 0 0".into()),
+        true,
+    );
+    assert!(matches!(
+        obj.preview(&limits),
+        FilePreview::Model {
+            format: ModelFormat::Obj,
+            truncated: true,
+            ..
+        }
+    ));
     // The server's type wins over the name, both ways.
     let typed_video = file(
         "recording",

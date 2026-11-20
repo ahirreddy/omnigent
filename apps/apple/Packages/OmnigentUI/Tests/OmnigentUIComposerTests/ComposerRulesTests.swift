@@ -19,6 +19,24 @@ struct ComposerRulesTests {
     #expect(!session.isEditable)
   }
 
+  @Test func aQuickAnswerHoldsSendingAndTheMcpPanelTakesTheCompletions() {
+    var state = ComposerViewState(purpose: .session)
+    state.quickAnswer = ComposerQuickAnswer(question: "why?", answer: "because")
+    let rules = ComposerSendRules(state: state, draft: "hello", canQueue: false, layout: .card)
+    #expect(rules.blockedReason(for: .send) == "Close the quick answer to send.")
+
+    state.slashCommands = [
+      SlashCommand(name: "mcp", prefix: "/", description: "MCP", isSkill: false),
+      SlashCommand(name: "mcp-builder", prefix: "/", description: "Skill", isSkill: true),
+    ]
+    let offered = { ComposerCompletions.offered(draft: "/mcp", dismissed: nil, state: state) }
+    #expect(!offered().items.isEmpty, "a skill still matches without the panel")
+    state.mcpPanel = McpServersPanelState()
+    #expect(offered().items.isEmpty, "Return can't apply a row the panel hides")
+    #expect(McpServersPanelState.isRequested(by: " /mcp "))
+    #expect(!McpServersPanelState.isRequested(by: "/mcp all"))
+  }
+
   @Test("Modes read as states with shield symbols; the riskiest is full access")
   func modePresentation() {
     let codex = ComposerSamples.codexModes()

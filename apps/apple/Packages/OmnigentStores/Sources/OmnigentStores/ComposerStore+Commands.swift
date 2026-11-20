@@ -9,21 +9,20 @@ struct ConversationFacts: Equatable {
   var contextWindow: UInt64?
   /// Transcript items.
   var items: Int
-  /// The agent's MCP servers, once ``agentLoaded``.
-  var mcpServers: [String]
-  /// The agent's details were read.
-  var agentLoaded: Bool
   /// A turn is running.
   var isRunning: Bool
   /// The session's host reads connected.
   var hostOnline: Bool
+  /// What the `/mcp` panel reads.
+  var mcpSession = McpPanelStore.Session()
 }
 
 /// Sending: a message, or the slash command the core recognizes in the draft.
 extension ComposerStore {
   /// Sends the draft and the uploaded attachments. A slash command does what the core says: a
   /// skill runs on the server, `/compact` and `/clear` use their controls, `/model` and
-  /// `/effort` change the configuration, `/context`, `/mcp` and `/help` show text,
+  /// `/effort` change the configuration, `/context` and `/help` show text, `/mcp` keeps its
+  /// panel open,
   /// `/permissions` opens the approval-mode picker, `/rewind` opens ``rewindPicker``,
   /// `/goal <objective>` goes out as a message, and `/new`, `/side`, a bare `/goal` and the
   /// session a claude-sdk `/clear` continues in are left to the caller.
@@ -97,8 +96,8 @@ extension ComposerStore {
     case .context:
       commandNotice = contextReport()
     case .mcp:
-      let facts = conversationFacts?()
-      commandNotice = mcpReport(servers: facts?.agentLoaded == true ? facts?.mcpServers : nil)
+      // The draft stays, so its panel (``mcp``) stays open, as on the web.
+      commandNotice = nil
     case .permissions:
       openApprovalPicker()
     case .show(let output):

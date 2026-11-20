@@ -543,6 +543,18 @@ pub struct ChangedFile {
     pub status: String,
 }
 
+/// A `/btw` side question and its answer, shown over the composer until dismissed and never
+/// in the transcript.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuickAnswer {
+    /// The question.
+    pub question: String,
+    /// The answer.
+    pub answer: String,
+    /// The terminal cut the answer short.
+    pub truncated: bool,
+}
+
 /// Typed, sparse session metadata reported outside the transcript.
 ///
 /// `None` means "never reported". Merging a newer state replaces each field it reports.
@@ -592,6 +604,8 @@ pub struct SessionEventState {
     pub changed_files: Option<BTreeMap<String, ChangedFiles>>,
     /// The session the conversation continues in.
     pub superseded_by: Option<String>,
+    /// The latest `/btw` answer (`session.btw_sidechat`).
+    pub quick_answer: Option<QuickAnswer>,
 }
 
 fn take_newer<T: Clone>(target: &mut Option<T>, newer: Option<&T>) {
@@ -639,6 +653,7 @@ impl SessionEventState {
         take_newer(&mut self.children, newer.children.as_ref());
         take_newer(&mut self.changed_files, newer.changed_files.as_ref());
         take_newer(&mut self.superseded_by, newer.superseded_by.as_ref());
+        take_newer(&mut self.quick_answer, newer.quick_answer.as_ref());
     }
 }
 

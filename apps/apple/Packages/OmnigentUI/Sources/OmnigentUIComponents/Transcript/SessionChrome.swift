@@ -112,6 +112,7 @@ struct SessionWindowTitle: View {
 struct SessionMenuPrompts {
   var showsShare = false
   var showsSwitchHost = false
+  var showsExecutionLogs = false
   var renaming: SessionSummary?
   var renameText = ""
   var confirmingDelete: SessionSummary?
@@ -159,6 +160,11 @@ struct SessionChromeParts: ViewModifier {
         if let share = chrome?.extras.share {
           ShareSheet(state: share.state, actions: share.actions) { prompts.showsShare = false }
             .onAppear { chrome?.extras.shareOpened?() }
+        }
+      }
+      .sheet(isPresented: $prompts.showsExecutionLogs) {
+        if let logs = chrome?.extras.executionLogs {
+          ExecutionLogsView(source: logs) { prompts.showsExecutionLogs = false }
         }
       }
       .sheet(isPresented: $prompts.showsSwitchHost) {
@@ -235,6 +241,12 @@ struct SessionChromeParts: ViewModifier {
     if let exportTranscript = chrome.extras.exportTranscript {
       Button("Export\u{2026}", systemImage: "square.and.arrow.down", action: exportTranscript)
         .accessibilityIdentifier("header-export-conversation")
+    }
+    if chrome.extras.executionLogs != nil {
+      Button("Execution Logs", systemImage: "doc.text.magnifyingglass") {
+        prompts.showsExecutionLogs = true
+      }
+      .accessibilityIdentifier("header-execution-logs")
     }
     if let open = chrome.actions.openSession {
       if let parentID = state.parentSessionID ?? state.sideChatSourceID {

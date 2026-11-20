@@ -27,12 +27,17 @@ extension WorkspaceBrowserModel {
     }
   }
 
-  /// Reads the open review comments on `file`.
+  /// Reads the open review comments on `file`: a text file's, or a PDF's on its selected text.
   func loadComments(for file: WorkspaceFile) async {
-    guard case .text(let text) = file.preview else { return }
+    let text: String
+    switch file.preview {
+    case .text(let preview): text = preview.text
+    case .pdf: text = ""
+    default: return
+    }
     if comments[file.path]?.value == nil { comments[file.path] = .loading }
     do {
-      comments[file.path] = .loaded(try await source.comments(on: file.path, text: text.text))
+      comments[file.path] = .loaded(try await source.comments(on: file.path, text: text))
     } catch {
       comments[file.path] = .failed(error)
     }

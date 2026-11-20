@@ -251,6 +251,7 @@ extension ConversationContainer {
     var liveness = SessionLivenessActions()
     addHostMoves(to: &liveness, sheets: livenessSheets)
     extras.switchHost = liveness.switchHost
+    extras.executionLogs = ExecutionLogsAdapter.source(conversation)
     extras.tasksPreview = { [tasks, conversation, summary] in
       TasksAdapter.preview(tasks: tasks, conversation: conversation, summary: summary)
     }

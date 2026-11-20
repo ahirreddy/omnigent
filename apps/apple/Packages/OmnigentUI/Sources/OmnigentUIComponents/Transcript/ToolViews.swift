@@ -182,6 +182,17 @@ struct ToolRowView: View {
   }
 
   var body: some View {
+    if let call = entry.call?.activity, SmartRoutingPlan.toolNames.contains(call.title) {
+      let output = entry.result?.activity?.detail("output") ?? entry.result?.text
+      SmartRoutingCardView(
+        plan: .read(arguments: call.detail("arguments"), output: output),
+        isJudging: entry.isRunning, output: output)
+    } else {
+      toolCard
+    }
+  }
+
+  @ViewBuilder private var toolCard: some View {
     let found = diff
     let diff = found?.summary
     VStack(alignment: .leading, spacing: 0) {

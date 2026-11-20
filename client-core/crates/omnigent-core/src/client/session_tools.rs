@@ -76,6 +76,16 @@ pub struct SideChatStart {
     pub delivery: SideChatDelivery,
 }
 
+/// The model and effort a new side chat starts on (web `SideChatModelSettings`); `None` keeps
+/// what the session it forks runs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SideChatConfig {
+    /// The model.
+    pub model_override: Option<String>,
+    /// The reasoning effort.
+    pub reasoning_effort: Option<String>,
+}
+
 /// A side chat created by its first message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreatedSideChat {
@@ -353,10 +363,11 @@ impl<T: HttpTransport> ClientCore<T> {
         source_id: &str,
         harness: Option<&str>,
         text: &str,
+        config: &SideChatConfig,
     ) -> Result<StartedSideChat, SessionError> {
         match side_chat_delivery(harness) {
             SideChatDelivery::ForkThenSend => self
-                .create_side_chat(source_id, text)
+                .create_side_chat(source_id, text, config)
                 .await
                 .map(StartedSideChat::Created),
             SideChatDelivery::SendToParent { prefix } => {
@@ -387,8 +398,8 @@ impl<T: HttpTransport> ClientCore<T> {
             .map(|_| ())
     }
 
-    /// Creates a side chat of `source_id` on the server and sends `text` as its first message
-    /// (web `createSideChat`). Once the side chat exists the result is `Ok`: a failed first
+    /// Creates a side chat of `source_id` on the server, on `config`'s model and effort, and
+    /// sends `text` as its first message (web `createSideChat`). Once the side chat exists the result is `Ok`: a failed first
     /// message is reported in [`CreatedSideChat::first_message`], to be sent again to the side
     /// chat, never by creating another.
     ///
@@ -407,13 +418,14 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         source_id: &str,
         text: &str,
+        config: &SideChatConfig,
     ) -> Result<CreatedSideChat, SessionError> {
         let result = async {
             if text.trim().is_empty() {
                 return Err(SessionError::EmptyMessage);
             }
             validate_identifier(source_id)?;
-            let session_id = self.fork_side_chat(source_id).await?;
+            let session_id = self.fork_side_chat(source_id, config).await?;
             let first_message = match self.send(&session_id, text, false).await {
                 Ok(sent) => FirstMessage::Sent(sent),
                 Err(error) => FirstMessage::Failed(error),
@@ -432,7 +444,11 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn fork_side_chat(&self, source_id: &str) -> Result<String, SessionError> {
+    async fn fork_side_chat(
+        &self,
+        source_id: &str,
+        config: &SideChatConfig,
+    ) -> Result<String, SessionError> {
         let (mut decoded, _) = self.fetch_snapshot(source_id).await?;
         let source = &decoded.snapshot;
         let has_host = source.host_id.value().is_some_and(|id| !id.is_empty());
@@ -461,7 +477,16 @@ impl<T: HttpTransport> ClientCore<T> {
             });
         }
         let fork = format!("/v1/sessions/{source_id}/fork");
-        let body = json!({"title": SIDE_CHAT_TITLE, "side_chat": true});
+        let mut body = Map::new();
+        body.insert("title".to_owned(), json!(SIDE_CHAT_TITLE));
+        body.insert("side_chat".to_owned(), json!(true));
+        if let Some(model) = &config.model_override {
+            body.insert("model_override".to_owned(), json!(model));
+        }
+        if let Some(effort) = &config.reasoning_effort {
+            body.insert("reasoning_effort".to_owned(), json!(effort));
+        }
+        let body = Value::Object(body);
         let acknowledgement = self.write_json("POST", &fork, &body).await?;
         let receipt = self.accept_fork(acknowledgement)?;
         lock(&self.state)
@@ -667,6 +692,32 @@ impl<T: HttpTransport> ClientCore<T> {
         decode_goal(&value).map_err(|detail| SessionError::DeliveryUncertain {
             detail: format!("unreadable {path} acknowledgement: {detail}"),
         })
+    }
+}
+
+impl<T: HttpTransport> ClientCore<T> {
+    /// Tells `session_id`'s terminal that its `/btw` answer was closed here, so the terminal's
+    /// own overlay closes too (`external_btw_dismiss`).
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request; the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn dismiss_quick_answer(&self, session_id: &str) -> Result<(), SessionError> {
+        let result = async {
+            validate_identifier(session_id)?;
+            let path = format!("/v1/sessions/{session_id}/events");
+            let body = json!({ "type": "external_btw_dismiss", "data": {} });
+            self.write(self.prepare("POST", &path, &[], Some(&body))?)
+                .await
+                .map(|_| ())
+        }
+        .await;
+        self.dispatch();
+        result
     }
 }
 

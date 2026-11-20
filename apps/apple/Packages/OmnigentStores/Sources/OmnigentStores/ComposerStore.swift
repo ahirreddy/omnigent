@@ -100,6 +100,10 @@ public final class ComposerStore {
 
   let sessionID: String
   let core: ClientCore
+  /// The `/mcp` panel the draft opens.
+  public let mcp: McpPanelStore
+  /// The `/btw` answer closed here, by ``quickAnswerKey(question:answer:)``.
+  public internal(set) var dismissedQuickAnswer: String?
   private var applyingCoreText = false
   /// ``restore(_:)`` is setting the fields one by one; it records the draft once at the end.
   @ObservationIgnored var isRestoring = false
@@ -135,6 +139,8 @@ public final class ComposerStore {
   init(sessionID: String, core: ClientCore) {
     self.sessionID = sessionID
     self.core = core
+    mcp = McpPanelStore(sessionID: sessionID, core: core)
+    mcp.session = { [weak self] in self?.conversationFacts?()?.mcpSession ?? .init() }
   }
 
   /// Whether a send could start now.

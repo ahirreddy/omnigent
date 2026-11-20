@@ -8,7 +8,7 @@ use super::{Harness, assistant, conversation, events, user};
 use crate::reducer::live::{event_response_id, matches_text};
 use crate::reducer::{
     ActivityKind, ReducerError, ReportedValue, RowRole, SessionSettings, TurnStatus, effort_label,
-    model_label, project_item,
+    model_label, project_item, sections,
 };
 
 const SESSION: &str = "session1";
@@ -447,27 +447,42 @@ fn events_for_another_session_or_turn_are_ignored_through_the_typed_entry_point(
 }
 
 #[test]
-fn a_side_question_shows_its_answer_and_says_when_it_was_cut() {
+fn a_side_question_answers_over_the_composer_and_says_when_it_was_cut() {
     let mut harness = Harness::new(SESSION);
     harness.send(json!({
         "type": "session.btw_sidechat", "question": "why?", "answer": "because", "truncated": true,
     }));
-    let row = harness.last();
-    let activity = row.activity.as_ref().unwrap();
-    assert_eq!(activity.kind, ActivityKind::Sidechat);
     assert_eq!(
-        activity.detail("answer"),
-        Some("because\n[Answer truncated]")
+        harness.snapshot().rows,
+        Vec::new(),
+        "never in the transcript"
     );
-    assert_eq!(activity.detail("question"), Some("why?"));
+    let quick = harness.snapshot().event_state.quick_answer.clone().unwrap();
+    assert_eq!(
+        (
+            quick.question.as_str(),
+            quick.answer.as_str(),
+            quick.truncated
+        ),
+        ("why?", "because", true)
+    );
+    let sections = sections(&harness.snapshot().event_state);
+    let section = sections
+        .iter()
+        .find(|section| section.id == "quick-answer")
+        .unwrap();
+    assert_eq!(section.summary, "why?");
+    assert!(
+        section
+            .details
+            .iter()
+            .any(|detail| detail.id == "truncated")
+    );
     harness.send(json!({
-        "type": "session.btw_sidechat", "question": "why?", "answer": "again", "truncated": false,
+        "type": "session.btw_sidechat", "question": "how?", "answer": "so", "truncated": false,
     }));
-    assert_eq!(
-        harness.snapshot().rows.len(),
-        1,
-        "the same question updates its row"
-    );
+    let latest = harness.snapshot().event_state.quick_answer.clone().unwrap();
+    assert_eq!((latest.answer.as_str(), latest.truncated), ("so", false));
 }
 
 #[test]
@@ -1035,7 +1050,7 @@ fn sections_list_fully_described_tasks_and_bare_resources() {
             .unwrap(),
         ..crate::reducer::SessionEventState::default()
     };
-    let sections = crate::reducer::sections(&state);
+    let sections = sections(&state);
     let tasks = sections
         .iter()
         .find(|section| section.id == "background-tasks")

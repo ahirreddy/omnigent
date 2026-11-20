@@ -1,3 +1,4 @@
+public import CoreGraphics
 public import Foundation
 
 /// What saving an edited file did (`workspace::FileSave`).
@@ -27,6 +28,8 @@ nonisolated public struct FileCommentLine: Hashable, Sendable, Identifiable {
   public var isOpen: Bool
   /// The viewer may edit and delete it: they wrote it, or nobody is recorded as its author.
   public var canModify: Bool
+  /// Where it is on a PDF's page, for a comment on a PDF's selected text.
+  public var pdfMark: PdfMark?
 
   /// A comment.
   /// - Parameters:
@@ -53,6 +56,23 @@ nonisolated public struct FileCommentLine: Hashable, Sendable, Identifiable {
   }
 }
 
+/// Text selected on a PDF's page (the web's PDF comment anchor).
+nonisolated public struct PdfMark: Hashable, Sendable {
+  /// The 1-based page.
+  public var page: Int
+  /// The selected lines, as fractions of the page from its top left corner.
+  public var rects: [CGRect]
+
+  /// A mark.
+  /// - Parameters:
+  ///   - page: The page.
+  ///   - rects: The lines.
+  public init(page: Int, rects: [CGRect]) {
+    self.page = page
+    self.rects = rects
+  }
+}
+
 /// A span of a file's text chosen for review: a selection, or a whole line.
 nonisolated public struct FileTextSpan: Hashable, Sendable {
   /// The file.
@@ -67,6 +87,8 @@ nonisolated public struct FileTextSpan: Hashable, Sendable {
   public var lastLine: UInt64
   /// The text.
   public var text: String
+  /// Where on a PDF's page the text was selected; the comment then stores the selection.
+  public var pdfMark: PdfMark?
 
   /// A span.
   /// - Parameters:
@@ -140,8 +162,23 @@ nonisolated public struct FileTextSpan: Hashable, Sendable {
   /// The composer's reference to the span, as the web's "Attach to agent": `path:3-7`.
   public var reference: String { "\(path):\(firstLine)-\(lastLine)" }
 
-  /// "line 3" or "lines 3-7".
+  /// "line 3" or "lines 3-7"; "page 2" for a PDF's text.
   public var linesTitle: String {
-    firstLine == lastLine ? "line \(firstLine)" : "lines \(firstLine)-\(lastLine)"
+    if let pdfMark { return "page \(pdfMark.page)" }
+    return firstLine == lastLine ? "line \(firstLine)" : "lines \(firstLine)-\(lastLine)"
+  }
+
+  /// Text selected on a PDF's page.
+  /// - Parameters:
+  ///   - text: The text.
+  ///   - mark: Where it is.
+  ///   - path: The file.
+  /// - Returns: The span; its offsets are set when the comment is stored.
+  public static func pdf(_ text: String, mark: PdfMark, path: String) -> Self {
+    var span = Self(
+      path: path, start: 0, end: 0, firstLine: UInt64(mark.page), lastLine: UInt64(mark.page),
+      text: text)
+    span.pdfMark = mark
+    return span
   }
 }
