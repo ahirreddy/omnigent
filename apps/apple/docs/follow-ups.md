@@ -586,8 +586,12 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     and Chromium's own tracking areas still report the pointer's hover to the page under the
     layer was not checked (clicks and keys stop at the layer).
 - [ ] **Floating New Agent panel (Mac, `floating_composer`):**
-  - Only package tests cover it (shortcut, chord, placement); no Mac flow drives the panel, the
-    Carbon hot key or a launch behind it, and it has no renders yet.
+  - Only package tests and a render of its composer (`sweep-g-floating-panel`) cover it; no Mac
+    flow drives the panel, the Carbon hot key or a launch behind it.
+  - The web panel is a fixed-size window its composer fills; the native panel's height follows
+    the composer (three lines at least), so it never shows the web's empty space below.
+  - The web's "Show Omnigent from anywhere" row has no native counterpart, and the panel's row
+    isn't in the Settings search (it shows only while a server turns the panel on).
 - [ ] **Find:** the transcript has no find of its own (the Find menu reaches a text view's find
   bar or a browser tab's).
 - [ ] **Settings search:**
@@ -607,6 +611,29 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] Reusing the iOS bundle ID requires a version above 0.3.2.
 
 ## Done
+
+- [x] **Automation schedules as RRULE text** (web `2d0b6abbb1`): the schedule picker has a
+  Visual | RRULE switch (RRULE needs `automations_v2`). RRULE starts from the visual schedule's
+  rule, takes one line checked for its shape only (the server judges the rest on save), and says
+  what it reads as or where its zone and ending are set; Visual reads the rule back or returns to
+  the schedule before it. A stored rule the controls can't show opens as RRULE instead of being
+  kept, with its `COUNT` or `UNTIL` under Ends (a one-time rule is still kept); an edit that
+  leaves the schedule alone saves the stored spelling. Summaries show a rule their phrases can't
+  state (several hours, `BYSETPOS`, numbered weekdays and the like) as written (core
+  `parse_rrule`, `validate_rule_text`, `phrases_state_every_field`). 2026-11-20.
+- [x] **Floating New Agent panel, filled** (web `a3dd18d42a`): the panel's composer is the
+  window's content (no card of its own, its footer under a line), Return adds a line and
+  Command-Return sends, shown beside Send; Settings marks "Open New Agent from anywhere"
+  System-wide and says it works from any app, even with Omnigent in the background.
+  2026-11-20.
+- [x] **Output limit failure** (web `96318c4d88`): an `output_limit_exceeded` turn error reads
+  "The model's response hit its maximum output length and was cut off." 2026-11-20.
+- [x] **Composer regression tests** for two release-build bugs: untinted text without a color
+  (drawn black in dark mode) fails `ComposerTokenTests/untintedTextColor` on the old editor; the
+  draft write inside the text view's storage commit (a trap while typing) is covered by
+  `ComposerTokenTests/typingAfterTints`, `ComposerTypingWindowTests` and the Mac flow
+  `testTypingOnAfterATintedCommandKeepsTheDraft`, none of which trapped on the old editor (see
+  the flow's comment). 2026-11-20.
 
 - [x] **Browser Annotate and Draw on the Mac** (web `63915cd179`): Annotate and Draw toggles in
   the browser toolbar and the Browser menu. Annotate outlines the element under the pointer
