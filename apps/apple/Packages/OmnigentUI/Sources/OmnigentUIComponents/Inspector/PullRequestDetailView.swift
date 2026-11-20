@@ -176,23 +176,27 @@ struct PullRequestAccountPicker: View {
   let choose: @MainActor (String) -> Void
 
   var body: some View {
-    Picker(
-      title,
-      selection: Binding(
-        get: { accounts.first(where: \.selected)?.login ?? "" },
-        set: { login in if !login.isEmpty { choose(login) } })
-    ) {
-      if !accounts.contains(where: \.selected) {
-        Text("Choose an account").tag("")
+    // A menu picker outside a form shows only its value on iOS, so the title is its own label.
+    LabeledContent(title) {
+      Picker(
+        title,
+        selection: Binding(
+          get: { accounts.first(where: \.selected)?.login ?? "" },
+          set: { login in if !login.isEmpty { choose(login) } })
+      ) {
+        if !accounts.contains(where: \.selected) {
+          Text("Choose an account").tag("")
+        }
+        ForEach(accounts) { account in
+          Text(account.title).tag(account.login)
+        }
       }
-      ForEach(accounts) { account in
-        Text(account.title).tag(account.login)
-      }
+      .pickerStyle(.menu)
+      .labelsHidden()
+      .accessibilityIdentifier("pr-account")
     }
-    .pickerStyle(.menu)
     .fixedSize()
     .disabled(isBusy)
-    .accessibilityIdentifier("pr-account")
   }
 }
 
