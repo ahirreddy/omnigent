@@ -176,6 +176,11 @@ struct ServerSettingsAdapterTests {
     #expect(ServerSettingsAdapter.archivedInfo(ada, userID: "ada").canDelete)
     #expect(!ServerSettingsAdapter.archivedInfo(bob, userID: "ada").canDelete)
     #expect(ServerSettingsAdapter.archivedInfo(ada, userID: "ada").projectID == "label:Legacy")
+    // The archive label dates it; an unlabelled session falls back to its last change.
+    var labelled = mine
+    labelled.archivedAt = 40
+    #expect(ServerSettingsAdapter.archivedInfo(labelled, userID: "ada").archivedAt == 40)
+    #expect(ServerSettingsAdapter.archivedInfo(mine, userID: "ada").archivedAt == 100)
     let projects = [
       OmnigentCoreFFI.ProjectSummary(id: "p_1", name: "Zeta", icon: nil),
       OmnigentCoreFFI.ProjectSummary(id: "p_2", name: "Alpha", icon: nil),

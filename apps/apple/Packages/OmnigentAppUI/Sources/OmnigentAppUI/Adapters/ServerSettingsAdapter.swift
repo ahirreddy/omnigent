@@ -143,13 +143,14 @@ enum ServerSettingsAdapter {
   }
 
   /// An archived session's project key, archive time and whether the caller may delete it (only
-  /// their own; an unreported owner is the caller). The archive time is the last change: it is
-  /// never earlier than the archive, so retention can only keep a session longer.
+  /// their own; an unreported owner is the caller). The archive time is the server's
+  /// `omnigent.archived_at` label, else the last change, which is never earlier than the archive,
+  /// so retention can only keep an unlabelled session longer.
   static func archivedInfo(_ session: OmnigentCoreFFI.SessionSummary, userID: String?)
     -> ArchivedSessionInfo
   {
     ArchivedSessionInfo(
-      projectID: projectKey(session), archivedAt: session.updatedAt,
+      projectID: projectKey(session), archivedAt: session.archivedAt ?? session.updatedAt,
       canDelete: session.owner == nil || session.owner == userID)
   }
 
