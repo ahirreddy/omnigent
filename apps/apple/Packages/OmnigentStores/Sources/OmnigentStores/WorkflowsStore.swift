@@ -52,6 +52,8 @@ public final class WorkflowsStore {
   public internal(set) var stoppingRuns: Set<String> = []
   /// Runs with a Stop or Continue in flight.
   public internal(set) var runActions: Set<String> = []
+  /// Each session's current run of a workflow, by ``sessionRunKey(workflowID:sessionID:)``.
+  public internal(set) var sessionRuns: [String: WorkflowRun] = [:]
 
   /// Who each workflow is shared with.
   public internal(set) var grants: [String: CreationLoad<[AutomationGrant]>] = [:]
@@ -93,6 +95,7 @@ public final class WorkflowsStore {
     moreDescendants = [:]
     descendantCursors = [:]
     stoppingRuns = []
+    sessionRuns = [:]
     grants = [:]
   }
 

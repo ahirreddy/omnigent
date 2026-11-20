@@ -50,7 +50,6 @@ struct WorkflowRunRowView: View {
   var nested = false
   @State private var isHovered = false
   @State private var showsGraph = false
-  @State private var descendantsOpen = DisclosureChoice.followsRuns
 
   var body: some View {
     HStack(alignment: .top, spacing: Theme.Spacing.medium) {
@@ -69,7 +68,8 @@ struct WorkflowRunRowView: View {
         if let starter = run.startedBy { startedBy(starter) }
         if !run.steps.isEmpty { strip.padding(.top, Theme.Spacing.small) }
         if !nested, let descendants = run.descendants {
-          descendantsList(descendants).padding(.top, Theme.Spacing.small)
+          WorkflowDescendantsList(run: run, descendants: descendants, actions: actions)
+            .padding(.top, Theme.Spacing.small)
         }
       }
       controls
@@ -199,10 +199,19 @@ struct WorkflowRunRowView: View {
     }
   }
 
-  /// "Ran N workflows", open while one of them works or waits; each below its starter.
-  private func descendantsList(_ descendants: WorkflowDescendantsState) -> some View {
+}
+
+/// "Ran N workflows" under a run, open while one of them works or waits; each below its starter
+/// (web `DescendantRuns`).
+struct WorkflowDescendantsList: View {
+  let run: WorkflowRunRowState
+  let descendants: WorkflowDescendantsState
+  let actions: WorkflowDetailActions
+  @State private var descendantsOpen = DisclosureChoice.followsRuns
+
+  var body: some View {
     let shown = descendantsOpen.isOpen(byDefault: descendants.startsOpen)
-    return VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
       Button {
         withAnimation(Theme.Motion.disclosure) { descendantsOpen = shown ? .closed : .open }
       } label: {
@@ -222,7 +231,7 @@ struct WorkflowRunRowView: View {
       if shown {
         VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
           ForEach(descendants.rows) { row in
-            Self(run: row, actions: actions, nested: true)
+            WorkflowRunRowView(run: row, actions: actions, nested: true)
           }
           if descendants.hasMore, let more = actions.loadMoreDescendants {
             Button {

@@ -44,6 +44,22 @@ extension WorkflowsStore {
     }
   }
 
+  /// The ``sessionRuns`` key of `sessionID`'s run of `workflowID`.
+  public static func sessionRunKey(workflowID: String, sessionID: String) -> String {
+    "\(workflowID)\n\(sessionID)"
+  }
+
+  /// Reads `sessionID`'s current run of `workflowID`, for the runs it started below it (web
+  /// `SessionDescendantRuns`). A failed read keeps the run last read.
+  public func loadSessionRun(workflowID: String, sessionID: String) async {
+    let key = Self.sessionRunKey(workflowID: workflowID, sessionID: sessionID)
+    guard
+      let page = try? await core.workflowRuns(id: workflowID, before: nil, sessionId: sessionID)
+    else { return }
+    sessionRuns[key] = page.runs.first(where: \.isCurrent)
+    settleStops(page.runs)
+  }
+
   /// The runs below `run`: its first page and those read since, each once.
   public func descendants(of run: WorkflowRun) -> [WorkflowRun] {
     mergeDescendantRuns(run: run, more: moreDescendants[run.id] ?? [])

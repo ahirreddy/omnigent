@@ -237,6 +237,13 @@ public struct TasksPanelContent {
   public var saveAsWorkflow: WorkflowSaveSource?
   /// Run a workflow from the empty tab; `nil` leaves the link out.
   public var runWorkflow: WorkflowRunSource?
+  /// The session's current run of the plan's workflow, for "Ran N workflows" below the tasks;
+  /// `nil` while it started none.
+  public var workflowRun: WorkflowRunRowState?
+  /// What that run's rows can do.
+  public var workflowRunActions = WorkflowDetailActions()
+  /// Reads that run again, as the tab shows and as its tasks change.
+  public var loadWorkflowRun: (@MainActor () async -> Void)?
 
   /// Content.
   public init(

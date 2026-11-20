@@ -77,4 +77,17 @@ struct WorkflowsStoreTests {
     await store.loadRuns(id)
     #expect(!store.stoppingRuns.contains(runID), "the run stopped")
   }
+
+  @Test("A session's current run of a workflow is read by session, for the runs below it")
+  func sessionRun() async throws {
+    let server = server()
+    server.route("/v1/workflows/\(id)/runs", runs(running: true))
+    let connection = try await connectedStore(server)
+    let store = try #require(connection.workflows)
+    await store.loadSessionRun(workflowID: id, sessionID: session)
+    let key = WorkflowsStore.sessionRunKey(workflowID: id, sessionID: session)
+    #expect(store.sessionRuns[key]?.id == runID)
+    let read = try #require(server.requests(to: "/v1/workflows/\(id)/runs").last)
+    #expect(URLComponents(string: read.url)?.queryItems?.contains { $0.value == session } == true)
+  }
 }

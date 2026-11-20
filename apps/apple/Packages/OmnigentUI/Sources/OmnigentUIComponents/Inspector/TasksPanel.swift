@@ -76,6 +76,16 @@ public struct TasksPanel: View {
           }
           .accessibilityElement(children: .contain)
           .accessibilityLabel("Tasks")
+          // The workflow runs this session started from its run of the plan's workflow.
+          if let run = content.workflowRun, let descendants = run.descendants {
+            Divider()
+            WorkflowDescendantsList(
+              run: run, descendants: descendants, actions: content.workflowRunActions
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Workflow runs")
+            .accessibilityIdentifier("tasks-descendant-runs")
+          }
         }
         .padding(Theme.Spacing.medium)
       }
@@ -84,6 +94,8 @@ public struct TasksPanel: View {
         content.shown()
         jump(to: step, proxy)
       }
+      // The runs this session started change as its tasks do.
+      .task(id: list.updatedAt) { await content.loadWorkflowRun?() }
     }
   }
 

@@ -54,7 +54,10 @@ extension ConnectedServerView {
   var workflowsReach: TasksAdapter.Workflows? {
     let offered = connection.pages?.offered
     guard offered?.workflows == true, let store = connection.workflows else { return nil }
-    return TasksAdapter.Workflows(store: store, sharing: offered?.workflowSharing == true)
+    let destination = selectionBinding
+    return TasksAdapter.Workflows(
+      store: store, sharing: offered?.workflowSharing == true,
+      openSession: { destination.wrappedValue = .session($0) })
   }
 
   /// The planning session's chat beside a workflow, once its conversation is open.
