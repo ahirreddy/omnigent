@@ -48,6 +48,8 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case importReview = "sweep-c-import-review"
   case questionSubmitBlocked = "sweep-e-question-submit-blocked"
   case mutedRows = "sweep-e-muted-rows"
+  case shellComposer = "sweep-e-shell-composer"
+  case automationsSorted = "sweep-e-automations-sorted"
 
   var testDescription: String { rawValue }
 
@@ -57,7 +59,14 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     return list.split(separator: ",").contains { rawValue.hasPrefix($0) }
   }
 
-  var macWidth: CGFloat { self == .canvasQuickView ? 960 : 480 }
+  var macWidth: CGFloat {
+    switch self {
+    case .canvasQuickView: 960
+    case .automationsSorted: 760
+    case .shellComposer: 680
+    default: 480
+    }
+  }
 
   var macHeight: CGFloat? {
     switch self {
@@ -81,8 +90,9 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .canvasQuickView: 420
     case .importReview: 480
     case .mutedRows: 160
+    case .automationsSorted: 640
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
-      .quickAnswer, .staleProfile, .questionSubmitBlocked:
+      .quickAnswer, .staleProfile, .questionSubmitBlocked, .shellComposer:
       nil
     }
   }
@@ -126,6 +136,8 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .importReview: return AnyView(Fixture.importReview)
     case .questionSubmitBlocked: return AnyView(Fixture.questionSubmitBlocked)
     case .mutedRows: return AnyView(Fixture.mutedRows)
+    case .shellComposer: return AnyView(Fixture.shellComposer)
+    case .automationsSorted: return AnyView(Fixture.automationsSorted)
     }
   }
 }
