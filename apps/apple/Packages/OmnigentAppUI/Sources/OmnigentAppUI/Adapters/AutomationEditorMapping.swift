@@ -27,6 +27,8 @@ enum AutomationEditorMapping {
     var replaceSchedule: (@MainActor (ScheduleChoice) -> Void)?
     /// Switches a new automation between a schedule and an integration.
     var switchTriggerType: (@MainActor (String?) -> Void)?
+    /// The caller's saved workflows, for the Workflow field.
+    var workflows: [SavedWorkflow] = []
   }
 
   /// Claude Code's version-agnostic model aliases, offered when the host lists none (the web's
@@ -98,6 +100,7 @@ enum AutomationEditorMapping {
       context.agentNote = "Future runs use \(name); past runs keep the agent they ran with"
     }
     context.costLimitProblem = costLimitProblem(text: draft.maxCost)
+    workflow(&context, pages: pages, inputs: inputs)
     mcp(&context, pages: pages, draft: draft)
     if draft.trigger != nil || draft.isTrigger {
       triggerSchedule(&context, pages: pages, inputs: inputs)
@@ -238,6 +241,7 @@ enum AutomationEditorMapping {
   static func triggerPrompt(
     pages: PagesStore, draft: AutomationDraftState, saved: Automation?, sessionLink: String
   ) -> String {
+    let draft = withWorkflowSessions(draft)
     let budget = budget(pages: pages, draft: draft, saved: saved)
     let options = overrides(
       pages: pages, agentID: draft.agentID, hostID: draft.hostID, inSandbox: draft.runsInSandbox)
@@ -249,10 +253,11 @@ enum AutomationEditorMapping {
     {
       return saved.prompt
     }
+    var context = AutomationTriggerMapping.context(draft, sessionLink: sessionLink, budget: budget)
+    // Each match's session starts as a run of the workflow its instructions run.
+    context.workflowIds = pages.offered?.sessionCreateWorkflowId == true
     return AutomationTriggerMapping.prompt(
-      config,
-      context: AutomationTriggerMapping.context(draft, sessionLink: sessionLink, budget: budget),
-      withHeader: pages.offered?.automationTriggerHeaders == true)
+      config, context: context, withHeader: pages.offered?.automationTriggerHeaders == true)
   }
 
   /// The permission a new trigger's workers start in: the automation's own, unless it skips

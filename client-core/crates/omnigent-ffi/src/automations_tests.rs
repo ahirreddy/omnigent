@@ -374,6 +374,7 @@ fn server_pages_map_each_flag_to_its_own_field() {
         session_create_permission_modes: false,
         workflows: false,
         workflow_sharing: false,
+        session_create_workflow_id: false,
     };
     assert_eq!(read(&mut harness, r#"{"single_user":true}"#), none);
     for (body, expected) in [
@@ -427,10 +428,11 @@ fn server_pages_map_each_flag_to_its_own_field() {
             },
         ),
         (
-            r#"{"single_user":false,"features":{"workflows":true},"workflows":true,"workflow_sharing":true}"#,
+            r#"{"single_user":false,"features":{"workflows":true},"workflows":true,"workflow_sharing":true,"session_create_workflow_id":true}"#,
             ServerPages {
                 workflows: true,
                 workflow_sharing: true,
+                session_create_workflow_id: true,
                 sharing: true,
                 ..none
             },
@@ -833,6 +835,7 @@ fn a_config_renders_encodes_and_reopens_through_the_header() {
         polling_interval_minutes: Some(10),
         task_session_title: None,
         message_max_chars: None,
+        workflow_ids: false,
     };
     let same_host = render_trigger_config_prompt(
         config(fields.clone(), WorkerPlacement::SameHost, ""),

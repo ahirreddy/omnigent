@@ -118,12 +118,14 @@ public struct AutomationEditorSheet: View {
   }
 
   var promptLabel: String {
+    if draft.workflow != nil { return "Additional instructions (optional)" }
     if draft.sourceSessionID != nil { return "Additional instructions" }
     return "Instructions"
   }
 
   var promptPlaceholder: String {
-    draft.sourceSessionID != nil
+    if draft.workflow != nil { return "Leave empty to run the workflow as saved." }
+    return draft.sourceSessionID != nil
       ? "Optional. For example: Use this week\u{2019}s data."
       : "What should the agent do each run?"
   }

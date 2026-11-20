@@ -116,6 +116,9 @@ pub struct ServerPages {
     /// A workflow can be shared, and the Workflows page lists those shared with the caller.
     #[uniffi(default)]
     pub workflow_sharing: bool,
+    /// A trigger's workers can start as runs of the saved workflow their instructions run.
+    #[uniffi(default)]
+    pub session_create_workflow_id: bool,
 }
 
 /// Whether an automation fires.
@@ -908,6 +911,7 @@ impl ClientCore {
             session_create_permission_modes: pages.session_create_permission_modes,
             workflows: pages.workflows,
             workflow_sharing: pages.workflow_sharing,
+            session_create_workflow_id: pages.session_create_workflow_id,
         })
     }
 

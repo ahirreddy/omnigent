@@ -169,6 +169,7 @@ struct AutomationsAdapter: View {
     }
     inputs.replaceSchedule = { draft.schedule = $0 }
     inputs.switchTriggerType = { switchTriggerType(pages, to: $0) }
+    inputs.workflows = connection.workflows?.owned.value ?? []
     return AutomationEditorSheet(
       draft: $draft, context: AutomationEditorMapping.context(pages: pages, inputs: inputs),
       save: { save(pages, saved: saved) },
@@ -178,6 +179,8 @@ struct AutomationsAdapter: View {
       await AutomationModelSource.of(draft, pages: pages)?.load(pages)
     }
     .task {
+      // The Workflow field lists the caller's saved workflows.
+      if pages.offered?.workflows == true { await connection.workflows?.loadOwned() }
       if AutomationEditorMapping.showsMcpServices(pages.offered, draft: draft) {
         await pages.loadAutomationMcpServices()
       }
@@ -280,7 +283,7 @@ struct AutomationsAdapter: View {
 
   private func edit(_ pages: PagesStore, id: String) {
     guard let automation = pages.automations.value?.first(where: { $0.id == id }) else { return }
-    draft = AutomationsMapping.draft(automation)
+    draft = AutomationsMapping.draft(automation, workflows: pages.offered?.workflows == true)
     present(id: id)
   }
 
@@ -345,15 +348,19 @@ extension AutomationsAdapter {
       draft.schedule = AutomationsMapping.triggerSchedule(
         pages.offered, continuesSession: draft.continuesSession, inSandbox: draft.runsInSandbox)
     }
+    let saving = AutomationEditorMapping.withWorkflowSessions(draft)
     let triggerPrompt =
-      draft.trigger == nil
+      saving.trigger == nil
       ? ""
       : AutomationEditorMapping.triggerPrompt(
-        pages: pages, draft: draft, saved: saved, sessionLink: sessionLink)
+        pages: pages, draft: saving, saved: saved, sessionLink: sessionLink)
+    let prompt = AutomationsMapping.prompt(
+      saving, triggerPrompt: triggerPrompt,
+      skillPrefix: AutomationEditorMapping.skillPrefix(pages, agentID: saving.agentID))
     let request = AutomationsMapping.request(
-      draft, prompt: AutomationsMapping.prompt(draft, triggerPrompt: triggerPrompt), saved: saved,
+      saving, prompt: prompt, saved: saved,
       sessionModes: pages.offered?.automationSessionModes == true, sendsOverrides: sendsOverrides,
-      sendsMcpServices: AutomationEditorMapping.showsMcpServices(pages.offered, draft: draft))
+      sendsMcpServices: AutomationEditorMapping.showsMcpServices(pages.offered, draft: saving))
     let fromSession = saved == nil && draft.sourceSessionID != nil
     Task {
       let didSave = await pages.saveAutomation(request, editing: saved)

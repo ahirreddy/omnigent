@@ -86,21 +86,6 @@ enum AutomationsMapping {
     return draft
   }
 
-  /// A new automation that runs `workflow` as saved (web `lockedWorkflow`): named for it, with a
-  /// new session each run, as a workflow's runs need.
-  static func workflowDraft(
-    _ workflow: SavedWorkflow, catalog: OmnigentCoreFFI.CreationCatalog?
-  ) -> AutomationDraftState {
-    var draft = newDraft(catalog: catalog)
-    draft.name = workflow.name
-    draft.continuesSession = false
-    let harness = catalog?.agents.first { $0.id == draft.agentID }?.harness
-    draft.prompt = savedWorkflowMessage(
-      skillPrefix: skillInvocationPrefix(harness: harness), workflowId: workflow.id,
-      workflowName: workflow.name, details: "", reviewPlanFirst: false)
-    return draft
-  }
-
   /// A new trigger's schedule: the server's polling interval where the scheduler runs minute
   /// rules there, else hourly.
   static func triggerSchedule(_ offered: ServerPages?, continuesSession: Bool, inSandbox: Bool)
@@ -122,7 +107,7 @@ enum AutomationsMapping {
   /// The editor's fields for `automation`. A trigger whose header reads back reopens in its
   /// form; an older one shows its instructions, keeping the text around them; a header edited
   /// outside the form opens the prompt the model runs.
-  static func draft(_ automation: Automation) -> AutomationDraftState {
+  static func draft(_ automation: Automation, workflows: Bool = false) -> AutomationDraftState {
     let schedule = parseScheduleRrule(rrule: automation.rrule).map(choice)
     var draft = AutomationDraftState(
       name: automation.name, prompt: automation.prompt, agentID: automation.agentId,
@@ -149,6 +134,12 @@ enum AutomationsMapping {
       draft.prompt = parts.userPrompt
       draft.systemPrompt = parts.systemPrompt
     }
+    // A saved workflow's run opens as its Workflow, with any additional instructions.
+    if workflows, let run = parseSavedWorkflowMessage(text: draft.prompt) {
+      draft.workflow = AutomationOption(id: run.id, name: run.name)
+      draft.workflowDetailsID = run.details.isEmpty ? nil : run.id
+      draft.prompt = run.details
+    }
     return draft
   }
 
@@ -160,10 +151,14 @@ enum AutomationsMapping {
   }
 
   /// The prompt to save: a trigger's, the instructions put back into an older trigger's text,
-  /// or the typed one.
-  static func prompt(_ draft: AutomationDraftState, triggerPrompt: String) -> String {
+  /// or the typed one; with a workflow, the message that runs it.
+  static func prompt(_ draft: AutomationDraftState, triggerPrompt: String, skillPrefix: String)
+    -> String
+  {
     if draft.trigger != nil { return triggerPrompt }
-    return combineTriggerPrompt(userPrompt: draft.prompt, systemPrompt: draft.systemPrompt)
+    return combineTriggerPrompt(
+      userPrompt: withWorkflow(draft.prompt, draft: draft, skillPrefix: skillPrefix),
+      systemPrompt: draft.systemPrompt)
   }
 
   /// What to save. Without an editable schedule the edited automation's rule is kept as it is.

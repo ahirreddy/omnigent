@@ -46,6 +46,13 @@ nonisolated public struct AutomationDraftState: Hashable, Sendable {
   public var sourceSessionID: String?
   /// That session's title, for the form.
   public var sourceSessionTitle: String?
+  /// The saved workflow each run follows (id and name); `nil` runs the instructions.
+  public var workflow: AutomationOption?
+  /// The automation was made from its workflow, which can't change or be cleared.
+  public var workflowLocked = false
+  /// The workflow whose saved additional instructions the form keeps; text typed before
+  /// choosing another workflow stays out of its runs.
+  public var workflowDetailsID: String?
 
   /// Creates the fields.
   public init(
@@ -64,9 +71,15 @@ nonisolated public struct AutomationDraftState: Hashable, Sendable {
   /// Whether the fields the form itself checks are filled; the context adds the server's rules.
   public var canSave: Bool {
     !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && (trigger != nil || sourceSessionID != nil
+      && (trigger != nil || sourceSessionID != nil || workflow != nil
         || !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
       && !agentID.isEmpty
+  }
+
+  /// The instructions show: there's no workflow, or one whose saved additional instructions
+  /// the form keeps (the web's `showsInstructions`).
+  public var showsInstructions: Bool {
+    workflow == nil || workflow?.id == workflowDetailsID
   }
 }
 
@@ -186,6 +199,14 @@ public struct AutomationEditorContext {
   /// Switches a new automation to watch an integration by its id, or back to a schedule with
   /// `nil`, keeping each type's draft.
   public var switchTriggerType: (@MainActor (String?) -> Void)?
+  /// The caller's saved workflows a run can follow; the Workflow field shows while there are
+  /// some or one is chosen, where the server runs workflows.
+  public var workflows: [AutomationOption] = []
+  /// The server runs saved workflows.
+  public var offersWorkflows = false
+  /// Each run follows a saved workflow, which needs a session of its own: a schedule can't
+  /// continue one session, nor a trigger send every match to one.
+  public var workflowNeedsNewSessions = false
 
   /// Creates a context.
   public init(
