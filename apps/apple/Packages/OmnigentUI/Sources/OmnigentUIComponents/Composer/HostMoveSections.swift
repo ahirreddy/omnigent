@@ -9,16 +9,20 @@ struct HostMoveSandboxSection: View {
 
   var body: some View {
     Section {
-      TextField(
-        "Repository (optional)", text: $repository, prompt: Text("https://github.com/org/repo")
-      )
-      .font(Theme.codeFont)
-      .autocorrectionDisabled()
-      #if os(iOS)
-        .textInputAutocapitalization(.never)
-        .keyboardType(.URL)
-      #endif
-      .accessibilityIdentifier("switch-host-sandbox-repo")
+      // The field's text is code; its label stays in the form's font.
+      LabeledContent("Repository (optional)") {
+        TextField(
+          "Repository (optional)", text: $repository, prompt: Text("https://github.com/org/repo")
+        )
+        .labelsHidden()
+        .font(Theme.codeFont)
+        .autocorrectionDisabled()
+        #if os(iOS)
+          .textInputAutocapitalization(.never)
+          .keyboardType(.URL)
+        #endif
+        .accessibilityIdentifier("switch-host-sandbox-repo")
+      }
       if let problem, !problem.isBranch {
         problemLabel(problem)
       } else {
@@ -29,13 +33,16 @@ struct HostMoveSandboxSection: View {
         .font(.callout)
         .foregroundStyle(.secondary)
       }
-      TextField("Branch (optional)", text: $branch, prompt: Text("main"))
-        .font(Theme.codeFont)
-        .autocorrectionDisabled()
-        #if os(iOS)
-          .textInputAutocapitalization(.never)
-        #endif
-        .accessibilityIdentifier("switch-host-sandbox-branch")
+      LabeledContent("Branch (optional)") {
+        TextField("Branch (optional)", text: $branch, prompt: Text("main"))
+          .labelsHidden()
+          .font(Theme.codeFont)
+          .autocorrectionDisabled()
+          #if os(iOS)
+            .textInputAutocapitalization(.never)
+          #endif
+          .accessibilityIdentifier("switch-host-sandbox-branch")
+      }
       if let problem, problem.isBranch {
         problemLabel(problem)
       }
