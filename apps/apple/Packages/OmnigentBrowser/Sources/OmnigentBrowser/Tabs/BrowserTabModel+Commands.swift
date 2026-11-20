@@ -88,6 +88,15 @@ extension BrowserTabModel {
     })()
     """
 
+  /// Find (Command-F) from a menu or key: shows the bar at once, then fills it from the page's
+  /// selected line once the page answers (``showFindBarSeedingSelection()``).
+  public func findSeedingSelection() {
+    let inField = find.isVisible && find.isFieldFocused
+    showFindBar()
+    // The shown bar searches the seeded query itself.
+    if !inField { Task { await seedFindQuery(searches: false) } }
+  }
+
   /// Find (Command-F): shows the bar with the page's selected line as its query, searched and
   /// selected so typing replaces it. Pressed in the field, it keeps what was typed; a query typed
   /// while the selection is read wins, and a later Find replaces an earlier one's read.
@@ -96,10 +105,15 @@ extension BrowserTabModel {
       showFindBar()
       return
     }
+    await seedFindQuery(searches: !find.isVisible)
+  }
+
+  /// Reads the page's selection into the query and shows the bar; `searches` runs the search for
+  /// a bar that won't run it itself.
+  private func seedFindQuery(searches: Bool) async {
     find.seedGeneration += 1
     let generation = find.seedGeneration
     let typed = find.query
-    let wasVisible = find.isVisible
     var seed: String?
     if let tab {
       do {
@@ -118,7 +132,7 @@ extension BrowserTabModel {
     }
     showFindBar()
     // A shown bar searches its changed query itself; a newly shown one starts here.
-    if seeded != nil, !wasVisible { await findNext(forward: true) }
+    if seeded != nil, searches { await findNext(forward: true) }
   }
 
   /// Highlights the next (or previous) match of `find.query`.

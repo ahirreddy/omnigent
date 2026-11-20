@@ -22,7 +22,7 @@ extension ServerWindowRoot {
   /// Edit > Find for a browser tab's page.
   static func find(_ page: BrowserTabModel) -> ServerWindowActions.Find {
     ServerWindowActions.Find(
-      show: { Task { await page.showFindBarSeedingSelection() } },
+      show: { page.findSeedingSelection() },
       next: { Task { await page.findNext(forward: true) } },
       previous: { Task { await page.findNext(forward: false) } },
       useSelection: { Task { await page.useSelectionForFind() } })

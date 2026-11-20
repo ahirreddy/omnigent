@@ -271,7 +271,7 @@ struct BrowserTabShortcuts: View {
   var body: some View {
     ZStack {
       shortcut("Open Location", "l") { model.focusOmnibox() }
-      shortcut("Find", "f") { Task { await model.showFindBarSeedingSelection() } }
+      shortcut("Find", "f") { model.findSeedingSelection() }
       shortcut("Find Next", "g") { findAgain(forward: true) }
       shortcut("Find Previous", "g", [.command, .shift]) { findAgain(forward: false) }
       shortcut("Zoom In", "=") { model.zoomIn() }

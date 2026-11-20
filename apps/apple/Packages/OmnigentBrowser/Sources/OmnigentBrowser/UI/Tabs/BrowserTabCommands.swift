@@ -44,7 +44,7 @@
         .keyboardShortcut("r", modifiers: [.command, .shift])
       if includesFindAndZoom {
         Divider()
-        Button("Find…") { Task { await tab?.showFindBarSeedingSelection() } }
+        Button("Find…") { tab?.findSeedingSelection() }
           .keyboardShortcut("f")
         Button("Find Next") { Task { await tab?.findNext(forward: true) } }
           .keyboardShortcut("g")
