@@ -39,7 +39,7 @@ struct MathBlockView: View {
     let equation = equation(drawn[request] ?? RichBlockRenderer.shared.cached(request))
     ViewThatFits(in: .horizontal) {
       equation.frame(maxWidth: .infinity)
-      ScrollView(.horizontal) { equation }.scrollIndicators(.automatic)
+      SidewaysScrollView { equation }
     }
     .help(helpText)
     .contextMenu {
