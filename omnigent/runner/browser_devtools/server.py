@@ -41,6 +41,8 @@ BIND_HOST: Final[str] = "127.0.0.1"
 PATH_PREFIX: Final[str] = "/devtools/browser/"
 _MAC_HEX_CHARS: Final[int] = 32
 _VERSION_TIMEOUT_S: Final[float] = 5.0
+# How often a connection checks that the session still selects its browser.
+SELECTION_CHECK_S: Final[float] = 10.0
 
 
 class BrowserUnavailableError(Exception):
@@ -72,6 +74,10 @@ class BackendResolver(Protocol):
 
         :raises BrowserUnavailableError: When no browser can serve the session.
         """
+        ...
+
+    async def still_selected(self, session_id: str, kind: str) -> bool:
+        """Whether the session may keep using a *kind* backend (the user may switch)."""
         ...
 
 
@@ -228,9 +234,30 @@ class BrowserDevtoolsService:
                 directory=backend.directory,
                 label=f"{session_id}/{backend.kind}",
             )
+            watcher = asyncio.create_task(self._watch_selection(connection, session_id, backend))
             try:
                 await session.run()
             except (TabDirectoryError, CdpCommandError) as exc:
                 reason = f"The {backend.kind} browser could not list this session's tabs: {exc}"
                 _logger.warning(reason, extra={"session_id": session_id})
                 await serve_unavailable(connection, reason)
+            finally:
+                watcher.cancel()
+
+    async def _watch_selection(
+        self, connection: ServerConnection, session_id: str, backend: BrowserBackend
+    ) -> None:
+        """Close *connection* once the session switches away from *backend*'s browser.
+
+        ``chrome-devtools-mcp`` reconnects on its next call and lands on the new choice.
+        """
+        while True:
+            await asyncio.sleep(SELECTION_CHECK_S)
+            if not await self._resolver.still_selected(session_id, backend.kind):
+                _logger.info(
+                    "agent browser switched away from %s",
+                    backend.kind,
+                    extra={"session_id": session_id},
+                )
+                await connection.close(code=1001, reason="browser switched")
+                return

@@ -16,6 +16,7 @@ from websockets.asyncio.client import connect
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
+from omnigent.runner.browser_devtools import server as server_module
 from omnigent.runner.browser_devtools.directory import AgentTabState, ScopedTab
 from omnigent.runner.browser_devtools.server import (
     BrowserBackend,
@@ -75,6 +76,10 @@ class _Resolver:
     def __init__(self, upstream_url: str | None) -> None:
         self.upstream_url = upstream_url
         self.sessions: list[str] = []
+        self.selected = True
+
+    async def still_selected(self, session_id: str, kind: str) -> bool:
+        return self.selected
 
     async def resolve(self, session_id: str) -> BrowserBackend:
         self.sessions.append(session_id)
@@ -142,6 +147,24 @@ async def test_an_unavailable_browser_tells_the_agent_why() -> None:
         assert reply["error"]["message"] == (
             "This runner has no agent browser: host not installed"
         )
+    finally:
+        await service.stop()
+
+
+async def test_switching_browsers_closes_the_agents_connection(
+    upstream_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server_module, "SELECTION_CHECK_S", 0.05)
+    resolver = _Resolver(upstream_url)
+    service = BrowserDevtoolsService(resolver, secret=_SECRET)
+    await service.ensure_started()
+    try:
+        async with connect(service.endpoint_for("conv_a")) as agent:
+            await _request(agent, 1, "Target.getTargets")
+            resolver.selected = False
+            with pytest.raises(ConnectionClosed) as closed:
+                await agent.recv()
+        assert closed.value.rcvd is not None and closed.value.rcvd.reason == "browser switched"
     finally:
         await service.stop()
 

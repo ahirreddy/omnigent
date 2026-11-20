@@ -19,9 +19,14 @@ import pytest
 
 from omnigent.runner.browser_devtools.app_backend import AppTabDirectory, app_backend
 from omnigent.runner.browser_devtools.directory import TabDirectoryError
-from omnigent.runner.browser_devtools.resolver import RunnerBrowserResolver
+from omnigent.runner.browser_devtools.resolver import (
+    BROWSER_TARGET_LABEL,
+    RunnerBrowserResolver,
+    backend_order,
+)
 from omnigent.runner.browser_devtools.server import BrowserUnavailableError
 from omnigent.runner.browser_host import BrowserHostManager, BrowserHostSettings
+from omnigent.stores.conversation_store import SCHEDULED_TASK_RUN_LABEL_KEY
 
 
 @contextlib.contextmanager
@@ -50,8 +55,14 @@ def _devtools_port(browser_path: str) -> Iterator[int]:
         server.server_close()
 
 
-def _relay(answers: dict[str, dict[str, Any]], sent: list[dict[str, Any]]) -> httpx.AsyncClient:
+def _relay(
+    answers: dict[str, dict[str, Any]],
+    sent: list[dict[str, Any]],
+    labels: dict[str, str] | None = None,
+) -> httpx.AsyncClient:
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/sessions/conv_a/labels":
+            return httpx.Response(200, json={"labels": labels or {}})
         assert request.url.path == "/v1/sessions/conv_a/browser/devtools_request"
         body = json.loads(request.content)
         sent.append(body)
@@ -136,3 +147,36 @@ async def test_the_mac_browser_wins_when_it_shares_the_machine(tmp_path) -> None
             backend = await resolver.resolve("conv_a")
 
     assert backend.kind == "local"
+
+
+@pytest.mark.parametrize(
+    ("labels", "order"),
+    [
+        ({}, ("local", "remote")),
+        ({BROWSER_TARGET_LABEL: "auto"}, ("local", "remote")),
+        ({BROWSER_TARGET_LABEL: "local"}, ("local",)),
+        ({BROWSER_TARGET_LABEL: "remote"}, ("remote",)),
+        # Nobody watches a scheduled run: the remote browser comes first.
+        ({SCHEDULED_TASK_RUN_LABEL_KEY: "run_1"}, ("remote", "local")),
+        ({SCHEDULED_TASK_RUN_LABEL_KEY: "run_1", BROWSER_TARGET_LABEL: "local"}, ("local",)),
+    ],
+)
+def test_the_session_label_and_unattended_runs_pick_the_order(
+    labels: dict[str, str], order: tuple[str, ...]
+) -> None:
+    assert backend_order(labels) == order
+
+
+async def test_choosing_the_remote_browser_never_asks_the_mac(tmp_path) -> None:
+    manager = BrowserHostManager(BrowserHostSettings(enabled=False, data_dir=tmp_path))
+    sent: list[dict[str, Any]] = []
+    async with _relay({}, sent, labels={BROWSER_TARGET_LABEL: "remote"}) as client:
+        resolver = RunnerBrowserResolver(manager, lambda _session, _event: None, client)
+        with pytest.raises(BrowserUnavailableError) as raised:
+            await resolver.resolve("conv_a")
+        still_local = await resolver.still_selected("conv_a", "local")
+        still_remote = await resolver.still_selected("conv_a", "remote")
+
+    assert sent == []
+    assert "This Mac's browser" not in str(raised.value)
+    assert (still_local, still_remote) == (False, True)

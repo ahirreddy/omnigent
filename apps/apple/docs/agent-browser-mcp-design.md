@@ -112,19 +112,27 @@ We do not reimplement its tools.
   label (the web/Electron pane keeps its relay tools).
 - Runner: `spec_resolver` (it has the session id) applies `with_browser_devtools(spec,
   endpoint)` when the header is present and the proxy listener runs. That adds
-  `MCPServerConfig(name="chrome_devtools", transport="stdio", command="npx", args=[...])` and
-  turns `tool_groups.browser` off so the five `browser_*` tools and their prompt line disappear.
-- Args: `-y chrome-devtools-mcp@1.12.0 --wsEndpoint ws://127.0.0.1:<port>/devtools/browser/<token>
-  --no-usage-statistics --no-performance-crux`. Env: `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS=1`,
-  `CHROME_DEVTOOLS_MCP_NO_CONFIG_DISCOVERY=1`, `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS=1`.
-  `npm_config_registry` is inherited from the runner environment, so a runner behind a
-  registry mirror (for example `https://npm-mirror.example.com`) needs no code change.
+  `MCPServerConfig(name="chrome_devtools", transport="stdio", command=<runner python>,
+  args=["-I", "-m", "omnigent.runner.browser_devtools.mcp_launcher", "--ws-endpoint", <url>])`
+  and turns `tool_groups.browser` off so the five `browser_*` tools and their prompt line
+  disappear.
+- The launcher finds Node.js the way Omnigent finds other CLIs (`PATH`, Homebrew,
+  `~/.local/bin`, mise shims, nvm, or `OMNIGENT_NODE_PATH`), installs the pinned release once
+  into `<data dir>/browser/chrome-devtools-mcp/1.12.0` with the machine's own npm
+  configuration (`~/.npmrc`, `npm_config_registry`), and then execs
+  `node .../chrome-devtools-mcp.js --wsEndpoint <url> --no-usage-statistics
+  --no-performance-crux`. Env: `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS=1`,
+  `CHROME_DEVTOOLS_MCP_NO_CONFIG_DISCOVERY=1`, `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS=1`. No
+  registry is hardcoded: a runner behind a mirror configures npm as usual.
+- When Node is missing or too old, or npm cannot fetch the package, the launcher serves a
+  one-tool MCP server (`chrome_devtools__browser_unavailable`) whose description and result
+  say what to install or configure, so the agent tells the user instead of silently having no
+  browser.
 - The token is `<session_id>.<hmac>` where the HMAC uses a per-runner-process secret. It is a
   pure function of (secret, port, session id), so the spec loader can compute it in its worker
   thread, and it makes the server config differ per session: `RunnerMcpManager` never shares
   one chrome-devtools-mcp process between sessions.
-- Tool timeout 180 s (performance traces). Node 20.19+ is required (`engines`); a missing `npx`
-  shows up as the MCP server's connection failure in the tool list, with a remedy line.
+- Tool timeout 180 s (performance traces), which also bounds the first launch's install.
 - `chrome-devtools-mcp` reconnects lazily when its browser disconnects
   (`BrowserManager.ensureBrowser` checks `browser.connected`). Switching browsers is therefore a
   proxy-side close; the next tool call reconnects to the new target.
@@ -192,17 +200,23 @@ owner)]`, `create_tab(url)`, `close_tab(target_id)`, `report_activity(target_id,
 
 ### 3.4 Local app pieces
 
-- **Web Host:** `remote_debugging_port` from a free loopback port when the setting
-  *Let agents use this Mac's browser* is on (CEF reads it only at initialize; changing the
-  setting restarts the host on next launch). Report each view's CDP target id
-  (`Target.getTargetInfo` on `OnAfterCreated`, as `browser-host/src/host/tab.cc` does) in
-  `ViewCreated`.
-- **Swift:** `BrowserDevToolsStore` (OmnigentStores) handles `browser.devtools_request`: claims,
-  checks the owner and the setting, lists the session group's `.browser` tabs with target ids,
-  opens agent tabs in the session's `TabStore` (background, user's default profile), closes
-  them, and keeps the per-tab agent state.
-- **Holding a tab:** while a tab's state is not `idle`, its `WebView.rendersOffscreen` is true,
-  `BrowserTabHost` keeps the page, and `ConnectionStore` keeps the session's conversation open.
+- **Web Host:** no C++ change. `ChromiumConfiguration.withAgentDevTools()` picks a free
+  loopback port for the existing `remoteDebuggingPort` when the setting *Let agents use this
+  browser* is on (on by default; CEF reads it only at start, so a change applies after a
+  relaunch). Each page's target id comes from `Target.getTargetInfo` over the page's own
+  DevTools session (`BrowserAgentInput.devToolsTargetID()`).
+- **Swift:** `BrowserActionStore` routes `devtools.<op>` actions to `BrowserDevToolsPerformer`
+  (app target), which answers from `BrowserTabHost+DevTools`: the session group's browser tabs
+  in every window (pages the session never showed are built), background agent tabs in the
+  session's `TabStore` in the user's default profile, closing, and the agent state. The Rust
+  core turns `browser.devtools_request` into those actions without a transcript row.
+- **Holding a tab:** `BrowserTabModel.setAgentControl` sets the page's
+  `holdForAgent` (`WebView.rendersOffscreen`) while any agent state is set, so CEF never hides
+  it; releasing returns the page to what its view last reported. Pages live in
+  `BrowserTabHost.models` whatever the window or session.
+- **Not yet:** the session's conversation is not pinned while an agent holds its tabs. Once
+  the app closes that conversation's stream, the directory stops answering until the session
+  is opened again; the proxy keeps the last tabs it knew.
 
 ## 4. Choosing and switching the browser
 
@@ -305,6 +319,17 @@ window, or the app may be inactive. Requirements and mechanism:
 | **4 (c) Selection** | `omnigent.browser_target`, auto policy and ask-once elicitation, chip and menu, `browser_switch` | Switching moves the next tool call; owner-only `local` |
 | **5 (d) Tunnel** | Owner-only CDP tunnel path through the server to the app | A sandbox runner drives the local Mac browser |
 | **6 (e) Hand-off and hardening** | `browser_request_human`, `needs_you`, pipe-based local endpoint | Login hand-off round trip on both browsers |
+
+### Status (2026-11-20)
+
+- **Done:** phase 1; phase 2, without pinning the conversation; from phase 3, the host's
+  `tabs.agent_state` op and `agent_state` in tab records and resources; from phase 4,
+  `omnigent.browser_target` with `auto` preferring the remote browser for scheduled runs, and
+  closing a connection the label no longer allows.
+- **Remote tabs in the app** show only the user's own control. Showing the agent's activity
+  needs `control_state` to carry it through the Rust core.
+- **Not started:** the chip and menu, `browser_switch`, the ask-once elicitation, phase 5 and
+  phase 6.
 
 ## 10. Test plan
 
