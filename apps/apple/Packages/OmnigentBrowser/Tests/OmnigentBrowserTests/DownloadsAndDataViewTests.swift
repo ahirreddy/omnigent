@@ -273,8 +273,8 @@
 
       let before = settings.showsBookmarksBar
       let frames = screen.controlFrames
-      // Engine picker, template field, bar toggle, Manage….
-      try screen.clickControl(at: frames.count - 2)
+      // Engine picker, template field, bar toggle, agent browsing toggle, Manage….
+      try screen.clickControl(at: frames.count - 3)
       #expect(settings.showsBookmarksBar != before)
 
       try screen.clickDrawnButton(at: 0)

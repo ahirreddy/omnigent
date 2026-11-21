@@ -63,6 +63,7 @@ def test_unset_or_empty_uses_feature_defaults(environ: dict[str, str]) -> None:
         "workspace_direct_access": False,
         "workspace_api_server_access": False,
         "floating_composer": False,
+        "agent_browser_devtools": False,
     }
 
 

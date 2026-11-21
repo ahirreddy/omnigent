@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from omnigent.runner.browser_devtools.host_backend import HostTabDirectory
 from omnigent.runner.browser_host import (
     BrowserHostError,
     BrowserHostManager,
@@ -432,3 +433,35 @@ async def test_runner_hello_advertises_remote_browser_when_available(
     await _send_hello(send_text, "0.0.0")
     capabilities = json.loads(sent[0])["capabilities"]
     assert ("remote_browser" in capabilities) is enabled
+
+
+async def test_devtools_directory_opens_agent_tabs_and_announces_them(
+    fake_manager: BrowserHostManager,
+) -> None:
+    published: list[tuple[str, dict[str, object]]] = []
+    state = await fake_manager.ensure_host("default")
+    directory = HostTabDirectory(
+        fake_manager,
+        state,
+        "conv_a",
+        lambda session, event: published.append((session, dict(event))),
+    )
+
+    created = await directory.create_tab("https://example.com/")
+    other_session = await fake_manager.create_tab("conv_b")
+    listed = await directory.list_tabs()
+    # The fake host has no tabs.agent_state yet; the badge is skipped, not an error.
+    await directory.report_agent_state(created.target_id, "active")
+    await directory.close_tab(created.target_id)
+
+    assert [tab.tab_id for tab in listed] == [created.tab_id]
+    assert listed[0].owner == "agent" and listed[0].target_id == created.target_id
+    records = await host_request(state.socket, "tabs.list", {"session_id": "conv_b"})
+    assert [tab["id"] for tab in records["tabs"]] == [other_session["id"]]
+    assert [event["type"] for _session, event in published] == [
+        "session.resource.created",
+        "session.resource.deleted",
+    ]
+    resource = published[0][1]["resource"]
+    assert isinstance(resource, dict) and resource["metadata"]["created_by"] == "agent"
+    assert await directory.list_tabs() == []

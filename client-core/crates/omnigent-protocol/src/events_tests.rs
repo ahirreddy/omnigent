@@ -32,10 +32,10 @@ fn unknown_live_events_have_bounded_inspectable_safe_fallback() {
 #[test]
 fn the_union_has_every_server_event_type_once() {
     let mut types = ServerStreamEvent::KNOWN_TYPES.to_vec();
-    assert_eq!(types.len(), 58);
+    assert_eq!(types.len(), 59);
     types.sort_unstable();
     types.dedup();
-    assert_eq!(types.len(), 58);
+    assert_eq!(types.len(), 59);
 }
 
 #[test]

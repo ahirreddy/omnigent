@@ -51,6 +51,7 @@ if TYPE_CHECKING:
 
     from omnigent.inner.databricks_executor import _ReusedDatabricksTokenSource
     from omnigent.inner.datamodel import OSEnvSandboxSpec
+    from omnigent.runner.browser_devtools.server import BrowserDevtoolsService
     from omnigent.runner.native import ResolvedSpec
     from omnigent.runner.transports.ws_tunnel.serve import _ASGIApp
     from omnigent.spec.types import AgentSpec
@@ -1551,10 +1552,18 @@ class _AgentSpecCache:
         self._closed = False
         self._policy_modules: tuple[str, ...] | None = None
 
-    async def resolve(self, response: httpx.Response, agent_id: str) -> ResolvedSpec:
-        """Queue before occupying a worker, and retain admission through cancellation."""
+    async def resolve(
+        self, response: httpx.Response, agent_id: str, devtools_endpoint: str | None = None
+    ) -> ResolvedSpec:
+        """Queue before occupying a worker, and retain admission through cancellation.
+
+        :param devtools_endpoint: The session's scoped CDP proxy URL, when the
+            runner serves one.
+        """
         await self._admission.acquire()
-        worker = asyncio.create_task(asyncio.to_thread(self._load, response, agent_id))
+        worker = asyncio.create_task(
+            asyncio.to_thread(self._load, response, agent_id, devtools_endpoint)
+        )
         worker.add_done_callback(self._load_finished)
         try:
             return await asyncio.shield(worker)
@@ -1575,13 +1584,17 @@ class _AgentSpecCache:
         if resolved.workdir is not None:
             shutil.rmtree(resolved.workdir, ignore_errors=True)
 
-    def _load(self, response: httpx.Response, agent_id: str) -> ResolvedSpec:
+    def _load(
+        self, response: httpx.Response, agent_id: str, devtools_endpoint: str | None
+    ) -> ResolvedSpec:
         """Keep cache mutation owned until the worker ends, even after cancellation."""
         with self._lock:
             if self._closed:
                 raise RuntimeError("spec_resolver: agent bundle cache is closed")
             self._register_policy_modules(_policy_modules_from_response(response))
-            return _load_agent_spec_bundle(self.root, response, agent_id)
+            return _load_agent_spec_bundle(
+                self.root, response, agent_id, devtools_endpoint=devtools_endpoint
+            )
 
     def _register_policy_modules(self, modules: tuple[str, ...]) -> None:
         """Match the registry to the server's module list; no list means no custom handlers."""
@@ -1616,14 +1629,27 @@ def _policy_modules_from_response(resp: httpx.Response) -> tuple[str, ...]:
 
 
 def _load_agent_spec_bundle(
-    spec_cache_root: Path, resp: httpx.Response, agent_id: str
+    spec_cache_root: Path,
+    resp: httpx.Response,
+    agent_id: str,
+    *,
+    devtools_endpoint: str | None = None,
 ) -> ResolvedSpec:
-    """Extract and load a fresh bundle while the runner's worker lock is held."""
+    """Extract and load a fresh bundle while the runner's worker lock is held.
+
+    :param devtools_endpoint: The session's scoped CDP proxy URL; with the
+        server's browser-devtools header it replaces ``browser_*`` with
+        Chrome DevTools MCP.
+    """
     from omnigent.automations_availability import (
         AUTOMATIONS_HEADER,
         USER_INBOX_HEADER,
         without_scheduled_task_tools,
         without_user_inbox_tools,
+    )
+    from omnigent.browser_devtools_availability import (
+        BROWSER_DEVTOOLS_HEADER,
+        with_browser_devtools,
     )
     from omnigent.mcp_selection import MCP_SELECTION_HEADER, selected_mcp_spec
     from omnigent.memory_availability import (
@@ -1671,6 +1697,8 @@ def _load_agent_spec_bundle(
             spec = without_memory_tools(spec)
         elif resp.headers.get(MEMORY_SEARCH_HEADER) != "1":
             spec = without_memory_search(spec)
+        if devtools_endpoint is not None and resp.headers.get(BROWSER_DEVTOOLS_HEADER) == "1":
+            spec = with_browser_devtools(spec, devtools_endpoint)
         _apply_host_interactive_shells(spec)
         # After the shells hook so replaced native-wrapper terminals get the grants too.
         _apply_host_sandbox_grants(spec)
@@ -1685,6 +1713,7 @@ async def _resolve_agent_spec_from_server(
     spec_cache: _AgentSpecCache,
     agent_id: str,
     session_id: str | None = None,
+    devtools_endpoint: str | None = None,
 ) -> ResolvedSpec | None:
     """
     Fetch, cache, and parse one agent spec bundle from the Omnigent server.
@@ -1698,6 +1727,8 @@ async def _resolve_agent_spec_from_server(
         via the session-scoped endpoint, e.g. ``"conv_abc123"``.
         ``None`` means the runner cannot resolve the session-scoped
         bundle and returns ``None``.
+    :param devtools_endpoint: The session's scoped CDP proxy URL, e.g.
+        ``"ws://127.0.0.1:52341/devtools/browser/conv_abc123.1f2e"``.
     :returns: The parsed :class:`AgentSpec` plus its extracted bundle
         directory, or ``None`` when the server returns 404 for the
         requested agent.
@@ -1731,7 +1762,7 @@ async def _resolve_agent_spec_from_server(
         return None
     if resp.status_code != 200:
         raise RuntimeError(f"spec_resolver: GET {path} failed with HTTP {resp.status_code}")
-    return await spec_cache.resolve(resp, agent_id)
+    return await spec_cache.resolve(resp, agent_id, devtools_endpoint)
 
 
 def create_app(
@@ -1847,6 +1878,8 @@ def create_app(
 
     _spec_cache = _AgentSpecCache(Path(tempfile.mkdtemp(prefix=f"runner-specs-{_runner_id}-")))
     _session_spec_workdirs = _SessionSpecWorkdirs()
+    # Filled once the runner app exists; it owns the scoped CDP proxy.
+    _browser_devtools_service: dict[str, BrowserDevtoolsService | None] = {}
 
     async def spec_resolver(agent_id: str, session_id: str | None = None) -> ResolvedSpec | None:
         """
@@ -1870,11 +1903,25 @@ def create_app(
             the server doesn't have the agent.
         """
         lease = _session_spec_workdirs.lease(session_id) if session_id is not None else None
+        devtools_endpoint = None
+        devtools_service = _browser_devtools_service.get("service")
+        if devtools_service is not None and session_id is not None:
+            try:
+                await devtools_service.ensure_started()
+                devtools_endpoint = devtools_service.endpoint_for(session_id)
+            except OSError:
+                # Without the proxy the session keeps the browser_* tools.
+                _logger.warning(
+                    "agent browser proxy could not bind loopback",
+                    exc_info=True,
+                    extra={"session_id": session_id},
+                )
         resolved = await _resolve_agent_spec_from_server(
             server_client,
             _spec_cache,
             agent_id,
             session_id=session_id,
+            devtools_endpoint=devtools_endpoint,
         )
         if (
             resolved is not None
@@ -1936,6 +1983,7 @@ def create_app(
             _load_runner_idle_timeout_s_from_config()
         ),
     )
+    _browser_devtools_service["service"] = getattr(app.state, "browser_devtools", None)
 
     async def _start_pm() -> None:
         """Start harness process manager; register MCP prewarm metadata if requested."""
@@ -2429,6 +2477,9 @@ async def _run_tunnel_from_env() -> None:
         if direct_attach_listener is not None:
             with contextlib.suppress(Exception):
                 await direct_attach_listener.stop()
+        devtools_service = getattr(app.state, "browser_devtools", None)
+        if devtools_service is not None:
+            await devtools_service.stop()
         await _lifespan_cm.__aexit__(None, None, None)
 
 

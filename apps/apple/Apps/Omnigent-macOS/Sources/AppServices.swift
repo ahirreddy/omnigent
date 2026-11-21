@@ -244,6 +244,12 @@ final class AppServices {
     }
     let session = ServerSession.live(keychain: keychain)
     session.connection.browserActions?.performer = agentBrowser
+    if agentBrowser != nil {
+      let provider = browserProvider
+      session.connection.browserActions?.devToolsPerformer = BrowserDevToolsPerformer(
+        tabs: browserTabs, settings: browser.settings, connection: session.connection,
+        gate: { () throws(BrowserError) in try AppEdition.agentDevToolsGate(provider) })
+    }
     return session
   }
 

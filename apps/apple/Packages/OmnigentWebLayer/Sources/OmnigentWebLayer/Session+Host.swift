@@ -59,11 +59,14 @@ extension Session {
     channel.onEvent = { [weak self] event in self?.handle(event, generation: current) }
     channel.start()
     self.channel = channel
+    var arguments = [
+      "--owl-service=\(service)", "--owl-token=\(token)", "--owl-parent-pid=\(getpid())",
+    ]
+    let pipe = try makeDevToolsPipe(arguments: &arguments)
     let process = try HostProcess(
-      executable: executable,
-      arguments: [
-        "--owl-service=\(service)", "--owl-token=\(token)", "--owl-parent-pid=\(getpid())",
-      ])
+      executable: executable, arguments: arguments,
+      descriptors: pipe?.childDescriptors ?? [:])
+    adoptDevToolsPipe(pipe)
     channel.expect(pid: process.pid)
     process.onExit = { [weak self] status, signaled in
       self?.hostExited(status: status, signaled: signaled, generation: current)
@@ -135,6 +138,8 @@ extension Session {
     channel = nil
     process = nil
     outstandingPing = nil
+    devTools?.shutDown()
+    devTools = nil
   }
 
   // MARK: Events

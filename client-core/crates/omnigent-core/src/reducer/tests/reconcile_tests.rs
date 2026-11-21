@@ -560,6 +560,28 @@ fn browser_action_requests_reach_the_host_once_across_replays_and_reconnects() {
 }
 
 #[test]
+fn devtools_requests_reach_the_host_as_devtools_actions_without_a_transcript_row() {
+    let mut sync = ConversationSync::new(SESSION);
+    sync.open_stream();
+    let request = json!({
+        "type": "browser.devtools_request",
+        "action_id": "bdevtools_1",
+        "action": "tabs.list",
+        "args": {}
+    });
+    let update = sync.handle_event(request.clone()).expect("applies");
+    let action = update
+        .effects
+        .browser_action
+        .expect("an action for the host");
+    assert_eq!(action.action, "devtools.tabs.list");
+    assert_eq!(action.action_id, "bdevtools_1");
+    assert!(ids(&sync).is_empty(), "{:?}", ids(&sync));
+    let again = sync.handle_event(request).expect("applies");
+    assert!(again.effects.browser_action.is_none());
+}
+
+#[test]
 fn a_snapshot_seeds_background_tasks_only_with_their_count() {
     let counted = session(json!({"id": SESSION, "status": "waiting", "created_at": 1,
         "background_task_count": 2, "background_tasks": [{"command": "make watch"}]}));

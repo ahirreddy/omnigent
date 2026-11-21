@@ -1,5 +1,13 @@
 public import CoreGraphics
 
+extension BrowserAgentInput {
+  /// Engines without DevTools have nothing to hold: no CDP agent can reach their pages.
+  public func holdForAgent(_ held: Bool) {}
+
+  /// Engines without DevTools have no target id.
+  public func devToolsTargetID() throws(BrowserError) -> String? { nil }
+}
+
 /// Input an agent sends to a tab's page. It never reaches the app's menus, responders or
 /// browser UI. On Chromium it goes straight to the page's renderer (`WebContentRenderer`'s
 /// agent path, tagged agent-originated on the wire); on WebKit it is dispatched as DOM events
@@ -13,6 +21,13 @@ public protocol BrowserAgentInput: AnyObject {
   /// Makes the tab an agent page: it renders at `viewport` (points) and takes input while no
   /// app window shows it.
   func prepareForAgent(viewport: CGSize)
+  /// Keeps a user's tab rendering, running timers and taking input while it is hidden (another
+  /// tab, another session's tabs, a minimized or background window), at its own size, while an
+  /// agent drives it over DevTools. Releasing returns it to its on-screen visibility.
+  func holdForAgent(_ held: Bool)
+  /// The page's Chrome DevTools target id, which an agent's CDP connection addresses it by;
+  /// `nil` on engines without DevTools.
+  func devToolsTargetID() async throws(BrowserError) -> String?
   /// Clicks at `point` in page coordinates (CSS pixels from the viewport's top-left).
   func click(at point: CGPoint, clickCount: Int) async throws(BrowserError)
   /// Scrolls by `deltaX`/`deltaY` CSS pixels at `point`; positive `deltaY` scrolls down.

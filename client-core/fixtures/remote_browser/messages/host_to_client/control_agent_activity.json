@@ -1,0 +1,7 @@
+{
+  "type": "control",
+  "owner": "agent",
+  "holder": null,
+  "reason": "agent_activity",
+  "agent": "active"
+}

@@ -57,6 +57,7 @@
     public static func standard(bundle: Bundle = .main) -> Self {
       Self(session: .standard(bundle: bundle))
     }
+
   }
 
   /// Chromium in the out-of-process web host. One engine owns one host `Session`; the host boots

@@ -175,6 +175,14 @@ public struct BrowserSettingsView: View {
         }
       }
       Toggle("Show bookmarks bar", isOn: $settings.showsBookmarksBar)
+      Toggle(isOn: $settings.agentDevTools) {
+        Text("Let agents use this browser")
+        Text(
+          "Agents in your own sessions can open and drive tabs here, signed in as you. "
+            + "Sessions shared with others never can, and no other app on this Mac can "
+            + "connect to the browser."
+        )
+      }
       LabeledContent("Profiles") {
         HStack {
           BrowserProfileChip(profile: environment.profiles.defaultProfile)

@@ -19,6 +19,12 @@ final class RecordingAgentInput: BrowserAgentInput {
   func prepareForAgent(viewport: CGSize) {
     preparedViewport = viewport
   }
+  /// Every agent hold and release, in order.
+  private(set) var holds: [Bool] = []
+
+  func holdForAgent(_ held: Bool) {
+    holds.append(held)
+  }
   private(set) var clicks: [CGPoint] = []
   private(set) var inserted: [String] = []
   private(set) var presses: [(BrowserAgentKey, BrowserAgentModifiers)] = []

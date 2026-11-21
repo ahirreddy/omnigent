@@ -49,12 +49,32 @@ def _cli_fallback_dirs() -> tuple[Path, ...]:
     # nvm keeps global bins per Node version; newest first so a current install
     # wins over a stale one. Sort by parsed numeric version (so v10 > v9, not
     # the lexicographic order in which "v10" < "v9").
-    nvm_versions = home / ".nvm" / "versions" / "node"
-    with suppress(OSError):
-        version_dirs = [p for p in nvm_versions.iterdir() if p.is_dir()]
-        version_dirs.sort(key=lambda p: _parse_node_version(p.name), reverse=True)
-        dirs.extend(p / "bin" for p in version_dirs)
+    dirs.extend(_versioned_bin_dirs(home / ".nvm" / "versions" / "node"))
     return tuple(dirs)
+
+
+def _versioned_bin_dirs(versions_dir: Path) -> list[Path]:
+    """``<versions_dir>/<version>/bin``, newest version first; empty when absent."""
+    with suppress(OSError):
+        version_dirs = [p for p in versions_dir.iterdir() if p.is_dir()]
+        version_dirs.sort(key=lambda p: _parse_node_version(p.name), reverse=True)
+        return [p / "bin" for p in version_dirs]
+    return []
+
+
+def node_install_dirs() -> list[Path]:
+    """Bin dirs of Node.js versions that version managers installed, newest first.
+
+    mise (``~/.local/share/mise/installs/node/<v>/bin``) and nvm
+    (``~/.nvm/versions/node/<v>/bin``). Their shims only work inside a shell
+    or directory that selects a version, so callers that need node go to the
+    installs directly.
+    """
+    home = Path.home()
+    return [
+        *_versioned_bin_dirs(home / ".local" / "share" / "mise" / "installs" / "node"),
+        *_versioned_bin_dirs(home / ".nvm" / "versions" / "node"),
+    ]
 
 
 def _parse_node_version(name: str) -> tuple[int, ...]:

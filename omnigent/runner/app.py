@@ -110,6 +110,8 @@ from omnigent.runner.background_titles import (
 )
 from omnigent.runner.background_titles.service import BACKGROUND_TITLE_MAX_PROMPT_CHARS
 from omnigent.runner.background_work_reports import BackgroundWorkReporter
+from omnigent.runner.browser_devtools.resolver import RunnerBrowserResolver
+from omnigent.runner.browser_devtools.server import BrowserDevtoolsService
 from omnigent.runner.browser_host import (
     BrowserCleanupError,
     BrowserHostManager,
@@ -1357,6 +1359,18 @@ def get_session_agent_id(session_id: str) -> str | None:
 # resolvable after at most one minute without restarting the runner.
 _SESSION_SKILLS_CACHE_TTL_SECONDS = 60.0
 _SESSION_INIT_ENVELOPE_TTL_SECONDS = 60.0
+
+
+def _create_browser_devtools_service(
+    manager: BrowserHostManager,
+    publish_event: Callable[[str, Mapping[str, object]], None],
+    server_client: httpx.AsyncClient | None,
+) -> BrowserDevtoolsService:
+    """The scoped CDP proxy session agents reach Chrome DevTools MCP through.
+
+    It binds its loopback port on first use, from the spec resolver.
+    """
+    return BrowserDevtoolsService(RunnerBrowserResolver(manager, publish_event, server_client))
 
 
 def create_runner_app(
@@ -9002,10 +9016,14 @@ def create_runner_app(
         return skills
 
     # Registered before the generic ``/resources/{resource_id}`` lookup below.
+    _browser_hosts = browser_host_manager or BrowserHostManager(BrowserHostSettings.from_env())
     _close_session_browsers = register_browser_routes(
         app,
-        manager=browser_host_manager or BrowserHostManager(BrowserHostSettings.from_env()),
+        manager=_browser_hosts,
         publish_event=_publish_event,
+    )
+    app.state.browser_devtools = _create_browser_devtools_service(
+        _browser_hosts, _publish_event, server_client
     )
 
     _resource_routes = register_resource_routes(

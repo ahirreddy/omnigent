@@ -2,6 +2,7 @@
 
 #import <AppKit/AppKit.h>
 
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -122,9 +123,16 @@ class PopupSettingHandler : public CefRequestContextHandler {
   IMPLEMENT_REFCOUNTING(PopupSettingHandler);
 };
 
+/// Whether the client handed the host both DevTools pipe ends. Chromium closes the browser when
+/// its pipe fails, so the switch is only added when fds 3 and 4 are open.
+bool DevToolsPipeOpen() {
+  return fcntl(3, F_GETFD) != -1 && fcntl(4, F_GETFD) != -1;
+}
+
 class HostApp : public CefApp, public CefBrowserProcessHandler {
  public:
-  explicit HostApp(bool use_mock_keychain) : use_mock_keychain_(use_mock_keychain) {}
+  HostApp(bool use_mock_keychain, bool devtools_pipe)
+      : use_mock_keychain_(use_mock_keychain), devtools_pipe_(devtools_pipe) {}
 
   CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override { return this; }
 
@@ -139,6 +147,10 @@ class HostApp : public CefApp, public CefBrowserProcessHandler {
       // Without this, HTTP auth opens Chrome's own login dialog as a window in the host process
       // instead of calling CefRequestHandler::GetAuthCredentials.
       command_line->AppendSwitch("disable-chrome-login-prompt");
+      // DevTools only over the client's pipe: no port, so no other process can attach.
+      if (devtools_pipe_) {
+        command_line->AppendSwitch("remote-debugging-pipe");
+      }
     }
   }
 
@@ -146,6 +158,7 @@ class HostApp : public CefApp, public CefBrowserProcessHandler {
 
  private:
   bool use_mock_keychain_;
+  bool devtools_pipe_;
   IMPLEMENT_REFCOUNTING(HostApp);
 };
 
@@ -216,6 +229,8 @@ bool Host::ParseOptions(int argc, char* argv[]) {
       options_.token = *token;
     } else if (auto parent = value("--owl-parent-pid=")) {
       options_.parent_pid = static_cast<pid_t>(std::strtol(parent->c_str(), nullptr, 10));
+    } else if (argument == "--owl-devtools-pipe") {
+      options_.devtools_pipe = true;
     }
   }
   return !options_.service.empty() && !options_.token.empty() && options_.parent_pid > 0;
@@ -333,7 +348,11 @@ bool Host::InitializeCef(int argc, char* argv[]) {
   if (!config_.keychain_service.empty()) {
     CefString(&settings.keychain_service_name) = config_.keychain_service;
   }
-  CefRefPtr<HostApp> app(new HostApp(config_.use_mock_keychain));
+  const bool devtools_pipe = options_.devtools_pipe && DevToolsPipeOpen();
+  if (options_.devtools_pipe && !devtools_pipe) {
+    Log("--owl-devtools-pipe without fds 3 and 4; DevTools stays closed");
+  }
+  CefRefPtr<HostApp> app(new HostApp(config_.use_mock_keychain, devtools_pipe));
   if (!CefInitialize(main_args, settings, app.get(), nullptr)) {
     std::string reason = "CefInitialize failed with exit code " + std::to_string(CefGetExitCode()) +
                          ". Another process may be using " + config_.root_cache_path + ".";

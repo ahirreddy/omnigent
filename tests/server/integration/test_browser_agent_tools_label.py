@@ -1,4 +1,4 @@
-"""The advanced browser tools switch reaches the session and its turns."""
+"""The browser tool switches reach the session, its turns and its bundle download."""
 
 from __future__ import annotations
 
@@ -7,7 +7,10 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
 
+from omnigent.browser_devtools_availability import BROWSER_DEVTOOLS_HEADER
+from omnigent.server.feature_flags import FEATURES_ENV_VAR, resolve_feature_flags
 from omnigent.tools.browser_agent_tools import (
     BROWSER_AGENT_TOOLS_HEADER,
     BROWSER_AGENT_TOOLS_LABEL,
@@ -147,3 +150,34 @@ async def test_the_label_is_set_at_creation_and_never_changed_by_clients(
         assert changed.status_code == 400, changed.text
     labels = (await client.get(f"/v1/sessions/{session_id}/labels")).json()
     assert labels.get("labels", labels).get(BROWSER_AGENT_TOOLS_LABEL) == "on"
+
+
+@pytest.mark.parametrize(
+    ("features", "pane_mode", "expected"),
+    [
+        ("agent_browser_devtools", None, "1"),
+        ("", None, "0"),
+        # The web or Electron pane serves the relay tools its sessions were made for.
+        ("agent_browser_devtools", "on", "0"),
+    ],
+)
+async def test_bundle_download_offers_devtools_only_with_the_flag_and_without_the_pane(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    features: str,
+    pane_mode: str | None,
+    expected: str,
+) -> None:
+    app.state.feature_flags = resolve_feature_flags({FEATURES_ENV_VAR: features})
+    agent = await create_test_agent(client, name="browser-agent")
+    created = await client.post(
+        "/v1/sessions",
+        json={"agent_id": agent["id"]},
+        headers={} if pane_mode is None else {BROWSER_AGENT_TOOLS_HEADER: pane_mode},
+    )
+    assert created.status_code == 201, created.text
+
+    bundle = await client.get(f"/v1/sessions/{created.json()['id']}/agent/contents")
+
+    assert bundle.status_code == 200, bundle.text
+    assert bundle.headers[BROWSER_DEVTOOLS_HEADER] == expected

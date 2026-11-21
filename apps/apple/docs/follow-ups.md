@@ -61,6 +61,14 @@ Apple process" and "Recommendation and plan" (phase 1b).
   - clearing site data is coarse
   - Chrome Enterprise device-trust checks can never pass outside Google Chrome
 
+## Agent browser over Chrome DevTools
+
+Details: [agent-browser-mcp-design.md](agent-browser-mcp-design.md).
+
+- [ ] Only the runner bound to a session should get the gate's secret: today any client with
+  edit access to a non-shared session can ask for `attach` (and on a local single-user
+  server, any local process). The gate limits the secret to that session's tabs.
+
 ## Remote browser
 
 Details: [remote-browser-design.md](remote-browser-design.md).

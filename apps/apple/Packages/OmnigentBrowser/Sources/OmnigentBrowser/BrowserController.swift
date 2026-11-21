@@ -25,6 +25,9 @@ public final class BrowserController {
   /// Answers the prompts, popups and downloads of this controller's tabs.
   public let presenter: BrowserPromptPresenter
 
+  /// The engine this surface keeps whatever the preference, e.g. Chromium for a tab an agent
+  /// drives over DevTools; `nil` follows the preference. Choosing an engine clears it.
+  public private(set) var pinnedEngine: BrowserEngineKind?
   /// Current content.
   public private(set) var content: Content = .idle
   /// The URL to restore when a tab is (re)created.
@@ -41,12 +44,14 @@ public final class BrowserController {
     preferences: BrowserPreferences,
     provider: any BrowserEngineProvider,
     initialURL: URL?,
-    presenter: BrowserPromptPresenter = .shared
+    presenter: BrowserPromptPresenter = .shared,
+    pinnedEngine: BrowserEngineKind? = nil
   ) {
     self.profile = profile
     self.preferences = preferences
     self.provider = provider
     self.presenter = presenter
+    self.pinnedEngine = pinnedEngine
     requestedURL = initialURL
   }
 
@@ -105,24 +110,28 @@ public final class BrowserController {
   /// Engines this build offers, in display order.
   public var offeredEngines: [BrowserEngineKind] { provider.offeredEngines }
 
-  /// Creates a tab for the preferred engine if none matches it yet.
+  /// The engine new tabs use: the pinned one, else the preference.
+  public var wantedEngine: BrowserEngineKind { pinnedEngine ?? preferences.engine }
+
+  /// Creates a tab for the wanted engine if none matches it yet.
   public func activate() {
-    let wanted = preferences.engine
+    let wanted = wantedEngine
     if activeEngine == wanted, case .tab = content {
       return
     }
     replaceTab(with: wanted)
   }
 
-  /// Persists `kind` as the preferred engine and rebuilds the tab at the current URL.
+  /// Persists `kind` as the preferred engine, unpins, and rebuilds the tab at the current URL.
   public func switchEngine(to kind: BrowserEngineKind) {
     preferences.engine = kind
+    pinnedEngine = nil
     replaceTab(with: kind)
   }
 
-  /// Retries the preferred engine after a failure.
+  /// Retries the wanted engine after a failure.
   public func retry() {
-    replaceTab(with: preferences.engine)
+    replaceTab(with: wantedEngine)
   }
 
   /// Loads `url` in the live tab, or remembers it for the next tab.

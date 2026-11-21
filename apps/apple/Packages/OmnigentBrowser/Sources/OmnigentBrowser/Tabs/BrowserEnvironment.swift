@@ -139,11 +139,14 @@ public final class BrowserEnvironment {
   }
 
   /// A new tab in `profileID` (the default profile when nil) at `url` (`settings.newTabURL`
-  /// when nil). It loads when its content view first appears.
-  public func makeTab(profileID: UUID? = nil, url: URL? = nil) -> BrowserTabModel {
+  /// when nil). It loads when its content view first appears, in `engine` when given (an
+  /// agent's tab needs Chromium), else the preferred engine.
+  public func makeTab(
+    profileID: UUID? = nil, url: URL? = nil, engine: BrowserEngineKind? = nil
+  ) -> BrowserTabModel {
     let model = BrowserTabModel(
       environment: self, id: UUID(), profileID: resolvedProfileID(profileID),
-      url: url ?? settings.newTabURL, restoring: nil)
+      url: url ?? settings.newTabURL, restoring: nil, engine: engine)
     models.add(model)
     return model
   }

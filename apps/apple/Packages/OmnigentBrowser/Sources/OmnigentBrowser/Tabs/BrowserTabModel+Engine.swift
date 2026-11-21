@@ -7,6 +7,8 @@ extension BrowserTabModel {
 
   func prepare(_ tab: any BrowserTab) {
     if isMuted { tab.setAudioMuted(true) }
+    // Views start hidden, so a replaced page keeps rendering for the agent only if held again.
+    if agentControl != nil { tab.agentInput.holdForAgent(true) }
     lastRecordedURL = nil
     lastZoomHost = nil
     observe(tab)

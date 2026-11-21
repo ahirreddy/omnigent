@@ -1059,6 +1059,9 @@ stream_events! {
     ElicitationResolved(ElicitationResolved) = "response.elicitation_resolved",
     /// `browser.action_request`.
     BrowserActionRequest(BrowserActionRequestEvent) = "browser.action_request",
+    /// `browser.devtools_request`: the agent's `DevTools` proxy asks the owner's Mac app about
+    /// its browser (same fields as `browser.action_request`).
+    BrowserDevtoolsRequest(BrowserActionRequestEvent) = "browser.devtools_request",
     /// `ui.open_file`.
     UiOpenFile(UiOpenFileEvent) = "ui.open_file",
     /// `response.policy_denied`.

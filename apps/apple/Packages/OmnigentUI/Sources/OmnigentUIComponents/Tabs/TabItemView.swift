@@ -101,7 +101,7 @@ struct TabItemView: View {
     #endif
     .help(help)
     .accessibilityElement(children: .contain)
-    .accessibilityLabel(tab.displayTitle)
+    .accessibilityLabel(Self.accessibilityLabel(tab))
     .accessibilityValue(accessibilityValue)
     .accessibilityAddTraits(isSelected ? .isSelected : [])
     .accessibilityAction { actions.select(tab.id) }
@@ -178,6 +178,15 @@ struct TabItemView: View {
     Self.accessibilityValue(tab, isVisibleInOtherPane: isVisibleInOtherPane)
   }
 
+  /// The tab's name for VoiceOver: its title, then the agent's badge, so the badge is heard
+  /// with the tab.
+  /// - Parameter tab: The tab.
+  /// - Returns: The text.
+  static func accessibilityLabel(_ tab: TabItemState) -> String {
+    guard let agent = tab.agentControl else { return tab.displayTitle }
+    return "\(tab.displayTitle), \(agent.label)"
+  }
+
   /// What VoiceOver reads after the title.
   /// - Parameters:
   ///   - tab: The tab.
@@ -206,6 +215,9 @@ struct TabIcon: View {
         if tab.isPinned, let color = dotColor {
           Circle().fill(color).frame(width: 6, height: 6).offset(x: 3, y: -2)
         }
+      }
+      .overlay(alignment: .topLeading) {
+        if let agent = tab.agentControl { TabAgentBadge(control: agent) }
       }
       .overlay(alignment: .bottomTrailing) {
         if let profile = tab.profileColor {

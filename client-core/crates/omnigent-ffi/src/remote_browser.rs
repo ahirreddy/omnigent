@@ -251,6 +251,18 @@ pub struct RemoteBrowserControl {
     pub user_id: Option<String>,
     /// A pending handoff.
     pub handoff: Option<RemoteBrowserHandoff>,
+    /// What an agent driving the tab does; `None` when none holds it.
+    #[uniffi(default)]
+    pub agent: Option<RemoteBrowserAgentActivity>,
+}
+
+/// What an agent driving a remote tab over Chrome's debugging protocol does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum RemoteBrowserAgentActivity {
+    /// It acted in the last few seconds.
+    Active,
+    /// It holds the tab but has not acted recently.
+    Idle,
 }
 
 impl From<wire::ControlState> for RemoteBrowserControl {
@@ -267,6 +279,12 @@ impl From<wire::ControlState> for RemoteBrowserControl {
             handoff: control.handoff.map(|handoff| RemoteBrowserHandoff {
                 id: handoff.id,
                 reason: handoff.reason,
+            }),
+            agent: control.agent.and_then(|agent| match agent {
+                wire::AgentActivity::Active => Some(RemoteBrowserAgentActivity::Active),
+                wire::AgentActivity::Idle => Some(RemoteBrowserAgentActivity::Idle),
+                // A newer host's activity this client does not know shows no badge.
+                wire::AgentActivity::Unknown { .. } => None,
             }),
         }
     }

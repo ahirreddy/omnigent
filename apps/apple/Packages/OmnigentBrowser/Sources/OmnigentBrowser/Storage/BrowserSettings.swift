@@ -66,6 +66,8 @@ public final class BrowserSettings {
   static let customTemplateKey = "ai.omnigent.browser.searchEngine.customTemplate"
   static let bookmarksBarKey = "ai.omnigent.browser.showsBookmarksBar"
   static let newTabURLKey = "ai.omnigent.browser.newTabURL"
+  /// Public so start-up code can read it before the settings exist.
+  public static let agentDevToolsKey = "ai.omnigent.browser.agentDevTools"
 
   @ObservationIgnored private let defaults: UserDefaults
 
@@ -85,6 +87,11 @@ public final class BrowserSettings {
   public var newTabURL: URL? {
     didSet { defaults.set(newTabURL?.absoluteString, forKey: Self.newTabURLKey) }
   }
+  /// Whether agents of the user's own sessions may drive this browser's tabs over Chrome
+  /// DevTools, with the user's logins. On by default; read each time an agent asks.
+  public var agentDevTools: Bool {
+    didSet { defaults.set(agentDevTools, forKey: Self.agentDevToolsKey) }
+  }
 
   /// Reads settings from `defaults`.
   public init(defaults: UserDefaults = .standard) {
@@ -93,6 +100,14 @@ public final class BrowserSettings {
     customSearchTemplate = defaults.string(forKey: Self.customTemplateKey) ?? ""
     showsBookmarksBar = defaults.object(forKey: Self.bookmarksBarKey) as? Bool ?? true
     newTabURL = defaults.string(forKey: Self.newTabURLKey).flatMap(URL.init(string:))
+    agentDevTools = Self.agentDevToolsEnabled(defaults)
+  }
+
+  /// The ``agentDevTools`` setting, for start-up code that runs before the settings exist.
+  /// - Parameter defaults: Where settings live.
+  /// - Returns: Whether agents may drive the browser.
+  public static func agentDevToolsEnabled(_ defaults: UserDefaults) -> Bool {
+    defaults.object(forKey: agentDevToolsKey) as? Bool ?? true
   }
 
   /// The engine queries go to. An invalid custom template falls back to Google.

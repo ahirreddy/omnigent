@@ -31,9 +31,13 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
 
 from omnigent.runtime import session_stream
+from omnigent.server.auth import LEVEL_EDIT, LEVEL_READ
+from omnigent.server.feature_flags import FEATURES_ENV_VAR, resolve_feature_flags
 from omnigent.server.routes import sessions as sessions_routes
+from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
 from tests.server.helpers import create_test_agent
 
 pytestmark = pytest.mark.asyncio
@@ -593,3 +597,133 @@ async def test_browser_screenshot_reaches_adapters_and_replay_as_image(
     assert replay.blocks is not None
     assert json.loads(replay.blocks[0]["text"]) == metadata
     assert replay.blocks[1]["source"]["data"] == _TINY_PNG_BASE64
+
+
+# ── DevTools directory requests: the owner's own browser ─────────
+
+
+async def _park_devtools_request(
+    client: httpx.AsyncClient, session_id: str, headers: dict[str, str]
+) -> tuple[asyncio.Task[httpx.Response], dict[str, Any]]:
+    subscribed = asyncio.Event()
+
+    async def drain() -> dict[str, Any]:
+        async def on_subscribed() -> tuple[dict[str, Any], ...]:
+            subscribed.set()
+            return ()
+
+        async with asyncio.timeout(5):
+            async for event in session_stream.subscribe(session_id, on_subscribed=on_subscribed):
+                if event.get("type") == "browser.devtools_request":
+                    return event
+        raise AssertionError("no browser.devtools_request event")
+
+    drained = asyncio.create_task(drain())
+    await subscribed.wait()
+    request_task = asyncio.create_task(
+        client.post(
+            f"/v1/sessions/{session_id}/browser/devtools_request",
+            json={"op": "tabs.list", "args": {}},
+            headers=headers,
+        )
+    )
+    return request_task, await drained
+
+
+async def test_devtools_requests_reach_only_the_owners_client(
+    auth_app: FastAPI, auth_client: httpx.AsyncClient, db_uri: str
+) -> None:
+    auth_app.state.feature_flags = resolve_feature_flags(
+        {FEATURES_ENV_VAR: "agent_browser_devtools"}
+    )
+    alice = {"X-Forwarded-Email": "alice@example.com"}
+    bob = {"X-Forwarded-Email": "bob@example.com"}
+    agent = await create_test_agent(auth_client, user="alice@example.com")
+    session_id = await _create_session(auth_client, agent["id"], user="alice@example.com")
+    permissions = SqlAlchemyPermissionStore(db_uri)
+    permissions.ensure_user("bob@example.com")
+    # A viewer cannot add input, so the session stays the owner's own.
+    permissions.grant("bob@example.com", session_id, LEVEL_READ)
+
+    request_task, event = await _park_devtools_request(auth_client, session_id, alice)
+    action_id = event["action_id"]
+    viewer_claim = await auth_client.post(
+        f"/v1/sessions/{session_id}/browser/action_claim/{action_id}", headers=bob
+    )
+    owner_claim = await auth_client.post(
+        f"/v1/sessions/{session_id}/browser/action_claim/{action_id}", headers=alice
+    )
+    delivered = await auth_client.post(
+        f"/v1/sessions/{session_id}/browser/action_result/{action_id}",
+        json={
+            "result": {"ok": True, "data": {"tabs": []}},
+            "claim_token": owner_claim.json()["claim_token"],
+        },
+        headers=alice,
+    )
+    response = await request_task
+
+    assert action_id.startswith("bdevtools_") and event["action"] == "tabs.list"
+    assert viewer_claim.status_code in (403, 404), viewer_claim.text
+    assert owner_claim.json()["claimed"] is True
+    assert delivered.json() == {"resolved": True}
+    assert response.json() == {"ok": True, "data": {"tabs": []}}
+
+
+async def test_a_session_shared_with_an_editor_never_reaches_the_owners_browser(
+    auth_app: FastAPI, auth_client: httpx.AsyncClient, db_uri: str
+) -> None:
+    auth_app.state.feature_flags = resolve_feature_flags(
+        {FEATURES_ENV_VAR: "agent_browser_devtools"}
+    )
+    alice = {"X-Forwarded-Email": "alice@example.com"}
+    agent = await create_test_agent(auth_client, user="alice@example.com")
+    session_id = await _create_session(auth_client, agent["id"], user="alice@example.com")
+    permissions = SqlAlchemyPermissionStore(db_uri)
+    permissions.ensure_user("bob@example.com")
+    permissions.grant("bob@example.com", session_id, LEVEL_EDIT)
+    published: list[dict[str, Any]] = []
+
+    async def watch() -> None:
+        async for event in session_stream.subscribe(session_id):
+            published.append(event)
+
+    watcher = asyncio.create_task(watch())
+    try:
+        response = await auth_client.post(
+            f"/v1/sessions/{session_id}/browser/devtools_request",
+            json={"op": "attach", "args": {}},
+            headers=alice,
+        )
+    finally:
+        watcher.cancel()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["error"] == "shared_session"
+    assert not [event for event in published if event.get("type") == "browser.devtools_request"]
+
+
+async def test_with_the_feature_off_nothing_asks_the_owners_browser(
+    auth_client: httpx.AsyncClient,
+) -> None:
+    alice = {"X-Forwarded-Email": "alice@example.com"}
+    agent = await create_test_agent(auth_client, user="alice@example.com")
+    session_id = await _create_session(auth_client, agent["id"], user="alice@example.com")
+    published: list[dict[str, Any]] = []
+
+    async def watch() -> None:
+        async for event in session_stream.subscribe(session_id):
+            published.append(event)
+
+    watcher = asyncio.create_task(watch())
+    try:
+        response = await auth_client.post(
+            f"/v1/sessions/{session_id}/browser/devtools_request",
+            json={"op": "attach", "args": {}},
+            headers=alice,
+        )
+    finally:
+        watcher.cancel()
+
+    assert response.json()["error"] == "feature_off"
+    assert not [event for event in published if event.get("type") == "browser.devtools_request"]

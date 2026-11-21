@@ -78,6 +78,13 @@ public final class BrowserActionStore {
   /// Runs claimed actions. Without one, requests are recorded as ``BrowserActionPhase/unhandled``
   /// and never claimed, so another client can take them.
   @ObservationIgnored public var performer: (any BrowserActionPerforming)?
+  /// Answers the agent DevTools proxy's directory requests (actions named `devtools.<op>`) about
+  /// this app's browser. Without one they are left for another client. They are not recorded
+  /// in ``actions``: the proxy polls the directory while an agent is connected.
+  @ObservationIgnored public var devToolsPerformer: (any BrowserActionPerforming)?
+
+  /// The action prefix of a DevTools directory request.
+  public static let devToolsActionPrefix = "devtools."
 
   private let core: ClientCore
 
@@ -93,11 +100,12 @@ public final class BrowserActionStore {
   /// Handles one request: claim, perform, post. Returns when it is finished.
   /// - Parameter request: The action, from `CoreEvent.browserActionRequested`.
   public func handle(_ request: BrowserActionRequest) async {
-    guard let performer else {
-      record(request, .unhandled)
+    let isDevTools = request.action.hasPrefix(Self.devToolsActionPrefix)
+    guard let performer = isDevTools ? self.devToolsPerformer : self.performer else {
+      if !isDevTools { record(request, .unhandled) }
       return
     }
-    record(request, .claiming)
+    if !isDevTools { record(request, .claiming) }
     let token: String
     do {
       switch try await core.claimBrowserAction(

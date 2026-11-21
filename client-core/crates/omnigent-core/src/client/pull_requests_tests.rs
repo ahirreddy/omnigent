@@ -18,7 +18,7 @@ fn panel_features_read_info_and_default_to_unsupported() {
             Reply::json(
                 200,
                 r#"{"session_pull_requests":true,"comment_anchor_metadata":true,
-                    "features":{"workspace_content_search":true}}"#,
+                    "features":{"workspace_content_search":true,"agent_browser_devtools":true}}"#,
             ),
             Reply::json(200, r#"{"single_user":true}"#),
             Reply::json(200, r#"{"features":"on"}"#),
@@ -39,6 +39,7 @@ fn panel_features_read_info_and_default_to_unsupported() {
             pull_requests: true,
             comment_anchors: true,
             session_journal: false,
+            agent_browser_devtools: true,
         })
     );
     assert_eq!(

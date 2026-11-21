@@ -15,11 +15,11 @@ use crate::events::ConnectionPhase;
 use crate::host::{SocketEnd, SocketMessage};
 use crate::remote_browser::{
     ControlHolder, KeyInput, KeyKind, MouseButton, MouseInput, MouseKind,
-    RemoteBrowserClosedReason, RemoteBrowserConnection, RemoteBrowserErrorKind,
-    RemoteBrowserListener, RemoteBrowserMode, RemoteBrowserNotice, RemoteBrowserSnapshot,
-    RemoteEditOp, RemoteMobileEmulation, RemoteTabClosedReason, RemoteViewport,
-    RemoteViewportRequest, RemoteViewportScope, StillImage, TouchInput, TouchKind, VideoFrame,
-    remote_viewport_mobile,
+    RemoteBrowserAgentActivity, RemoteBrowserClosedReason, RemoteBrowserConnection,
+    RemoteBrowserErrorKind, RemoteBrowserListener, RemoteBrowserMode, RemoteBrowserNotice,
+    RemoteBrowserSnapshot, RemoteEditOp, RemoteMobileEmulation, RemoteTabClosedReason,
+    RemoteViewport, RemoteViewportRequest, RemoteViewportScope, StillImage, TouchInput, TouchKind,
+    VideoFrame, remote_viewport_mobile,
 };
 use crate::test_support::{Harness, json};
 
@@ -183,11 +183,19 @@ fn an_attach_streams_video_takes_control_and_ends_with_the_tab() {
         "{:?}",
         lock(&recorder.notices)
     );
+    // The agent's DevTools activity reaches the tab's badge.
+    sink.message(message("control_agent_activity"));
+    harness.pump();
+    assert_eq!(
+        recorder.last().control.unwrap().agent,
+        Some(RemoteBrowserAgentActivity::Active)
+    );
     driver.take_control();
     harness.pump();
     sink.message(message("control_user_this"));
     harness.pump();
     assert_eq!(recorder.last().control.unwrap().holder, ControlHolder::This);
+    assert_eq!(recorder.last().control.unwrap().agent, None);
     driver.mouse(mouse(MouseKind::Down)).unwrap();
     driver
         .key(KeyInput {

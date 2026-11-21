@@ -6,12 +6,14 @@ from typing import cast
 
 import pytest
 
+from omnigent.browser_devtools_availability import browser_devtools_server
 from omnigent.entities import ConversationItem, FunctionCallOutputData, MessageData
 from omnigent.runner.subagent_work import (
     _format_subagent_wake_notice,
 )
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result
 from omnigent.runtime.prompt import (
+    BROWSER_DEVTOOLS_INSTRUCTION,
     EMBEDDED_BROWSER_PRIORITY_INSTRUCTION,
     SUBAGENT_WAKE_NOTICE_INSTRUCTION,
     SUBAGENT_WAKE_NOTICE_SHAPE,
@@ -24,6 +26,7 @@ from omnigent.runtime.prompt import (
     raw_author_instructions,
 )
 from omnigent.spec import AgentSpec
+from omnigent.spec.types import MCPServerConfig
 from tests._image_fixtures import _TINY_PNG_BASE64
 
 _DEFAULT_FRAMEWORK_INSTRUCTIONS = (
@@ -39,6 +42,7 @@ def _spec(
     spawn: bool = False,
     builtins: tuple[str, ...] = (),
     browser: bool = True,
+    mcp_servers: tuple[MCPServerConfig, ...] = (),
 ) -> AgentSpec:
     """
     Stub only the AgentSpec fields the instruction builders read.
@@ -54,6 +58,7 @@ def _spec(
             ),
             spawn=spawn,
             tool_groups=SimpleNamespace(browser=browser),
+            mcp_servers=list(mcp_servers),
         ),
     )
 
@@ -450,6 +455,23 @@ def test_browser_guidance_omitted_when_browser_group_disabled() -> None:
         build_instructions_nullable(_spec(None, browser=False), None, [])
         == WORKSPACE_IMAGE_INSTRUCTION
     )
+
+
+def test_devtools_guidance_replaces_browser_guidance_for_the_runner_injected_server() -> None:
+    """The runner's scoped DevTools MCP gets its own guidance; an author's
+    same-named server does not claim Omnigent's scoped browser."""
+    injected = browser_devtools_server("ws://127.0.0.1:1/devtools/browser/conv_a.00")
+    authored = MCPServerConfig(name="chrome_devtools", transport="stdio", command="npx")
+
+    with_devtools = build_instructions_nullable(
+        _spec(None, browser=False, mcp_servers=(injected,)), None, []
+    )
+    authored_only = build_instructions_nullable(
+        _spec(None, browser=False, mcp_servers=(authored,)), None, []
+    )
+
+    assert with_devtools == f"{BROWSER_DEVTOOLS_INSTRUCTION}\n\n{WORKSPACE_IMAGE_INSTRUCTION}"
+    assert authored_only == WORKSPACE_IMAGE_INSTRUCTION
 
 
 def test_browser_group_disabled_keeps_wake_notice_for_spawning_agent() -> None:

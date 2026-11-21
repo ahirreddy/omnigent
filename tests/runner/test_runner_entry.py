@@ -4503,6 +4503,68 @@ async def test_runner_offers_memory_tools_only_when_the_server_says_memory_is_av
     ]
 
 
+@pytest.mark.asyncio
+async def test_runner_swaps_browser_tools_for_devtools_mcp_when_the_server_says_so(tmp_path):
+    from omnigent.browser_devtools_availability import (
+        BROWSER_DEVTOOLS_HEADER,
+        BROWSER_DEVTOOLS_SERVER_NAME,
+        has_browser_devtools,
+    )
+    from omnigent.runner.mcp_manager import compute_server_hash
+    from omnigent.tools.builtins.browser import BROWSER_TOOL_NAMES
+    from omnigent.tools.manager import ToolManager
+    from tests.server.helpers import build_agent_bundle
+
+    bundle = build_agent_bundle("browsing-agent", sub_agents=[{"name": "researcher"}])
+    opted_out = build_agent_bundle("no-browser-agent", tool_groups={"browser": False})
+    # (bundle, header, endpoint): only the header plus a running proxy swap the tools.
+    cases = [
+        (bundle, {BROWSER_DEVTOOLS_HEADER: "1"}, "ws://127.0.0.1:9/devtools/browser/conv_a.11"),
+        (bundle, {BROWSER_DEVTOOLS_HEADER: "1"}, "ws://127.0.0.1:9/devtools/browser/conv_b.22"),
+        (bundle, {BROWSER_DEVTOOLS_HEADER: "0"}, "ws://127.0.0.1:9/devtools/browser/conv_c.33"),
+        (bundle, {BROWSER_DEVTOOLS_HEADER: "1"}, None),
+        (opted_out, {BROWSER_DEVTOOLS_HEADER: "1"}, "ws://127.0.0.1:9/devtools/browser/conv_d.44"),
+    ]
+    responses = list(cases)
+
+    def handler(request):
+        content, headers, _endpoint = responses.pop(0)
+        return httpx.Response(
+            200,
+            content=content,
+            headers={"X-Agent-Version": "1", "X-Agent-Session-Scoped": "true", **headers},
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://server.test"
+    ) as client:
+        results = [
+            await _resolve_agent_spec_from_server(
+                client,
+                _AgentSpecCache(tmp_path),
+                "ag_browsing",
+                session_id="session",
+                devtools_endpoint=endpoint,
+            )
+            for _bundle, _headers, endpoint in cases
+        ]
+
+    def browser_tools(spec):
+        names = {schema["function"]["name"] for schema in ToolManager(spec).get_tool_schemas()}
+        return bool(names & BROWSER_TOOL_NAMES)
+
+    specs = [result.spec for result in results]
+    assert [has_browser_devtools(spec) for spec in specs] == [True, True, False, False, False]
+    assert [browser_tools(spec) for spec in specs] == [False, False, True, True, False]
+    first = next(s for s in specs[0].mcp_servers if s.name == BROWSER_DEVTOOLS_SERVER_NAME)
+    second = next(s for s in specs[1].mcp_servers if s.name == BROWSER_DEVTOOLS_SERVER_NAME)
+    assert first.args[-2:] == ["--ws-endpoint", cases[0][2]]
+    # Sessions never share one chrome-devtools-mcp process.
+    assert compute_server_hash(first) != compute_server_hash(second)
+    # A sub-agent extracted from this resolution reaches the same session's browser.
+    assert has_browser_devtools(specs[0].sub_agents[0])
+
+
 async def test_runner_selection_changes_without_rewriting_cached_bundle(tmp_path):
     import json
 

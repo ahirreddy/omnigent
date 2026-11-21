@@ -119,6 +119,7 @@ struct ControlState {
   std::optional<std::string> holder;  // this | other | absent (null)
   std::optional<std::string> user_id;
   std::optional<Handoff> handoff;
+  std::optional<std::string> agent;   // active | idle while an agent's DevTools proxy holds it
 };
 
 struct NavState {
@@ -342,6 +343,8 @@ struct TabRecord {
   std::string target_id;
   bool can_go_back = false;
   bool can_go_forward = false;
+  /// What the agent's DevTools proxy reports: "active", "idle", or empty when none holds the tab.
+  std::string agent_state;
 };
 
 /// What the first frame of a host.sock connection asks for.

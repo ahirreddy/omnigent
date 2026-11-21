@@ -39,6 +39,9 @@ public final class SessionTabGroups {
   @ObservationIgnored public private(set) var history = PageHistory()
   /// The session a project board's quick view shows beside its lanes; it stays open meanwhile.
   public var quickViewSessionID: String?
+  /// Sessions whose agent holds one of their browser tabs over DevTools. They stay open, so the
+  /// agent's directory requests (which arrive on the session's stream) keep being answered.
+  public var agentHeldSessions: Set<String> = []
   /// Tabs in the order they were last shown, across sessions, the most recent first.
   @ObservationIgnored private(set) var recentTabs: [String] = []
   /// Each chat's Chat or Terminal choice, by session (see ``viewChoice(_:)``).
@@ -84,7 +87,7 @@ public final class SessionTabGroups {
       live.formUnion(groups[sessionID]?.liveSessionIDs ?? [])
     }
     if let quickViewSessionID { live.insert(quickViewSessionID) }
-    return live
+    return live.union(agentHeldSessions)
   }
 
   /// A tab of any session, with its session.

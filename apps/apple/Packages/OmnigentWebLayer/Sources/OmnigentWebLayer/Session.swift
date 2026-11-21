@@ -24,6 +24,8 @@ public final class Session {
 
   @ObservationIgnored var process: HostProcess?
   @ObservationIgnored var channel: HostChannel?
+  /// The running host's DevTools pipe and gate, when `configuration.agentDevTools` is on.
+  @ObservationIgnored var devTools: DevToolsBridge?
   @ObservationIgnored var generation = 0
   @ObservationIgnored var token = ""
   @ObservationIgnored var requestedMode = RenderMode.remoteLayer

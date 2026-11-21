@@ -208,6 +208,7 @@ protocol::TabRecord Tab::Record() const {
   record.target_id = target_id_;
   record.can_go_back = nav_.can_go_back;
   record.can_go_forward = nav_.can_go_forward;
+  record.agent_state = agent_state_;
   return record;
 }
 
@@ -508,7 +509,18 @@ protocol::ControlState Tab::ControlFor(uint64_t connection) const {
   if (owner_ == "user" && holder_ != 0) {
     state.holder = holder_ == connection ? "this" : "other";
   }
+  if (!agent_state_.empty()) {
+    state.agent = agent_state_;
+  }
   return state;
+}
+
+void Tab::SetAgentState(const std::string& state) {
+  if (state == agent_state_) {
+    return;
+  }
+  agent_state_ = state;
+  BroadcastControl("agent_activity");
 }
 
 void Tab::BroadcastControl(const std::string& reason) {

@@ -1,5 +1,6 @@
 public import Foundation
 public import OmnigentStores
+public import OmnigentUIComponents
 public import SwiftUI
 
 /// What a browser tab shows in the strip.
@@ -18,6 +19,8 @@ nonisolated public struct BrowserTabStatus: Hashable, Sendable {
   public var favicon: Data?
   /// The browser profile's color.
   public var profileColor: Color?
+  /// An agent driving the page over DevTools.
+  public var agentControl: TabAgentControl?
 
   /// Creates a status.
   /// - Parameters:
@@ -28,9 +31,11 @@ nonisolated public struct BrowserTabStatus: Hashable, Sendable {
   ///   - hasError: Failed.
   ///   - favicon: Favicon.
   ///   - profileColor: Profile color.
+  ///   - agentControl: An agent driving the page.
   public init(
     title: String, url: URL? = nil, isLoading: Bool = false, isAudible: Bool = false,
-    hasError: Bool = false, favicon: Data? = nil, profileColor: Color? = nil
+    hasError: Bool = false, favicon: Data? = nil, profileColor: Color? = nil,
+    agentControl: TabAgentControl? = nil
   ) {
     self.title = title
     self.url = url
@@ -39,6 +44,7 @@ nonisolated public struct BrowserTabStatus: Hashable, Sendable {
     self.hasError = hasError
     self.favicon = favicon
     self.profileColor = profileColor
+    self.agentControl = agentControl
   }
 }
 

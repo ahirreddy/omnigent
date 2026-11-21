@@ -94,6 +94,7 @@ _TAB_METADATA_FIELDS: Final[tuple[str, ...]] = (
     "can_go_back",
     "can_go_forward",
     "thumbnail_url",
+    "agent_state",
 )
 
 

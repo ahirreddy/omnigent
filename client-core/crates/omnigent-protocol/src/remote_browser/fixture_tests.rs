@@ -147,6 +147,15 @@ fn decoded_values_match_the_spec() {
     };
     assert_eq!(control.state.holder, None);
     assert_eq!(control.reason, Some(ControlReason::HolderLeft));
+    let activity = HostMessage::decode(
+        &json("messages/host_to_client/control_agent_activity.json").to_string(),
+    )
+    .unwrap();
+    let HostMessage::Control(activity) = activity else {
+        panic!("{activity:?}");
+    };
+    assert_eq!(activity.state.agent, Some(AgentActivity::Active));
+    assert_eq!(activity.reason, Some(ControlReason::AgentActivity));
 }
 
 #[test]
