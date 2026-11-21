@@ -76,6 +76,8 @@ struct ViewHealth {
   /// Inputs that expect a frame, ever: more of them means somebody is still trying.
   std::atomic<uint64_t> expectant_inputs{0};
   std::atomic<uint64_t> keys_returned{0};
+  /// The last frame before which a probe found the page's animation frames not running.
+  std::atomic<uint64_t> frames_stopped_after{0};
   std::atomic<uint32_t> unanswered_total{0};
   /// The page's frame buffers: how many exist, and the most that were busy at once.
   std::atomic<uint32_t> ring_slots{0};
@@ -153,6 +155,7 @@ struct ViewHealth {
     activity.steady_since_nanos = steady_since.load(std::memory_order_relaxed);
     activity.unanswered_input_nanos = unanswered_input.load(std::memory_order_relaxed);
     activity.last_input_nanos = last_input.load(std::memory_order_relaxed);
+    activity.frames_stopped_after_nanos = frames_stopped_after.load(std::memory_order_relaxed);
     return activity;
   }
 
@@ -207,6 +210,8 @@ struct ViewHealth {
     uint64_t counters_at_heartbeat = 0;
     uint64_t liveness_asked_nanos = 0;
     uint64_t inputs_at_liveness = 0;
+    /// The frame the renderer was last asked about: whether animation frames run after it.
+    uint64_t frames_probe_frame = 0;
   };
   Watched watched;
 
@@ -219,7 +224,9 @@ class FreezeWatch {
  public:
   /// Asks a view's renderer whether it is alive. Called on the main thread. `quiet` is the
   /// routine question to a page in use, which is written down only when it goes unanswered.
-  using ProbeFunction = std::function<void(uint64_t view_id, bool quiet)>;
+  /// A nonzero `frames_after_nanos` asks whether animation frames run after that frame.
+  using ProbeFunction =
+      std::function<void(uint64_t view_id, bool quiet, uint64_t frames_after_nanos)>;
 
   static FreezeWatch& Get() {
     static FreezeWatch* watch = new FreezeWatch();
@@ -465,10 +472,14 @@ class FreezeWatch {
     const uint64_t frames = health.frames.load(std::memory_order_relaxed);
     watched.frames_last_second = frames - watched.frames_at_tick;
     watched.frames_at_tick = frames;
-    owl_view_stall current = owl_view_stall_since(health.Activity());
+    const owl_view_activity activity = health.Activity();
+    owl_view_stall current = owl_view_stall_since(activity);
     if (!health.has_browser.load(std::memory_order_relaxed)) {
       current.reason = OWLStallReasonNone;
       current.since_nanos = 0;
+    } else if (owl_view_wants_frames_probe(activity, now) &&
+               watched.frames_probe_frame != activity.last_frame_nanos) {
+      AskWhetherFramesRun(health, activity.last_frame_nanos);
     }
     const bool following = watched.episode.since_nanos != 0;
     const OWLStallReason followed_reason = watched.reason;
@@ -493,10 +504,13 @@ class FreezeWatch {
                  " line=" + std::to_string(step.line) + " " +
                  health.Line(now, watched.frames_last_second) + " recv_queue=" +
                  std::to_string(owl_channel_receive_backlog(channel_)));
-      ProbeFunction probe = probe_;
-      dispatch_async(dispatch_get_main_queue(), ^{
-        probe(view_id, false);
-      });
+      // The question that found the frames stopped was just asked; later lines ask again.
+      if (reason != OWLStallReasonFramesStopped || step.line != 1) {
+        ProbeFunction probe = probe_;
+        dispatch_async(dispatch_get_main_queue(), ^{
+          probe(view_id, false, 0);
+        });
+      }
     } else if (step.action == OWLStallActionEnded) {
       // It ended with the frame that came, or, without one, when nothing was owed any more.
       const uint64_t end =
@@ -529,7 +543,18 @@ class FreezeWatch {
     const uint64_t view_id = health.view_id;
     ProbeFunction probe = probe_;
     dispatch_async(dispatch_get_main_queue(), ^{
-      probe(view_id, true);
+      probe(view_id, true, 0);
+    });
+  }
+
+  /// Frames that ran by themselves stopped. A page that went static still runs animation
+  /// frames, so the renderer is asked; only an answer that they stopped too makes a stall.
+  void AskWhetherFramesRun(ViewHealth& health, uint64_t frame) {
+    health.watched.frames_probe_frame = frame;
+    const uint64_t view_id = health.view_id;
+    ProbeFunction probe = probe_;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      probe(view_id, true, frame);
     });
   }
 

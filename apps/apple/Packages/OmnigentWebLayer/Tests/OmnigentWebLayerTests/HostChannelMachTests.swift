@@ -180,12 +180,12 @@ struct HostChannelMachTests {
     #expect(listening.failures.first?.contains("malformed") == true)
   }
 
-  @Test("a message too big for the channel is reported, and the channel keeps working")
+  @Test("a message too big for the channel is reported with its size; the channel keeps working")
   func tooBig() async throws {
     let listening = try ListeningChannel()
     try listening.sendGarbage(size: 32 * 1024)
     #expect(await listening.eventually { !listening.failures.isEmpty })
-    #expect(listening.failures.first?.contains("Receiving failed") == true)
+    #expect(listening.failures.first?.contains("message of 32768 bytes, more than the") == true)
     try listening.sendFromPeer(kind: OWLMessageKind.pong.rawValue, payload: [])
     #expect(await listening.eventually { listening.messages == 1 })
   }

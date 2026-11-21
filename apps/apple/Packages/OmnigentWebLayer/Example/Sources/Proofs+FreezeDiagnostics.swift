@@ -37,6 +37,24 @@ extension Proofs {
     });
     </script>
     """,
+    // Spins for five seconds when asked, then rests: steady frames that stop by themselves.
+    "freeze-static": """
+    <!doctype html><title>OWL static</title>\(pageStyle)<h2>Animates, then rests</h2>
+    <style>@keyframes spin { to { transform: rotate(360deg) } }
+    #spinner { width: 80px; height: 80px; background: linear-gradient(45deg, #36f, #f63);
+      margin: 24px }
+    #spinner.spinning { animation: spin 1s linear 5 }</style>
+    <div id=spinner></div><p id=result>none</p>
+    <script>
+    window.spin = () => {
+      const spinner = document.querySelector('#spinner');
+      spinner.addEventListener('animationend', () => {
+        document.querySelector('#result').textContent = 'rested';
+      }, { once: true });
+      spinner.classList.add('spinning');
+    };
+    </script>
+    """,
     // Changes its title fast enough to fill the channel while the app is not reading it.
     "freeze-flood": """
     <!doctype html><title>OWL flood</title>\(pageStyle)<h2>Channel backlog</h2>
@@ -62,7 +80,7 @@ extension Proofs {
     "freeze-hung": { $0.hungRenderer }, "freeze-hidden": { $0.viewLeftHidden },
     "freeze-idle": { $0.clickThatDrawsNothing }, "freeze-long": { $0.longHang },
     "freeze-drawing": { $0.hungWhileDrawing }, "freeze-backlog": { $0.channelBacklog },
-    "freeze-late-input": { $0.inputHeldUpInTheApp },
+    "freeze-late-input": { $0.inputHeldUpInTheApp }, "freeze-static": { $0.animationThatEnds },
   ]
 
   func freezeDiagnostics() async throws {
@@ -73,6 +91,7 @@ extension Proofs {
     try await hungWhileDrawing()
     try await channelBacklog()
     try await inputHeldUpInTheApp()
+    try await animationThatEnds()
   }
 
   private func loadFreezePage() async throws {
@@ -262,6 +281,31 @@ extension Proofs {
     guard result.hasPrefix("painted ") else { throw ProofFailure("The page says \(result).") }
   }
 
+  /// A page that animates for five seconds and then rests is not frozen: asked, its renderer
+  /// still runs animation frames, so no stall is written.
+  private func animationThatEnds() async throws {
+    try await load(try await pageURL("freeze-static"), title: "OWL static")
+    try await settle(OWLTiming.quietSeconds)
+    let mark = freezeMark()
+    let frames = webView.statistics.framesPresented
+    _ = try await webView.evaluateJavaScript("window.spin(); true")
+    let deadline = ContinuousClock.now + .seconds(15)
+    while try await resultText(webView) != "rested" {
+      guard ContinuousClock.now < deadline else { throw ProofFailure("The animation never ended.") }
+      try await settle(0.25)
+    }
+    let drawn = webView.statistics.framesPresented - frames
+    Clock.log("frames drawn while the page animated: \(drawn)")
+    // The watch calls frames a steady run at four a second for three seconds.
+    guard drawn >= 12 else { throw ProofFailure("Only \(drawn) frames were drawn.") }
+    // Past the two seconds without a frame, and the renderer's two seconds to answer.
+    try await settle(8)
+    let stall = freezeLines(after: mark).first {
+      $0.hasPrefix("from=host kind=view-stall view=\(self.webView.id) ")
+    }
+    if let stall { throw ProofFailure("A page at rest was reported stalled: \(stall)") }
+  }
+
   /// Keeps the app from reading the channel, as a long layout pass would.
   private func blockMainThread(seconds: Double) {
     Thread.sleep(forTimeInterval: seconds)
@@ -272,6 +316,13 @@ extension Proofs {
     model.session.freezeLines.last
   }
 
+  /// The diagnostics written after `mark`.
+  private func freezeLines(after mark: String?) -> ArraySlice<String> {
+    let lines = model.session.freezeLines
+    let start = mark.flatMap { lines.lastIndex(of: $0) }.map { $0 + 1 } ?? 0
+    return lines[start...]
+  }
+
   /// Waits for a diagnostic line written after `mark` that satisfies `matches`, and logs it.
   @discardableResult
   private func freezeLine(
@@ -280,9 +331,7 @@ extension Proofs {
     var found: String?
     do {
       try await waitUntil(what, timeout: timeout) {
-        let lines = self.model.session.freezeLines
-        let start = mark.flatMap { lines.lastIndex(of: $0) }.map { $0 + 1 } ?? 0
-        found = lines[start...].first(where: matches)
+        found = self.freezeLines(after: mark).first(where: matches)
         return found != nil
       }
     } catch {

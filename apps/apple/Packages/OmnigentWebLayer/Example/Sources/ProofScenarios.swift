@@ -185,6 +185,8 @@ extension Proofs {
     let agent = model.session.makeEphemeralProfile(label: "agent-input")
     defer { agent.close() }
     let view = agent.makeWebView(initialURL: Self.formPage)
+    // No window shows it, and a hidden page drops input.
+    view.rendersOffscreen = true
     try await waitForLoad(view, title: "OWL form")
     let field = try await center(of: "#name", in: view)
     try view.renderer.agentClick(at: field)
@@ -199,7 +201,7 @@ extension Proofs {
     guard value == .string("agent typed"), clicks == .number(1), submitted == .number(1) else {
       throw ProofFailure("Agent input did not reach the page.")
     }
-    view.setVisible(false)
+    view.rendersOffscreen = false
     let hidden = try await view.snapshotPNG()
     let image = NSImage(data: hidden)
     Clock.log("hidden agent view snapshot: \(hidden.count) bytes, \(image?.size ?? .zero)")

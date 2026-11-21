@@ -5,6 +5,11 @@ import Testing
 
 @testable import OmnigentWebLayer
 
+/// A window AppKit would report on screen, without showing one.
+private final class OnScreenWindow: NSWindow {
+  override var occlusionState: NSWindow.OcclusionState { .visible }
+}
+
 @MainActor
 @Suite("View commands")
 struct WebViewCommandTests {
@@ -37,7 +42,7 @@ struct WebViewCommandTests {
     view.reload()
     view.setZoomLevel(.infinity)
     view.setFocused(true)
-    view.setVisible(false)
+    view.setVisible(true)
     view.updateGeometry(
       size: CGSize(width: CGFloat.nan, height: -5), scale: 0,
       screenOrigin: CGPoint(x: CGFloat.infinity, y: 0))
@@ -53,7 +58,7 @@ struct WebViewCommandTests {
     // The same geometry again is not sent.
     fixture.sent.removeAll()
     view.setFocused(true)
-    view.setVisible(false)
+    view.setVisible(true)
     #expect(fixture.sent.isEmpty)
   }
 
@@ -65,6 +70,37 @@ struct WebViewCommandTests {
     #expect(fixture.webView.isVisible)
     fixture.webView.setVisible(false)
     #expect(fixture.webView.isVisible)
+  }
+
+  @Test("a view no window shows is hidden from its creation; it renders once a window shows it")
+  func hiddenUntilAWindowShowsIt() throws {
+    let fixture = ProtocolFixture()
+    let view = fixture.session.profile(identifier: "never-shown", persistence: .ephemeral)
+      .makeWebView()
+    #expect(!view.isVisible)
+    let create = try #require(fixture.last(.viewCreate))
+    #expect(!create.bool(.visible, missing: true), "the host creates its browser hidden")
+    try fixture.receive(.viewCreated, target: view.id, WireEncoder())
+    #expect(fixture.last(.viewVisibility)?.bool(.visible, missing: true) == false)
+
+    // Rendering offscreen is the one exception, and only while it is asked for.
+    view.rendersOffscreen = true
+    #expect(view.isVisible && fixture.last(.viewVisibility)?.bool(.visible) == true)
+    view.rendersOffscreen = false
+    #expect(
+      !view.isVisible && fixture.last(.viewVisibility)?.bool(.visible, missing: true) == false)
+
+    _ = NSApplication.shared
+    let window = OnScreenWindow(
+      contentRect: CGRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.borderless],
+      backing: .buffered, defer: false)
+    window.contentView = WebSurfaceView(webView: view)
+    #expect(view.isVisible && fixture.last(.viewVisibility)?.bool(.visible) == true)
+    view.rendersOffscreen = true
+    view.rendersOffscreen = false
+    #expect(view.isVisible, "back to what its window says")
+    window.contentView = nil
+    #expect(!view.isVisible)
   }
 
   @Test func loadRemembersTheURLUntilTheViewExists() throws {
