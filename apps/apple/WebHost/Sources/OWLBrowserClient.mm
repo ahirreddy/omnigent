@@ -202,10 +202,17 @@ void BrowserClient::SetVisible(bool visible) {
                             " visible=" + std::to_string(visible) + " browser=" +
                             std::to_string(browser_ != nullptr));
   }
+  const bool shown = visible && !visible_;
   visible_ = visible;
   health_->visible.store(visible);
-  if (browser_) {
-    browser_->GetHost()->WasHidden(!visible);
+  if (!browser_) {
+    return;
+  }
+  browser_->GetHost()->WasHidden(!visible);
+  if (shown) {
+    // A hidden page whose frame Chromium evicted draws nothing until it gets a newer surface,
+    // and CEF's show does not always allocate one. This gives it one on every show.
+    browser_->GetHost()->NotifyScreenInfoChanged();
   }
 }
 
