@@ -7,26 +7,35 @@ its secret path, so the same-machine check runs against a real socket.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import socket
-from collections.abc import AsyncIterator
-from typing import Any
+from collections.abc import AsyncIterator, Iterator
+from typing import Any, cast
 
 import httpx
 import pytest
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.http11 import Request, Response
 
+from omnigent.runner import pending_approvals
+from omnigent.runner.browser_devtools import resolver as resolver_module
 from omnigent.runner.browser_devtools.app_backend import AppTabDirectory, app_backend
 from omnigent.runner.browser_devtools.directory import TabDirectoryError
 from omnigent.runner.browser_devtools.resolver import (
+    ASK_MESSAGE,
+    ASK_SCHEMA,
     BROWSER_TARGET_LABEL,
     RunnerBrowserResolver,
     backend_order,
 )
-from omnigent.runner.browser_devtools.server import BrowserUnavailableError
-from omnigent.runner.browser_host import BrowserHostManager, BrowserHostSettings
+from omnigent.runner.browser_devtools.server import BrowserBackend, BrowserUnavailableError
+from omnigent.runner.browser_host import (
+    BrowserHostAvailability,
+    BrowserHostManager,
+    BrowserHostSettings,
+)
 from omnigent.stores.conversation_store import SCHEDULED_TASK_RUN_LABEL_KEY
 
 SECRET = "a1" * 32
@@ -63,10 +72,20 @@ def _relay(
     answers: dict[str, dict[str, Any]],
     sent: list[dict[str, Any]],
     labels: dict[str, str] | None = None,
+    writes: list[dict[str, Any]] | None = None,
 ) -> httpx.AsyncClient:
+    """The server: *answers* by devtools op, *labels*, and with *writes* the session's
+    label PATCHes and elicitation POSTs (``elicit_<n>``), which are refused otherwise."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/v1/sessions/conv_a/labels":
             return httpx.Response(200, json={"labels": labels or {}})
+        if writes is not None and request.url.path in (
+            "/v1/sessions/conv_a",
+            "/v1/sessions/conv_a/events",
+        ):
+            writes.append({"method": request.method, **json.loads(request.content)})
+            return httpx.Response(200, json={"elicitation_id": f"elicit_{len(writes)}"})
         assert request.url.path == "/v1/sessions/conv_a/browser/devtools_request"
         body = json.loads(request.content)
         sent.append(body)
@@ -207,3 +226,102 @@ async def test_choosing_the_remote_browser_never_asks_the_mac(tmp_path) -> None:
     assert sent == []
     assert "This Mac's browser" not in str(raised.value)
     assert (still_local, still_remote) == (False, True)
+
+
+class _HostsRunHere:
+    """A browser host manager whose hosts can run on this machine."""
+
+    async def availability(self) -> BrowserHostAvailability:
+        return BrowserHostAvailability(status="available", message="")
+
+
+@pytest.fixture
+def remote_backend(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+    """Stands in for a started browser host; records the sessions it served."""
+    served: list[str] = []
+
+    async def fake_host_backend(
+        _manager: object, session_id: str, *_args: object, **_kwargs: object
+    ) -> BrowserBackend:
+        served.append(session_id)
+        return BrowserBackend(
+            upstream_url="ws://127.0.0.1:1/remote", directory=cast(Any, None), kind="remote"
+        )
+
+    monkeypatch.setattr(resolver_module, "host_backend", fake_host_backend)
+    pending_approvals.reset_for_tests()
+    yield served
+    pending_approvals.reset_for_tests()
+
+
+async def _answer(elicitation_id: str, approved: bool, content: dict[str, Any] | None) -> None:
+    for _ in range(500):
+        if pending_approvals.resolve(elicitation_id, approved, content):
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"{elicitation_id} was never asked")
+
+
+@pytest.mark.parametrize("choice", ["local", "remote"])
+async def test_with_both_browsers_the_owner_is_asked_once_and_the_answer_kept(
+    remote_backend: list[str], choice: str
+) -> None:
+    writes: list[dict[str, Any]] = []
+    async with _gate(SECRET) as port:
+        async with _relay({"attach": _attach(port, SECRET)}, [], writes=writes) as client:
+            resolver = RunnerBrowserResolver(
+                cast(BrowserHostManager, _HostsRunHere()), lambda _s, _e: None, client
+            )
+            backend, _ = await asyncio.gather(
+                resolver.resolve("conv_a"), _answer("elicit_1", True, {"browser": choice})
+            )
+            again = await resolver.resolve("conv_a")
+        for each in (backend, again):
+            if each.upstream is not None:
+                await each.upstream.close()
+
+    question, saved = writes
+    assert question["type"] == "mcp_elicitation"
+    assert question["data"] == {"message": ASK_MESSAGE, "requestedSchema": ASK_SCHEMA}
+    assert saved == {"method": "PATCH", "labels": {BROWSER_TARGET_LABEL: choice}}
+    assert backend.kind == choice
+    assert remote_backend == (["conv_a"] if choice == "remote" else [])
+    # The server here keeps no labels, so only the runner's memory stops a second question.
+    assert len(writes) == 2 and again.kind == "local"
+
+
+async def test_a_declined_question_keeps_the_mac_browser_and_is_not_asked_again(
+    remote_backend: list[str],
+) -> None:
+    writes: list[dict[str, Any]] = []
+    async with _gate(SECRET) as port:
+        async with _relay({"attach": _attach(port, SECRET)}, [], writes=writes) as client:
+            resolver = RunnerBrowserResolver(
+                cast(BrowserHostManager, _HostsRunHere()), lambda _s, _e: None, client
+            )
+            backend, _ = await asyncio.gather(
+                resolver.resolve("conv_a"), _answer("elicit_1", False, None)
+            )
+            again = await resolver.resolve("conv_a")
+        for each in (backend, again):
+            assert each.upstream is not None
+            await each.upstream.close()
+
+    assert [write["method"] for write in writes] == ["POST"]
+    assert (backend.kind, again.kind) == ("local", "local")
+    assert remote_backend == []
+
+
+async def test_a_scheduled_run_takes_the_remote_browser_without_asking(
+    remote_backend: list[str],
+) -> None:
+    sent: list[dict[str, Any]] = []
+    labels = {SCHEDULED_TASK_RUN_LABEL_KEY: "run_1"}
+    async with _relay({}, sent, labels=labels) as client:
+        resolver = RunnerBrowserResolver(
+            cast(BrowserHostManager, _HostsRunHere()), lambda _s, _e: None, client
+        )
+        backend = await resolver.resolve("conv_a")
+
+    assert backend.kind == "remote" and remote_backend == ["conv_a"]
+    assert sent == []
