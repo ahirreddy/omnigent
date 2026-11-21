@@ -345,8 +345,9 @@ window, or the app may be inactive. Requirements and mechanism:
   `tabs.agent_state` op and `agent_state` in tab records and resources; from phase 4,
   `omnigent.browser_target` with `auto` preferring the remote browser for scheduled runs, and
   closing a connection the label no longer allows.
-- **Remote tabs in the app** show only the user's own control. Showing the agent's activity
-  needs `control_state` to carry it through the Rust core.
+- **Remote tabs in the app** show the agent's activity too: `tabs.agent_state` sets
+  `control_state.agent` (`active`/`idle`), which the host broadcasts with reason
+  `agent_activity`, and the Rust core and FFI carry to the tab's badge.
 - **Not started:** the chip and menu, `browser_switch`, the ask-once elicitation, phase 5 and
   phase 6.
 

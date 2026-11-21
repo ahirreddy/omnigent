@@ -119,6 +119,7 @@ struct ControlState {
   std::optional<std::string> holder;  // this | other | absent (null)
   std::optional<std::string> user_id;
   std::optional<Handoff> handoff;
+  std::optional<std::string> agent;   // active | idle while an agent's DevTools proxy holds it
 };
 
 struct NavState {

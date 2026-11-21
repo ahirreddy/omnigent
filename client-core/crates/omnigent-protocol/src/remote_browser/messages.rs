@@ -132,6 +132,18 @@ wire_enum! {
         GraceExpired = "grace_expired",
         /// The agent took the tab back.
         Agent = "agent",
+        /// The agent's activity on the tab changed (`ControlState::agent`).
+        AgentActivity = "agent_activity",
+    }
+}
+
+wire_enum! {
+    /// What an agent driving the tab over Chrome's debugging protocol does.
+    pub enum AgentActivity {
+        /// It acted in the last few seconds.
+        Active = "active",
+        /// It holds the tab but has not acted recently.
+        Idle = "idle",
     }
 }
 
@@ -499,6 +511,9 @@ pub struct ControlState {
     /// A pending handoff.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handoff: Option<Handoff>,
+    /// The agent's activity while its proxy holds the tab; absent when no agent does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentActivity>,
 }
 
 /// Effective stream settings.

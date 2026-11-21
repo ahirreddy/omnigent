@@ -312,6 +312,9 @@ Json ToJson(const ControlState& value) {
     handoff.Set("reason", value.handoff->reason);
     json.Set("handoff", handoff);
   }
+  if (value.agent) {
+    json.Set("agent", *value.agent);
+  }
   return json;
 }
 
@@ -549,6 +552,7 @@ bool ParseControlState(const Json& json, ControlState* out, std::string* error) 
     out->handoff = Handoff{nested.String("id"), nested.String("reason")};
     fields.Require(nested.ok());
   }
+  out->agent = fields.OptionalString("agent");
   return fields.ok();
 }
 

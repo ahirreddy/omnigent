@@ -437,9 +437,11 @@ Every message is a JSON object with `type`. Types marked *(control)* are accepte
   lock, 6 left mouse button down, 7 middle button down, 8 right button down. Other bits are 0
   on send and ignored on receive.
 - `control_state`: `{owner: "agent" | "user", holder: "this" | "other" | null, user_id?: string,
-  handoff?: {id: string, reason: string}}`. `holder` is per connection: `"this"` when this
-  connection holds control, `"other"` when another connection does, and `null` when
-  `owner` is `agent` or nobody holds the user's control (grace period, section 5.6).
+  handoff?: {id: string, reason: string}, agent?: "active" | "idle"}`. `holder` is per
+  connection: `"this"` when this connection holds control, `"other"` when another connection
+  does, and `null` when `owner` is `agent` or nobody holds the user's control (grace period,
+  section 5.6). `agent` is what an agent's DevTools proxy does on the tab (runner op
+  `tabs.agent_state`); it is absent when none holds it.
   `handoff` is set while an agent `browser_request_human` handoff is pending.
 - `settings`: `{max_fps: u32, quality: "low" | "medium" | "high", scale: number (0.25–1),
   codec: "auto" | "h264" | "jpeg"}`.
@@ -454,7 +456,7 @@ Every message is a JSON object with `type`. Types marked *(control)* are accepte
 | `nav` | `url`, `title`, `loading: bool`, `progress: number (0–1)`, `can_go_back`, `can_go_forward`, `favicon_url?` | After setup and on every change |
 | `cursor` | `cursor` (a CSS `cursor` keyword: `default`, `pointer`, `text`, `crosshair`, `wait`, `progress`, `help`, `move`, `not-allowed`, `grab`, `grabbing`, `none`, `ew-resize`, `ns-resize`, `nesw-resize`, `nwse-resize`, `col-resize`, `row-resize`, `zoom-in`, `zoom-out`, `copy`, `alias`, `cell`, `context-menu`, `vertical-text`, `all-scroll`, or `custom`), `custom?: {png_base64, hotspot_x, hotspot_y, scale}` | After setup and on change. Unknown keywords render as `default` |
 | `text_input` | `mode` (`none`, `text`, `tel`, `url`, `email`, `numeric`, `decimal`, `search`), `caret_rect?: rect` | After setup and on change. Unknown modes act as `text` |
-| `control` | `control_state` fields, `reason?` (`take`, `release`, `handoff`, `holder_left`, `grace_expired`, `agent`) | After setup and on every transition, to every connection |
+| `control` | `control_state` fields, `reason?` (`take`, `release`, `handoff`, `holder_left`, `grace_expired`, `agent`, `agent_activity`) | After setup and on every transition, to every connection |
 | `dialog` | `id`, `kind` (`alert`, `confirm`, `prompt`, `beforeunload`, `file_chooser`), `message`, `default_text?`, `origin?` | While a JS dialog is open and the user owns the tab (control-mode connections only) |
 | `dialog_closed` | `id` | The dialog was answered (by any connection) or dismissed by the page |
 | `viewport` | `viewport` fields | After setup and after a resize is applied |

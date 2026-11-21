@@ -42,7 +42,9 @@ class Tab : public CefClient,
   const std::string& session_id() const { return session_id_; }
   protocol::TabRecord Record() const;
   /// Records what the agent's DevTools proxy reports ("active", "idle", "" once released).
-  void SetAgentState(const std::string& state) { agent_state_ = state; }
+  /// What the agent's DevTools proxy does on the tab: `active`, `idle`, or empty once it lets
+  /// go. Viewers see it in their control state.
+  void SetAgentState(const std::string& state);
   bool has_browser() const { return browser_ != nullptr; }
   bool target_known() const { return !target_id_.empty(); }
   /// Runs once the CDP target id is known (or immediately if it is).

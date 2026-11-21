@@ -92,6 +92,18 @@ enum TabAdapter {
   }
 
   /// A remote browser tab: its page title and loading state from its live store.
+  /// The badge of a remote tab: the user's control first, else what the agent's DevTools proxy
+  /// reports through the host's control state.
+  static func remoteAgentControl(_ control: RemoteBrowserControl?) -> TabAgentControl? {
+    guard let control else { return nil }
+    if control.owner == .user { return .user }
+    switch control.agent {
+    case .active: return .active
+    case .idle: return .idle
+    case nil: return nil
+    }
+  }
+
   private static func remoteItem(
     _ item: inout TabItemState, tab: AppTab, session: ServerSession, sessionID: String,
     tabID: String
@@ -107,7 +119,7 @@ enum TabAdapter {
     let url = URL(string: navigation.url)
     item.title = pageTitle(navigation.title, url: url)
     item.link = url
-    if store.snapshot.control?.owner == .user { item.agentControl = .user }
+    item.agentControl = Self.remoteAgentControl(store.snapshot.control)
     if store.isEnded {
       item.status = .exited
     } else if case .failed = store.snapshot.connection {

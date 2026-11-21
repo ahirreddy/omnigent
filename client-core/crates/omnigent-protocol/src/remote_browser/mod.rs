@@ -17,14 +17,15 @@ pub use header::{
     MediaKind, decode_frame,
 };
 pub use messages::{
-    AckWindow, AttachMode, ClientHello, ClientMessage, ClipboardText, CodecPreference, ControlOp,
-    ControlReason, ControlState, ControlUpdate, CreatedBy, CursorUpdate, CustomCursor, DialogKind,
-    DialogOpened, DialogReply, EditCommand, EditOp, Handoff, Holder, HostError, HostHello,
-    HostMessage, ImeEvent, ImeOp, KeyEvent, KeyKind, KeyframeReason, MAX_PASTE_BYTES, MessageError,
-    MobileEmulation, MouseButton, MouseEvent, MouseKind, NavCommand, NavOp, NavState, Owner,
-    PROTOCOL_VERSION, Quality, Rect, ResizeRequest, ScrollMetrics, SelectionState, Settings,
-    SettingsUpdate, Stats, StillKind, TabClosedReason, TextInputMode, TextInputUpdate, TextRange,
-    TouchEvent, TouchKind, Viewport, ViewportScope, ViewportUpdate, features, modifiers,
+    AckWindow, AgentActivity, AttachMode, ClientHello, ClientMessage, ClipboardText,
+    CodecPreference, ControlOp, ControlReason, ControlState, ControlUpdate, CreatedBy,
+    CursorUpdate, CustomCursor, DialogKind, DialogOpened, DialogReply, EditCommand, EditOp,
+    Handoff, Holder, HostError, HostHello, HostMessage, ImeEvent, ImeOp, KeyEvent, KeyKind,
+    KeyframeReason, MAX_PASTE_BYTES, MessageError, MobileEmulation, MouseButton, MouseEvent,
+    MouseKind, NavCommand, NavOp, NavState, Owner, PROTOCOL_VERSION, Quality, Rect, ResizeRequest,
+    ScrollMetrics, SelectionState, Settings, SettingsUpdate, Stats, StillKind, TabClosedReason,
+    TextInputMode, TextInputUpdate, TextRange, TouchEvent, TouchKind, Viewport, ViewportScope,
+    ViewportUpdate, features, modifiers,
 };
 pub use runner_host::{
     ControlError, ControlRequest, ControlResponse, EncoderInfo, HostInfo, Preamble, TabRecord,
