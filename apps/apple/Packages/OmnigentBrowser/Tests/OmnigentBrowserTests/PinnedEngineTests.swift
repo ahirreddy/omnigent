@@ -32,4 +32,18 @@ struct PinnedEngineTests {
     let legacy = Data(#"{"version":1,"id":"\#(UUID())","profileID":"\#(UUID())"}"#.utf8)
     #expect(try JSONDecoder().decode(BrowserTabRestoreState.self, from: legacy).engine == nil)
   }
+
+  @Test func aReplacedEngineTabStaysHeldForTheAgent() throws {
+    let (environment, provider) = try makeEnvironment()
+    let model = environment.makeTab(url: try testURL("https://agent.example/"))
+    model.activate()
+    model.setAgentControl(.idle)
+    model.controller.retry()
+    let tabs = try #require(provider.engines[.chromium]?.tabs)
+    #expect(tabs.count == 2)
+    let replacement = try #require(tabs.last?.agentInput as? RecordingAgentInput)
+    #expect(replacement.holds == [true])
+    model.setAgentControl(nil)
+    #expect(replacement.holds == [true, false])
+  }
 }
