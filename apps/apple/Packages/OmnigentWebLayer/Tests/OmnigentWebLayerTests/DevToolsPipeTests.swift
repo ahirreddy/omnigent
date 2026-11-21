@@ -54,9 +54,10 @@ struct DevToolsPipeTests {
 
   @Test("a session with agent DevTools hands the host the pipe and listens for nobody")
   func sessionLaunchesWithThePipe() async throws {
+    // The args file appears whole and last, so the pipes mark is there by then.
     let report =
-      #"echo "$*" > "$(dirname "$0")/args"; [ -e /dev/fd/3 ] && [ -e /dev/fd/4 ] && "#
-      + #"touch "$(dirname "$0")/pipes"; exec /bin/sleep 20"#
+      #"d=$(dirname "$0"); [ -e /dev/fd/3 ] && [ -e /dev/fd/4 ] && touch "$d/pipes"; "#
+      + #"echo "$*" > "$d/args.part" && mv "$d/args.part" "$d/args"; exec /bin/sleep 20"#
     let host = try FakeHost(script: report) { $0.agentDevTools = true }
     defer { host.cleanUp() }
     let plain = try FakeHost(script: report)
