@@ -131,12 +131,13 @@ struct FreezeRulesTests {
     #expect(owl_stall_first_seconds(.input) == 2)
   }
 
-  @Test("steady frames that stop by themselves are a stall; a scroll that ends is not")
+  @Test("steady frames that stop with the renderer's animation frames are a stall; a scroll is not")
   func framesStopped() {
     var activity = owl_view_activity()
     activity.visible = true
     activity.steady_since_nanos = 10 * second
     activity.last_frame_nanos = 14 * second
+    activity.frames_stopped_after_nanos = 14 * second
     let stall = owl_view_stall_since(activity)
     #expect(stall.reason == .framesStopped && stall.since_nanos == 14 * second)
 
@@ -147,6 +148,34 @@ struct FreezeRulesTests {
 
     activity.steady_since_nanos = 12 * second
     #expect(owl_view_stall_since(activity).reason == .none, "two seconds is not a steady run")
+  }
+
+  @Test("a page that animates and then goes static is no stall while its animation frames run")
+  func animationThatEnds() {
+    var activity = owl_view_activity()
+    activity.visible = true
+    // Four seconds of animation, then nothing more to draw.
+    activity.steady_since_nanos = 10 * second
+    activity.last_frame_nanos = 14 * second
+    #expect(owl_view_stall_since(activity).reason == .none, "stopping is not a stall by itself")
+    #expect(!owl_view_wants_frames_probe(activity, 15 * second), "one second is not a stop yet")
+    #expect(owl_view_wants_frames_probe(activity, 16 * second), "the renderer is asked")
+    // The probe's animation frame ran, so nothing was recorded: still no stall.
+    #expect(owl_view_stall_since(activity).reason == .none)
+
+    activity.frames_stopped_after_nanos = 14 * second
+    let stall = owl_view_stall_since(activity)
+    #expect(stall.reason == .framesStopped && stall.since_nanos == 14 * second)
+    #expect(!owl_view_wants_frames_probe(activity, 16 * second), "answered already")
+
+    activity.last_frame_nanos = 14 * second + second / 10
+    #expect(owl_view_stall_since(activity).reason == .none, "a later frame outdates the answer")
+    #expect(owl_view_wants_frames_probe(activity, 17 * second))
+    activity.unanswered_input_nanos = 15 * second
+    #expect(!owl_view_wants_frames_probe(activity, 17 * second), "waiting input is its own stall")
+    activity.unanswered_input_nanos = 0
+    activity.visible = false
+    #expect(!owl_view_wants_frames_probe(activity, 17 * second), "a hidden view draws nothing")
   }
 
   @Test("a click on a frozen page continues its stall")

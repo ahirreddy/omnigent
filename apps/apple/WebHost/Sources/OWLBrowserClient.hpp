@@ -66,8 +66,9 @@ class BrowserClient : public CefClient,
   void AcknowledgeFrame(uint32_t surface_id) { presenter_.AcknowledgeFrame(surface_id); }
   /// Freeze diagnostics: asks the renderer a constant over DevTools and reports whether it
   /// answered, then whether it still draws frames. One question at a time, each with a timeout.
-  /// A `quiet` question reports only a missing answer. See DESIGN.md, "Freeze diagnostics".
-  void ProbeRenderer(bool quiet);
+  /// A `quiet` question reports only a missing answer. A nonzero `frames_after_nanos` also asks
+  /// whether animation frames run after that frame. See DESIGN.md, "Freeze diagnostics".
+  void ProbeRenderer(bool quiet, uint64_t frames_after_nanos);
 
   // 1.1 commands: replies to host requests, policies, IME and drag and drop
   // (OWLBrowserPrompts.mm, OWLBrowserPopups.mm, OWLBrowserInput.mm).
@@ -313,6 +314,9 @@ class BrowserClient : public CefClient,
     uint64_t started_nanos = 0;
     bool timed_out = false;
     bool quiet = false;
+    /// The watch's frame whose animation frames are in question; 0 when none is. A verdict that
+    /// they stopped goes to the view's health record, which makes it a stall.
+    uint64_t frames_after_nanos = 0;
     uint64_t answer_milliseconds = 0;
     std::string page_state;
   };

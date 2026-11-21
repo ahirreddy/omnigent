@@ -407,8 +407,8 @@ void Host::OnContextInitialized() {
            .U64(OWLFieldElapsedMilliseconds, elapsed)
            .U64(OWLFieldRenderMode, config_.render_mode));
   FreezeWatch::Get().Start(channel_, config_.client_minor >= OWL_PROTOCOL_MINOR_HEALTH,
-                           [](uint64_t view_id, bool quiet) {
-                             Host::Get().ProbeView(view_id, quiet);
+                           [](uint64_t view_id, bool quiet, uint64_t frames_after_nanos) {
+                             Host::Get().ProbeView(view_id, quiet, frames_after_nanos);
                            });
   FreezeWatch::Get().Note("kind=host-ready pid=" + std::to_string(getpid()) + " init_ms=" +
                           std::to_string(elapsed) + " frame_rate=" +
@@ -498,11 +498,11 @@ void Host::OnBrowserClosed(uint64_t view_id) {
   }
 }
 
-void Host::ProbeView(uint64_t view_id, bool quiet) {
+void Host::ProbeView(uint64_t view_id, bool quiet, uint64_t frames_after_nanos) {
   auto found = views_.find(view_id);
   if (found != views_.end() && !shutting_down_) {
     CefRefPtr<BrowserClient> view = found->second;
-    view->ProbeRenderer(quiet);
+    view->ProbeRenderer(quiet, frames_after_nanos);
   }
 }
 

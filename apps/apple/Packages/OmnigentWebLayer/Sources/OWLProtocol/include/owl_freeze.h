@@ -136,7 +136,8 @@ typedef CF_ENUM(uint64_t, OWLStallReason) {
   OWLStallReasonInput = 1,
   /// The page is loading and no frame was presented.
   OWLStallReasonLoading = 2,
-  /// Frames were steady with nobody driving them (a video, an animation) and stopped.
+  /// Frames were steady with nobody driving them (a video, an animation) and stopped, and the
+  /// renderer's animation frames stopped with them.
   OWLStallReasonFramesStopped = 3,
   /// Input was replayed into a view Chromium was told is hidden, which draws nothing.
   OWLStallReasonInputWhileHidden = 4,
@@ -154,6 +155,9 @@ typedef struct owl_view_activity {
   uint64_t unanswered_input_nanos;
   /// The last input of any kind.
   uint64_t last_input_nanos;
+  /// The last frame before which a probe found the page's animation frames not running; 0 when
+  /// none did.
+  uint64_t frames_stopped_after_nanos;
 } owl_view_activity;
 
 typedef struct owl_view_stall {
@@ -165,6 +169,29 @@ typedef struct owl_view_stall {
 /// Seconds a stall for `reason` lasts before its first line.
 static inline double owl_stall_first_seconds(OWLStallReason reason) {
   return reason == OWLStallReasonLoading ? OWL_STALL_LOADING_SECONDS : OWL_STALL_VIEW_SECONDS;
+}
+
+/// Whether the last frame ended a steady run that nobody was driving (a video, an animation).
+static inline bool owl_view_frames_ran_by_themselves(owl_view_activity activity) {
+  const uint64_t frame = activity.last_frame_nanos;
+  const bool steady = frame != 0 && activity.steady_since_nanos != 0 &&
+                      frame >= activity.steady_since_nanos &&
+                      frame - activity.steady_since_nanos >= OWL_STEADY_RUN_NANOS;
+  // Frames that input was driving (a scroll) stop when the input does.
+  const bool driven = activity.last_input_nanos != 0 &&
+                      activity.last_input_nanos + UINT64_C(1000000000) >= frame;
+  return steady && !driven;
+}
+
+/// Whether to ask the renderer if the page's animation frames still run: frames that ran by
+/// themselves stopped OWL_STALL_VIEW_SECONDS ago. A page that went static still runs them and
+/// is not stalled; only a probe that finds them stopped makes it OWLStallReasonFramesStopped.
+static inline bool owl_view_wants_frames_probe(owl_view_activity activity, uint64_t now_nanos) {
+  const uint64_t frame = activity.last_frame_nanos;
+  return activity.visible && activity.unanswered_input_nanos == 0 &&
+         owl_view_frames_ran_by_themselves(activity) &&
+         activity.frames_stopped_after_nanos != frame && now_nanos >= frame &&
+         (double)(now_nanos - frame) / 1e9 >= OWL_STALL_VIEW_SECONDS;
 }
 
 /// Whether a view owes a frame, and since when. How long that may last before it is written
@@ -182,13 +209,7 @@ static inline owl_view_stall owl_view_stall_since(owl_view_activity activity) {
     return stall;
   }
   const uint64_t frame = activity.last_frame_nanos;
-  const bool steady = frame != 0 && activity.steady_since_nanos != 0 &&
-                      frame >= activity.steady_since_nanos &&
-                      frame - activity.steady_since_nanos >= OWL_STEADY_RUN_NANOS;
-  // Frames that input was driving (a scroll) stop when the input does.
-  const bool driven = activity.last_input_nanos != 0 &&
-                      activity.last_input_nanos + UINT64_C(1000000000) >= frame;
-  if (steady && !driven) {
+  if (owl_view_frames_ran_by_themselves(activity) && activity.frames_stopped_after_nanos == frame) {
     stall.reason = OWLStallReasonFramesStopped;
     stall.since_nanos = frame;
     return stall;
