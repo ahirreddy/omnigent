@@ -866,9 +866,10 @@ browser layer. Within CEF:
 - Agent views can be off screen. Before the first agent event the host gives the page widget
   focus, so typing reaches the focused element. This affects the page only, not the app's key
   window. Hidden Chromium widgets drop input, so agent views set `WebView.rendersOffscreen`: they
-  report themselves visible to the host although no window shows them. Chromium agent pages are
-  in no window at all; WebKit agent pages sit in an off-screen, non-activating `NSPanel` that
-  ignores the mouse (WebKit needs a window to render).
+  report themselves visible to the host although no window shows them. Every other view is hidden
+  until a window shows it on screen, so one that never enters a window never renders. Chromium
+  agent pages are in no window at all; WebKit agent pages sit in an off-screen, non-activating
+  `NSPanel` that ignores the mouse (WebKit needs a window to render).
 - In a custom host the same API would call `RenderWidgetHost::ForwardMouseEvent` and
   `ForwardKeyboardEvent` on the target `WebContents`' widget directly, which matches Atlas.
 

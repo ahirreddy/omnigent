@@ -93,12 +93,13 @@ struct FreezeClientTests {
   func agentPagesAreNeverUnseen() throws {
     let (fixture, clock) = fixture()
     fixture.webView.rendersOffscreen = true
+    let shown = "kind=client-shown view=\(fixture.webView.id) status=live surface=none"
     for _ in 0..<4 {
       try presented(fixture)
       clock.advance(seconds: 1)
       fixture.session.freezeTick()
     }
-    #expect(fixture.session.freezeLines.isEmpty)
+    #expect(fixture.session.freezeLines == [shown], "only the flag's own transition")
   }
 
   @Test("input a view could not send is counted, and waits for nothing")
@@ -113,6 +114,8 @@ struct FreezeClientTests {
     let (fixture, clock) = fixture()
     let view = fixture.webView
     view.url = URL(string: "https://example.com/secret/path?token=abc")
+    view.setVisible(true)  // As a window showing it does; the line about that is not the subject.
+    fixture.session.freezeLines.removeAll()
     try presented(fixture)
     view.renderer.forwardMouseEvent(try Offscreen.mouseEvent(.leftMouseDown), location: .zero)
     view.renderer.forwardKeyEvent(try Offscreen.keyEvent(.keyUp))
@@ -257,17 +260,17 @@ struct FreezeTransitionTests {
   func transitions() {
     let (fixture, _) = fixture()
     let view = fixture.webView
-    view.setVisible(false)
-    view.setVisible(false)
+    view.setVisible(true)
+    view.setVisible(true)
     view.setFocused(true)
     view.setFocused(false)
-    view.setVisible(true)
+    view.setVisible(false)
     #expect(
       fixture.session.freezeLines == [
-        "kind=client-hidden view=\(view.id) status=live surface=none",
+        "kind=client-shown view=\(view.id) status=live surface=none",
         "kind=client-focused view=\(view.id) status=live surface=none",
         "kind=client-blurred view=\(view.id) status=live surface=none",
-        "kind=client-shown view=\(view.id) status=live surface=none",
+        "kind=client-hidden view=\(view.id) status=live surface=none",
       ])
   }
 
