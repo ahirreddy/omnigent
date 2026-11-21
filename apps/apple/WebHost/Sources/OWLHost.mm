@@ -541,6 +541,10 @@ void Host::OnChannelEvent(owl_channel_event event, int64_t detail) {
     case OWL_CHANNEL_EVENT_MALFORMED:
       Log("dropped a malformed message of %lld bytes", static_cast<long long>(detail));
       break;
+    case OWL_CHANNEL_EVENT_TOO_LARGE:
+      Log("dropped a message of %lld bytes, more than the channel takes",
+          static_cast<long long>(detail));
+      break;
     case OWL_CHANNEL_EVENT_CANCELLED:
       break;
   }

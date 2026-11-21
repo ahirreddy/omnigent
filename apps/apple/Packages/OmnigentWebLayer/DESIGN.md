@@ -92,7 +92,9 @@ Embedding Mojo and using XPC were both rejected.
 - **Message layout.** Each message is one complex Mach message: header, a port descriptor (at
   most one right, for example an IOSurface), an out-of-line descriptor (payloads over 4 KiB, such
   as PNG snapshots), a 32-byte envelope (`magic`, `protocol_major`, `kind`, `request`, `target`),
-  and an inline payload.
+  and an inline payload. The receive buffer holds the largest inline message with its audit
+  trailer (a static assertion); a larger message, which only a peer outside this protocol sends,
+  is destroyed and reported with its size (`OWL_CHANNEL_EVENT_TOO_LARGE`).
 - **Schema.** `owl_protocol.h` is the single source of truth. Both the C++ host and the Swift
   client compile against it; Swift imports its `CF_ENUM`s as Swift enums.
   - Payloads are tag-length-value fields: `u64`, `i64`, `double`, `bool`, UTF-8 `string`,

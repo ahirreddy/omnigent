@@ -53,6 +53,9 @@ typedef enum owl_channel_event {
   OWL_CHANNEL_EVENT_MALFORMED = 4,
   /// The channel was destroyed and will call no handler again. Release the context here.
   OWL_CHANNEL_EVENT_CANCELLED = 5,
+  /// A message too large for the receive buffer was destroyed; `detail` is its size in bytes.
+  /// owl_channel_send never builds one, so it came from a peer that does not follow this protocol.
+  OWL_CHANNEL_EVENT_TOO_LARGE = 6,
 } owl_channel_event;
 
 typedef void (*owl_message_handler)(void *_Nullable context, owl_message *_Nonnull message);

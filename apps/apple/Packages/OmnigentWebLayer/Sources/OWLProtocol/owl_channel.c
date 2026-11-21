@@ -42,6 +42,13 @@ typedef union owl_receive_buffer {
 
 _Static_assert(offsetof(owl_wire, envelope) % 8 == 0, "envelope must be 8-byte aligned");
 _Static_assert(sizeof(owl_envelope) == 32, "envelope layout is part of the wire format");
+_Static_assert(sizeof(owl_wire) + sizeof(mach_msg_audit_trailer_t) <= sizeof(owl_receive_buffer),
+               "the largest message owl_channel_send builds must fit with its audit trailer");
+
+// Every message arrives with the sender's audit token in its trailer.
+static const mach_msg_option_t owl_receive_options =
+    MACH_RCV_MSG | MACH_RCV_TIMEOUT | MACH_RCV_TRAILER_TYPE(MACH_MSG_TRAILER_FORMAT_0) |
+    MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_AUDIT);
 
 struct owl_channel {
   mach_port_t receive;
@@ -298,17 +305,38 @@ static void owl_dispatch(owl_channel *channel, owl_receive_buffer *buffer) {
   }
 }
 
+/// Destroys the queued message that did not fit the buffer and reports it with its size. Only a
+/// peer that does not follow this protocol sends one. Returns whether to keep draining.
+static bool owl_drop_oversized(owl_channel *channel, mach_msg_size_t size) {
+  owl_receive_buffer buffer;
+  // Without MACH_RCV_LARGE the kernel destroys the message and the rights and memory it carried.
+  kern_return_t kr = mach_msg(&buffer.header, owl_receive_options, 0,
+                              (mach_msg_size_t)sizeof(buffer), channel->receive, 0, MACH_PORT_NULL);
+  if (kr != MACH_RCV_TOO_LARGE) {
+    owl_emit(channel, OWL_CHANNEL_EVENT_RECEIVE_FAILED, kr);
+    return false;
+  }
+  owl_emit(channel, OWL_CHANNEL_EVENT_TOO_LARGE, size);
+  return true;
+}
+
 static void owl_drain(void *context) {
   owl_channel *channel = context;
   for (;;) {
     owl_receive_buffer buffer;
-    const mach_msg_option_t options =
-        MACH_RCV_MSG | MACH_RCV_TIMEOUT | MACH_RCV_TRAILER_TYPE(MACH_MSG_TRAILER_FORMAT_0) |
-        MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_AUDIT);
-    kern_return_t kr = mach_msg(&buffer.header, options, 0, (mach_msg_size_t)sizeof(buffer.wire),
-                                channel->receive, 0, MACH_PORT_NULL);
+    // The size includes room for the trailer. A message too large for it stays queued
+    // (MACH_RCV_LARGE), and msgh_size says how large it is.
+    kern_return_t kr = mach_msg(&buffer.header, owl_receive_options | MACH_RCV_LARGE, 0,
+                                (mach_msg_size_t)sizeof(buffer), channel->receive, 0,
+                                MACH_PORT_NULL);
     if (kr == MACH_RCV_TIMED_OUT) {
       return;
+    }
+    if (kr == MACH_RCV_TOO_LARGE) {
+      if (!owl_drop_oversized(channel, buffer.header.msgh_size)) {
+        return;
+      }
+      continue;
     }
     if (kr != KERN_SUCCESS) {
       owl_emit(channel, OWL_CHANNEL_EVENT_RECEIVE_FAILED, kr);
