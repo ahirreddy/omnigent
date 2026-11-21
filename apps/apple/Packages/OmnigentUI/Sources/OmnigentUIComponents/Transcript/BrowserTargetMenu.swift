@@ -83,6 +83,8 @@ struct BrowserTargetMenuItems: View {
       }
     }
     .pickerStyle(.inline)
+    // The chip and the submenu already say Browser.
+    .labelsHidden()
     Section {
       if let reason = state.localUnavailableReason { Text(reason) }
       Text(BrowserTargetState.separateLogins)

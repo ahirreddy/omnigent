@@ -12,13 +12,9 @@ extension SweepLookFixtures {
     let shared = BrowserTargetState(
       choice: .remote, localUnavailableReason: BrowserTargetState.ownerOnly)
     return VStack(alignment: .leading, spacing: 16) {
-      HStack(spacing: 12) {
-        ForEach(BrowserTargetChoice.menuOrder, id: \.self) { choice in
-          browserEntry(BrowserTargetState(choice: choice))
-        }
-      }
-      .padding(8)
-      .glassEffect(.regular, in: .capsule)
+      browserEntries
+        .padding(8)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
       Form {
         Section("Browser") {
           BrowserTargetMenuItems(state: shared) { _ in }
@@ -29,12 +25,18 @@ extension SweepLookFixtures {
     .padding(16)
   }
 
+  /// A toolbar row of chips on a Mac; title-menu rows, one under another, on iOS.
   @ViewBuilder
-  private static func browserEntry(_ state: BrowserTargetState) -> some View {
+  private static var browserEntries: some View {
+    let states = BrowserTargetChoice.menuOrder.map { BrowserTargetState(choice: $0) }
     #if os(macOS)
-      BrowserTargetChip(state: state) { _ in }
+      HStack(spacing: 12) {
+        ForEach(states, id: \.choice) { BrowserTargetChip(state: $0) { _ in } }
+      }
     #else
-      BrowserTargetSubmenu(state: state) { _ in }
+      VStack(alignment: .leading, spacing: 12) {
+        ForEach(states, id: \.choice) { BrowserTargetSubmenu(state: $0) { _ in } }
+      }
     #endif
   }
 }
