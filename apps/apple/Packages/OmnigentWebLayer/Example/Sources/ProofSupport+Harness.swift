@@ -16,7 +16,8 @@ extension Proofs {
         .merging(Self.eventTimePages) { first, _ in first }
         .merging(Self.freezePages) { first, _ in first }
         .merging(Self.soakPages) { first, _ in first }
-        .merging(Self.dragEndPages) { first, _ in first },
+        .merging(Self.dragEndPages) { first, _ in first }
+        .merging(Self.tabSwitchPages) { first, _ in first },
       port: model.options.serverPort)
     try await started.start()
     server = started

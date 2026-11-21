@@ -28,7 +28,8 @@ final class Proofs {
     "keys": { $0.unhandledKeys }, "cookies": { $0.cookies }, "agent": { $0.agentInput },
     "event-times": { $0.eventTimes }, "freeze-diagnostics": { $0.freezeDiagnostics },
     "crash": { $0.crashRecovery }, "hang": { $0.hangRecovery }, "spike": { $0.renderingSpike },
-    "soak": { $0.soak }, "drag-end": { $0.dragEnds }, "editing": { $0.editingShortcuts },
+    "soak": { $0.soak }, "tab-switch": { $0.tabSwitch }, "drag-end": { $0.dragEnds },
+    "editing": { $0.editingShortcuts },
     "quit": { $0.waitForPage },
     // Protocol 1.1 browser UI, through the shared OmnigentBrowser UI (`--engine` picks one).
     "dialogs": { $0.dialogs }, "permissions": { $0.permissions }, "files": { $0.files },
