@@ -160,6 +160,8 @@ def test_builtin_names_size_matches_registry() -> None:
                 "browser_click",
                 "browser_type",
                 "browser_screenshot",
+                # Registered instead for a spec with Chrome DevTools MCP.
+                "browser_switch",
                 "ui_open_file",
             }
             | ADVANCED_BROWSER_TOOL_NAMES

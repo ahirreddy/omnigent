@@ -70,6 +70,7 @@ from omnigent.models.model_override import (
 )
 from omnigent.native.native_coding_agents import public_agent_name
 from omnigent.policies.builtins.safety import scheduled_task_review_error
+from omnigent.runner.browser_devtools.choice import switch_browser
 from omnigent.runner.identity import ORCHESTRATION_SOURCE_HEADER
 from omnigent.runner.journal_tools import (
     JOURNAL_TOOL_NAMES,
@@ -90,6 +91,7 @@ from omnigent.tools.builtins.async_inbox import (
     SysReadInboxTool,
 )
 from omnigent.tools.builtins.browser import BROWSER_TOOL_NAMES
+from omnigent.tools.builtins.browser_switch import BROWSER_SWITCH_TOOL_NAME
 from omnigent.tools.builtins.download_file import DownloadFileTool
 from omnigent.tools.builtins.list_comments import ListCommentsTool
 from omnigent.tools.builtins.os_env import (
@@ -514,6 +516,8 @@ def _memory_tool_on(agent_spec: object, tool_name: str) -> bool:
 # protocol needs the runner's ``server_client`` and ``ToolContext`` carries
 # none. See omnigent/tools/builtins/browser.py and browser_agent_tools.py.
 _BROWSER_TOOLS = BROWSER_TOOL_NAMES | ADVANCED_BROWSER_TOOL_NAMES
+# A spec with Chrome DevTools MCP gets ``browser_switch`` in their place.
+_BROWSER_SWITCH_TOOLS = frozenset({BROWSER_SWITCH_TOOL_NAME})
 
 # Runner-side outer HTTP read timeout for a browser action POST. The read
 # budget (60s) MUST exceed the server-side browser-action await (30s) so the
@@ -569,6 +573,7 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     # feature is dead for its real target. The relay filters ToolManager's
     # schemas, so they appear unless the spec sets ``tool_groups.browser: false``.
     | _BROWSER_TOOLS
+    | _BROWSER_SWITCH_TOOLS
     # Memory builtins are relayed to native harnesses too — unlike web_search,
     # native harnesses have no built-in long-term memory of their own.
     | _HINDSIGHT_TOOLS
@@ -8485,6 +8490,13 @@ async def execute_tool(
                 arguments,
                 server_client=server_client,
                 conversation_id=conversation_id,
+            )
+        elif tool_name in _BROWSER_SWITCH_TOOLS:
+            output = await switch_browser(
+                args,
+                server_client=server_client,
+                session_id=conversation_id,
+                publish_event=publish_event,
             )
         elif tool_name in _BROWSER_TOOLS:
             output = await _execute_browser_tool(
