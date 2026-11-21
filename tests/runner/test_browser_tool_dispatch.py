@@ -212,7 +212,7 @@ def test_browser_names_reserved_framework_owned() -> None:
     the single source of truth: ToolManager, not the registry factory.
     """
     browser = {n for n in builtins_mod.BUILTIN_NAMES if n.startswith("browser_")}
-    assert browser == _EXPECTED_BROWSER_NAMES
+    assert browser == _EXPECTED_BROWSER_NAMES | {"browser_switch"}
     # Framework-owned → reserved but not user-instantiable.
     assert not (_EXPECTED_BROWSER_NAMES & set(builtins_mod.INSTANTIABLE_BUILTINS))
     for name in sorted(browser):
@@ -235,6 +235,30 @@ def test_toolmanager_always_registers_browser_tools() -> None:
         schema = tool.get_schema()
         assert schema["function"]["name"] == name
         assert schema["function"]["description"]
+    assert mgr.get_tool("browser_switch") is None
+
+
+def test_devtools_specs_get_browser_switch_in_place_of_the_browser_tools() -> None:
+    """The runner's DevTools MCP spec swaps ``browser_*`` for ``browser_switch``, on the
+    relay too; an author's own ``chrome_devtools`` server does not."""
+    from omnigent.browser_devtools_availability import with_browser_devtools
+    from omnigent.spec.types import MCPServerConfig
+    from omnigent.tools.manager import ToolManager
+
+    devtools = with_browser_devtools(
+        AgentSpec(spec_version=1), "ws://127.0.0.1:1/devtools/browser/conv_a.00"
+    )
+    names = set(ToolManager(devtools).get_tool_names())
+    assert "browser_switch" in names
+    assert not names & _EXPECTED_BROWSER_NAMES
+    relay = {schema["name"] for schema in build_native_relay_tool_schemas(devtools)}
+    assert "browser_switch" in relay
+
+    authored = AgentSpec(
+        spec_version=1,
+        mcp_servers=[MCPServerConfig(name="chrome_devtools", transport="stdio", command="npx")],
+    )
+    assert ToolManager(authored).get_tool("browser_switch") is None
 
 
 # ── Native-relay exposure ────────────────────────────────────────

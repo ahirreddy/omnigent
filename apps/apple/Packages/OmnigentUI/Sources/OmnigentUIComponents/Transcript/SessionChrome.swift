@@ -238,6 +238,12 @@ struct SessionChromeParts: ViewModifier {
         title: "Copy Session ID", systemImage: "number", text: state.header.id,
         confirmation: "Session ID copied")
     }
+    #if os(iOS)
+      // The Mac shows the choice as a toolbar chip.
+      if let browser = state.browserTarget, let choose = chrome.extras.chooseBrowserTarget {
+        BrowserTargetSubmenu(state: browser, choose: choose)
+      }
+    #endif
     // As the web's host menu: move the session to another machine, online host or not.
     if chrome.extras.switchHost != nil {
       Button("Switch Host\u{2026}", systemImage: "arrow.left.arrow.right") {

@@ -70,7 +70,13 @@ BROWSER_DEVTOOLS_INSTRUCTION = (
     "never ask for passwords or one-time codes in chat. If a tool refuses with "
     "user_in_control or reports an open user_in_control dialog, the user has taken over "
     "that tab; stop acting on it, do not dismiss the dialog, wait until it closes, and "
-    "take a fresh snapshot before continuing."
+    "take a fresh snapshot before continuing. The browser is either the user's Mac "
+    "browser, with their logins, or the agent machine's browser, which keeps working "
+    "while the Mac sleeps. When a task needs the other one (for example a site that "
+    "needs the user's signed-in account), call browser_switch with a short reason; "
+    "switching to the Mac browser waits for the user's approval. The next chrome_devtools "
+    "call lands in the new browser, tabs stay open in the old one, and logins and cookies "
+    "don't carry over between the two."
 )
 
 WORKSPACE_IMAGE_INSTRUCTION = (

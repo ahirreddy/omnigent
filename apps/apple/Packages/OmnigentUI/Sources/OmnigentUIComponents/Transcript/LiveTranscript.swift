@@ -41,6 +41,7 @@ extension TitlebarTrailingItems {
     if hasShare, isRegular { items += 1 }
     #if os(macOS)
       if state.sandbox != nil { items += 1 }
+      if let browser = state.browserTarget { items += BrowserTargetChip.width(browser.choice) }
     #endif
     return items + presence(state, isRegular: isRegular)
   }

@@ -333,6 +333,9 @@ _BUILTIN_REGISTRY: dict[str, _BuiltinFactory | None] = {
     "browser_type": None,
     "browser_screenshot": None,
     **dict.fromkeys(sorted(ADVANCED_BROWSER_TOOL_NAMES)),
+    # Registered in place of ``browser_*`` for a spec the runner gave Chrome
+    # DevTools MCP; runner-dispatched like them.
+    "browser_switch": None,
     "ui_open_file": None,
 }
 

@@ -63,6 +63,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
   case outboxSaved = "sweep-g-outbox-saved"
   case promptCommand = "sweep-g-prompt-command"
   case terminalKept = "sweep-g-terminal-kept"
+  case browserTarget = "sweep-h-browser-target"
 
   var testDescription: String { rawValue }
 
@@ -112,6 +113,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .spreadsheetUnreadable: 320
     case .rruleEditor: 340
     case .tableFind: 420
+    case .browserTarget: 360
     case .prSummary, .prSuggestion, .toolFields, .smartRouting, .mcpPanel,
       .quickAnswer, .staleProfile, .questionSubmitBlocked, .shellComposer, .composerTints,
       .overviewChanges, .designRequests, .designOutbox, .floatingPanel, .outboxSaved,
@@ -174,6 +176,7 @@ enum SweepLookScreen: String, CaseIterable, CustomTestStringConvertible {
     case .outboxSaved: return AnyView(Fixture.outboxSaved)
     case .promptCommand: return AnyView(Fixture.promptCommand)
     case .terminalKept: return AnyView(Fixture.terminalKept)
+    case .browserTarget: return AnyView(Fixture.browserTarget)
     }
   }
 }

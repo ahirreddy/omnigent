@@ -164,6 +164,7 @@ struct ConversationContainer: View {
     }
     // Reads the features too; the composer tray links the session's pull requests.
     .task { if !windowLoadsPanel { await panel?.reloadPullRequests() } }
+    .task { if !windowLoadsPanel { await panel?.loadBrowserTarget() } }
     // The composer's chip keeps its PRs' checks and merge state current.
     .whileVisible(composerWatch)
     .modifier(
@@ -177,7 +178,10 @@ struct ConversationContainer: View {
     )
     .onChange(of: conversation.isRunning) { _, running in
       Task { await composer.drainQueue(isRunning: running) }
-      if !running, !windowLoadsPanel { Task { await panel?.refreshPullRequestsIfShown() } }
+      if !running, !windowLoadsPanel {
+        Task { await panel?.refreshPullRequestsIfShown() }
+        Task { await panel?.loadBrowserTarget() }
+      }
     }
     .onChange(of: terminals?.terminals.harness, initial: true) { attachHarness() }
     .modifier(WorkspacePanelDefaults(workspace: ownPanelWorkspace, choice: $panelRoute.choice))

@@ -665,8 +665,17 @@ class ToolManager:
         execution lives in the runner ``_BROWSER_TOOLS`` dispatch branch
         (``omnigent/runner/tool_dispatch.py``), which needs the runner's
         ``server_client`` that ``ToolContext`` does not carry.
+
+        A spec the runner gave Chrome DevTools MCP has the group off and gets
+        ``browser_switch`` instead, executed by the runner too.
         """
         if not self._spec.tool_groups.browser:
+            from omnigent.browser_devtools_availability import has_browser_devtools
+
+            if has_browser_devtools(self._spec):
+                from omnigent.tools.builtins.browser_switch import BrowserSwitchTool
+
+                self._tools[BrowserSwitchTool.name()] = BrowserSwitchTool()
             return
         from omnigent.tools.builtins.browser import (
             BrowserClickTool,
