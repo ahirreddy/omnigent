@@ -104,7 +104,7 @@ public final class BrowserTabModel: Identifiable {
 
   init(
     environment: BrowserEnvironment, id: UUID, profileID: UUID, url: URL?,
-    restoring state: BrowserTabRestoreState?
+    restoring state: BrowserTabRestoreState?, engine: BrowserEngineKind? = nil
   ) {
     self.environment = environment
     self.id = id
@@ -116,7 +116,8 @@ public final class BrowserTabModel: Identifiable {
     favicon = state?.faviconPNG.map(BrowserFavicon.init(pngData:))
     controller = BrowserController(
       profile: browserProfile, preferences: environment.preferences, provider: environment.provider,
-      initialURL: state == nil ? url : nil, presenter: environment.presenter)
+      initialURL: state == nil ? url : nil, presenter: environment.presenter,
+      pinnedEngine: state?.engine ?? engine)
     installHooks()
     if state == nil, url == nil { omniboxFocusRequest = 1 }
   }
@@ -293,7 +294,7 @@ public final class BrowserTabModel: Identifiable {
       id: id, profileID: profileID, url: url, title: title, faviconPNG: favicon?.pngData,
       history: history,
       webKitInteractionState: tab.engineKind == .system ? tab.engineRestoreData : nil,
-      isPinned: isPinned, isMuted: isMuted)
+      isPinned: isPinned, isMuted: isMuted, engine: controller.pinnedEngine)
   }
 
 }

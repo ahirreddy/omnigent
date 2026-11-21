@@ -57,7 +57,8 @@ extension BrowserTabHost {
   }
 
   /// Opens a background tab in `sessionID`'s tab set, in the user's default profile, for the
-  /// agent. It never takes the window's selection.
+  /// agent. It never takes the window's selection, and it stays on Chromium (the engine with
+  /// DevTools) whatever the user's engine preference.
   /// - Parameters:
   ///   - sessionID: The session.
   ///   - url: The first page; `nil` opens a blank page.
@@ -71,7 +72,7 @@ extension BrowserTabHost {
       let tabs = windows.values.first(where: { $0.groups[sessionID] != nil })
         ?? windows.values.first
     else { throw .notAllowed("No window is open to hold the agent's tab.") }
-    let page = makePage(url: url)
+    let page = makePage(url: url, engine: .chromium)
     guard let model = models[page.id] else { throw .tabClosed }
     model.activate()
     let appTab = tabs.group(sessionID).open(
@@ -84,6 +85,7 @@ extension BrowserTabHost {
         message: "The new tab did not start in time, or the browser engine has no DevTools.")
     }
     holdForAgent(model, control: .active, stopTurn: stopTurn)
+    keepHeldSessionsOpen()
     return record(tabID: appTab.id, targetID: target, model: model)
   }
 
@@ -95,6 +97,7 @@ extension BrowserTabHost {
       for group in tabs.groups.values {
         if let tab = group.tabs.first(where: { $0.content == .browser(browserID: id) }) {
           tabs.close(tab.id)
+          keepHeldSessionsOpen()
           return
         }
       }
@@ -124,6 +127,22 @@ extension BrowserTabHost {
       model.setAgentControl(nil)
     default:
       throw .notAllowed("Unknown agent state \(state).")
+    }
+    keepHeldSessionsOpen()
+  }
+
+  /// Keeps each window's sessions open while an agent holds one of their browser tabs.
+  func keepHeldSessionsOpen() {
+    for groups in windows.values {
+      let held = Set(
+        groups.groups.compactMap { sessionID, tabs -> String? in
+          let holds = tabs.tabs.contains { tab in
+            guard case .browser(let id) = tab.content else { return false }
+            return models[id]?.agentControl != nil
+          }
+          return holds ? sessionID : nil
+        })
+      if groups.agentHeldSessions != held { groups.agentHeldSessions = held }
     }
   }
 

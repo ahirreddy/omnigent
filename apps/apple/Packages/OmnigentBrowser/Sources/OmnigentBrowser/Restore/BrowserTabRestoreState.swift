@@ -29,12 +29,15 @@ nonisolated public struct BrowserTabRestoreState: Codable, Hashable, Sendable, I
   public var isPinned: Bool
   /// Whether the tab is muted.
   public var isMuted: Bool
+  /// The engine the tab keeps whatever the preference (an agent's tab stays on Chromium);
+  /// `nil` follows the preference.
+  public var engine: BrowserEngineKind?
 
   /// Creates a state.
   public init(
     id: UUID = UUID(), profileID: UUID, url: URL?, title: String = "", faviconPNG: Data? = nil,
     history: BrowserNavigationHistory = .empty, webKitInteractionState: Data? = nil,
-    isPinned: Bool = false, isMuted: Bool = false
+    isPinned: Bool = false, isMuted: Bool = false, engine: BrowserEngineKind? = nil
   ) {
     version = Self.currentVersion
     self.id = id
@@ -46,11 +49,12 @@ nonisolated public struct BrowserTabRestoreState: Codable, Hashable, Sendable, I
     self.webKitInteractionState = webKitInteractionState
     self.isPinned = isPinned
     self.isMuted = isMuted
+    self.engine = engine
   }
 
   enum CodingKeys: String, CodingKey {
     case version, id, profileID, url, title, faviconPNG, history, webKitInteractionState,
-      isPinned, isMuted
+      isPinned, isMuted, engine
   }
 
   /// Decodes a state, rejecting versions newer than this build understands.
@@ -71,6 +75,7 @@ nonisolated public struct BrowserTabRestoreState: Codable, Hashable, Sendable, I
       Data.self, forKey: .webKitInteractionState)
     isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
     isMuted = try container.decodeIfPresent(Bool.self, forKey: .isMuted) ?? false
+    engine = try container.decodeIfPresent(BrowserEngineKind.self, forKey: .engine)
   }
 
   /// The history to rebuild: the saved list, or just the current page.

@@ -58,7 +58,12 @@ public final class BrowserTabHost: BrowserTabHosting {
 
   /// See ``BrowserTabHosting``.
   public func makePage(url: URL?) -> (id: UUID, state: Data?) {
-    let model = environment.makeTab(url: url)
+    makePage(url: url, engine: nil)
+  }
+
+  /// A new page in `engine` whatever the preference, or the preferred engine when `nil`.
+  func makePage(url: URL?, engine: BrowserEngineKind?) -> (id: UUID, state: Data?) {
+    let model = environment.makeTab(url: url, engine: engine)
     models[model.id] = model
     return (model.id, encode(model))
   }

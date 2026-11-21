@@ -65,10 +65,6 @@ Apple process" and "Recommendation and plan" (phase 1b).
 
 Details: [agent-browser-mcp-design.md](agent-browser-mcp-design.md).
 
-- [ ] Keep a session's conversation open while an agent holds one of its tabs, so the DevTools
-  directory keeps answering after the app evicts the conversation.
-- [ ] Tabs on the WebKit engine have no DevTools target; agent tabs fail when the user's engine
-  preference is WebKit. Open agent tabs on Chromium regardless of the preference.
 - [ ] Only the runner bound to a session should get the gate's secret: today any client with
   edit access to a non-shared session can ask for `attach` (and on a local single-user
   server, any local process). The gate limits the secret to that session's tabs.

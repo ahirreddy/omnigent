@@ -56,6 +56,37 @@ struct BrowserTabHostDevToolsTests {
     #expect(host.status(of: id)?.agentControl == nil)
   }
 
+  /// The agent's directory requests arrive on the session's stream, so a session whose tab the
+  /// agent holds stays open after the window moves on, until the agent lets go.
+  @Test func aSessionStaysOpenWhileTheAgentHoldsItsTab() throws {
+    let fixture = try Fixture()
+    defer { fixture.removeDefaults() }
+    let window = fixture.window()
+    _ = agentPage(fixture, tabs: window.tabs)
+    window.groups.liveLimit = 1
+    window.groups.show(.session("other"))
+    #expect(!window.groups.liveSessionIDs.contains("s"))
+
+    try fixture.host.setDevToolsAgentState(
+      sessionID: "s", targetID: "TARGET-1", state: "idle", stopTurn: {})
+    #expect(window.groups.liveSessionIDs.contains("s"))
+
+    try fixture.host.setDevToolsAgentState(
+      sessionID: "s", targetID: "TARGET-1", state: "released", stopTurn: {})
+    #expect(!window.groups.liveSessionIDs.contains("s"))
+  }
+
+  /// Only Chromium has DevTools, so an agent's page uses it under a WebKit preference too.
+  @Test func anAgentsPageKeepsChromiumWhateverThePreference() throws {
+    let fixture = try Fixture()
+    defer { fixture.removeDefaults() }
+    fixture.environment.preferences.engine = .system
+    let page = fixture.host.makePage(url: nil, engine: .chromium)
+    #expect(fixture.host.page(page.id)?.controller.wantedEngine == .chromium)
+    let plain = fixture.host.makePage(url: nil)
+    #expect(fixture.host.page(plain.id)?.controller.wantedEngine == .system)
+  }
+
   @Test func anotherSessionsPagesAreUnknownToTheAgent() throws {
     let fixture = try Fixture()
     defer { fixture.removeDefaults() }

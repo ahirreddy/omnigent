@@ -231,9 +231,12 @@ owner)]`, `create_tab(url)`, `close_tab(target_id)`, `report_activity(target_id,
   `holdForAgent` (`WebView.rendersOffscreen`) while any agent state is set, so CEF never hides
   it; releasing returns the page to what its view last reported. Pages live in
   `BrowserTabHost.models` whatever the window or session.
-- **Not yet:** the session's conversation is not pinned while an agent holds its tabs. Once
-  the app closes that conversation's stream, the directory stops answering until the session
-  is opened again; the proxy keeps the last tabs it knew.
+- **Pinned while held:** a session whose browser tab an agent holds (any agent state) stays
+  in the window's live sessions (`SessionTabGroups.agentHeldSessions`), so its stream, which
+  carries the directory requests, stays open until the agent lets go.
+- **Chromium for agents:** an agent's new tab is pinned to Chromium
+  (`BrowserController.pinnedEngine`, saved with the tab) under a WebKit preference too; the
+  user choosing an engine for that tab unpins it.
 
 ## 4. Choosing and switching the browser
 
@@ -338,7 +341,7 @@ window, or the app may be inactive. Requirements and mechanism:
 ### Status (2026-11-20)
 
 - **Local endpoint:** the pipe and the gated loopback endpoint (3.4).
-- **Done:** phase 1; phase 2, without pinning the conversation; from phase 3, the host's
+- **Done:** phase 1; phase 2; from phase 3, the host's
   `tabs.agent_state` op and `agent_state` in tab records and resources; from phase 4,
   `omnigent.browser_target` with `auto` preferring the remote browser for scheduled runs, and
   closing a connection the label no longer allows.
