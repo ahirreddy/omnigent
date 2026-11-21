@@ -87,6 +87,13 @@ USER_IN_CONTROL_MESSAGE: Final[str] = (
     "it until they hand it back, then take a fresh snapshot."
 )
 
+# Shown to the agent as an open JavaScript dialog on the tab while the user holds it:
+# chrome-devtools-mcp refuses input tools on a page with an open dialog and quotes its text.
+USER_IN_CONTROL_DIALOG_MESSAGE: Final[str] = (
+    "user_in_control: the user has taken control of this tab; wait for hand-back. Nothing "
+    "you send reaches the page until then; do not dismiss this."
+)
+
 
 def method_domain(method: str) -> str:
     """Return the CDP domain of *method*, e.g. ``"Input"`` for ``"Input.dispatchKeyEvent"``."""

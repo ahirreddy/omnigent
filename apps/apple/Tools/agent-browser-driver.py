@@ -8,8 +8,8 @@ on stdout:
 
 - ``act``: lists the session's pages, opens a page of a local site in a new tab, fills a
   field, clicks a button, reads the result with a script and takes a screenshot.
-- ``click``: clicks the button again; answers ``ok: false`` with the refusal while the user
-  holds the tab.
+- ``click``: clicks the button again; while the user holds the tab it answers ``ok: false``
+  and ``user_in_control: true`` with chrome-devtools-mcp's text.
 - ``quit``: disconnects the agent and exits.
 
 Usage: agent-browser-driver.py --server http://127.0.0.1:6767 --session SESSION_ID
@@ -118,7 +118,14 @@ class Agent:
         if self._page is None or self._button is None:
             return {"ok": False, "error": "act first"}
         result = await self._mcp.call_result("click", {"pageId": self._page, "uid": self._button})
-        return {"ok": not result.get("isError"), "text": tool_text(result)}
+        text = tool_text(result)
+        # A click under way when the user took over ends on the dialog without an error.
+        held = "user_in_control" in text
+        return {
+            "ok": not result.get("isError") and not held,
+            "user_in_control": held,
+            "text": text,
+        }
 
 
 async def run(server: str, session_id: str, data_dir: Path, work: Path) -> int:
