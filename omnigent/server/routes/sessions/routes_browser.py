@@ -11,6 +11,7 @@ from fastapi import (
     Request,
 )
 
+from omnigent.browser_devtools_availability import BROWSER_TARGET_LABEL, BROWSER_TARGETS
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runtime import (
     session_stream,
@@ -30,6 +31,7 @@ from omnigent.server.auth import (
     AuthProvider,
 )
 from omnigent.server.feature_flags import Feature, FeatureFlags
+from omnigent.server.permissions import check_session_access
 from omnigent.server.routes._auth_helpers import (
     get_user_id as _get_user_id,
 )
@@ -349,6 +351,50 @@ def register_browser_routes(
         result = body.get("result")
         future.set_result(result if isinstance(result, dict) else {"result": result})
         return {"resolved": True}
+
+
+async def require_browser_target_write(
+    *,
+    session_id: str,
+    user_id: str | None,
+    value: str,
+    conversation_store: ConversationStore,
+    permission_store: PermissionStore | None,
+) -> None:
+    """Check a PATCH of the session's ``omnigent.browser_target`` label.
+
+    Only the owner may point the agent at their Mac's browser (``local``), and never for a
+    session others can add input to: the agent would act with the owner's logins.
+
+    :param value: The new value; empty clears it back to ``auto``.
+    :raises OmnigentError: ``INVALID_INPUT`` for an unknown value, ``FORBIDDEN`` for ``local``
+        from anyone but the owner of an unshared session.
+    """
+    if value and value not in BROWSER_TARGETS:
+        raise OmnigentError(
+            f"{BROWSER_TARGET_LABEL} must be one of {sorted(BROWSER_TARGETS)}",
+            code=ErrorCode.INVALID_INPUT,
+        )
+    if value != "local" or permission_store is None:
+        return
+    is_owner = await asyncio.to_thread(
+        check_session_access,
+        user_id,
+        session_id,
+        LEVEL_OWNER,
+        permission_store,
+        conversation_store,
+    )
+    if not is_owner:
+        raise OmnigentError(
+            "Only the session owner can give its agent this Mac's browser.",
+            code=ErrorCode.FORBIDDEN,
+        )
+    if await asyncio.to_thread(_shared_session, session_id, conversation_store, permission_store):
+        raise OmnigentError(
+            "A shared session's agent cannot use the owner's Mac browser.",
+            code=ErrorCode.FORBIDDEN,
+        )
 
 
 def _shared_session(

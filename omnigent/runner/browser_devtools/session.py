@@ -43,6 +43,9 @@ AGENT_IDLE_AFTER_S: Final[float] = 10.0
 # refreshes it first.
 _OWNER_MAX_AGE_S: Final[float] = 1.0
 _TARGET_ID_WAIT_S: Final[float] = 5.0
+# A dialog the agent dismissed while the user holds the tab opens again after this long, so
+# the reopening never races the client clearing the dismissed one.
+_USER_DIALOG_REOPEN_AFTER_S: Final[float] = 0.5
 _TARGET_ID_POLL_S: Final[float] = 0.1
 _DEFAULT_WINDOW_SIZE: Final[tuple[int, int]] = (1280, 800)
 
@@ -150,6 +153,10 @@ class ScopedCdpSession:
         self._last_actuation: dict[str, float] = {}
         self._last_report: dict[str, float] = {}
         self._reported_active: set[str] = set()
+        # Root page sessions shown the user's control as an open dialog, and when the agent
+        # last dismissed one.
+        self._user_dialogs: set[str] = set()
+        self._user_dialog_dismissed: dict[str, float] = {}
         self._background: set[asyncio.Task[None]] = set()
         self._send_lock = asyncio.Lock()
 
@@ -256,8 +263,13 @@ class ScopedCdpSession:
         if policy.is_refused(method):
             raise ClientRequestError(policy.refused_message(method))
         root = session.root_target_id
+        if method == "Page.handleJavaScriptDialog" and session_id in self._user_dialogs:
+            await self._dismiss_user_dialog(request_id, session_id)
+            return
         if policy.is_actuating(method):
-            await self._require_agent_holds(root)
+            # Answering a real dialog races the client's own dialog bookkeeping; no reminder.
+            remind = method != "Page.handleJavaScriptDialog"
+            await self._require_agent_holds(root, remind=remind)
             self._note_actuation(root)
         if method == "Page.bringToFront":
             self._note_actuation(root)
@@ -577,6 +589,7 @@ class ScopedCdpSession:
             await self._admit(target_id)
         for target_id in sorted(self._announced - self.allowed_targets):
             await self._evict(target_id)
+        await self._show_user_control()
 
     def _apply_tabs(self, tabs: list[ScopedTab]) -> None:
         self._listed = {tab.target_id for tab in tabs if tab.target_id}
@@ -611,11 +624,87 @@ class ScopedCdpSession:
             await asyncio.sleep(_TARGET_ID_POLL_S)
         raise ClientRequestError("The new tab opened, but the browser did not report its target.")
 
-    async def _require_agent_holds(self, target_id: str) -> None:
+    async def _require_agent_holds(self, target_id: str, *, remind: bool = False) -> None:
+        """Refuse an actuating call while the user holds *target_id*.
+
+        :param remind: Open the user-control dialog on the tab's pages again before
+            refusing, so an action already past the client's dialog check ends at once.
+        """
         if self._clock() - self._owners_at > _OWNER_MAX_AGE_S:
             self._apply_tabs(await self._directory.list_tabs())
+            await self._show_user_control()
         if self._owners.get(target_id) == "user":
+            if remind:
+                for session_id in self._root_sessions(target_id):
+                    await self._open_user_dialog(session_id)
             raise ClientRequestError(policy.USER_IN_CONTROL_MESSAGE)
+
+    # MARK: user control
+
+    async def _show_user_control(self) -> None:
+        """Open the user-control dialog on pages the user took over; close it on hand-back.
+
+        chrome-devtools-mcp refuses its input tools on a page with an open dialog and quotes
+        the dialog's text, so the agent hears at once that it must wait.
+        """
+        now = self._clock()
+        for session_id, session in list(self._sessions.items()):
+            if session.parent is not None:
+                continue
+            held = self._owners.get(session.root_target_id) == "user"
+            if held and session_id not in self._user_dialogs:
+                dismissed = self._user_dialog_dismissed.get(session_id, float("-inf"))
+                if now - dismissed >= _USER_DIALOG_REOPEN_AFTER_S:
+                    await self._open_user_dialog(session_id)
+            elif not held and session_id in self._user_dialogs:
+                self._user_dialogs.discard(session_id)
+                await self._send_client(
+                    {
+                        "method": "Page.javascriptDialogClosed",
+                        "sessionId": session_id,
+                        "params": {
+                            "frameId": session.root_target_id,
+                            "result": True,
+                            "userInput": "",
+                        },
+                    }
+                )
+
+    async def _open_user_dialog(self, session_id: str) -> None:
+        session = self._sessions[session_id]
+        self._user_dialogs.add(session_id)
+        info = self._targets.get(session.root_target_id, {})
+        await self._send_client(
+            {
+                "method": "Page.javascriptDialogOpening",
+                "sessionId": session_id,
+                "params": {
+                    "url": info.get("url", ""),
+                    "frameId": session.root_target_id,
+                    "message": policy.USER_IN_CONTROL_DIALOG_MESSAGE,
+                    "type": "alert",
+                    "hasBrowserHandler": False,
+                    "defaultPrompt": "",
+                },
+            }
+        )
+
+    async def _dismiss_user_dialog(self, request_id: int, session_id: str) -> None:
+        """Accept the agent's answer to the user-control dialog; it opens again shortly.
+
+        The answer succeeds: clients treat a failed dialog answer as handled anyway, and
+        some never await it.
+        """
+        self._user_dialogs.discard(session_id)
+        self._user_dialog_dismissed[session_id] = self._clock()
+        await self._reply(request_id, session_id, {})
+
+    def _root_sessions(self, target_id: str) -> list[str]:
+        return [
+            session_id
+            for session_id, session in self._sessions.items()
+            if session.parent is None and session.target_id == target_id
+        ]
 
     def _note_actuation(self, target_id: str) -> None:
         now = self._clock()
@@ -697,6 +786,8 @@ class ScopedCdpSession:
 
     def _drop_session(self, session_id: str) -> None:
         self._sessions.pop(session_id, None)
+        self._user_dialogs.discard(session_id)
+        self._user_dialog_dismissed.pop(session_id, None)
         for child_id, child in list(self._sessions.items()):
             if child.parent == session_id:
                 self._drop_session(child_id)

@@ -727,3 +727,40 @@ async def test_with_the_feature_off_nothing_asks_the_owners_browser(
 
     assert response.json()["error"] == "feature_off"
     assert not [event for event in published if event.get("type") == "browser.devtools_request"]
+
+
+async def test_only_the_owner_of_an_unshared_session_picks_the_mac_browser(
+    auth_client: httpx.AsyncClient, db_uri: str
+) -> None:
+    alice = {"X-Forwarded-Email": "alice@example.com"}
+    bob = {"X-Forwarded-Email": "bob@example.com"}
+    agent = await create_test_agent(auth_client, user="alice@example.com")
+    session_id = await _create_session(auth_client, agent["id"], user="alice@example.com")
+    permissions = SqlAlchemyPermissionStore(db_uri)
+    permissions.ensure_user("bob@example.com")
+    permissions.grant("bob@example.com", session_id, LEVEL_EDIT)
+    path = f"/v1/sessions/{session_id}"
+
+    def target(value: str) -> dict[str, Any]:
+        return {"labels": {"omnigent.browser_target": value}}
+
+    editor_local = await auth_client.patch(path, json=target("local"), headers=bob)
+    editor_remote = await auth_client.patch(path, json=target("remote"), headers=bob)
+    # The editor makes the session shared, so even its owner cannot pick the Mac browser.
+    shared_local = await auth_client.patch(path, json=target("local"), headers=alice)
+    unknown = await auth_client.patch(path, json=target("phone"), headers=alice)
+    permissions.revoke("bob@example.com", session_id)
+    owner_local = await auth_client.patch(path, json=target("local"), headers=alice)
+    labels_local = (await auth_client.get(path, headers=alice)).json()["labels"]
+    cleared = await auth_client.patch(path, json=target(""), headers=alice)
+    labels_cleared = (await auth_client.get(path, headers=alice)).json()["labels"]
+
+    assert editor_local.status_code == 403, editor_local.text
+    assert editor_remote.status_code == 200, editor_remote.text
+    assert shared_local.status_code == 403, shared_local.text
+    assert unknown.status_code == 400, unknown.text
+    assert owner_local.status_code == 200, owner_local.text
+    assert labels_local["omnigent.browser_target"] == "local"
+    assert cleared.status_code == 200, cleared.text
+    # Empty means auto: the label goes rather than staying as an empty value.
+    assert "omnigent.browser_target" not in labels_cleared

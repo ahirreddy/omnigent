@@ -40,6 +40,7 @@ pub mod automation_runs;
 pub mod automation_triggers;
 pub mod automations;
 pub mod browser;
+pub mod browser_target;
 pub mod canvas;
 pub mod config;
 pub mod configuration;

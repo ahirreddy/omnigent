@@ -68,7 +68,8 @@ BROWSER_DEVTOOLS_INSTRUCTION = (
     "fetch/search tool, curl, or launching another browser) whenever you look at or "
     "interact with a web page. The browser may be signed in to the user's accounts: "
     "never ask for passwords or one-time codes in chat. If a tool refuses with "
-    "user_in_control, the user has taken over that tab; stop acting on it, wait, and "
+    "user_in_control or reports an open user_in_control dialog, the user has taken over "
+    "that tab; stop acting on it, do not dismiss the dialog, wait until it closes, and "
     "take a fresh snapshot before continuing."
 )
 

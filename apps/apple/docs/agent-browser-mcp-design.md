@@ -278,7 +278,13 @@ owner)]`, `create_tab(url)`, `close_tab(target_id)`, `report_activity(target_id,
   Hand back"; "Agent needs you: <reason> · Done · I can't". The page gets a 2 pt accent border
   while `active`.
 - **Take over** sets the owner to `user`: the proxy refuses actuating methods with
-  `user_in_control`. **Hand back** returns it to `agent`. **Stop** does the same as Take over
+  `user_in_control`. chrome-devtools-mcp turns such refusals into its own retry and timeout
+  errors, so the proxy also shows the tab's agent pages an open `alert` dialog
+  (`Page.javascriptDialogOpening`) whose text is the reason. chrome-devtools-mcp refuses input,
+  snapshot and script tools on a page with an open dialog and quotes it, and a click already
+  under way ends on it. The agent's answer to that dialog never reaches the page and it opens
+  again 0.5 s later; a refused actuating call reopens it at once. **Hand back** returns the owner
+  to `agent` and sends `Page.javascriptDialogClosed`. **Stop** does the same as Take over
   and also interrupts the session's current turn. It closes nothing: the agent's tabs stay open.
 - Remote tabs: the host already has owner `agent`/`user` with a 60 s grace; `tabs.agent_state`
   adds `idle`/`active`, and the Swift remote tab reads both into the same `TabItemState`.
@@ -348,8 +354,14 @@ window, or the app may be inactive. Requirements and mechanism:
 - **Remote tabs in the app** show the agent's activity too: `tabs.agent_state` sets
   `control_state.agent` (`active`/`idle`), which the host broadcasts with reason
   `agent_activity`, and the Rust core and FFI carry to the tab's badge.
-- **Not started:** the chip and menu, `browser_switch`, the ask-once elicitation, phase 5 and
-  phase 6.
+- **Take over reaches the agent** within one directory refresh (2 s for the app, 1 s for a
+  host) as the user-control dialog (section 5).
+- **Choosing the browser:** the server checks `omnigent.browser_target` writes (known values;
+  `local` only from the owner of an unshared session; empty deletes the label, so it reads as
+  `auto`). The core and FFI read and write it directly (`browser_target`,
+  `set_browser_target`).
+- **Not started:** the chip and menu in the apps, `browser_switch`, the ask-once elicitation,
+  phase 5 and phase 6.
 
 ## 10. Test plan
 

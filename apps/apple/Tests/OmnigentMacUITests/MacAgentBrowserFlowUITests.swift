@@ -91,24 +91,37 @@ final class MacAgentBrowserFlowUITests: XCTestCase {
       }, "\(listeners)")
   }
 
-  /// Take Over refuses the agent's input; Hand Back gives it back.
+  /// Take Over refuses the agent's input and tells it why at once; Hand Back gives it back.
   @MainActor
   private func takeOverAndHandBack(
     _ driver: AgentBrowserDriver, live: MacLiveUITestSupport, app: XCUIApplication
   ) async throws {
     live.click(live.element("browser.agent.takeOver", in: app), "Take Over")
+    let tookOver = Date()
     let handBack = live.element("browser.agent.handBack", in: app)
     XCTAssertTrue(handBack.appears(within: 10), "no Hand Back")
-    // The proxy trusts an owner it read in the last second.
-    try await Task.sleep(for: .seconds(2))
-    // The proxy refuses the click's input events. chrome-devtools-mcp retries them until its
-    // timeout and words the failure itself; the user_in_control text does not reach the agent.
-    let refused = try driver.send("click", timeout: 90)
+    // The proxy shows the agent an open dialog with the reason, which chrome-devtools-mcp
+    // quotes instead of retrying the click until its timeout. The proxy may trust the app's
+    // tabs as read up to a second before Take Over, so a click at once may still land.
+    var refused: [String: Any] = [:]
+    while Date().timeIntervalSince(tookOver) < 5 {
+      refused = try driver.send("click", timeout: 30)
+      if refused["user_in_control"] as? Bool == true { break }
+    }
+    XCTAssertLessThan(Date().timeIntervalSince(tookOver), 5, "the agent heard too late")
     XCTAssertEqual(refused["ok"] as? Bool, false, "\(refused)")
+    XCTAssertEqual(refused["user_in_control"] as? Bool, true, "\(refused)")
+    XCTAssertTrue((refused["text"] as? String ?? "").contains("wait for hand-back"), "\(refused)")
     live.click(handBack, "Hand Back")
     XCTAssertTrue(live.element("browser.agent.takeOver", in: app).appears(within: 10))
-    try await Task.sleep(for: .seconds(2))
-    let clicked = try driver.send("click", timeout: 60)
+    // The proxy closes the dialog at its next look at the app's tabs (every 2 s).
+    var clicked: [String: Any] = [:]
+    let handedBack = Date()
+    while Date().timeIntervalSince(handedBack) < 10 {
+      clicked = try driver.send("click", timeout: 60)
+      if clicked["ok"] as? Bool == true { break }
+      try await Task.sleep(for: .milliseconds(500))
+    }
     XCTAssertEqual(clicked["ok"] as? Bool, true, "\(clicked)")
   }
 

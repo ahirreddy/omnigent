@@ -32,6 +32,7 @@ mod attachment_previews;
 pub mod automations;
 pub mod branding;
 pub mod browser;
+pub mod browser_target;
 pub mod comments;
 pub mod configure;
 pub mod create;

@@ -157,10 +157,11 @@ class _Directory:
         self.fail_listing = False
         self.listings = 0
         self.failed_listings = 0
+        self.refresh_interval = 0.02
 
     @property
     def refresh_interval_s(self) -> float:
-        return 0.02
+        return self.refresh_interval
 
     async def list_tabs(self) -> list[ScopedTab]:
         if self.fail_listing:
@@ -249,12 +250,17 @@ class _Stack:
 
 @contextlib.asynccontextmanager
 async def _proxy(
-    targets: list[dict[str, Any]], tabs: list[ScopedTab], *, clock: Any = None
+    targets: list[dict[str, Any]],
+    tabs: list[ScopedTab],
+    *,
+    clock: Any = None,
+    refresh_interval_s: float = 0.02,
 ) -> AsyncIterator[_Stack]:
     agent_side, proxy_client_side = _pipe()
     proxy_upstream_side, browser_side = _pipe()
     browser = _Browser(browser_side, targets)
     directory = _Directory(browser, tabs)
+    directory.refresh_interval = refresh_interval_s
     kwargs = {"clock": clock} if clock is not None else {}
     session = ScopedCdpSession(
         client=proxy_client_side,
@@ -430,6 +436,63 @@ async def test_user_control_holds_actuating_calls_but_not_reads() -> None:
             "Input.dispatchMouseEvent", {"type": "mousePressed", "x": 5, "y": 5}, session_id
         )
         assert again["result"] == {"echo": "Input.dispatchMouseEvent"}
+
+
+async def test_taking_over_shows_the_agent_a_dialog_until_hand_back() -> None:
+    now = [100.0]
+    async with _proxy([_MINE], [_session_tab("MINE")], clock=lambda: now[0]) as stack:
+        attached = await stack.agent.request(
+            "Target.attachToTarget", {"targetId": "MINE", "flatten": True}
+        )
+        session_id = attached["result"]["sessionId"]
+        stack.directory.tabs = [_session_tab("MINE", owner="user")]
+
+        opened = await stack.agent.wait_for_event("Page.javascriptDialogOpening")
+        assert opened["sessionId"] == session_id
+        assert opened["params"]["type"] == "alert"
+        assert opened["params"]["message"].startswith("user_in_control: ")
+        assert "wait for hand-back" in opened["params"]["message"]
+
+        # The agent's answer never reaches the page, and the dialog stays shut only briefly.
+        dismissed = await stack.agent.request(
+            "Page.handleJavaScriptDialog", {"accept": True}, session_id
+        )
+        assert dismissed["result"] == {}
+        assert "Page.handleJavaScriptDialog" not in stack.browser.methods(session_id)
+        stack.agent.events.clear()
+        seen = stack.directory.listings
+        await poll_until_async(lambda: stack.directory.listings >= seen + 2)
+        await stack.agent.request("Target.getTargets")
+        assert "Page.javascriptDialogOpening" not in [e["method"] for e in stack.agent.events]
+        now[0] += 1
+        reopened = await stack.agent.wait_for_event("Page.javascriptDialogOpening")
+        assert reopened["sessionId"] == session_id
+
+        stack.directory.tabs = [_session_tab("MINE", owner="agent")]
+        closed = await stack.agent.wait_for_event("Page.javascriptDialogClosed")
+        assert closed["sessionId"] == session_id
+
+
+async def test_a_refused_action_reopens_the_dialog_before_its_refusal() -> None:
+    async with _proxy(
+        [_MINE], [_session_tab("MINE", owner="user")], refresh_interval_s=60
+    ) as stack:
+        attached = await stack.agent.request(
+            "Target.attachToTarget", {"targetId": "MINE", "flatten": True}
+        )
+        session_id = attached["result"]["sessionId"]
+        click = await stack.agent.request(
+            "Input.dispatchMouseEvent", {"type": "mousePressed", "x": 5, "y": 5}, session_id
+        )
+
+        assert click["error"]["message"].startswith("user_in_control")
+        # It came before the refusal, so a click already under way ends on the dialog.
+        dialogs = [
+            event["sessionId"]
+            for event in stack.agent.events
+            if event["method"] == "Page.javascriptDialogOpening"
+        ]
+        assert dialogs == [session_id]
 
 
 async def test_child_frames_and_workers_are_reachable_through_their_page() -> None:

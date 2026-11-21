@@ -14,6 +14,7 @@ from typing import Final, Literal
 
 import httpx
 
+from omnigent.browser_devtools_availability import BROWSER_TARGET_LABEL
 from omnigent.entities.remote_browser import DEFAULT_BROWSER_PROFILE
 from omnigent.runner.browser_devtools.app_backend import app_backend
 from omnigent.runner.browser_devtools.host_backend import PublishEvent, host_backend
@@ -24,7 +25,6 @@ from omnigent.stores.conversation_store import (
     SCHEDULED_TASK_RUN_LABEL_KEY,
 )
 
-BROWSER_TARGET_LABEL: Final[str] = "omnigent.browser_target"
 BackendKind = Literal["local", "remote"]
 LabelReader = Callable[[str], Awaitable[Mapping[str, str]]]
 
