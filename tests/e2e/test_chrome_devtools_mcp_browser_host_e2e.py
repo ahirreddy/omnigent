@@ -20,29 +20,28 @@ import contextlib
 import functools
 import http.server
 import os
-import re
 import shutil
-import subprocess
 import threading
-from collections.abc import AsyncIterator, Iterator, Mapping
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
-from typing import Any
 
 import pytest
 
-from omnigent.browser_devtools_availability import browser_devtools_server
 from omnigent.runner.browser_devtools.resolver import RunnerBrowserResolver
 from omnigent.runner.browser_devtools.server import BrowserDevtoolsService
 from omnigent.runner.browser_host import BrowserHostManager, BrowserHostSettings, host_request
+from tests._helpers.chrome_devtools_mcp import (
+    McpClient,
+    page_ids,
+    snapshot_uid,
+    start_chrome_devtools_mcp,
+    tool_text,
+)
 from tests._helpers.live_server import terminate_process
-from tests._helpers.stdio_jsonrpc import read_json_line, write_json_line
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="browser hosts use Unix sockets")
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-# The first call waits for npm to fetch the package.
-_FIRST_CALL_TIMEOUT_S = 240.0
-_CALL_TIMEOUT_S = 90.0
 
 _PAGES = {
     "agent.html": (
@@ -71,69 +70,6 @@ def _page_server(root: Path) -> Iterator[str]:
     finally:
         server.shutdown()
         server.server_close()
-
-
-class _McpClient:
-    """Newline-delimited JSON-RPC to the MCP server's stdio, off the event loop."""
-
-    def __init__(self, process: subprocess.Popen[str], stderr_path: Path) -> None:
-        self._process = process
-        self._stderr_path = stderr_path
-        self._next_id = 1
-
-    async def request(
-        self, method: str, params: Mapping[str, object], *, timeout_s: float = _CALL_TIMEOUT_S
-    ) -> dict[str, Any]:
-        request_id = self._next_id
-        self._next_id += 1
-        assert self._process.stdin is not None and self._process.stdout is not None
-        write_json_line(
-            self._process.stdin,
-            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": dict(params)},
-        )
-        while True:
-            try:
-                message = await asyncio.to_thread(
-                    read_json_line, self._process.stdout, timeout_s=timeout_s
-                )
-            except (EOFError, TimeoutError) as exc:
-                stderr = self._stderr_path.read_text(errors="replace")[-4000:]
-                raise AssertionError(
-                    f"chrome_devtools stopped answering {method}:\n{stderr}"
-                ) from exc
-            if message.get("id") == request_id:
-                assert "error" not in message, message
-                result = message["result"]
-                assert isinstance(result, dict)
-                return result
-
-    def notify(self, method: str) -> None:
-        assert self._process.stdin is not None
-        write_json_line(self._process.stdin, {"jsonrpc": "2.0", "method": method})
-
-    async def call(self, tool: str, arguments: Mapping[str, object]) -> dict[str, Any]:
-        result = await self.request("tools/call", {"name": tool, "arguments": dict(arguments)})
-        assert not result.get("isError"), (tool, result)
-        return result
-
-
-def _text(result: Mapping[str, Any]) -> str:
-    return "\n".join(item.get("text", "") for item in result["content"] if item["type"] == "text")
-
-
-def _page_ids(listing: str) -> dict[str, int]:
-    """Map each listed page's URL to its pageId (``"<id>: <title> (<url>)"`` lines)."""
-    pages: dict[str, int] = {}
-    for page_id, label in re.findall(r"^(\d+): (.*)$", listing, flags=re.MULTILINE):
-        url = label.removesuffix(" [selected]").rsplit(" ", 1)[-1].strip("()")
-        pages[url] = int(page_id)
-    return pages
-
-
-def _uid(snapshot: str, role: str, name: str) -> str:
-    match = re.search(rf'uid=(\S+) {role} "{re.escape(name)}"', snapshot)
-    assert match, snapshot
-    return match.group(1)
 
 
 @pytest.fixture
@@ -191,34 +127,17 @@ async def test_chrome_devtools_mcp_drives_only_the_sessions_tabs(
             )
         )
         await service.ensure_started()
-        config = browser_devtools_server(service.endpoint_for("conv_agent"))
-        assert config.command is not None
         stderr_log = (tmp_path / "chrome-devtools-mcp.log").open("w")
-        # A test venv may install another omnigent copy, so the launcher runs from this
-        # checkout: without -I, ``-m`` puts the working directory first on the path.
-        process = subprocess.Popen(
-            [config.command, *(arg for arg in config.args if arg != "-I")],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
+        # The launcher installs the pinned release into this test's own data dir.
+        process = start_chrome_devtools_mcp(
+            service.endpoint_for("conv_agent"),
+            repo_root=_REPO_ROOT,
+            data_dir=tmp_path / "mcp-data",
             stderr=stderr_log,
-            text=True,
-            cwd=_REPO_ROOT,
-            # The launcher installs the pinned release into this test's own data dir.
-            env={**os.environ, **config.env, "OMNIGENT_DATA_DIR": str(tmp_path / "mcp-data")},
         )
         try:
-            mcp = _McpClient(process, tmp_path / "chrome-devtools-mcp.log")
-            await mcp.request(
-                "initialize",
-                {
-                    "protocolVersion": "2025-06-18",
-                    "capabilities": {},
-                    "clientInfo": {"name": "omnigent-e2e", "version": "0"},
-                },
-                timeout_s=_FIRST_CALL_TIMEOUT_S,
-            )
-            mcp.notify("notifications/initialized")
-            tools = {tool["name"] for tool in (await mcp.request("tools/list", {}))["tools"]}
+            mcp = McpClient(process, tmp_path / "chrome-devtools-mcp.log")
+            tools = await mcp.initialize()
             assert {
                 "list_pages",
                 "new_page",
@@ -237,26 +156,26 @@ async def test_chrome_devtools_mcp_drives_only_the_sessions_tabs(
                 "wait_for",
             } <= tools, sorted(tools)
 
-            listing = _text(await mcp.call("list_pages", {}))
-            pages = _page_ids(listing)
+            listing = tool_text(await mcp.call("list_pages", {}))
+            pages = page_ids(listing)
             assert f"{base}/agent.html" in pages, listing
             assert "personal" not in listing
             page = pages[f"{base}/agent.html"]
 
-            snapshot = _text(await mcp.call("take_snapshot", {"pageId": page}))
-            await mcp.call(
-                "fill", {"pageId": page, "uid": _uid(snapshot, "textbox", "Name"), "value": "Ada"}
-            )
-            await mcp.call("click", {"pageId": page, "uid": _uid(snapshot, "button", "Go")})
+            snapshot = tool_text(await mcp.call("take_snapshot", {"pageId": page}))
+            name_field = snapshot_uid(snapshot, "textbox", "Name")
+            go_button = snapshot_uid(snapshot, "button", "Go")
+            await mcp.call("fill", {"pageId": page, "uid": name_field, "value": "Ada"})
+            await mcp.call("click", {"pageId": page, "uid": go_button})
             value = await mcp.call(
                 "evaluate_script",
                 {"pageId": page, "function": "() => document.getElementById('name').value"},
             )
-            assert "Ada" in _text(value)
-            console = _text(await mcp.call("list_console_messages", {"pageId": page}))
+            assert "Ada" in tool_text(value)
+            console = tool_text(await mcp.call("list_console_messages", {"pageId": page}))
             assert "clicked Ada" in console
             await mcp.call("wait_for", {"pageId": page, "text": ["Go"]})
-            network = _text(await mcp.call("list_network_requests", {"pageId": page}))
+            network = tool_text(await mcp.call("list_network_requests", {"pageId": page}))
             assert "data.json" in network
             screenshot = await mcp.call("take_screenshot", {"pageId": page})
             assert any(item["type"] == "image" for item in screenshot["content"]), screenshot
@@ -267,9 +186,9 @@ async def test_chrome_devtools_mcp_drives_only_the_sessions_tabs(
             title = await mcp.call(
                 "evaluate_script", {"pageId": page, "function": "() => document.title"}
             )
-            assert "Second page" in _text(title)
+            assert "Second page" in tool_text(title)
 
-            opened = _text(
+            opened = tool_text(
                 await mcp.call("new_page", {"url": f"{base}/opened.html", "background": True})
             )
             assert f"{base}/opened.html" in opened and "personal" not in opened
