@@ -5,8 +5,8 @@ import XCTest
 /// the background and another session's tabs are shown: the real `chrome-devtools-mcp`, through
 /// the runner's scoped proxy, the owner-only relay and the app's gated endpoint
 /// (`Tools/agent-browser-driver.py`). Then the page's agent strip, Take Over refusing the agent,
-/// Hand Back, and the tab staying once the agent lets go. (The tab's badge is hidden from
-/// accessibility; `BrowserTabHostDevToolsTests` covers its state.)
+/// Hand Back, and the tab staying once the agent lets go. The tab's accessibility label carries
+/// its badge.
 ///
 /// Needs a server with `agent_browser_devtools` on and the pinned chrome-devtools-mcp installed
 /// in `TEST_RUNNER_OMNIGENT_AGENT_BROWSER_DATA` (the agent browser VM job prepares both).
@@ -48,9 +48,9 @@ final class MacAgentBrowserFlowUITests: XCTestCase {
 
     app.activate()
     live.open(agentSession, in: app)
+    // The page retitles itself when the agent clicks Greet; VoiceOver hears the agent with it.
     let agentTab = live.tabs("browser", in: app).matching(
-      // The page retitles itself when the agent clicks Greet.
-      NSPredicate(format: "label == %@", "Greeted Ada")
+      NSPredicate(format: "label == %@", "Greeted Ada, Agent is controlling this tab")
     ).firstMatch
     XCTAssertTrue(agentTab.appears(within: 20), "no agent tab\n\(app.debugDescription)")
     live.click(agentTab, "the agent's tab")
@@ -63,7 +63,10 @@ final class MacAgentBrowserFlowUITests: XCTestCase {
     driver.quit()
     XCTAssertTrue(
       live.element("browser.agent.control", in: app).disappears(within: 30), "the strip stayed")
-    XCTAssertTrue(agentTab.exists, "the agent's tab closed")
+    let releasedTab = live.tabs("browser", in: app).matching(
+      NSPredicate(format: "label == %@", "Greeted Ada")
+    ).firstMatch
+    XCTAssertTrue(releasedTab.appears(within: 10), "the agent's tab closed or kept its badge")
   }
 
   /// The agent fills and clicks a page in a new tab, reads it and takes a screenshot, while the
@@ -98,8 +101,8 @@ final class MacAgentBrowserFlowUITests: XCTestCase {
     XCTAssertTrue(handBack.appears(within: 10), "no Hand Back")
     // The proxy trusts an owner it read in the last second.
     try await Task.sleep(for: .seconds(2))
-    // The proxy refuses the click's input events; chrome-devtools-mcp retries them until its
-    // timeout and reports the element as not interactive.
+    // The proxy refuses the click's input events. chrome-devtools-mcp retries them until its
+    // timeout and words the failure itself; the user_in_control text does not reach the agent.
     let refused = try driver.send("click", timeout: 90)
     XCTAssertEqual(refused["ok"] as? Bool, false, "\(refused)")
     live.click(handBack, "Hand Back")

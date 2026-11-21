@@ -101,7 +101,7 @@ struct TabItemView: View {
     #endif
     .help(help)
     .accessibilityElement(children: .contain)
-    .accessibilityLabel(tab.displayTitle)
+    .accessibilityLabel(Self.accessibilityLabel(tab))
     .accessibilityValue(accessibilityValue)
     .accessibilityAddTraits(isSelected ? .isSelected : [])
     .accessibilityAction { actions.select(tab.id) }
@@ -178,6 +178,15 @@ struct TabItemView: View {
     Self.accessibilityValue(tab, isVisibleInOtherPane: isVisibleInOtherPane)
   }
 
+  /// The tab's name for VoiceOver: its title, then the agent's badge, so the badge is heard
+  /// with the tab.
+  /// - Parameter tab: The tab.
+  /// - Returns: The text.
+  static func accessibilityLabel(_ tab: TabItemState) -> String {
+    guard let agent = tab.agentControl else { return tab.displayTitle }
+    return "\(tab.displayTitle), \(agent.label)"
+  }
+
   /// What VoiceOver reads after the title.
   /// - Parameters:
   ///   - tab: The tab.
@@ -188,7 +197,6 @@ struct TabItemView: View {
     if let pane = tab.pane { parts.append("\(pane.label) pane") }
     if isVisibleInOtherPane { parts.append("Shown") }
     if let status = tab.status.label { parts.append(status) }
-    if let agent = tab.agentControl { parts.append(agent.label) }
     if tab.isPinned { parts.append("Pinned") }
     if tab.isReadOnly { parts.append("Read only") }
     return parts.joined(separator: ", ")

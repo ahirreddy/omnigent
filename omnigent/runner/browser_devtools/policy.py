@@ -83,8 +83,8 @@ ACTUATING_METHODS: Final[frozenset[str]] = frozenset(
 )
 
 USER_IN_CONTROL_MESSAGE: Final[str] = (
-    "user_in_control: the user has taken over this tab. Do not act on it until they hand "
-    "it back; wait, or call browser_request_human, then take a fresh snapshot."
+    "user_in_control: the user has taken over this tab; wait for hand-back. Do not act on "
+    "it until they hand it back, then take a fresh snapshot."
 )
 
 
