@@ -1,21 +1,23 @@
 """The local browser backend: the session owner's Mac app and its in-app Chromium.
 
-The app's Web Host opens CEF's DevTools port on loopback. The runner learns the
-port, and the session's tabs, through the owner-only
-``/v1/sessions/{id}/browser/devtools_request`` relay. The upstream connection
-then goes straight to ``127.0.0.1``: the runner accepts the port only when its
-own ``/json/version`` names the same browser the app reported, which proves the
-runner shares the Mac.
+Chromium never opens a DevTools port. The app holds its DevTools pipe and, on
+request, opens a loopback WebSocket gate in front of it whose path carries a
+secret for one session; the gate shows that session only its own tabs. The
+runner asks for the gate, and for the session's tabs, through the owner-only
+``/v1/sessions/{id}/browser/devtools_request`` relay, then connects straight to
+``127.0.0.1``. Only a runner on the same Mac reaches the gate, which proves the
+runner shares the Mac. The secret is never logged.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Mapping
 from typing import Final, cast
-from urllib.parse import urlsplit
 
 import httpx
+from websockets.exceptions import InvalidHandshake, InvalidStatus
 
 from omnigent.runner.browser_devtools.directory import (
     AgentTabState,
@@ -24,9 +26,10 @@ from omnigent.runner.browser_devtools.directory import (
     TabOwner,
 )
 from omnigent.runner.browser_devtools.server import (
+    BIND_HOST,
     BrowserBackend,
     BrowserUnavailableError,
-    browser_websocket_url,
+    connect_upstream,
 )
 
 _logger = logging.getLogger(__name__)
@@ -35,6 +38,8 @@ _logger = logging.getLogger(__name__)
 _APP_REFRESH_INTERVAL_S: Final[float] = 2.0
 # The server waits 2 s for a claim and 30 s for the app's answer.
 _RELAY_TIMEOUT = httpx.Timeout(40.0, connect=10.0)
+# The gate's path: a fixed prefix and the session's 256-bit secret in hex.
+_GATE_PATH: Final[re.Pattern[str]] = re.compile(r"/devtools/browser/[0-9a-f]{64}")
 
 
 def _scoped_tab(record: Mapping[str, object]) -> ScopedTab:
@@ -129,6 +134,9 @@ class AppTabDirectory:
 async def app_backend(server_client: httpx.AsyncClient, session_id: str) -> BrowserBackend:
     """The owner's Mac app browser, when it runs on this machine.
 
+    Asks the app to open its gate and connects to it, so a runner on another
+    machine finds out here and the resolver can try the next browser.
+
     :raises BrowserUnavailableError: When no app answered, the owner turned agent
         browsing off, or the app runs on another machine.
     """
@@ -137,22 +145,31 @@ async def app_backend(server_client: httpx.AsyncClient, session_id: str) -> Brow
     except TabDirectoryError as exc:
         raise BrowserUnavailableError(str(exc)) from exc
     port = data.get("port")
-    reported_path = data.get("browser_path")
-    if not isinstance(port, int) or isinstance(port, bool) or not isinstance(reported_path, str):
-        raise BrowserUnavailableError("The Mac app did not report its browser's DevTools port.")
+    path = data.get("path")
+    if (
+        not isinstance(port, int)
+        or isinstance(port, bool)
+        or not 0 < port < 65536
+        or not isinstance(path, str)
+        or not _GATE_PATH.fullmatch(path)
+    ):
+        raise BrowserUnavailableError("The Mac app did not report its browser's DevTools gate.")
+    url = f"ws://{BIND_HOST}:{port}{path}"
     try:
-        local_url = await browser_websocket_url(port)
-    except BrowserUnavailableError as exc:
+        upstream = await connect_upstream(url)
+    except InvalidStatus as exc:
         raise BrowserUnavailableError(
-            f"The Mac app's browser is not on this machine ({exc})."
+            "The Mac app's browser is not on this machine: the listener on port "
+            f"{port} here refused the session (HTTP {exc.response.status_code})."
         ) from exc
-    if urlsplit(local_url).path != reported_path:
+    except (OSError, InvalidHandshake, TimeoutError) as exc:
         raise BrowserUnavailableError(
-            "The Mac app's browser is not on this machine: port "
-            f"{port} here belongs to another browser."
-        )
+            "The Mac app's browser is not on this machine: nothing here answered on "
+            f"port {port} ({type(exc).__name__})."
+        ) from exc
     return BrowserBackend(
-        upstream_url=local_url,
+        upstream_url=url,
         directory=AppTabDirectory(server_client, session_id),
         kind="local",
+        upstream=upstream,
     )

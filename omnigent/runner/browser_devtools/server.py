@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Final, Protocol
 from urllib.parse import urlsplit
 
 import httpx
+from websockets.asyncio.client import ClientConnection
 from websockets.asyncio.client import connect as websocket_connect
 from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidURI
@@ -56,14 +57,18 @@ class BrowserUnavailableError(Exception):
 class BrowserBackend:
     """A real browser and the session's view of it.
 
-    :param upstream_url: Browser-level CDP WebSocket URL on loopback.
+    :param upstream_url: Browser-level CDP WebSocket URL on loopback. The Mac
+        app's carries the session's gate secret, so it is never logged.
     :param directory: The session's tabs on that browser.
     :param kind: ``"local"`` (the Mac app) or ``"remote"`` (a browser host).
+    :param upstream: An already open connection to *upstream_url*, used instead
+        of connecting again.
     """
 
-    upstream_url: str
+    upstream_url: str = dataclasses.field(repr=False)
     directory: TabDirectory
     kind: str
+    upstream: ClientConnection | None = dataclasses.field(default=None, repr=False)
 
 
 class BackendResolver(Protocol):
@@ -125,6 +130,29 @@ async def browser_websocket_url(port: int) -> str:
         raise BrowserUnavailableError(f"The browser's DevTools port {port} gave no browser URL.")
     # Keep the literal loopback address; the browser may report another host name.
     return f"ws://{BIND_HOST}:{port}{urlsplit(reported).path}"
+
+
+# Handshake lines name the URL, which carries the Mac app's gate secret; keep
+# them out of debug logs.
+_UPSTREAM_SOCKET_LOGGER = logging.getLogger(f"{__name__}.upstream")
+_UPSTREAM_SOCKET_LOGGER.setLevel(logging.INFO)
+
+
+async def connect_upstream(url: str) -> ClientConnection:
+    """Open a browser-level CDP WebSocket on loopback.
+
+    :param url: E.g. ``"ws://127.0.0.1:9333/devtools/browser/<id>"``.
+    :raises OSError: When nothing listens there.
+    :raises InvalidHandshake: When the endpoint refuses the connection.
+    """
+    return await websocket_connect(
+        url,
+        max_size=None,
+        ping_interval=None,
+        compression=None,
+        open_timeout=_VERSION_TIMEOUT_S,
+        logger=_UPSTREAM_SOCKET_LOGGER,
+    )
 
 
 class BrowserDevtoolsService:
@@ -218,15 +246,19 @@ class BrowserDevtoolsService:
             _logger.info("agent browser unavailable: %s", exc, extra={"session_id": session_id})
             await serve_unavailable(connection, str(exc))
             return
-        try:
-            upstream = await websocket_connect(
-                backend.upstream_url, max_size=None, ping_interval=None, compression=None
-            )
-        except (OSError, InvalidHandshake, InvalidURI, TimeoutError) as exc:
-            reason = f"Could not reach the {backend.kind} browser's DevTools endpoint: {exc}"
-            _logger.warning(reason, extra={"session_id": session_id})
-            await serve_unavailable(connection, reason)
-            return
+        upstream = backend.upstream
+        if upstream is None:
+            try:
+                upstream = await connect_upstream(backend.upstream_url)
+            except (OSError, InvalidHandshake, InvalidURI, TimeoutError) as exc:
+                # InvalidURI's text repeats the URL; the others never do.
+                detail = "invalid URL" if isinstance(exc, InvalidURI) else str(exc)
+                reason = (
+                    f"Could not reach the {backend.kind} browser's DevTools endpoint: {detail}"
+                )
+                _logger.warning(reason, extra={"session_id": session_id})
+                await serve_unavailable(connection, reason)
+                return
         async with upstream:
             session = ScopedCdpSession(
                 client=connection,

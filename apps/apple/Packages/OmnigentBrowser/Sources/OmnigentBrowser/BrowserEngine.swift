@@ -133,3 +133,43 @@ public final class DefaultBrowserEngineProvider: BrowserEngineProvider {
     .engineNotBundled(kind, reason: "This edition of the app ships only the system engine.")
   }
 }
+
+/// Where an agent's DevTools proxy reaches an engine: `ws://127.0.0.1:<port><path>`. The path
+/// carries a secret for one session, so it is never logged.
+nonisolated public struct BrowserAgentDevToolsEndpoint: Sendable, Equatable,
+  CustomStringConvertible, CustomDebugStringConvertible
+{
+  /// The loopback TCP port.
+  public let port: Int
+  /// The WebSocket path, with the session's secret.
+  public let path: String
+
+  /// The port only: interpolating an endpoint into a log line must not leak its secret.
+  public var description: String { "127.0.0.1:\(port) (secret path withheld)" }
+  /// Same as `description`.
+  public var debugDescription: String { description }
+
+  /// Creates an endpoint.
+  public init(port: Int, path: String) {
+    self.port = port
+    self.path = path
+  }
+}
+
+/// An engine that lets agents' DevTools proxies drive it through an access-gated loopback
+/// endpoint (Chromium). Each scope, an Omnigent session, gets its own secret and sees only the
+/// targets it was given.
+public protocol BrowserAgentDevToolsGate: AnyObject {
+  /// Opens the endpoint if needed, once the engine runs.
+  /// - Parameter scope: The session.
+  /// - Returns: The session's endpoint.
+  /// - Throws: When the engine does not start or no loopback port can be opened.
+  func agentDevToolsEndpoint(scope: String) async throws(BrowserError)
+    -> BrowserAgentDevToolsEndpoint
+  /// Sets the DevTools targets `scope` may use: its tabs.
+  func setAgentDevToolsScope(_ scope: String, targets: Set<String>)
+  /// Lets `scope` use one more target, e.g. a tab just opened for its agent.
+  func addAgentDevToolsTarget(_ target: String, scope: String)
+  /// Closes the endpoint and its connections.
+  func closeAgentDevToolsEndpoint()
+}

@@ -27,8 +27,14 @@ nonisolated public struct SessionConfiguration: Sendable, Hashable {
   public var rootCacheURL: URL
   /// Preferred rendering path. Falls back to `.ioSurface` when the private API is missing.
   public var renderMode: RenderMode
-  /// Chrome remote debugging port; 0 disables it.
+  /// Chrome remote debugging port; 0 disables it. Unauthenticated: any local process can
+  /// attach, so apps leave it closed and use `agentDevTools`.
   public var remoteDebuggingPort: Int
+  /// Gives agents DevTools through a pipe only this app holds, behind the loopback gate that
+  /// `Session.agentDevToolsEndpoint(scope:)` opens on demand.
+  public var agentDevTools: Bool
+  /// How long the agent DevTools gate stays open with no connection.
+  public var agentDevToolsIdleTimeout: Duration
   /// Uses Chromium's mock keychain so unsigned rebuilds do not trigger Keychain prompts.
   public var useMockKeychain: Bool
   /// Keychain service for Chromium's cookie-encryption key.
@@ -59,7 +65,8 @@ nonisolated public struct SessionConfiguration: Sendable, Hashable {
     useMockKeychain: Bool = false,
     keychainServiceName: String? = nil,
     locale: String? = nil,
-    disableSandbox: Bool = false
+    disableSandbox: Bool = false,
+    agentDevTools: Bool = false
   ) {
     self.hostAppURL = hostAppURL
     self.rootCacheURL = rootCacheURL
@@ -69,6 +76,8 @@ nonisolated public struct SessionConfiguration: Sendable, Hashable {
     self.keychainServiceName = keychainServiceName
     self.locale = locale
     self.disableSandbox = disableSandbox
+    self.agentDevTools = agentDevTools
+    agentDevToolsIdleTimeout = .seconds(60)
     handshakeTimeout = .seconds(10)
     readyTimeout = .seconds(30)
     pingInterval = .seconds(1)

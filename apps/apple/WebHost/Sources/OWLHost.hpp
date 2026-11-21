@@ -23,6 +23,8 @@ struct HostOptions {
   std::string service;
   std::string token;
   pid_t parent_pid = 0;
+  /// Serve DevTools to the client over fds 3 (commands in) and 4 (replies out), never a port.
+  bool devtools_pipe = false;
 };
 
 struct SessionConfig {

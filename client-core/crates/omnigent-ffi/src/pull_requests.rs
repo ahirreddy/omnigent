@@ -21,6 +21,9 @@ pub struct PanelFeatures {
     /// and `session_journal`).
     #[uniffi(default = false)]
     pub session_journal: bool,
+    /// Session agents may drive the owner's browser (`features.agent_browser_devtools`).
+    #[uniffi(default = false)]
+    pub agent_browser_devtools: bool,
 }
 
 impl From<core::PanelFeatures> for PanelFeatures {
@@ -30,6 +33,7 @@ impl From<core::PanelFeatures> for PanelFeatures {
             pull_requests: features.pull_requests,
             comment_anchors: features.comment_anchors,
             session_journal: features.session_journal,
+            agent_browser_devtools: features.agent_browser_devtools,
         }
     }
 }

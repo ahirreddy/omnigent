@@ -26,7 +26,7 @@ We do not reimplement its tools.
 | Scoping | The proxy presents a *virtual browser* that contains only the session's tabs. It emulates the browser-level `Target` domain, attaches to allowed pages itself, and never forwards browser-level auto-attach |
 | New pages | `Target.createTarget` becomes a real tab: an app tab in the session's tab group locally, a host tab (`tabs.create`, `created_by: agent`) remotely |
 | User control | While the user holds a tab, the proxy refuses actuating methods (`Input.*`, navigation, dialogs, uploads, emulation, close) with an error that tells the agent to wait |
-| Local browser endpoint | CEF `remote_debugging_port` on loopback in the Web Host, behind the setting *Let agents use this Mac's browser* (on by default). Tab directory over an owner-only server relay. Hardening to a pipe plus app-side token gate is phase 6 |
+| Local browser endpoint | No DevTools port: the Web Host serves DevTools over `--remote-debugging-pipe` to the app alone, and the app opens a loopback WebSocket gate with a per-session secret on an owner's `attach` (section 3.4), behind the setting *Let agents use this Mac's browser* (on by default). Tab directory over an owner-only server relay |
 | Remote browser endpoint | The profile host's existing loopback CDP port (`host.json` `cdp_port`); tab directory over `host.sock` |
 | Which browser | Label `omnigent.browser_target` = `auto` (default), `local` or `remote`. `auto` decides at connection time and asks once only when both are plausible. A chip in the session UI switches with one click |
 | Existing `browser_*` tools | Hidden for a session that gets DevTools MCP; kept unchanged everywhere else (web and Electron panes, flag off) |
@@ -202,16 +202,26 @@ owner)]`, `create_tab(url)`, `close_tab(target_id)`, `report_activity(target_id,
 
 - **Web Host endpoint:** the app never opens CEF's `remoteDebuggingPort`. That port is
   unauthenticated, and any local process could read every signed-in site's cookies through
-  it (the reason Chrome refuses remote debugging on the default profile). Until the gated
-  endpoint below exists, the app answers `attach` with `endpoint_unavailable` and the runner
-  uses its own browser. The gated endpoint, next: start the Web Host with
-  `--remote-debugging-pipe` on file descriptors only the app holds (needs `posix_spawn` in
-  `HostProcess`, and a check that CEF 156 honours the switch), and serve the runner a
-  loopback WebSocket that the app opens only on a relay request with the server's
-  `agent_browser_devtools` on. Each session gets its own secret through the relay; the app
-  multiplexes the clients onto the one pipe connection and closes the socket once no
-  session holds an agent tab. Each page's target id comes from `Target.getTargetInfo` over
-  the page's own DevTools session (`BrowserAgentInput.devToolsTargetID()`).
+  it (the reason Chrome refuses remote debugging on the default profile). Instead:
+  - `HostProcess` spawns the Web Host with `posix_spawn` and `POSIX_SPAWN_CLOEXEC_DEFAULT`,
+    handing it two pipes as fds 3 and 4 and nothing else; `--owl-devtools-pipe` makes the host
+    add `--remote-debugging-pipe` (CEF 156 honours it; a VM probe answered
+    `Browser.getVersion`, `Target.getTargets` and `Target.createTarget` with no TCP listener).
+  - Nothing listens until an owner's `attach`, and only while the server advertises
+    `agent_browser_devtools` and the setting is on. Then `DevToolsGate` opens a loopback
+    WebSocket whose path carries the session's 256-bit secret
+    (`/devtools/browser/<secret>`); it refuses other paths, any `Origin` (web pages) and
+    other `Host` names before upgrading, and closes after 60 s without a connection. The
+    secret travels only in the relay answer and is never logged; endpoints print without it.
+  - `DevToolsMultiplexer` shares the one pipe: it renumbers ids, gives each CDP session to the
+    connection that attached it, runs discovery itself, shows each connection only its
+    session's tabs and their popups, refuses attaching to anything else, and refuses the same
+    profile-wide methods as the proxy. A leaked secret is worth one session's tabs.
+  - The runner connects in `app_backend`, so a runner on another machine (nothing answers, or
+    another listener refuses the secret) falls through to the next browser.
+  - Each page's target id comes from `Target.getTargetInfo` over the page's own DevTools
+    session (`BrowserAgentInput.devToolsTargetID()`); listings and new tabs set the
+    session's scope at the gate.
 - **Swift:** `BrowserActionStore` routes `devtools.<op>` actions to `BrowserDevToolsPerformer`
   (app target), which answers from `BrowserTabHost+DevTools`: the session group's browser tabs
   in every window (pages the session never showed are built), background agent tabs in the
@@ -323,12 +333,11 @@ window, or the app may be inactive. Requirements and mechanism:
 | **3 (b) Remote polish** | `tabs.agent_state` host op, `control_state.agent`, remote tab badge, host tabs in the session tab list | Same badge states on remote tabs |
 | **4 (c) Selection** | `omnigent.browser_target`, auto policy and ask-once elicitation, chip and menu, `browser_switch` | Switching moves the next tool call; owner-only `local` |
 | **5 (d) Tunnel** | Owner-only CDP tunnel path through the server to the app | A sandbox runner drives the local Mac browser |
-| **6 (e) Hand-off and hardening** | `browser_request_human`, `needs_you`, pipe-based local endpoint | Login hand-off round trip on both browsers |
+| **6 (e) Hand-off and hardening** | `browser_request_human`, `needs_you` | Login hand-off round trip on both browsers |
 
 ### Status (2026-11-20)
 
-- **Local endpoint:** not yet. The app opens no DevTools port, and the local backend refuses
-  `attach` until the gated endpoint in 3.4 lands.
+- **Local endpoint:** the pipe and the gated loopback endpoint (3.4).
 - **Done:** phase 1; phase 2, without pinning the conversation; from phase 3, the host's
   `tabs.agent_state` op and `agent_state` in tab records and resources; from phase 4,
   `omnigent.browser_target` with `auto` preferring the remote browser for scheduled runs, and

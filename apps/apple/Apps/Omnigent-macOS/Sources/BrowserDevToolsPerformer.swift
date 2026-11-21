@@ -1,32 +1,41 @@
 import Foundation
+import OSLog
 import OmnigentAppBrowser
 import OmnigentBrowser
 import OmnigentCoreFFI
 import OmnigentStores
 
 /// Answers the agent DevTools proxy's directory requests (`browser.devtools_request`, claimed
-/// as `devtools.<op>` actions) about this app's Chromium: its loopback DevTools port, the
+/// as `devtools.<op>` actions) about this app's Chromium: the endpoint to connect to, the
 /// session's browser tabs with their targets, new background tabs for the agent, closing them,
 /// and the agent's state for each tab's badge and strip. The server lets only the session
 /// owner's clients claim these requests, and never for sessions shared with other editors.
 ///
-/// Chromium's raw DevTools port is never opened: any local process could attach to it and read
-/// every signed-in site's cookies. `attach` refuses until the app serves an access-gated
-/// endpoint, so the runner falls back to its own browser.
+/// Chromium never opens a DevTools port. `attach` opens the app's loopback gate in front of a
+/// DevTools pipe only the app holds, and answers with a path that carries this session's
+/// secret; the gate shows the session only its own tabs. It opens only while the server offers
+/// `agent_browser_devtools` and the user's setting is on.
 final class BrowserDevToolsPerformer: BrowserActionPerforming {
+  private static let logger = Logger(subsystem: "ai.omnigent.mac", category: "agent-devtools")
   private let tabs: BrowserTabHost
   private let settings: BrowserSettings
   private weak var connection: ConnectionStore?
+  private let gate: () throws(BrowserError) -> (any BrowserAgentDevToolsGate)?
 
   /// Creates a performer.
   /// - Parameters:
   ///   - tabs: The app's browser tabs.
   ///   - settings: The browser settings, for the user's agent browsing switch.
   ///   - connection: The server connection whose sessions' turns Stop interrupts.
-  init(tabs: BrowserTabHost, settings: BrowserSettings, connection: ConnectionStore?) {
+  ///   - gate: The engine behind the gate, started on first use; `nil` without Chromium.
+  init(
+    tabs: BrowserTabHost, settings: BrowserSettings, connection: ConnectionStore?,
+    gate: @escaping () throws(BrowserError) -> (any BrowserAgentDevToolsGate)?
+  ) {
     self.tabs = tabs
     self.settings = settings
     self.connection = connection
+    self.gate = gate
   }
 
   /// Runs one directory request and returns its result object as JSON. A refused request is a
@@ -35,6 +44,7 @@ final class BrowserDevToolsPerformer: BrowserActionPerforming {
     let operation = String(request.action.dropFirst(BrowserActionStore.devToolsActionPrefix.count))
     let args = try Self.arguments(request.argsJson)
     guard settings.agentDevTools else {
+      closeGate()
       return try Self.encode(
         DevToolsRefusal(
           error: "agent_browsing_off",
@@ -45,17 +55,17 @@ final class BrowserDevToolsPerformer: BrowserActionPerforming {
     do throws(BrowserError) {
       switch operation {
       case "attach":
-        reply = DevToolsRefusal(
-          error: "endpoint_unavailable",
-          message: "This Mac's browser has no access-gated DevTools endpoint yet.")
+        reply = try await attach(sessionID)
       case "tabs.list":
-        reply = DevToolsReply(
-          data: DevToolsListing(tabs: await tabs.devToolsTabs(sessionID: sessionID)))
+        let listing = await tabs.devToolsTabs(sessionID: sessionID)
+        try gate()?.setAgentDevToolsScope(sessionID, targets: Set(listing.map(\.targetID)))
+        reply = DevToolsReply(data: DevToolsListing(tabs: listing))
       case "tabs.create":
         let url = (args["url"] as? String).flatMap(URL.init(string:))
-        reply = DevToolsReply(
-          data: try await tabs.openDevToolsTab(
-            sessionID: sessionID, url: url, stopTurn: stopTurn(sessionID)))
+        let tab = try await tabs.openDevToolsTab(
+          sessionID: sessionID, url: url, stopTurn: stopTurn(sessionID))
+        try gate()?.addAgentDevToolsTarget(tab.targetID, scope: sessionID)
+        reply = DevToolsReply(data: tab)
       case "tabs.close":
         try tabs.closeDevToolsTab(sessionID: sessionID, targetID: Self.target(args))
         reply = DevToolsReply(data: DevToolsEmpty())
@@ -72,6 +82,44 @@ final class BrowserDevToolsPerformer: BrowserActionPerforming {
       reply = DevToolsRefusal(error: "browser_error", message: String(describing: error))
     }
     return try Self.encode(reply)
+  }
+
+  /// Opens the gate for `sessionID` once the server offers agent browsing, scoped to the
+  /// session's current tabs.
+  private func attach(_ sessionID: String) async throws(BrowserError) -> any Encodable {
+    guard let core = connection?.core else {
+      return DevToolsRefusal(
+        error: "not_connected", message: "The app has no server connection.")
+    }
+    do {
+      guard try await core.panelFeatures().agentBrowserDevtools else {
+        return DevToolsRefusal(
+          error: "feature_off", message: "The server does not offer agent browsing.")
+      }
+    } catch {
+      return DevToolsRefusal(
+        error: "server_error",
+        message: "The app could not read the server's features: \(error.localizedDescription)")
+    }
+    guard let gate = try gate() else {
+      return DevToolsRefusal(
+        error: "endpoint_unavailable", message: "This Mac's browser has no agent DevTools.")
+    }
+    let listing = await tabs.devToolsTabs(sessionID: sessionID)
+    gate.setAgentDevToolsScope(sessionID, targets: Set(listing.map(\.targetID)))
+    let endpoint = try await gate.agentDevToolsEndpoint(scope: sessionID)
+    return DevToolsReply(data: DevToolsAttach(port: endpoint.port, path: endpoint.path))
+  }
+
+  /// Closes the gate once the user turned agent browsing off.
+  private func closeGate() {
+    do throws(BrowserError) {
+      try gate()?.closeAgentDevToolsEndpoint()
+    } catch {
+      Self.logger.error(
+        "The agent DevTools gate could not be closed: \(String(describing: error), privacy: .public)"
+      )
+    }
   }
 
   /// Interrupts the session's turn, for the agent strip's Stop.
@@ -113,6 +161,12 @@ private struct DevToolsRefusal: Encodable {
 
 private struct DevToolsListing: Encodable {
   let tabs: [BrowserDevToolsTab]
+}
+
+/// The gate's address; `path` holds the session's secret.
+private struct DevToolsAttach: Encodable {
+  let port: Int
+  let path: String
 }
 
 private struct DevToolsEmpty: Encodable {}

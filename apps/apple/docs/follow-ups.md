@@ -67,12 +67,11 @@ Details: [agent-browser-mcp-design.md](agent-browser-mcp-design.md).
 
 - [ ] Keep a session's conversation open while an agent holds one of its tabs, so the DevTools
   directory keeps answering after the app evicts the conversation.
-- [ ] Open Chromium's DevTools port only when the server advertises `agent_browser_devtools`,
-  not on the setting alone.
 - [ ] Tabs on the WebKit engine have no DevTools target; agent tabs fail when the user's engine
   preference is WebKit. Open agent tabs on Chromium regardless of the preference.
-- [ ] Move the local endpoint to `--remote-debugging-pipe` behind an app-side token gate, so
-  other local users cannot reach the browser on a shared Mac.
+- [ ] Only the runner bound to a session should get the gate's secret: today any client with
+  edit access to a non-shared session can ask for `attach` (and on a local single-user
+  server, any local process). The gate limits the secret to that session's tabs.
 
 ## Remote browser
 

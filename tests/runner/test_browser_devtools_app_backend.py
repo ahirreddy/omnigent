@@ -1,21 +1,22 @@
 """The Mac app's browser as an agent backend, and how a session picks its browser.
 
 The server relay is an ``httpx.MockTransport`` answering as the owner's app
-would; the app's DevTools port is a small loopback HTTP server, so the
-same-machine check runs against a real socket.
+would; the app's DevTools gate is a loopback WebSocket server that accepts only
+its secret path, so the same-machine check runs against a real socket.
 """
 
 from __future__ import annotations
 
 import contextlib
-import http.server
 import json
-import threading
-from collections.abc import Iterator
+import socket
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 import pytest
+from websockets.asyncio.server import ServerConnection, serve
+from websockets.http11 import Request, Response
 
 from omnigent.runner.browser_devtools.app_backend import AppTabDirectory, app_backend
 from omnigent.runner.browser_devtools.directory import TabDirectoryError
@@ -28,31 +29,34 @@ from omnigent.runner.browser_devtools.server import BrowserUnavailableError
 from omnigent.runner.browser_host import BrowserHostManager, BrowserHostSettings
 from omnigent.stores.conversation_store import SCHEDULED_TASK_RUN_LABEL_KEY
 
+SECRET = "a1" * 32
+OTHER_SECRET = "b2" * 32
 
-@contextlib.contextmanager
-def _devtools_port(browser_path: str) -> Iterator[int]:
-    """A loopback ``/json/version`` like a CEF DevTools port."""
 
-    class Handler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            port = self.server.server_address[1]
-            body = json.dumps({"webSocketDebuggerUrl": f"ws://127.0.0.1:{port}{browser_path}"})
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(body.encode())
+@contextlib.asynccontextmanager
+async def _gate(secret: str) -> AsyncIterator[int]:
+    """A loopback WebSocket gate that opens only ``/devtools/browser/<secret>``."""
 
-        def log_message(self, *_args: object) -> None:
-            return None
+    def authorize(connection: ServerConnection, request: Request) -> Response | None:
+        if request.path != f"/devtools/browser/{secret}":
+            return connection.respond(403, "Forbidden\n")
+        return None
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield server.server_address[1]
-    finally:
-        server.shutdown()
-        server.server_close()
+    async def hold(connection: ServerConnection) -> None:
+        await connection.wait_closed()
+
+    async with serve(hold, "127.0.0.1", 0, process_request=authorize) as server:
+        yield next(iter(server.sockets)).getsockname()[1]
+
+
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def _attach(port: int, secret: str) -> dict[str, Any]:
+    return {"ok": True, "data": {"port": port, "path": f"/devtools/browser/{secret}"}}
 
 
 def _relay(
@@ -71,20 +75,42 @@ def _relay(
     return httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://server.test")
 
 
-async def test_the_app_browser_is_used_only_when_its_port_is_on_this_machine() -> None:
+async def test_the_app_browser_is_used_only_when_its_gate_answers_here() -> None:
     sent: list[dict[str, Any]] = []
-    with _devtools_port("/devtools/browser/GUID-1") as port:
-        same = {"ok": True, "data": {"port": port, "browser_path": "/devtools/browser/GUID-1"}}
-        other = {"ok": True, "data": {"port": port, "browser_path": "/devtools/browser/GUID-2"}}
-        async with _relay({"attach": same}, sent) as client:
+    async with _gate(SECRET) as port:
+        async with _relay({"attach": _attach(port, SECRET)}, sent) as client:
             backend = await app_backend(client, "conv_a")
-        async with _relay({"attach": other}, sent) as client:
-            with pytest.raises(BrowserUnavailableError, match="not on this machine"):
+        assert backend.upstream is not None
+        await backend.upstream.close()
+        # Another listener on this port (the app runs on another machine) refuses the secret.
+        async with _relay({"attach": _attach(port, OTHER_SECRET)}, sent) as client:
+            with pytest.raises(BrowserUnavailableError, match="HTTP 403") as refused:
                 await app_backend(client, "conv_a")
+    async with _relay({"attach": _attach(_free_port(), SECRET)}, sent) as client:
+        with pytest.raises(BrowserUnavailableError, match="nothing here answered") as absent:
+            await app_backend(client, "conv_a")
 
     assert backend.kind == "local"
-    assert backend.upstream_url == f"ws://127.0.0.1:{port}/devtools/browser/GUID-1"
+    assert backend.upstream_url == f"ws://127.0.0.1:{port}/devtools/browser/{SECRET}"
     assert sent[0] == {"op": "attach", "args": {}}
+    # The secret never reaches an error message or a repr.
+    assert SECRET not in repr(backend)
+    assert OTHER_SECRET not in str(refused.value) and SECRET not in str(absent.value)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"port": 9222, "path": "/devtools/browser/not-a-secret"},
+        {"port": 9222},
+        {"port": True, "path": f"/devtools/browser/{SECRET}"},
+        {"port": 70000, "path": f"/devtools/browser/{SECRET}"},
+    ],
+)
+async def test_an_attach_without_a_gate_address_is_refused(data: dict[str, Any]) -> None:
+    async with _relay({"attach": {"ok": True, "data": data}}, []) as client:
+        with pytest.raises(BrowserUnavailableError, match="did not report"):
+            await app_backend(client, "conv_a")
 
 
 async def test_an_app_refusal_or_absence_explains_itself() -> None:
@@ -140,11 +166,12 @@ async def test_a_session_without_either_browser_hears_both_reasons(tmp_path) -> 
 
 async def test_the_mac_browser_wins_when_it_shares_the_machine(tmp_path) -> None:
     manager = BrowserHostManager(BrowserHostSettings(enabled=False, data_dir=tmp_path))
-    with _devtools_port("/devtools/browser/GUID-1") as port:
-        attach = {"ok": True, "data": {"port": port, "browser_path": "/devtools/browser/GUID-1"}}
-        async with _relay({"attach": attach}, []) as client:
+    async with _gate(SECRET) as port:
+        async with _relay({"attach": _attach(port, SECRET)}, []) as client:
             resolver = RunnerBrowserResolver(manager, lambda _session, _event: None, client)
             backend = await resolver.resolve("conv_a")
+        assert backend.upstream is not None
+        await backend.upstream.close()
 
     assert backend.kind == "local"
 

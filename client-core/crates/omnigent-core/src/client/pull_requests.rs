@@ -32,6 +32,9 @@ pub struct PanelFeatures {
     /// `features.workflows` and `session_journal`: the server keeps session journals, whose
     /// plans the Tasks tab shows.
     pub session_journal: bool,
+    /// `features.agent_browser_devtools`: session agents may drive the owner's browser, so the
+    /// Mac app may open its access-gated debugging endpoint for them.
+    pub agent_browser_devtools: bool,
 }
 
 impl PanelFeatures {
@@ -55,6 +58,7 @@ impl PanelFeatures {
             comment_anchors: opt_bool(object, "comment_anchor_metadata")?.unwrap_or(false),
             session_journal: feature("workflows")?
                 && opt_bool(object, "session_journal")?.unwrap_or(false),
+            agent_browser_devtools: feature("agent_browser_devtools")?,
         })
     }
 }

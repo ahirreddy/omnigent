@@ -34,13 +34,30 @@ enum AppEdition: Sendable {
     }
   }
 
-  /// The browser engines this edition ships.
+  /// The browser engines this edition ships. Chromium gets agents' DevTools pipe; nothing
+  /// listens for agents until one of the owner's sessions asks.
   /// - Returns: A provider offering Chromium and WebKit, or WebKit only.
   static func makeBrowserProvider() -> DefaultBrowserEngineProvider {
     #if OMNIGENT_CHROMIUM
-      DefaultBrowserEngineProvider.withChromium()
+      DefaultBrowserEngineProvider.withChromium(
+        configuration: ChromiumConfiguration.standard().withAgentDevTools())
     #else
       DefaultBrowserEngineProvider()
+    #endif
+  }
+
+  /// The engine agents' DevTools proxies reach, starting it if needed; `nil` in the App Store
+  /// edition, which has no Chromium.
+  /// - Parameter provider: The edition's engines.
+  /// - Returns: The gate.
+  /// - Throws: When Chromium cannot start.
+  static func agentDevToolsGate(_ provider: any BrowserEngineProvider)
+    throws(BrowserError) -> (any BrowserAgentDevToolsGate)?
+  {
+    #if OMNIGENT_CHROMIUM
+      try provider.engine(for: .chromium) as? any BrowserAgentDevToolsGate
+    #else
+      nil
     #endif
   }
 }

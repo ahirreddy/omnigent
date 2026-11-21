@@ -66,7 +66,7 @@ public final class BrowserSettings {
   static let customTemplateKey = "ai.omnigent.browser.searchEngine.customTemplate"
   static let bookmarksBarKey = "ai.omnigent.browser.showsBookmarksBar"
   static let newTabURLKey = "ai.omnigent.browser.newTabURL"
-  /// Read before Chromium starts, so its own key is public.
+  /// Public so start-up code can read it before the settings exist.
   public static let agentDevToolsKey = "ai.omnigent.browser.agentDevTools"
 
   @ObservationIgnored private let defaults: UserDefaults
@@ -88,7 +88,7 @@ public final class BrowserSettings {
     didSet { defaults.set(newTabURL?.absoluteString, forKey: Self.newTabURLKey) }
   }
   /// Whether agents of the user's own sessions may drive this browser's tabs over Chrome
-  /// DevTools, with the user's logins. On by default; Chromium reads it when it starts.
+  /// DevTools, with the user's logins. On by default; read each time an agent asks.
   public var agentDevTools: Bool {
     didSet { defaults.set(agentDevTools, forKey: Self.agentDevToolsKey) }
   }
