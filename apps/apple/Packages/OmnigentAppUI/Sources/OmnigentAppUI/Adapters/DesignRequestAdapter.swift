@@ -1,6 +1,8 @@
 import Foundation
+import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
+import SwiftUI
 
 /// The composer's list of a session's Browser design tool requests, from the window's outbox.
 enum DesignRequestAdapter {
@@ -10,7 +12,7 @@ enum DesignRequestAdapter {
     return outbox.requests(in: sessionID).map { request in
       DesignRequestRow(
         id: request.id, tool: request.tool == .annotate ? .annotate : .draw,
-        label: request.label, state: state(request.status))
+        label: request.label, state: state(request.status, isSlow: request.isSlow))
     }
   }
 
@@ -20,11 +22,25 @@ enum DesignRequestAdapter {
     return DesignRequestActions(retry: { outbox.retry($0) }, remove: { outbox.remove($0) })
   }
 
-  static func state(_ status: DesignOutboxRequest.Status) -> DesignRequestRow.State {
+  static func state(_ status: DesignOutboxRequest.Status, isSlow: Bool = false)
+    -> DesignRequestRow.State
+  {
     switch status {
     case .waiting: .waiting
-    case .sending: .sending
+    case .sending: isSlow ? .slow : .sending
     case .failed(let message, let canRetry): .failed(message, canRetry: canRetry)
+    }
+  }
+}
+
+/// Brings back the window's unsent design requests from before the app last closed, once its
+/// account is known, and again for each account signed in later.
+struct DesignOutboxRestoring: ViewModifier {
+  let session: ServerSession
+
+  func body(content: Content) -> some View {
+    content.onChange(of: session.connection.connectedServer?.accountId, initial: true) {
+      session.designOutbox.restoreSaved()
     }
   }
 }

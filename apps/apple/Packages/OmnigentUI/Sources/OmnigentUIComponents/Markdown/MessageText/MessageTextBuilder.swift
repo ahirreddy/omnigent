@@ -369,6 +369,7 @@ nonisolated extension MessageTextBuilder {
       if intent.contains(.strikethrough) {
         attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
       }
+      if run[PromptCommandAttribute.self] == true { attributes[.foregroundColor] = palette.accent }
       result.append(
         NSAttributedString(string: String(linked[run.range].characters), attributes: attributes))
     }

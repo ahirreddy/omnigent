@@ -59,11 +59,15 @@ public struct OmnigentDesktopCommands: Commands {
   @FocusedValue(\.serverWindow) private var focused
   @Environment(\.openWindow) private var openWindow
   private let actions: DesktopCommandActions
+  private let find: ServerWindowActions.Find?
 
   /// Creates the commands.
-  /// - Parameter actions: App-wide actions.
-  public init(actions: DesktopCommandActions) {
+  /// - Parameters:
+  ///   - actions: App-wide actions.
+  ///   - find: Edit > Find for what has the keyboard, ahead of the key window's own.
+  public init(actions: DesktopCommandActions, find: ServerWindowActions.Find? = nil) {
     self.actions = actions
+    self.find = find
   }
 
   /// The menu bar content.
@@ -86,7 +90,7 @@ public struct OmnigentDesktopCommands: Commands {
     }
     CommandGroup(after: .pasteboard) {
       Divider()
-      FindMenu(find: focused?.actions.find)
+      FindMenu(find: find ?? focused?.actions.find)
     }
     CommandGroup(before: .toolbar) {
       ViewMenuItems(window: focused?.actions)

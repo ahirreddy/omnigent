@@ -112,4 +112,22 @@ extension ConversationWiringTests {
     controls.close(.shell("terminal_gone"))
     #expect(controls.panes.state?.layout.keys == [.agent, .shell("terminal_zsh_1")])
   }
+
+  @Test("A split keeps its shell panes while the agent's terminal is down, as the web's")
+  func terminalSplitKeptWhileAgentIsDown() async throws {
+    let page = try await splitPage()
+    let panes = page.container.terminalSplits.panes(of: "conv_a")
+    panes.split(with: "terminal_zsh_1", axis: .columns)
+    let shell = splitRow("terminal_zsh_1", isAgent: false)
+    page.terminals.terminals.apply(terminals: [shell], harness: .unavailable)
+    #expect(page.container.terminalSplitPanes(isRegularWidth: true) == nil)
+    #expect(page.container.keptTerminalSplit(isRegularWidth: true) === panes)
+    #expect(page.container.state.terminalKeepsPanes)
+    // With no shell of the split left running, the stopped state shows alone.
+    page.terminals.terminals.apply(terminals: [], harness: .unavailable)
+    #expect(page.container.keptTerminalSplit(isRegularWidth: true) == nil)
+    let viewer = try await splitPage(permission: 1)
+    viewer.terminals.terminals.apply(terminals: [shell], harness: .unavailable)
+    #expect(viewer.container.keptTerminalSplit(isRegularWidth: true) == nil)
+  }
 }

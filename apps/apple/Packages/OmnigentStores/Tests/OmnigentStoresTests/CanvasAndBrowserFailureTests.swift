@@ -54,20 +54,42 @@ struct CanvasLoadTests {
     #expect(canvas.refreshError == nil, "the next read that works clears it")
   }
 
-  @Test("A reload says it's refreshing until it lands")
-  func refreshing() async throws {
+  @Test("A first read paints the sidebar's rows and loads the rest; later reloads are silent")
+  func previewThenSilent() async throws {
     let server = RouteServer()
     server.route("/v1/sessions", .json(singleSessionList))
-    let store = try await connectedStore(server)
-    let canvas = try #require(store.canvas)
-    await canvas.load(viewerID: "local")
+    let core = try #require(try await connectedStore(server).core)
+    let listed = try await core.canvasSessions(viewerId: "local")
+    var gone = try #require(listed.first)
+    gone.id = "conv_gone"
+    let suite = "canvas-preview-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let key = "server-a"
+    let canvas = CanvasStore(core: core, defaults: defaults)
+    canvas.bind(key: key)
 
     let gate = server.hold("/v1/sessions")
-    async let reload: Void = canvas.load(viewerID: "local")
-    try await eventually("the reload") { canvas.isRefreshing && gate.arrivals > 0 }
+    async let first: Void = canvas.load(viewerID: "local", preview: [gone] + listed)
+    try await eventually("the preview") { canvas.isRefreshing && gate.arrivals > 0 }
+    #expect(canvas.isPreview)
+    #expect(canvas.sessions.value?.map(\.id) == ["conv_gone", "conv_a"])
+    #expect(canvas.positions["conv_gone"] != nil)
+    #expect(defaults.dictionary(forKey: positionsKey(key)) == nil, "nothing saved yet")
+    let spot = canvas.positions["conv_a"]
     gate.release()
-    await reload
+    await first
+    #expect(!canvas.isPreview)
     #expect(!canvas.isRefreshing)
+    #expect(canvas.positions["conv_a"] == spot, "a card on screen keeps its spot")
+    #expect(canvas.saved.keys.sorted() == ["conv_a"])
+
+    let again = server.hold("/v1/sessions")
+    async let reload: Void = canvas.load(viewerID: "local")
+    try await eventually("the reload") { again.arrivals > 0 }
+    #expect(!canvas.isRefreshing, "a reload of the full list is silent, as the web's")
+    again.release()
+    await reload
   }
 
   @Test("Spots of sessions no longer listed go once the list is read; listed ones stay")

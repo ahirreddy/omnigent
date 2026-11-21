@@ -33,6 +33,8 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   public var connectionStatus: String?
   /// The terminal mode's state; `.none` hides the Chat/Terminal switch.
   public var terminal: TerminalStatus
+  /// The split Terminal view keeps its shell panes while the agent's terminal is down.
+  public var terminalKeepsPanes = false
   /// When rows were written, by row id, overriding each row's own ``Row/createdAt``.
   public var timestamps: [String: Date]
   /// How long each assistant turn worked, by response id ("Worked for 2m").

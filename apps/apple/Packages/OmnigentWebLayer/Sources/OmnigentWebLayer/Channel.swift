@@ -201,6 +201,10 @@ private nonisolated func channelEventThunk(
       channel.deliver(.failure(.channelFailed("Rejected a message from process \(detail).")))
     case OWL_CHANNEL_EVENT_MALFORMED:
       channel.deliver(.failure(.channelFailed("Dropped a malformed message of \(detail) bytes.")))
+    case OWL_CHANNEL_EVENT_TOO_LARGE:
+      channel.deliver(
+        .failure(
+          .channelFailed("Dropped a message of \(detail) bytes, more than the channel takes.")))
     default:
       channel.deliver(.failure(.channelFailed("Unknown channel event \(event.rawValue).")))
     }

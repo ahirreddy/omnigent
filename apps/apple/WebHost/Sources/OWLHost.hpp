@@ -85,7 +85,7 @@ class Host {
   void AbandonView(uint64_t view_id);
   bool IsShuttingDown() const { return shutting_down_; }
   /// Asks a view's renderer whether it is alive, for the freeze watch. Main thread.
-  void ProbeView(uint64_t view_id, bool quiet);
+  void ProbeView(uint64_t view_id, bool quiet, uint64_t frames_after_nanos);
   /// Closes every browser, then quits the CEF loop. A watchdog force-exits if that stalls.
   void BeginShutdown(const char* reason);
 

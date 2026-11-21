@@ -230,11 +230,21 @@ nonisolated struct CLITextBuilder {
 
   /// Source text exactly as written (``CLISourceText``): markdown syntax tinted when
   /// `tintsMarkdown`, web addresses and markdown links linked and underlined.
-  mutating func source(_ text: String, color: SRGB, tintsMarkdown: Bool, indent: CGFloat)
-    -> CLITextNode
-  {
+  mutating func source(
+    _ text: String, color: SRGB, tintsMarkdown: Bool, indent: CGFloat,
+    command: Range<Int>? = nil
+  ) -> CLITextNode {
     let spans = tintsMarkdown ? SourceTinting.spans(in: text) : []
-    return unit(tinted(text, spans: spans, color: color), indent: indent)
+    let colored = tinted(text, spans: spans, color: color)
+    guard let command, let commandTint = style.commandTint, command.upperBound <= text.count
+    else { return unit(colored, indent: indent) }
+    // A sent prompt's leading command, in the command color (``PromptCommand``).
+    let marked = NSMutableAttributedString(attributedString: colored)
+    let start = text.index(text.startIndex, offsetBy: command.lowerBound)
+    let end = text.index(start, offsetBy: command.count)
+    marked.addAttribute(
+      .foregroundColor, value: commandTint.platformColor, range: NSRange(start..<end, in: text))
+    return unit(marked, indent: indent)
   }
 
   /// `text` colored by `spans`, as ``SourceTinting/attributed(_:spans:palette:cursor:)`` colors
@@ -287,15 +297,20 @@ nonisolated struct CLITextBuilder {
     }
   }
 
-  // MARK: Prompts
+}
 
+// MARK: Prompts
+
+nonisolated extension CLITextBuilder {
   /// A user's prompt as ``CLIUserText`` draws it: the text as typed, quoted runs in the quote
   /// color beside a bar, an answered question's quoted line and a design subject dim, a small
   /// gap apart.
   private mutating func prompt(_ text: String) -> CLITextNode {
     let runs = UserPrompt.runs(text)
     if runs.count == 1, let only = runs.first, !only.isQuote, !only.isNote {
-      return source(only.text, color: palette.userText, tintsMarkdown: false, indent: 0)
+      return source(
+        only.text, color: palette.userText, tintsMarkdown: false, indent: 0,
+        command: PromptCommand.range(in: only.text, commands: style.promptCommands))
     }
     let gap = MessageTextMetrics.small
     var items: [CLITextStackItem] = []

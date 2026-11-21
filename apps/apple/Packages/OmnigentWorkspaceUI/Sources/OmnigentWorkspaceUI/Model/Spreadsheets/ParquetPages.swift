@@ -217,6 +217,9 @@ nonisolated struct ParquetPageReader {
       case 0: return page
       case 1: output = try Snappy.decompress(page, limit: Int(size))
       case 2: output = try Decompression.gunzip(page, limit: Int(size))
+      case 4: output = try Decompression.decode(page, size: Int(size), format: .brotli)
+      case 5: output = try Decompression.hadoopLZ4(page, size: Int(size))
+      case 7: output = try Decompression.decode(page, size: Int(size), format: .lz4)
       default: throw ParquetPageFailure.malformed
       }
     } catch {

@@ -54,21 +54,22 @@ nonisolated enum BrowserDesignCapture {
     return try pngData(cropped)
   }
 
-  /// The page's snapshot with `marks` (in the overlay's points, over a view of `viewSize`)
-  /// drawn on, as PNG.
+  /// The page's snapshot with `marks` (in the page's CSS pixels) drawn on where `viewport`, the
+  /// visible area the snapshot shows, puts them, as PNG.
   /// - Throws: `BrowserError.snapshotFailed` when it can't be drawn or encoded.
-  static func drawingPNG(snapshot: CGImage, marks: [BrowserDesignMark], viewSize: CGSize)
-    throws(BrowserError) -> Data
-  {
-    guard viewSize.width > 0, viewSize.height > 0 else {
+  static func drawingPNG(
+    snapshot: CGImage, marks: [BrowserDesignMark], viewport: BrowserDesignViewport
+  ) throws(BrowserError) -> Data {
+    guard viewport.width > 0, snapshot.width > 0, snapshot.height > 0 else {
       throw .snapshotFailed("The page has no size to draw on.")
     }
     let context = try bitmap(width: snapshot.width, height: snapshot.height)
     let size = CGSize(width: snapshot.width, height: snapshot.height)
     context.draw(snapshot, in: CGRect(origin: .zero, size: size))
-    // Top-left origin in the overlay's points, as the live drawing.
+    // Top-left origin, then the page's CSS pixels as the snapshot shows them.
     context.translateBy(x: 0, y: size.height)
-    context.scaleBy(x: size.width / viewSize.width, y: -size.height / viewSize.height)
+    context.scaleBy(x: 1, y: -1)
+    context.concatenate(viewport.transform(toWidth: size.width))
     BrowserDesignMarkDrawing.draw(marks, in: context)
     guard let image = context.makeImage() else {
       throw .snapshotFailed("The drawing couldn't be made into an image.")

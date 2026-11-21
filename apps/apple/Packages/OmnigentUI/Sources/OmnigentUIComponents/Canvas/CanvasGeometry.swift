@@ -1,5 +1,14 @@
 import CoreGraphics
 
+/// The board's scroll: where it is, its content and the view, as the scroll view reports them.
+nonisolated struct CanvasScroll: Equatable {
+  var offset: CGPoint
+  var content: CGSize
+  var container: CGSize
+  /// What shows, in the content's coordinates.
+  var visible: CGRect
+}
+
 /// The board's drawn area around its cards, and the zoom that fits it in a viewport.
 nonisolated struct CanvasGeometry: Equatable {
   static let cardWidth: CGFloat = 280
@@ -76,6 +85,45 @@ nonisolated struct CanvasGeometry: Equatable {
 
   static func clamp(_ zoom: CGFloat) -> CGFloat {
     min(max(zoom, minZoom), maxZoom)
+  }
+
+  /// Where to scroll so the middle of the view stays put as it goes from `old` to `new`, from
+  /// `origin`, the scroll view's top-left corner, which a resize leaves in place.
+  static func recentered(_ origin: CGPoint, from old: CGSize, to new: CGSize) -> CGPoint {
+    CGPoint(
+      x: max(0, origin.x - (new.width - old.width) / 2),
+      y: max(0, origin.y - (new.height - old.height) / 2))
+  }
+
+  /// Whether the board scrolled from `old` to `new` by a wheel, trackpad or touch rather than by
+  /// its own layout: the same content and view, and an offset that moved for more than a clamp
+  /// into a smaller range.
+  static func isUserScroll(from old: CanvasScroll, to new: CanvasScroll) -> Bool {
+    guard old.content == new.content, old.container == new.container else { return false }
+    let maxX = max(0, new.content.width - new.container.width)
+    let maxY = max(0, new.content.height - new.container.height)
+    let clamped = CGPoint(
+      x: min(max(old.offset.x, 0), maxX), y: min(max(old.offset.y, 0), maxY))
+    return abs(clamped.x - new.offset.x) > 0.5 || abs(clamped.y - new.offset.y) > 0.5
+  }
+
+  /// The furthest a saved coordinate goes, as the core's bound.
+  static let maxCoordinate = 1_000_000
+
+  /// The grid coordinate a card at `position` lands on after a drag by `translation`: the
+  /// nearest grid line, halves rounding up, within the saved bound, as the core's snap.
+  static func snapped(_ position: Int, by translation: CGFloat) -> Int {
+    let bounded = min(max(moved(position, by: translation), -maxCoordinate), maxCoordinate)
+    let step = Int(gridStep)
+    return Int((Double(bounded) / Double(step) + 0.5).rounded(.down)) * step
+  }
+
+  /// How far a dragged card is drawn from its spot: at the grid point it would land on, so it
+  /// snaps as it moves, as the web's.
+  static func snappedOffset(left: Int, top: Int, by translation: CGSize) -> CGSize {
+    CGSize(
+      width: CGFloat(snapped(left, by: translation.width)) - CGFloat(left),
+      height: CGFloat(snapped(top, by: translation.height)) - CGFloat(top))
   }
 
   /// A card's coordinate after a drag; a stored position at the limit of `Int` stays there.

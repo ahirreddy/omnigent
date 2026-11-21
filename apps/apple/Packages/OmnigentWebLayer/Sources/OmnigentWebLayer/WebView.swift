@@ -97,15 +97,19 @@ public final class WebView {
   @ObservationIgnored public var onStateChange: (() -> Void)?
   /// Frame counters.
   @ObservationIgnored public internal(set) var statistics = FrameStatistics()
+  /// Each isolated world's execution context in the current document, by the world's name.
+  @ObservationIgnored var isolatedContexts: [String: Int] = [:]
 
   @ObservationIgnored var requestedURL: URL?
   @ObservationIgnored var navigationPendingCreation = false
   @ObservationIgnored var size = CGSize(width: 800, height: 600)
   @ObservationIgnored var scale: Double = 2
   @ObservationIgnored var screenOrigin = CGPoint.zero
-  @ObservationIgnored var isVisible = true
+  /// What the host was told. A view is hidden until a hosting view reports it on screen, so one
+  /// that never enters a window never renders.
+  @ObservationIgnored var isVisible = false
   /// What the hosting view last reported, before `rendersOffscreen` overrides it.
-  @ObservationIgnored var reportedVisible = true
+  @ObservationIgnored var reportedVisible = false
   @ObservationIgnored var isFocused = false
   @ObservationIgnored var createdAt = ContinuousClock.now
   @ObservationIgnored var sawFirstFrame = false

@@ -104,6 +104,39 @@ struct DataTableTests {
     #expect(table.cell(0, 9).isEmpty)
   }
 
+  @Test("find steps through the cells holding the query in the order the table shows them")
+  func find() {
+    var find = DataTableFind()
+    #expect(find.status == nil)
+    find.text = "LE"
+    find.search(Self.table, rows: [0, 1, 2, 3])
+    #expect(find.matches.map(\.row) == [0, 3])
+    #expect(find.status == "1 of 2")
+    find.step(forward: true)
+    #expect(find.currentMatch == DataTableFind.Match(row: 3, column: 0))
+    find.step(forward: true)
+    #expect(find.status == "1 of 2", "it wraps around")
+    find.step(forward: false)
+    #expect(find.status == "2 of 2")
+    // A new order keeps the match found now on its cell.
+    find.search(Self.table, rows: [3, 2, 1, 0])
+    #expect(find.currentMatch == DataTableFind.Match(row: 3, column: 0))
+    #expect(find.status == "1 of 2")
+    #expect(find.isMatch(row: 0, column: 0))
+    #expect(!find.isMatch(row: 0, column: 1))
+
+    find.text = "zoé"
+    find.search(Self.table, rows: [0, 1, 2, 3])
+    #expect(find.matches == [DataTableFind.Match(row: 2, column: 0)], "accents are ignored")
+    find.text = "nowhere"
+    find.search(Self.table, rows: [0, 1, 2, 3])
+    #expect(find.status == "Not found")
+    find.step(forward: true)
+    #expect(find.currentMatch == nil)
+    find.close()
+    #expect(find.matches.isEmpty && !find.isShown && find.text == "nowhere")
+  }
+
   @Test("CSV and TSV files preview as a table")
   func kind() {
     #expect(FilePreviewKind.of(path: "out/results.CSV") == .dataTable)
@@ -149,6 +182,26 @@ struct DataTableTests {
       #expect(!(try screen.shows("No Preview")))
     }
 
+    @Test("the Find menu's actions open the table's find bar and step through its matches")
+    func findBar() throws {
+      let box = FindBox()
+      let screen = OffscreenWindow(FindReader(box: box), width: 700, height: 400)
+      defer { screen.close() }
+      let table = try #require(screen.allViews.compactMap { $0 as? NSTableView }.first)
+      _ = screen.window.makeFirstResponder(table)
+      screen.settle()
+      let find = try #require(box.actions, "the table offers Find while it has the keyboard")
+      find.show()
+      screen.settle()
+      try screen.type("le")
+      screen.settle()
+      #expect(try screen.shows("1 of 2"))
+      find.next()
+      screen.settle()
+      #expect(try screen.shows("2 of 2"))
+      #expect(table.selectedRowIndexes == IndexSet(integer: 3), "the row found now is selected")
+    }
+
     @Test("a data file with no rows says so")
     func viewerEmpty() throws {
       UserDefaults.standard.removeObject(forKey: FileViewerView.viewModeKey)
@@ -160,3 +213,22 @@ struct DataTableTests {
     }
   #endif
 }
+
+#if os(macOS)
+  /// What the table offers the Find menu, kept for a test to call.
+  @MainActor
+  private final class FindBox {
+    var actions: DataTableFindActions?
+  }
+
+  /// The table, reading what it publishes for the Find menu as a window does.
+  private struct FindReader: View {
+    let box: FindBox
+    @FocusedValue(\.dataTableFind) private var find
+
+    var body: some View {
+      DataTableView(table: DataTableTests.table)
+        .onChange(of: find != nil, initial: true) { box.actions = find }
+    }
+  }
+#endif

@@ -146,6 +146,21 @@ struct BrowserTabMenu: View {
         model.toggleBookmark()
       }
       Toggle("Show Bookmarks Bar", isOn: $settings.showsBookmarksBar)
+      #if os(iOS)
+        // The iPhone's row has no room for the tools' buttons; the menu has them on iPad too.
+        if model.offersDesignTools {
+          Divider()
+          let tools = model.designTools
+          ForEach(BrowserDesignTool.allCases, id: \.self) { tool in
+            Toggle(
+              isOn: Binding(get: { tools.tool == tool }, set: { _ in tools.toggle(tool) })
+            ) {
+              Label(tool.title, systemImage: tool.systemImage)
+            }
+            .accessibilityIdentifier("browser.menu.design.\(tool.rawValue)")
+          }
+        }
+      #endif
       Divider()
       Button("Find…") { model.findSeedingSelection() }
       Menu("Zoom") {

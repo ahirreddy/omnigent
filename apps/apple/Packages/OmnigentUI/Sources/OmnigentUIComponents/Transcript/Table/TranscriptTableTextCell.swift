@@ -91,7 +91,8 @@
       guard
         let message = TranscriptTableTextMessage.make(
           row, ramp: style.ramp, expandsPrompt: folds.isExpanded(row.id, isLive: false),
-          expandsOrigin: folds.isExpanded(SessionOrigin.disclosureKey(row.id), isLive: false)),
+          expandsOrigin: folds.isExpanded(SessionOrigin.disclosureKey(row.id), isLive: false),
+          commands: style.promptCommands),
         let textStyle = style.style
       else {
         releaseContent()

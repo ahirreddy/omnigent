@@ -67,9 +67,12 @@
       let isEnabled =
         setting == .text && values.messageTextRenderer == .textKit && appearance.isCLI
         && appearance.outputRendering != .rich
+      let accent = values.controlAccent.resolve(in: values)
       let text = CLITextStyle(
         points: CGFloat(appearance.fontSize), scale: max(1, values.displayScale),
-        palette: values.cliPalette)
+        palette: values.cliPalette, promptCommands: values.promptCommands,
+        commandTint: SRGB(
+          red: Double(accent.red), green: Double(accent.green), blue: Double(accent.blue)))
       let maxWidth = appearance.contentWidth.maxWidth
       guard
         text != self.text || isEnabled != self.isEnabled

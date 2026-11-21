@@ -16,6 +16,8 @@
     private(set) var bubble = NSColor.clear
     /// The transcript's own text size, outside the reading ramp: a Worked fold's title.
     private(set) var labelSize = TypeRamp.defaultBody
+    /// The session's commands and skills, whose leading one a prompt tints.
+    private(set) var promptCommands: [SlashCommand] = []
     /// Whether settled messages draw in text cells: the TextKit renderer, chat style, rich
     /// output.
     private(set) var isEnabled = false
@@ -54,6 +56,7 @@
         style != self.style || ramp != self.ramp || isEnabled != self.isEnabled
           || values.layoutWidth != layoutWidth || maxWidth != self.maxWidth
           || bubble != self.bubble || labelSize != self.labelSize
+          || values.promptCommands != promptCommands
       else { return false }
       if style != self.style {
         palette = MessageTextPalette(style)
@@ -66,6 +69,7 @@
       self.maxWidth = maxWidth
       self.bubble = bubble
       self.labelSize = labelSize
+      promptCommands = values.promptCommands
       serial += 1
       return true
     }

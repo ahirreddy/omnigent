@@ -12,6 +12,10 @@ nonisolated struct CLITextStyle: Hashable, Sendable {
   var points: CGFloat
   var scale: CGFloat
   var palette: CLIPalette
+  /// The session's commands and skills, whose leading one a prompt tints.
+  var promptCommands: [SlashCommand] = []
+  /// The composer's tint, which a prompt's leading command takes; `nil` tints none.
+  var commandTint: SRGB?
 
   var metrics: CLITextMetrics { CLITextMetrics(points: points, scale: scale) }
 }

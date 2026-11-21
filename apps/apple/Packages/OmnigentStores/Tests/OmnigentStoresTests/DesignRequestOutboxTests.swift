@@ -15,17 +15,32 @@ struct DesignRequestOutboxTests {
     var running: Set<String> = []
     var failures: [any Error] = []
     var sent: [String] = []
+    /// The account signed in now.
+    var signedIn: DesignOutboxOwner? = DesignRequestOutboxTests.ada
+    /// A send that never answers, until cleared.
+    var hangs = false
 
-    func outbox() -> DesignRequestOutbox {
-      DesignRequestOutbox(
-        timing: .init(poll: .milliseconds(5), turnStart: .milliseconds(30)),
-        isRunning: { self.running.contains($0) },
+    func outbox(
+      storage: DesignOutboxStorage? = nil, now: @escaping () -> Date = Date.init,
+      slow: Duration = .seconds(60), stalled: Duration = .seconds(180)
+    ) -> DesignRequestOutbox {
+      var timing = DesignRequestOutbox.Timing(
+        poll: .milliseconds(5), turnStart: .milliseconds(30))
+      timing.slow = slow
+      timing.stalled = stalled
+      return DesignRequestOutbox(
+        timing: timing, isRunning: { self.running.contains($0) }, owner: { self.signedIn },
+        storage: storage, now: now,
         deliver: { request in
+          while self.hangs { try await Task.sleep(for: .milliseconds(5)) }
           if !self.failures.isEmpty { throw self.failures.removeFirst() }
           self.sent.append(request.text)
         })
     }
   }
+
+  static let ada = DesignOutboxOwner(server: "https://agents.example.com", account: "ada")
+  static let grace = DesignOutboxOwner(server: "https://agents.example.com", account: "grace")
 
   private static let screenshot = DesignOutboxRequest.File(
     name: "design-element.png", mediaType: "image/png", data: Data([1, 2, 3]))

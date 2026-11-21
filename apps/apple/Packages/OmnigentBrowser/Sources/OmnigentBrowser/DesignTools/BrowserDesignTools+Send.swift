@@ -1,4 +1,4 @@
-public import CoreGraphics
+internal import CoreGraphics
 internal import Foundation
 
 /// Sending: each tool freezes its drafts, takes its screenshot, and hands the request to the
@@ -44,21 +44,22 @@ extension BrowserDesignTools {
     }
   }
 
-  /// Hands Draw's request to the app: the page's snapshot with the marks drawn on, for an
-  /// overlay of `viewSize` points.
-  public func sendDrawing(viewSize: CGSize) async {
+  /// Hands Draw's request to the app: the page's snapshot with the marks drawn on where the
+  /// page shows their CSS pixels now.
+  public func sendDrawing() async {
     guard drawingBlocked == nil, let page, let send, beginSend(.draw) else { return }
     let opening = self.opening
-    let marks = self.marks
     let note = self.note
     do throws(BrowserError) {
+      let viewport = try await page.viewport()
       let snapshot = try await page.snapshot()
       guard opening == self.opening else { return }
+      let drawn = marks(under: viewport)
       let png = try BrowserDesignCapture.drawingPNG(
-        snapshot: snapshot, marks: marks, viewSize: viewSize)
+        snapshot: snapshot, marks: drawn, viewport: viewport)
       try send(
         BrowserDesignRequest(
-          content: .drawing(note: note, marks: marks.count), pageURL: pageURL(),
+          content: .drawing(note: note, marks: drawn.count), pageURL: pageURL(),
           screenshotPNG: png))
     } catch {
       sendFailed(error, opening: opening)

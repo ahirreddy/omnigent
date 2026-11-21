@@ -12,10 +12,12 @@
   @MainActor
   @Suite("Design tools on a tab, off screen", .serialized)
   struct DesignToolsViewTests {
-    /// A tab whose environment takes design requests into `sent`.
+    /// A tab whose environment takes design requests into `sent`, and whose page answers
+    /// Draw's question of where it sits: unscrolled, 600 CSS pixels across.
     private func fixture(sent: @escaping (BrowserDesignRequest) -> Void) throws -> TabFixture {
       let fixture = try TabFixture()
       fixture.environment.designRequestSender = { request, _ in sent(request) }
+      try fixture.tab.scriptResult = .string(#"{"x":0,"y":0,"width":600}"#)
       return fixture
     }
 

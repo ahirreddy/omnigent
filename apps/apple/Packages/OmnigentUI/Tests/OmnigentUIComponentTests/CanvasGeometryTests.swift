@@ -30,4 +30,55 @@ struct CanvasGeometryTests {
     #expect(geometry.fitZoom(CGSize(width: 1, height: 1)) == CanvasGeometry.minZoom)
     #expect(geometry.fitZoom(.zero) == 1)
   }
+
+  @Test("A dragged card is drawn where it would land: the core's grid point, halves up")
+  func snapsWhileDragging() {
+    // The core's own cases: (47, 48) lands on (32, 64) and (-16, -17) on (0, -32).
+    #expect(CanvasGeometry.snapped(0, by: 47) == 32)
+    #expect(CanvasGeometry.snapped(0, by: 48) == 64)
+    #expect(CanvasGeometry.snapped(0, by: -16) == 0)
+    #expect(CanvasGeometry.snapped(0, by: -17) == -32)
+    #expect(CanvasGeometry.snapped(320, by: 15.4) == 320)
+    #expect(CanvasGeometry.snapped(.max, by: 10) == CanvasGeometry.maxCoordinate)
+    #expect(CanvasGeometry.snapped(.min, by: .nan) == -CanvasGeometry.maxCoordinate)
+    #expect(
+      CanvasGeometry.snappedOffset(left: 64, top: 0, by: CGSize(width: 50, height: -20))
+        == CGSize(width: 64, height: -32))
+  }
+
+  @Test("A resize keeps the view's middle where it was")
+  func recenters() {
+    let origin = CGPoint(x: 500, y: 300)
+    #expect(
+      CanvasGeometry.recentered(
+        origin, from: CGSize(width: 800, height: 600), to: CGSize(width: 1_000, height: 500))
+        == CGPoint(x: 400, y: 350))
+    #expect(
+      CanvasGeometry.recentered(
+        CGPoint(x: 20, y: 0), from: CGSize(width: 800, height: 600),
+        to: CGSize(width: 1_200, height: 600)) == .zero,
+      "never before the content's start")
+  }
+
+  @Test("Only a scroll the board's own layout didn't cause is the user's")
+  func userScrolls() {
+    let content = CGSize(width: 4_000, height: 3_000)
+    let view = CGSize(width: 800, height: 600)
+    func scroll(_ left: CGFloat, _ top: CGFloat, content: CGSize = content) -> CanvasScroll {
+      CanvasScroll(
+        offset: CGPoint(x: left, y: top), content: content, container: view,
+        visible: CGRect(x: left, y: top, width: view.width, height: view.height))
+    }
+    #expect(CanvasGeometry.isUserScroll(from: scroll(0, 0), to: scroll(0, 120)))
+    #expect(!CanvasGeometry.isUserScroll(from: scroll(0, 0), to: scroll(0, 0)))
+    #expect(
+      !CanvasGeometry.isUserScroll(
+        from: scroll(0, 0), to: scroll(40, 0, content: CGSize(width: 5_000, height: 3_000))),
+      "a zoom changes the content")
+    let small = CGSize(width: 1_000, height: 700)
+    #expect(
+      !CanvasGeometry.isUserScroll(
+        from: scroll(900, 600, content: small), to: scroll(200, 100, content: small)),
+      "a clamp into a smaller range")
+  }
 }

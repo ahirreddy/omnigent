@@ -92,7 +92,9 @@ Embedding Mojo and using XPC were both rejected.
 - **Message layout.** Each message is one complex Mach message: header, a port descriptor (at
   most one right, for example an IOSurface), an out-of-line descriptor (payloads over 4 KiB, such
   as PNG snapshots), a 32-byte envelope (`magic`, `protocol_major`, `kind`, `request`, `target`),
-  and an inline payload.
+  and an inline payload. The receive buffer holds the largest inline message with its audit
+  trailer (a static assertion); a larger message, which only a peer outside this protocol sends,
+  is destroyed and reported with its size (`OWL_CHANNEL_EVENT_TOO_LARGE`).
 - **Schema.** `owl_protocol.h` is the single source of truth. Both the C++ host and the Swift
   client compile against it; Swift imports its `CF_ENUM`s as Swift enums.
   - Payloads are tag-length-value fields: `u64`, `i64`, `double`, `bool`, UTF-8 `string`,
@@ -724,9 +726,10 @@ app repeats the host's lines as `freeze from=host kind=...`, so either process's
 
 **When a view counts as stalled** (`owl_freeze.h`, shared by both sides and unit-tested): it is
 visible and, for 2 s, has presented no frame since input other than pointer movement, key
-releases and bare modifiers; or frames that nobody was driving ran steadily for 3 s and stopped;
-or, for 5 s, it has been loading without a frame. Input replayed into a view marked hidden counts
-too. A stall is written at 2 s, 10 s, 30 s and then every minute, later lines only while input
+releases and bare modifiers; or frames that nobody was driving ran steadily for 3 s and stopped,
+and the renderer, asked 2 s later, runs no animation frame either (a page that went static still
+does, and is not stalled); or, for 5 s, it has been loading without a frame. Input replayed into a
+view marked hidden counts too. A stall is written at 2 s, 10 s, 30 s and then every minute, later lines only while input
 keeps coming, and once more when it ends, with its length. First lines of two stalls of one view
 are at least 5 s apart.
 
@@ -766,9 +769,9 @@ text, a cookie or a token. The probe's answer is logged only when it is one of f
 The `freeze-diagnostics` proof makes each of these happen against real Chromium: a script that
 hangs for 7 s and for 19 s, a view left marked hidden, a click that draws nothing, a script that
 hangs while a compositor animation keeps drawing, an app that stops reading the channel while
-the page floods it, and a click the app delivers 1.5 s late (`--proof freeze-hung`,
-`freeze-hidden`, `freeze-idle`, `freeze-long`, `freeze-drawing`, `freeze-backlog`,
-`freeze-late-input` run one alone).
+the page floods it, a click the app delivers 1.5 s late, and an animation that ends, which must
+leave no stall (`--proof freeze-hung`, `freeze-hidden`, `freeze-idle`, `freeze-long`,
+`freeze-drawing`, `freeze-backlog`, `freeze-late-input`, `freeze-static` run one alone).
 
 ### Soak proof (`--proof soak`)
 
@@ -864,9 +867,10 @@ browser layer. Within CEF:
 - Agent views can be off screen. Before the first agent event the host gives the page widget
   focus, so typing reaches the focused element. This affects the page only, not the app's key
   window. Hidden Chromium widgets drop input, so agent views set `WebView.rendersOffscreen`: they
-  report themselves visible to the host although no window shows them. Chromium agent pages are
-  in no window at all; WebKit agent pages sit in an off-screen, non-activating `NSPanel` that
-  ignores the mouse (WebKit needs a window to render).
+  report themselves visible to the host although no window shows them. Every other view is hidden
+  until a window shows it on screen, so one that never enters a window never renders. Chromium
+  agent pages are in no window at all; WebKit agent pages sit in an off-screen, non-activating
+  `NSPanel` that ignores the mouse (WebKit needs a window to render).
 - In a custom host the same API would call `RenderWidgetHost::ForwardMouseEvent` and
   `ForwardKeyboardEvent` on the target `WebContents`' widget directly, which matches Atlas.
 

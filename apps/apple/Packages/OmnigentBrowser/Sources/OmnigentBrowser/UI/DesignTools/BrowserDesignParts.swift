@@ -61,26 +61,47 @@ struct BrowserDesignOutline: View {
   }
 }
 
-/// Annotate's bar while nothing is picked.
+/// Annotate's bar while nothing is picked: Escape or its close button leaves on the Mac, Done
+/// on iPhone and iPad.
 struct BrowserDesignPickHint: View {
   let close: () -> Void
 
   var body: some View {
     BrowserDesignBar {
-      Label("Pick an element to change", systemImage: BrowserDesignTool.annotate.systemImage)
-        .labelStyle(.titleAndIcon)
-      Text("esc")
-        .font(.caption.monospaced())
-        .padding(.horizontal, 5)
-        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.secondary.opacity(0.5)))
-        .foregroundStyle(.secondary)
-        .accessibilityHidden(true)
-      Button("Close Annotate", systemImage: "xmark.circle.fill", action: close)
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .accessibilityIdentifier("browser.design.close")
+      #if os(macOS)
+        Label("Pick an element to change", systemImage: BrowserDesignTool.annotate.systemImage)
+          .labelStyle(.titleAndIcon)
+        Text("esc")
+          .font(.caption.monospaced())
+          .padding(.horizontal, 5)
+          .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.secondary.opacity(0.5)))
+          .foregroundStyle(.secondary)
+          .accessibilityHidden(true)
+        Button("Close Annotate", systemImage: "xmark.circle.fill", action: close)
+          .labelStyle(.iconOnly)
+          .buttonStyle(.borderless)
+          .foregroundStyle(.secondary)
+          .accessibilityIdentifier("browser.design.close")
+      #else
+        Label("Tap an element to change", systemImage: BrowserDesignTool.annotate.systemImage)
+          .labelStyle(.titleAndIcon)
+        BrowserDesignDoneButton(tool: .annotate, close: close)
+      #endif
     }
+  }
+}
+
+/// Done on iPhone and iPad: leaves the tool, as a markup screen's Done.
+struct BrowserDesignDoneButton: View {
+  let tool: BrowserDesignTool
+  let close: () -> Void
+
+  var body: some View {
+    Button("Done", action: close)
+      .fontWeight(.semibold)
+      .buttonStyle(.borderless)
+      .accessibilityLabel("Close \(tool.title)")
+      .accessibilityIdentifier("browser.design.close")
   }
 }
 
@@ -100,57 +121,108 @@ struct BrowserDesignBar<Content: View>: View {
   }
 }
 
-/// Draw's dock: the shape, its color, Undo, the note, Send and Close.
+/// Draw's dock: the shape, its color, Undo, the note, Send and Close; in two rows where it is
+/// `compact` (iPhone).
 struct BrowserDrawDock: View {
   @Bindable var tools: BrowserDesignTools
+  var compact = false
   let send: () -> Void
   @State private var choosingColor = false
 
   var body: some View {
-    BrowserDesignBar {
-      Picker("Shape", selection: $tools.shape) {
-        ForEach(BrowserDesignMarkKind.allCases, id: \.self) { kind in
-          Label(kind.title, systemImage: kind.systemImage).tag(kind)
+    if compact {
+      VStack(spacing: 10) {
+        HStack(spacing: 12) {
+          shapes
+          color
+          undo
+          Spacer(minLength: 0)
+          close
+        }
+        HStack(spacing: 10) {
+          note.frame(maxWidth: .infinity)
+          sendButton
         }
       }
-      .pickerStyle(.segmented)
+      .padding(12)
+      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+      .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.separator))
+      .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+    } else {
+      BrowserDesignBar {
+        shapes
+        color
+        undo
+        note.frame(width: 200)
+        sendButton
+        close
+      }
+    }
+  }
+
+  private var shapes: some View {
+    Picker("Shape", selection: $tools.shape) {
+      ForEach(BrowserDesignMarkKind.allCases, id: \.self) { kind in
+        Label(kind.title, systemImage: kind.systemImage).tag(kind)
+      }
+    }
+    .pickerStyle(.segmented)
+    .labelStyle(.iconOnly)
+    .labelsHidden()
+    .fixedSize()
+    .accessibilityIdentifier("browser.design.shape")
+  }
+
+  private var color: some View {
+    Button {
+      choosingColor.toggle()
+    } label: {
+      BrowserDesignSwatch(color: tools.color)
+    }
+    .buttonStyle(.borderless)
+    .help("Color for \(tools.shape.title)")
+    .accessibilityLabel("Color for \(tools.shape.title): \(tools.color.title)")
+    .popover(isPresented: $choosingColor, arrowEdge: compact ? .top : .bottom) {
+      BrowserDesignPalette(selection: $tools.color) { choosingColor = false }
+        .presentationCompactAdaptation(.popover)
+    }
+  }
+
+  private var undo: some View {
+    Button("Undo", systemImage: "arrow.uturn.backward") { tools.undo() }
       .labelStyle(.iconOnly)
-      .labelsHidden()
-      .accessibilityIdentifier("browser.design.shape")
-      Button {
-        choosingColor.toggle()
-      } label: {
-        BrowserDesignSwatch(color: tools.color)
-      }
       .buttonStyle(.borderless)
-      .help("Color for \(tools.shape.title)")
-      .accessibilityLabel("Color for \(tools.shape.title): \(tools.color.title)")
-      .popover(isPresented: $choosingColor, arrowEdge: .bottom) {
-        BrowserDesignPalette(selection: $tools.color) { choosingColor = false }
-      }
-      Button("Undo", systemImage: "arrow.uturn.backward") { tools.undo() }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .disabled(tools.undoBlocked != nil)
-        .help("Undo the last mark")
-        .accessibilityIdentifier("browser.design.undo")
-      TextField("Add a note for the agent", text: $tools.note)
-        .textFieldStyle(.roundedBorder)
-        .frame(width: 200)
-        .disabled(tools.isPreparing)
-        .onSubmit { if tools.drawingBlocked == nil { send() } }
-        .accessibilityIdentifier("browser.design.note")
-      Button(tools.isPreparing ? "Capturing\u{2026}" : "Send to Agent", action: send)
-        .buttonStyle(.borderedProminent)
-        .disabled(tools.drawingBlocked != nil)
-        .help(tools.drawingBlocked ?? "Send the marked-up page to the session's agent")
-        .accessibilityIdentifier("browser.design.send")
+      .disabled(tools.undoBlocked != nil)
+      .help("Undo the last mark")
+      .accessibilityIdentifier("browser.design.undo")
+  }
+
+  private var note: some View {
+    TextField("Add a note for the agent", text: $tools.note)
+      .textFieldStyle(.roundedBorder)
+      .disabled(tools.isPreparing)
+      .onSubmit { if tools.drawingBlocked == nil { send() } }
+      .accessibilityIdentifier("browser.design.note")
+  }
+
+  private var sendButton: some View {
+    Button(tools.isPreparing ? "Capturing\u{2026}" : "Send to Agent", action: send)
+      .buttonStyle(.borderedProminent)
+      .disabled(tools.drawingBlocked != nil)
+      .help(tools.drawingBlocked ?? "Send the marked-up page to the session's agent")
+      .accessibilityIdentifier("browser.design.send")
+  }
+
+  @ViewBuilder private var close: some View {
+    #if os(macOS)
       Button("Close Draw", systemImage: "xmark.circle.fill") { tools.close() }
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
         .accessibilityIdentifier("browser.design.close")
-    }
+    #else
+      BrowserDesignDoneButton(tool: .draw) { tools.close() }
+    #endif
   }
 }
 

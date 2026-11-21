@@ -202,10 +202,17 @@ void BrowserClient::SetVisible(bool visible) {
                             " visible=" + std::to_string(visible) + " browser=" +
                             std::to_string(browser_ != nullptr));
   }
+  const bool shown = visible && !visible_;
   visible_ = visible;
   health_->visible.store(visible);
-  if (browser_) {
-    browser_->GetHost()->WasHidden(!visible);
+  if (!browser_) {
+    return;
+  }
+  browser_->GetHost()->WasHidden(!visible);
+  if (shown) {
+    // A hidden page whose frame Chromium evicted draws nothing until it gets a newer surface,
+    // and CEF's show does not always allocate one. This gives it one on every show.
+    browser_->GetHost()->NotifyScreenInfoChanged();
   }
 }
 
@@ -790,10 +797,19 @@ void BrowserClient::ReportProbe(const std::string& verdict, uint64_t elapsed_mil
                                 verdict + " " + PresentationState());
 }
 
-void BrowserClient::ProbeRenderer(bool quiet) {
+void BrowserClient::ProbeRenderer(bool quiet, uint64_t frames_after_nanos) {
   if (probe_.stage != RendererProbe::Stage::kIdle) {
     const uint64_t waited = MillisecondsSince(probe_.started_nanos);
     if (waited * NSEC_PER_MSEC < kProbeForgetNanos) {
+      if (frames_after_nanos != 0) {
+        // The question in flight answers for the frames too; one that went unanswered already has.
+        if (probe_.timed_out) {
+          health_->frames_stopped_after.store(frames_after_nanos);
+        } else {
+          probe_.frames_after_nanos = frames_after_nanos;
+        }
+        return;
+      }
       if (quiet || (probe_.quiet && !probe_.timed_out)) {
         // One question at a time: the one in flight now also answers for the stall.
         probe_.quiet = probe_.quiet && quiet;
@@ -816,6 +832,7 @@ void BrowserClient::ProbeRenderer(bool quiet) {
     return;
   }
   probe_.quiet = quiet;
+  probe_.frames_after_nanos = frames_after_nanos;
   StartProbeStage(RendererProbe::Stage::kAnswer, kProbeStateScript, false,
                   kProbeAnswerMilliseconds);
 }
@@ -853,11 +870,16 @@ void BrowserClient::ProbeTimedOut(uint64_t serial) {
   }
   // The question stays open so a late answer is recognized; nothing new is asked meanwhile.
   probe_.timed_out = true;
+  if (probe_.frames_after_nanos != 0) {
+    // A renderer that does not answer, or runs no animation frame, draws nothing.
+    health_->frames_stopped_after.store(probe_.frames_after_nanos);
+  }
   const uint64_t waited = MillisecondsSince(probe_.started_nanos);
   if (probe_.stage == RendererProbe::Stage::kAnswer) {
-    ReportProbe("renderer=hung waited_ms=" + std::to_string(waited) +
-                    (probe_.quiet ? " asked=while-in-use" : ""),
-                waited);
+    const char* asked = !probe_.quiet                     ? ""
+                        : probe_.frames_after_nanos != 0 ? " asked=frames-stopped"
+                                                          : " asked=while-in-use";
+    ReportProbe("renderer=hung waited_ms=" + std::to_string(waited) + asked, waited);
   } else {
     ReportProbe("renderer=alive answer_ms=" + std::to_string(probe_.answer_milliseconds) +
                     " page=" + probe_.page_state + " frames=stopped waited_ms=" +
@@ -872,29 +894,36 @@ bool BrowserClient::HandleProbeResult(int message_id, bool success, const std::s
   }
   const uint64_t took = MillisecondsSince(probe_.started_nanos);
   const bool late = probe_.timed_out;
+  // A quiet question writes only what went unanswered: a page that went static still runs
+  // animation frames, and that needs no line.
+  const bool write = !probe_.quiet || late;
   if (probe_.stage == RendererProbe::Stage::kFrame) {
-    ReportProbe(late ? "renderer=alive frames=resumed answered_after_ms=" + std::to_string(took)
-                     : "renderer=alive answer_ms=" + std::to_string(probe_.answer_milliseconds) +
-                           " page=" + probe_.page_state + " frames=alive frame_ms=" +
-                           std::to_string(took),
-                took);
+    if (write) {
+      ReportProbe(late ? "renderer=alive frames=resumed answered_after_ms=" + std::to_string(took)
+                       : "renderer=alive answer_ms=" + std::to_string(probe_.answer_milliseconds) +
+                             " page=" + probe_.page_state + " frames=alive frame_ms=" +
+                             std::to_string(took),
+                  took);
+    }
     probe_ = RendererProbe();
     return true;
   }
   probe_.answer_milliseconds = took;
   probe_.page_state = ProbeState(success, json);
   const bool hidden = probe_.page_state.rfind("hidden", 0) == 0;
-  if (probe_.quiet && !late) {
+  if (probe_.quiet && probe_.frames_after_nanos == 0 && !late) {
     probe_ = RendererProbe();  // The routine question was answered in time: nothing to write.
     return true;
   }
   if (late || hidden || !browser_) {
     // A hidden page runs no animation frames, so there is nothing more to ask it.
-    ReportProbe(late ? "renderer=recovered answered_after_ms=" + std::to_string(took) + " page=" +
-                           probe_.page_state
-                     : "renderer=alive answer_ms=" + std::to_string(took) + " page=" +
-                           probe_.page_state + " frames=not-asked",
-                took);
+    if (write) {
+      ReportProbe(late ? "renderer=recovered answered_after_ms=" + std::to_string(took) +
+                             " page=" + probe_.page_state
+                       : "renderer=alive answer_ms=" + std::to_string(took) + " page=" +
+                             probe_.page_state + " frames=not-asked",
+                  took);
+    }
     probe_ = RendererProbe();
     return true;
   }
