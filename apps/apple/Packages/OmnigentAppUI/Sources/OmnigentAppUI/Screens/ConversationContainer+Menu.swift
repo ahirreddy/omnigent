@@ -169,6 +169,7 @@ extension ConversationContainer {
     state.isShared = ConversationAdapter.isShared(
       owner: summary?.owner, viewer: viewer, grants: loadedGrants)
     state.sandbox = SandboxAdapter.state(conversation, environment: hostEnvironment)
+    state.browserTarget = BrowserTargetAdapter.state(panel, isShared: state.isShared)
     if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
     state.terminalKeepsPanes = keptTerminalSplit(isRegularWidth: isRegularWidth) != nil
     state.agentInfo = conversation.agentInfo.map {
@@ -259,6 +260,7 @@ extension ConversationContainer {
       TasksAdapter.preview(tasks: tasks, conversation: conversation, summary: summary)
     }
     extras.showTasks = showTasks
+    extras.chooseBrowserTarget = BrowserTargetAdapter.chooser(panel) { failures.append($0) }
     extras.terminalSplit = terminalSplitControls(isRegularWidth: isRegularWidth) {
       failures.append($0)
     }

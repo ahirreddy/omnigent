@@ -67,6 +67,11 @@ public final class SessionPanelStore {
   public internal(set) var newReviewThread: ReviewThreadDraft?
   /// Replies being written, by thread.
   public internal(set) var reviewReplies: [String: String] = [:]
+  /// The browser the session's agent drives, once read; `nil` before, or where the server
+  /// offers no agent browser.
+  public internal(set) var browserTarget: BrowserTarget?
+  /// Why the browser choice could not be read.
+  public internal(set) var browserTargetError: CoreError?
 
   let core: ClientCore
   private var generation = 0

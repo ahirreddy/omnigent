@@ -34,6 +34,15 @@ struct ConversationToolbarItems {
   let showShare: () -> Void
   let titleMenu: AnyView
 
+  /// The browser chip's state and action, where the server offers the agent browser.
+  var browserTarget: (state: BrowserTargetState, choose: @MainActor (BrowserTargetChoice) -> Void)?
+  {
+    guard let state = state.browserTarget, let choose = extras.chooseBrowserTarget else {
+      return nil
+    }
+    return (state, choose)
+  }
+
   /// The split actions, while the Terminal view shows at regular width.
   var terminalSplit: TerminalSplitControls? {
     guard offersTerminal, isRegular, mode.wrappedValue == .terminal else { return nil }
@@ -74,6 +83,9 @@ struct ConversationToolbar: ToolbarContent {
       #if os(macOS)
         if let sandbox = state.sandbox {
           SandboxStatusControl(state: sandbox, actions: items.extras.sandbox)
+        }
+        if let browser = items.browserTarget {
+          BrowserTargetChip(state: browser.state, choose: browser.choose)
         }
       #endif
       if let info = state.agentInfo, !(info.tools.isEmpty && info.policies.isEmpty) {

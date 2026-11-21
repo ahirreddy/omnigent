@@ -64,6 +64,9 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   public var effortTitle: String?
   /// The session's managed sandbox, for the titlebar's status control; `nil` without one.
   public var sandbox: SandboxStatusState?
+  /// Which browser the agent drives, for the Mac toolbar's chip and the iOS title menu; `nil`
+  /// where the server offers no agent browser.
+  public var browserTarget: BrowserTargetState?
 
   /// Creates conversation state.
   /// - Parameters:

@@ -116,6 +116,7 @@ struct SessionSurface {
     extras.agentCosts = AgentTreeAdapter.costSource(conversation)
     extras.overviewChanges = chat.workspace?.changes
     extras.terminalSplit = chat.terminalSplitControls(isRegularWidth: true, report: report)
+    extras.chooseBrowserTarget = BrowserTargetAdapter.chooser(chat.panel, report: report)
     return extras
   }
 
@@ -176,6 +177,7 @@ struct SessionSurface {
   /// shared with, and the right panel's features and pull requests.
   func load() async {
     if kept.shareStore == nil { kept.shareStore = chat.makeShareStore?() }
+    await chat.panel?.loadBrowserTarget()
     // Once per session for the window, as a kept chat read them: not again on each return.
     guard !kept.hasReadPullRequests else { return }
     kept.hasReadPullRequests = true
@@ -209,6 +211,8 @@ private struct PanelRefreshWhenSettled: ViewModifier {
     content.onChange(of: conversation?.isRunning) { wasRunning, running in
       if wasRunning == true, running == false {
         Task { await panel?.refreshPullRequestsIfShown() }
+        // The agent may have switched browsers, or the owner answered which one to use.
+        Task { await panel?.loadBrowserTarget() }
       }
     }
   }
