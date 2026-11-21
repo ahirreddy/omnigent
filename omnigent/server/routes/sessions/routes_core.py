@@ -29,6 +29,7 @@ from fastapi.responses import Response
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
+from omnigent.browser_devtools_availability import BROWSER_TARGET_LABEL
 from omnigent.codex_approval_modes import (
     CODEX_NATIVE_PERMISSION_VALUES,
 )
@@ -250,6 +251,7 @@ from omnigent.server.routes._sessions.orchestration import (
     _validate_session_model_selection,
     ensure_runner_connected,
 )
+from omnigent.server.routes.sessions.routes_browser import require_browser_target_write
 from omnigent.server.sandbox_profile_launch import prepare_profile, record_profile
 from omnigent.server.schemas import (
     AutomaticSessionRenameRequest,
@@ -3722,6 +3724,14 @@ def register_core_routes(
                 )
         if body.labels:
             _reject_server_reserved_label_seed(body.labels)
+            if BROWSER_TARGET_LABEL in body.labels:
+                await require_browser_target_write(
+                    session_id=session_id,
+                    user_id=user_id,
+                    value=body.labels[BROWSER_TARGET_LABEL],
+                    conversation_store=conversation_store,
+                    permission_store=permission_store,
+                )
             # Advisor-owned cost_control.* labels are written only by the
             # session's bound runner; gate them on runner proof BEFORE any
             # store mutation so a rejected request leaves the session untouched.
@@ -4742,7 +4752,12 @@ def register_core_routes(
         # so without this an empty string would linger as a stored value.
         # The pinned key was rewritten to the caller's per-user key above, so
         # clear that one (not the canonical bare key) on an empty value.
-        for _clear_key in (PROJECT_LABEL_KEY, pinned_label_key(user_id), muted_label_key(user_id)):
+        for _clear_key in (
+            PROJECT_LABEL_KEY,
+            pinned_label_key(user_id),
+            muted_label_key(user_id),
+            BROWSER_TARGET_LABEL,
+        ):
             if labels_to_set.get(_clear_key) == "":
                 labels_to_set = {k: v for k, v in labels_to_set.items() if k != _clear_key}
                 await asyncio.to_thread(conversation_store.delete_label, session_id, _clear_key)

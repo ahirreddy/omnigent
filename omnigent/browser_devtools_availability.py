@@ -27,6 +27,10 @@ _LAUNCHER_MODULE: Final[str] = "omnigent.runner.browser_devtools.mcp_launcher"
 BROWSER_DEVTOOLS_TOOL_TIMEOUT_S: Final[int] = 180
 # Marks the injected server, so an author's own ``chrome_devtools`` entry is told apart.
 BROWSER_DEVTOOLS_MARKER_ENV: Final[str] = "OMNIGENT_BROWSER_DEVTOOLS"
+# Which browser the session's agent uses: ``local`` (the owner's Mac app), ``remote`` (the
+# runner's browser host) or ``auto`` (absent or empty).
+BROWSER_TARGET_LABEL: Final[str] = "omnigent.browser_target"
+BROWSER_TARGETS: Final[frozenset[str]] = frozenset({"auto", "local", "remote"})
 
 
 def browser_devtools_server(endpoint: str) -> MCPServerConfig:

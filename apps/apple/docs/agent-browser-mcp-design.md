@@ -356,8 +356,12 @@ window, or the app may be inactive. Requirements and mechanism:
   `agent_activity`, and the Rust core and FFI carry to the tab's badge.
 - **Take over reaches the agent** within one directory refresh (2 s for the app, 1 s for a
   host) as the user-control dialog (section 5).
-- **Not started:** the chip and menu, `browser_switch`, the ask-once elicitation, phase 5 and
-  phase 6.
+- **Choosing the browser:** the server checks `omnigent.browser_target` writes (known values;
+  `local` only from the owner of an unshared session; empty deletes the label, so it reads as
+  `auto`). The core and FFI read and write it directly (`browser_target`,
+  `set_browser_target`).
+- **Not started:** the chip and menu in the apps, `browser_switch`, the ask-once elicitation,
+  phase 5 and phase 6.
 
 ## 10. Test plan
 
