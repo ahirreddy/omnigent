@@ -359,9 +359,12 @@ window, or the app may be inactive. Requirements and mechanism:
 - **Choosing the browser:** the server checks `omnigent.browser_target` writes (known values;
   `local` only from the owner of an unshared session; empty deletes the label, so it reads as
   `auto`). The core and FFI read and write it directly (`browser_target`,
-  `set_browser_target`).
-- **Not started:** the chip and menu in the apps, `browser_switch`, the ask-once elicitation,
-  phase 5 and phase 6.
+  `set_browser_target`). The Mac toolbar shows a Browser chip and iOS a Browser submenu in the
+  session title menu, where the server offers the agent browser. `browser_switch` writes the
+  label (`local` after the owner approves). Under `auto` in a watched run, the first
+  connection that finds both browsers usable asks once and stores the answer; a declined or
+  unanswered question keeps the Mac browser until the runner restarts.
+- **Not started:** phase 5 and phase 6.
 
 ## 10. Test plan
 
