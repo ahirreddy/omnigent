@@ -50,7 +50,7 @@ enum ProjectBoardAdapter {
             session: OmnigentUIComponents.SessionSummary(head, attention: headAttention),
             info: SidebarAdapter.rowInfo(
               head, isOwned: list.isOwned(head), environments: list.hostEnvironments,
-              hasDraft: drafts.contains(head.id)),
+              hasDraft: drafts.contains(head.id), lookup: { list.sessionsByID[$0] }),
             memberIDs: card.memberIds, lane: lane(card.lane),
             isUnread: card.memberIds.contains { unread.contains($0) },
             requests: SidebarAdapter.requests(headAttention) ?? 0, preview: previews[head.id])

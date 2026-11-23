@@ -219,13 +219,46 @@ struct SidebarAdapterTests {
     #expect(hasLiveSandbox(launched(.provisioning)))
     #expect(hasLiveSandbox(launched(.actionRequired)))
     #expect(!hasLiveSandbox(launched(.failed)))
-    // A machine, a child session, an unread host list and no configuration have none.
+    // A machine, an unread host list and no configuration have none.
     let onMachine = hasLiveSandbox { $0.hostId = "mac" }
-    let child = hasLiveSandbox { $0.parentId = "conv_parent" }
     #expect(!onMachine)
-    #expect(!child)
     #expect(!hasLiveSandbox(environments: [:]))
     #expect(!SidebarAdapter.rowInfo(session("s"), isOwned: true).hasLiveSandbox)
+  }
+
+  @Test("A child session's row follows the sandbox of its family's top session")
+  func childSandboxLiveness() {
+    let environments: [String: SessionEnvironment] = ["sbx": .sandbox(label: "Modal Sandbox")]
+    func row(_ id: String, parent: String?, hostOnline: Bool = false)
+      -> OmnigentCoreFFI.SessionSummary
+    {
+      var configuration = ConversationFixtures.configuration(harness: "codex-native")
+      // A child reports no host of its own, and its runner says nothing of the sandbox.
+      configuration.hostId = parent == nil ? "sbx" : nil
+      configuration.hostOnline = parent == nil ? hostOnline : nil
+      configuration.runnerOnline = parent != nil
+      configuration.parentId = parent
+      return ConversationFixtures.summary(id, configuration: configuration)
+    }
+    func isAlive(_ rows: [OmnigentCoreFFI.SessionSummary]) -> Bool {
+      let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+      return SidebarAdapter.rowInfo(
+        rows[rows.count - 1], isOwned: true, environments: environments, lookup: { byID[$0] }
+      ).hasLiveSandbox
+    }
+    let online = row("top", parent: nil, hostOnline: true)
+    let offline = row("top", parent: nil)
+    let child = row("child", parent: "top")
+    let grandchild = row("grandchild", parent: "child")
+    #expect(isAlive([online, child]))
+    #expect(isAlive([online, child, grandchild]))
+    #expect(!isAlive([offline, child]))
+    #expect(!isAlive([offline, child, grandchild]))
+    // A parent the list has not loaded says nothing.
+    #expect(!isAlive([child]))
+    // A loop of parents ends.
+    let loop = row("loop", parent: "loop")
+    #expect(!isAlive([loop]))
   }
 
   @Test("Display options persist and bad data falls back to the defaults")

@@ -125,6 +125,7 @@ public final class ConnectionStore {
     extensions = ExtensionsStore(core: core)
     sessionList.core = core
     sessionList.eventsBeforeAnswer = { [weak self] in await self?.eventsSentSoFarApplied() }
+    sessionList.hostReads.reload = { [weak self] in self?.reloadHosts() }
     _ = core.subscribe(listener: relay)
     startPump()
     preferenceWatch = Self.watchBackgroundTitles(core)

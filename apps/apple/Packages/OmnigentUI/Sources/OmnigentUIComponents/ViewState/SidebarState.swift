@@ -138,7 +138,8 @@ nonisolated public struct SessionRowInfo: Hashable, Sendable {
   public var createdBy: String?
   /// It runs on a host, whose runner Stop session also stops.
   public var runsOnHost = false
-  /// Its managed sandbox is launching, waking or up, so its harness mark can show in color.
+  /// The managed sandbox it runs in (a child, its parent's) is launching, waking or up, so its
+  /// harness mark can show in color.
   public var hasLiveSandbox = false
   /// The PR the server stores for it, for the tooltip.
   public var pullRequest: SessionRowPullRequest?

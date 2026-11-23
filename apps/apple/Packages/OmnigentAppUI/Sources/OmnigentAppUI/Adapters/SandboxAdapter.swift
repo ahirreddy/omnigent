@@ -41,28 +41,44 @@ enum SandboxAdapter {
     return state
   }
 
-  /// Whether a listed session's own sandbox is launching, waking or up, from what its list row
-  /// carries; `false` without one, and for a child session, which runs under its parent's.
+  /// Whether the sandbox a listed session runs in is launching, waking or up, from what the list
+  /// carries; `false` without one. A child session runs in its family's top session's sandbox.
   /// - Parameters:
   ///   - session: The session.
-  ///   - isOwned: The viewer owns it.
   ///   - environments: Where a session on each host runs, as the host list says.
+  ///   - lookup: A listed session by id, for a child's parents.
   /// - Returns: Whether its sandbox is alive.
   static func isAlive(
-    _ session: OmnigentCoreFFI.SessionSummary, isOwned: Bool,
-    environments: [String: SessionEnvironment]
+    _ session: OmnigentCoreFFI.SessionSummary, environments: [String: SessionEnvironment],
+    lookup: (String) -> OmnigentCoreFFI.SessionSummary?
   ) -> Bool {
-    guard let configuration = session.configuration, configuration.parentId == nil else {
-      return false
-    }
+    guard let top = familyTop(session, lookup: lookup), let configuration = top.configuration
+    else { return false }
     let signals = SandboxSignals(
       launch: configuration.sandboxLaunch, profile: nil,
       hostSandbox: hostSandbox(configuration.hostId.flatMap { environments[$0] }),
       hostId: configuration.hostId, hostOnline: configuration.hostOnline,
       runnerOnline: configuration.runnerOnline, hostResumable: configuration.hostResumable,
-      turnActive: session.status != .idle, canEdit: !session.isReadOnly && !session.isArchived,
-      isOwner: isOwned)
+      // Only the phase is read, and permissions do not change it.
+      turnActive: top.status != .idle, canEdit: false, isOwner: false)
     return sandboxState(signals: signals).map { isAlive($0.phase) } ?? false
+  }
+
+  /// The session at the top of `session`'s parent chain; `nil` when a parent is not listed.
+  static func familyTop(
+    _ session: OmnigentCoreFFI.SessionSummary,
+    lookup: (String) -> OmnigentCoreFFI.SessionSummary?
+  ) -> OmnigentCoreFFI.SessionSummary? {
+    var current = session
+    // A bound on the chain, so a parent loop cannot hang the sidebar.
+    for _ in 0..<16 {
+      guard let parentID = current.configuration?.parentId, !parentID.isEmpty else {
+        return current
+      }
+      guard let parent = lookup(parentID) else { return nil }
+      current = parent
+    }
+    return nil
   }
 
   /// Whether a sandbox in `phase` is launching, waking or up (its agent asleep included).

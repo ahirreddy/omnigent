@@ -90,6 +90,8 @@ public final class SessionListStore {
   @ObservationIgnored public var thisMachineHostID: () -> String? = { nil }
   /// The last host list failure, until the next successful read.
   public internal(set) var hostsError: CoreError?
+  /// The host reads the list asks for.
+  @ObservationIgnored var hostReads = SessionListHostReads()
   /// Sessions whose composer holds an unsent draft.
   public internal(set) var draftSessionIDs: Set<String> = [] {
     didSet { if draftSessionIDs != oldValue { draftsChanged(from: oldValue) } }
@@ -246,12 +248,14 @@ public final class SessionListStore {
         sessions.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
       expectations = [:]
       refresh(known.union(serverSessions.keys), resetting: true)
+      askForUnlistedHosts(sessions)
     case .upsert(let sessions):
       for session in sessions {
         serverSessions[session.id] = session
         expectations[session.id] = nil
       }
       refresh(Set(sessions.map(\.id)))
+      askForUnlistedHosts(sessions)
     case .remove(let ids):
       for id in ids {
         serverSessions[id] = nil
@@ -374,10 +378,6 @@ extension SessionListStore {
     lastError = nil
   }
 
-  func failed(_ error: CoreError) {
-    lastError = error
-  }
-
   /// Forgets everything of the account that was signed in.
   func clear() {
     serverSessions = [:]
@@ -394,6 +394,7 @@ extension SessionListStore {
     projectSortMode = nil
     hostEnvironments = [:]
     hostsError = nil
+    hostReads = SessionListHostReads(reload: hostReads.reload)
     refresh(Set(sessionsByID.keys), resetting: true)
   }
 }

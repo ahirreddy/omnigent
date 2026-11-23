@@ -276,27 +276,6 @@ extension SessionListStore {
     return saved
   }
 
-  /// Re-reads the hosts and where a session on each runs.
-  /// - Parameter serverURL: The connected server, which decides whether a host is this Mac.
-  /// - Returns: The hosts; none when the read failed (``hostsError``).
-  @discardableResult
-  public func loadHosts(serverURL: String) async -> [CreationHost] {
-    guard let core else { return [] }
-    do {
-      let hosts = try await core.hosts()
-      let environments = OmnigentCoreFFI.hostEnvironments(
-        hosts: hosts, serverUrl: serverURL, thisMachineHostId: thisMachineHostID())
-      let byID = Dictionary(
-        environments.map { ($0.hostId, $0.environment) }, uniquingKeysWith: { first, _ in first })
-      if byID != hostEnvironments { hostEnvironments = byID }
-      hostsError = nil
-      return hosts
-    } catch {
-      hostsError = coreError(error)
-      return []
-    }
-  }
-
   /// Records whether `sessionID`'s composer holds a draft.
   /// - Parameters:
   ///   - sessionID: The session.

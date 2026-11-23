@@ -41,6 +41,8 @@ enum SidebarAdapter {
     let current = server.map(ServerChoice.init)
     var choices = current.map { [$0] } ?? []
     choices += servers.filter { choice in choice.id != current?.id }
+    let shown = Dictionary(
+      layout.sessions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     var state = SidebarViewState(
       list: listState,
       rowInfo: Dictionary(
@@ -48,7 +50,7 @@ enum SidebarAdapter {
           let info = rowInfo(
             session, isOwned: list.isOwned(session),
             environments: list.hostEnvironments,
-            hasDraft: contents.draftSessionIDs.contains(session.id))
+            hasDraft: contents.draftSessionIDs.contains(session.id), lookup: { shown[$0] })
           return (session.id, info)
         },
         uniquingKeysWith: { first, _ in first }),
@@ -111,9 +113,10 @@ enum SidebarAdapter {
   static func row(_ id: String, list: SessionListStore, showsDraft: Bool) -> SidebarRowContent? {
     guard let session = list.session(id) else { return nil }
     let attention = list.attention(of: id)
+    // A child's parents without their activity, so a message to one does not redraw it.
     let info = rowInfo(
       session, isOwned: list.isOwned(session), environments: list.hostEnvironments,
-      hasDraft: showsDraft && list.hasDraft(id))
+      hasDraft: showsDraft && list.hasDraft(id), lookup: list.sessionWithoutActivity)
     return SidebarRowContent(
       session: OmnigentUIComponents.SessionSummary(session, attention: attention), info: info,
       isUnread: list.isUnread(id), requests: requests(attention))
@@ -192,10 +195,12 @@ enum SidebarAdapter {
   ///   - isOwned: The viewer owns it.
   ///   - environments: Where a session on each host runs; empty until the hosts are read.
   ///   - hasDraft: Its composer holds an unsent draft.
+  ///   - lookup: A listed session by id, for the sandbox a child runs in.
   /// - Returns: The row's facts.
   static func rowInfo(
     _ session: OmnigentCoreFFI.SessionSummary, isOwned: Bool,
-    environments: [String: SessionEnvironment] = [:], hasDraft: Bool = false
+    environments: [String: SessionEnvironment] = [:], hasDraft: Bool = false,
+    lookup: (String) -> OmnigentCoreFFI.SessionSummary? = { _ in nil }
   ) -> SessionRowInfo {
     let configuration = session.configuration
     var info = SessionRowInfo(
@@ -212,7 +217,7 @@ enum SidebarAdapter {
     info.runsOnHost = configuration?.hostId != nil
     info.pullRequest = session.pullRequest.map(pullRequest)
     info.hasLiveSandbox = SandboxAdapter.isAlive(
-      session, isOwned: isOwned, environments: environments)
+      session, environments: environments, lookup: lookup)
     if let launch = SandboxAdapter.launchNote(configuration?.sandboxLaunch) {
       // A sandbox on its way, or one that never came up, is neither local nor just disconnected.
       info.environment = launch.label

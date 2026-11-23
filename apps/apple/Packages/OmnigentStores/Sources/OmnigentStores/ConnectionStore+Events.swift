@@ -175,7 +175,7 @@ extension ConnectionStore {
   }
 
   /// Re-reads the hosts, for the sidebar's Environment detail and host-offline notifications.
-  private func reloadHosts() {
+  func reloadHosts() {
     guard let server = connectedServer else { return }
     let list = sessionList
     let offlineHosts = notifications?.offlineHosts

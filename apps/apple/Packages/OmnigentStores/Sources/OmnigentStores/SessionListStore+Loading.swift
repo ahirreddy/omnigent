@@ -3,6 +3,11 @@ import OmnigentCoreFFI
 /// What the list holds as the core reads it: the projects and their sort mode, and whether the
 /// pages hold archived sessions, which they do only while the sidebar shows them (as the web's).
 extension SessionListStore {
+  /// The list's last read failed.
+  func failed(_ error: CoreError) {
+    lastError = error
+  }
+
   /// The projects and their sort mode, as the core read them.
   func projectsLoaded(_ projects: [ProjectSummary], sortMode: ProjectSortMode) {
     if projects != self.projects { self.projects = projects }
