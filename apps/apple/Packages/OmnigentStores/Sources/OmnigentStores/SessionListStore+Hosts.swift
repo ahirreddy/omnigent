@@ -1,4 +1,4 @@
-import OmnigentCoreFFI
+public import OmnigentCoreFFI
 
 /// The host reads a session list asks for.
 struct SessionListHostReads {
